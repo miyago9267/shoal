@@ -15,8 +15,8 @@
 
 set -Eeuo pipefail
 
-# v1.0.0 之前的 pinned ref（v1.8.1 以前）只存在於 miyago9267/pilotfish-codex，
-# 請把 REPO 改成 miyago9267/pilotfish-codex 再使用。
+# Pinned refs before shoal v1.0.0 (v1.8.1 and earlier) exist only in
+# miyago9267/pilotfish-codex; set REPO to miyago9267/pilotfish-codex to use them.
 REPO="miyago9267/shoal"
 REF="${PILOTFISH_REF:-main}"
 FORWARDED_ARGS=()

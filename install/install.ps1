@@ -15,8 +15,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-# v1.0.0 之前的 pinned ref（v1.8.1 以前）只存在於 miyago9267/pilotfish-codex，
-# 請把 $Repository 改成 miyago9267/pilotfish-codex 再使用。
+# Pinned refs before shoal v1.0.0 (v1.8.1 and earlier) exist only in
+# miyago9267/pilotfish-codex; set $Repository to miyago9267/pilotfish-codex to use them.
 $Repository = "miyago9267/shoal"
 $Ref = if ($env:PILOTFISH_REF) { $env:PILOTFISH_REF } else { "main" }
 $ForwardedArgs = [System.Collections.Generic.List[string]]::new()
