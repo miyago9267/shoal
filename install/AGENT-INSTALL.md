@@ -150,9 +150,12 @@ from the mutable `main` branch:
 ```bash
 REF="<release-tag-or-commit-sha>"
 curl -fsSL \
-  "https://raw.githubusercontent.com/miyago9267/pilotfish-codex/$REF/install/install.sh" \
+  "https://raw.githubusercontent.com/miyago9267/shoal/$REF/install/install.sh" \
   | bash -s -- --ref "$REF" --dry-run --codex-home "$ACTIVE_CODEX_HOME"
 ```
+
+Note: pinned refs before v1.0.0 (v1.8.1 and earlier) exist only in
+`miyago9267/pilotfish-codex`; use that repository name in the URL for them.
 
 The shell requires Bash, Python 3.11+, and a parseable Codex CLI version.
 Inspect it with `bash install/install.sh --help` before using a remote copy.

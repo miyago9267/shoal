@@ -3,7 +3,7 @@
 > Codex 原生的 orchestration layer，根据需求的明确程度与风险，选择合适的
 > 第一步：直接执行、探索后规划，或共同澄清。
 
-[English](../README.md) · [繁體中文](./README.zh-TW.md)
+[English](../hosts/codex/README.md) · [繁體中文](./README.zh-TW.md)
 
 Pilotfish-Codex 是受
 [Pilotfish](https://github.com/Nanako0129/pilotfish) 启发的独立 Codex CLI

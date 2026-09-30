@@ -15,7 +15,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repository = "miyago9267/pilotfish-codex"
+# v1.0.0 之前的 pinned ref（v1.8.1 以前）只存在於 miyago9267/pilotfish-codex，
+# 請把 $Repository 改成 miyago9267/pilotfish-codex 再使用。
+$Repository = "miyago9267/shoal"
 $Ref = if ($env:PILOTFISH_REF) { $env:PILOTFISH_REF } else { "main" }
 $ForwardedArgs = [System.Collections.Generic.List[string]]::new()
 
@@ -128,7 +130,7 @@ try {
   $SourceRoot = Get-ChildItem -LiteralPath $TempRoot -Directory |
     Where-Object { Test-Path (Join-Path $_.FullName "install/install.py") } |
     Select-Object -First 1
-  if ($null -eq $SourceRoot) { Fail "downloaded archive does not look like pilotfish-codex" }
+  if ($null -eq $SourceRoot) { Fail "downloaded archive does not look like pilotfish-codex (pinned refs before v1.0.0 live in miyago9267/pilotfish-codex)" }
   Invoke-Python (Join-Path $SourceRoot.FullName "install/install.py") $ForwardedArgs.ToArray()
 } finally {
   if (Test-Path -LiteralPath $TempRoot) {

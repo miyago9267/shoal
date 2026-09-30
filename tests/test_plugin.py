@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "plugins" / "pilotfish-codex"
-VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+VERSION = (ROOT / "hosts" / "codex" / "VERSION").read_text(encoding="utf-8").strip()
 
 
 class PluginPackageTests(unittest.TestCase):

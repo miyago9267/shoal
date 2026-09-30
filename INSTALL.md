@@ -1,4 +1,4 @@
-# Pilotfish-Codex installation playbook
+# Pilotfish-Codex installation playbook（shoal 的 Codex host 安裝說明）
 
 This playbook is for an AI agent installing the native Pilotfish-Codex target.
 Read it completely before running an installation command. The detailed
@@ -154,10 +154,13 @@ full commit SHA; do not run the placeholder itself):
 PILOTFISH_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
 PILOTFISH_REF='<release-tag-or-commit-sha>'
 curl -fsSL \
-  "https://raw.githubusercontent.com/miyago9267/pilotfish-codex/${PILOTFISH_REF}/install/install.sh" \
+  "https://raw.githubusercontent.com/miyago9267/shoal/${PILOTFISH_REF}/install/install.sh" \
   | bash -s -- --ref "$PILOTFISH_REF" --dry-run \
     --codex-home "$PILOTFISH_TARGET_HOME"
 ```
+
+Note: pinned refs before v1.0.0 (v1.8.1 and earlier) exist only in
+`miyago9267/pilotfish-codex`; use that repository name in the URL for them.
 
 If the active home has a dotfiles-managed `AGENTS.md` or `hooks` symlink that
 points outside the home, use the isolated role path instead of integrating the
@@ -212,7 +215,7 @@ Pinned remote source:
 PILOTFISH_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
 PILOTFISH_REF='<release-tag-or-commit-sha>'
 curl -fsSL \
-  "https://raw.githubusercontent.com/miyago9267/pilotfish-codex/${PILOTFISH_REF}/install/install.sh" \
+  "https://raw.githubusercontent.com/miyago9267/shoal/${PILOTFISH_REF}/install/install.sh" \
   | bash -s -- --ref "$PILOTFISH_REF" \
     --codex-home "$PILOTFISH_TARGET_HOME"
 ```

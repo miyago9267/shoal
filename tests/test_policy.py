@@ -9,7 +9,7 @@ AGENTS = ROOT / "templates" / "agents"
 class PolicyTests(unittest.TestCase):
     def test_stamp_and_roles_remain_consistent(self) -> None:
         policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
-        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        version = (ROOT / "hosts" / "codex" / "VERSION").read_text(encoding="utf-8").strip()
         self.assertIn(f"<!-- pilotfish-codex v{version} -->", policy)
         for path in AGENTS.glob("*.toml"):
             self.assertEqual(tomllib.loads(path.read_text(encoding="utf-8"))["name"], path.stem)

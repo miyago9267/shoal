@@ -10,12 +10,14 @@
 #
 # Pinned remote:
 #   curl -fsSL \
-#     https://raw.githubusercontent.com/miyago9267/pilotfish-codex/<release-tag-or-commit-sha>/install/install.sh \
+#     https://raw.githubusercontent.com/miyago9267/shoal/<release-tag-or-commit-sha>/install/install.sh \
 #     | bash -s -- --ref <release-tag-or-commit-sha> --dry-run
 
 set -Eeuo pipefail
 
-REPO="miyago9267/pilotfish-codex"
+# v1.0.0 之前的 pinned ref（v1.8.1 以前）只存在於 miyago9267/pilotfish-codex，
+# 請把 REPO 改成 miyago9267/pilotfish-codex 再使用。
+REPO="miyago9267/shoal"
 REF="${PILOTFISH_REF:-main}"
 FORWARDED_ARGS=()
 
@@ -132,6 +134,6 @@ fi
 source_root="$(find "$workdir" -mindepth 1 -maxdepth 1 -type d -print -quit)"
 [[ -n "$source_root" && -f "$source_root/install/install.py" \
   && -d "$source_root/templates/agents" ]] \
-  || fail "downloaded archive does not look like pilotfish-codex"
+  || fail "downloaded archive does not look like pilotfish-codex (pinned refs before v1.0.0 live in miyago9267/pilotfish-codex)"
 
 python3 "$source_root/install/install.py" "${FORWARDED_ARGS[@]}"
