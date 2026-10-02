@@ -1,0 +1,44 @@
+# Claude 專屬：Agent / Workflow 工具停用、Opus 路由說明、contract 內容（legacy 有、core 沒有）、
+# Bash timeout 參數（毫秒）與 run_in_background。
+
+[[addendum]]
+id = "tools-disabled"
+at = "after:identity"
+sep = "space"
+text = '''
+The Agent and Workflow tools are disabled for this role by design.'''
+
+[[addendum]]
+id = "opus-routing"
+at = "after:identity"
+sep = "space"
+text = '''
+This is a separate role routed to the Opus model; review carries the extra rigor.'''
+
+[[addendum]]
+id = "contract-contents"
+at = "after:approved-contract-only"
+join = "space"
+text = '''
+A usable contract states scope, constraints, and done criteria; if the brief lacks them, stop and report.'''
+
+[[addendum]]
+id = "timeout-param"
+at = "after:foreground-timeout"
+sep = "space"
+text = '''
+In Claude Code, set the Bash `timeout` parameter explicitly, in milliseconds, to at most 600000.'''
+
+[[addendum]]
+id = "background-note"
+at = "after:no-detach"
+sep = "space"
+text = '''
+In Claude Code this includes the Bash `run_in_background` option: a detached command has no task id, no captured output, and no completion notification, so its result is orphaned and nobody collects it.'''
+
+[[addendum]]
+id = "do-not-start"
+at = "before:handoff-long-command"
+sep = "space"
+text = '''
+Do not start a command that cannot finish within 10 minutes.'''

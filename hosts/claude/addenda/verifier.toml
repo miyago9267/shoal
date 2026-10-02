@@ -1,0 +1,51 @@
+# Claude 專屬：Agent / Workflow 工具停用、未點名 contract 的預設、primary flow 受阻時仍檢查邊界（legacy 有、core 沒有）、
+# Bash timeout 參數（毫秒）與 run_in_background。
+
+[[addendum]]
+id = "tools-disabled"
+at = "after:identity"
+sep = "space"
+text = '''
+The Agent and Workflow tools are disabled for this role by design.'''
+
+[[addendum]]
+id = "default-contract"
+at = "after:no-inferred-checkpoint"
+sep = "space"
+text = '''
+When the brief names no contract but carries a completed-work claim with its acceptance, treat it as `outcome_verification` and do not refuse the work for that reason; only an explicit `direction_checkpoint` request selects that contract.'''
+
+[[addendum]]
+id = "blocked-primary-flow"
+at = "after:edge-set-after-evidence"
+sep = "space"
+text = '''
+If the primary flow is blocked or unavailable, still inspect the smallest safely exercisable claim-relevant edge set and diff coverage, and record the missing primary-flow evidence without suppressing an independently reproducible blocker.'''
+
+[[addendum]]
+id = "timeout-param"
+at = "after:foreground-timeout"
+sep = "space"
+text = '''
+In Claude Code, set the Bash `timeout` parameter explicitly, in milliseconds, to at most 600000.'''
+
+[[addendum]]
+id = "background-note"
+at = "after:no-detach"
+sep = "space"
+text = '''
+In Claude Code this includes the Bash `run_in_background` option: a detached command has no task id, no captured output, and no completion notification, so its result is orphaned and nobody collects it.'''
+
+[[addendum]]
+id = "do-not-start"
+at = "before:handoff-long-command"
+sep = "space"
+text = '''
+Do not start a command that cannot finish within 10 minutes.'''
+
+[[addendum]]
+id = "checkpoint-details"
+at = "after:checkpoint-inconclusive"
+sep = "space"
+text = '''
+A `PIVOT` names the path or assumption that must change, and a direction checkpoint follows the same evidence rules as outcome verification.'''

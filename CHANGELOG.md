@@ -41,6 +41,14 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
   `INCONCLUSIVE` 與 P0 到 P4（Decision 2），移除六欄與五項回報格式及
   `READY`/`REVISE` 格式（Decision 3）。plugin 的 TS 與測試不變。對照表在
   `docs/specs/role-contracts/MAPPING-opencode.md`。
+- Phase 2b-2（Claude）：Claude 的七個 core role 文字改由 core 條款產生，這會
+  改變 Claude agent 的 prompt（`role_text = "core"`，`Explore` 維持 legacy，
+  Decision 8）：agent body 沒有外框，frontmatter 仍由 binding 產生；Agent /
+  Workflow 工具停用、allowlist、Bash `timeout`（毫秒）與 `run_in_background`
+  等 Claude 專屬句子在 `hosts/claude/addenda/`，沒有 replace。移除電報體、
+  `mis-routed` 用語（Decision 3）與 plan-verifier 的「remains blocking」
+  （Decision 1）；verifier 的 direction checkpoint 條款改採 Codex 原句。
+  對照表在 `docs/specs/role-contracts/MAPPING-claude.md`。
 
 權限由存取等級推導（`docs/specs/access-derivation/`）。
 

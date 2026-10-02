@@ -55,6 +55,7 @@ CORE_ROLES = (
 EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
     "agy": CORE_ROLES,
     "grok": CORE_ROLES,
+    "claude": CORE_ROLES,
     # OpenCode 只有 5 個 role（Decision 9），omitted_roles 不變。
     "opencode": tuple(r for r in CORE_ROLES if r not in ("mech-executor", "plan-verifier")),
 }
@@ -88,6 +89,36 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
         "verifier": ["capability-note", "default-contract"],
         "security-reviewer": ["capability-note"],
         "security-executor": ["reasoning-effort"],
+    },
+    "claude": {
+        "scout": ["final-message-channel"],
+        "mech-executor": ["tools-disabled", "timeout-param", "background-note"],
+        "executor": ["tools-disabled", "timeout-param", "background-note"],
+        "plan-verifier": [
+            "tool-allowlist",
+            "brief-unit-kinds",
+            "read-needed-evidence",
+            "revise-shape",
+            "orchestrator-owns-writes",
+        ],
+        "verifier": [
+            "tools-disabled",
+            "default-contract",
+            "blocked-primary-flow",
+            "timeout-param",
+            "background-note",
+            "do-not-start",
+            "checkpoint-details",
+        ],
+        "security-reviewer": ["tool-allowlist", "follow-codebase-evidence"],
+        "security-executor": [
+            "tools-disabled",
+            "opus-routing",
+            "contract-contents",
+            "timeout-param",
+            "background-note",
+            "do-not-start",
+        ],
     },
     "opencode": {
         "scout": ["assigned-paths", "parent-session-owns", "parent-session-wording"],
@@ -596,6 +627,14 @@ class VerbatimClauseTests(unittest.TestCase):
                 with self.subTest(host=host, role="plan-verifier"):
                     text = rendered_text(host, "plan-verifier", files)
                     self.assertIn("treat a `program envelope` as a `readiness_review` envelope", text)
+
+    def test_claude_explore_keeps_its_legacy_text(self) -> None:
+        # Decision 8：host 專屬 role 維持 host 自己的文字
+        binding = render.load_toml(ROOT / "hosts" / "claude" / "binding.toml")
+        self.assertNotIn("role_text", binding["extra_roles"]["Explore"])
+        legacy = (ROOT / "hosts" / "claude" / "src" / "agents" / "Explore.md").read_bytes()
+        rendered = render.RENDERERS["claude"](ROOT)["agents/Explore.md"]
+        self.assertTrue(rendered.endswith(b"\n---\n\n" + legacy))
 
     def test_addenda_files_belong_to_core_roles(self) -> None:
         roles = render.load_core(ROOT)["roles"]

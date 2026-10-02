@@ -1,0 +1,43 @@
+# Claude 專屬：工具 allowlist 說明、只讀必要證據與 orchestrator 擁有寫入（legacy 有、core 沒有）、
+# brief 用語對照、REVISE 欄位的格式。
+
+[[addendum]]
+id = "tool-allowlist"
+at = "after:identity"
+sep = "space"
+text = '''
+Your tool allowlist excludes Bash, Write, Edit, NotebookEdit, Agent, and Workflow: the pre-approval boundary is enforced by capability, not by prompt text.'''
+
+[[addendum]]
+id = "brief-unit-kinds"
+at = "after:review-envelope"
+sep = "space"
+text = '''
+A brief that does not use the word `readiness_review` is still reviewed by its kind: treat a `program envelope` as a `readiness_review` envelope and an `execution slice` as a slice.'''
+
+[[addendum]]
+id = "read-needed-evidence"
+at = "after:reject-splits"
+join = "space"
+text = '''
+Read only the evidence needed for the unit, starting from the Plan and evidence paths in the brief.'''
+
+[[addendum]]
+id = "revise-shape"
+at = "after:verdict-revise"
+text = '''
+Each `REVISE` block has this shape:
+
+```text
+Blocker: <blocking defect>
+Evidence: <file:line or explicit evidence gap>
+Minimum revision: <smallest required change>
+Acceptance check: <observable closure check>
+```'''
+
+[[addendum]]
+id = "orchestrator-owns-writes"
+at = "after:no-mutation"
+join = "space"
+text = '''
+The main-session orchestrator owns synthesis, approval, and all writes.'''

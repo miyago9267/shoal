@@ -3,7 +3,7 @@
 
 # role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
-role_text = "legacy"
+role_text = "core"
 
 # 這個 host 可用的模型與其 alias；resolver 只在這裡選（規則見 core/tiers.toml）。
 # security role 不會選到 fable（帶 refuses_defensive_security 旗標，分類器會誤拒防禦性資安工作）。
