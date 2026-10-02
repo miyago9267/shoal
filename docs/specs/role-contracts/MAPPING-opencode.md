@@ -109,18 +109,43 @@ session 的 Plan）。
 |---|---|---|
 | L1-7 frontmatter，含 `edit: deny`、`task: deny` | 外框 | 保留（D6） |
 | L9 標題 `# Verifier` | 外框 | 保留（D6） |
-| L11-12 獨立檢查被宣稱的結果、相關 diff、acceptance 檢查、重要邊界 | `outcome-input`、`falsify-claim`、`primary-flow-first`、`edge-set-after-evidence` | 保留（D2） |
+| L11-12 獨立檢查被宣稱的結果、相關 diff、acceptance 檢查、重要邊界 | `outcome-input`、`falsify-claim`、`primary-flow-first`、`edge-set-after-evidence` | 收窄（依 Decisions 前言：以 Codex 原句為準；邊界檢查改為主流程取得證據之後才做）；D2 |
 | L12-13 在 OpenCode 授權的範圍內跑有範圍的檢查 | addendum `permission-checks` | 保留（OpenCode 機制，D6 精神） |
 | L13 絕不修復實作 | `read-and-run-only`、`no-plan-edit-fix` | 保留 |
 | L15-18 兩種 verdict：`CONFIRMED`、`REFUTED` | `verdict-confirmed`、`verdict-refuted`、`verdict-inconclusive` | 取代（D2：所有 host 取得三種 verdict 與 P0 到 P4） |
 | L20 附上證據、未驗證的 claim、一個下一步 | `verdict-confirmed`（每項條件與證據）；addendum `report-extras`（同一句保留） | 保留（無 Decision 可引用） |
 | L20-21 parent session 擁有最終判斷 | replace 後的 `orchestrator-owns` | 保留 |
 
-core 新增（D2）：`name-one-contract`、`no-inferred-checkpoint`、
-`direction_checkpoint` 全部條款、`recheck`、`finding-fields`、
-優先序、`security-verification`、foreground 全部條款（D4）、`no-spawn`。
-OpenCode 沒有 orchestration policy，不會在 brief 點名 contract，因此加
-addendum `default-contract`：未點名時視為 `outcome_verification`。
+core 新增：見文末「core 新增的義務」。
+本 repo 沒有 OpenCode 的 orchestration policy 可對照 brief 格式（plugin 只做
+route 驗證），legacy 的 verifier 也沒有 contract 概念，因此加 addendum
+`default-contract`：未點名時視為 `outcome_verification`。
+
+## core 新增的義務
+
+OpenCode 的 legacy 文字最短，core 新增的義務最多（括號內是對應條款）：
+
+- scout：`identity` 的「leaf role，不可 delegate」；`search-breadth` 的
+  「依要求的廣度、用檔案與文字搜尋」；`report-answer`（直接答案加
+  `file:line`）；`state-evidence-gap`（缺證據時說明搜尋了什麼）；
+  `no-delegate`（legacy 只靠 `task: deny`）。
+- executor：`identity` 的 leaf 宣告；`own-local-design`（擁有局部設計決定：
+  命名、檔內結構、錯誤處理）；`work-like-senior`（最簡完整解、實際跑流程驗證）；
+  `no-extras`；`escalate-fork`；foreground 全部條款（D4：前景、10 分鐘上限、不
+  detach、跑不完就不啟動並回報完整指令）；`final-message` 的內容順序。
+- security-executor：`identity` 的 leaf 宣告；`work-defensively`（在 trust
+  boundary 驗證、沿用既有 pattern、用久經檢驗的 primitive）；
+  `state-assumptions`；`regression-checks`（exploit 保留為 regression check、
+  測 abuse case）；foreground 全部條款（D4）；`final-message`。
+- security-reviewer：`identity`；`inspect-scope` 的攻擊者能力、exploit 情境、
+  最小補救方向；`distinguish-evidence`；`report-fields`（severity、unit ID、
+  證據或證據缺口、假設、最小補救、acceptance check）；`no-modify` 的「不產出
+  實作 brief、不修 finding、核准後的實作屬 `security-executor`」。
+- verifier：`identity`；`name-one-contract` 與 `no-inferred-checkpoint`（以
+  `default-contract` 調和）；`direction_checkpoint` 的全部條款；
+  `falsify-claim`；`recheck`；INCONCLUSIVE 與 P0 到 P4（D2）；`finding-fields`；
+  `security-verification`；foreground 全部條款（D4）與 `inspect-bindings`；
+  `no-false-rollback`。
 
 ## 風險與備註
 
@@ -128,6 +153,7 @@ addendum `default-contract`：未點名時視為 `outcome_verification`。
   仍描述 security-reviewer 輸出 `REVISE or READY`、verifier 輸出
   `CONFIRMED or REFUTED`。那是 plugin 內部的資料，不經 render，也沒有 TS
   測試把它和 role md 對照；本次沒有改，之後要不要同步需另行決定。
+- 標示「收窄」的是措辭或條件收緊，不是刪除；其餘移除都有 D1 到 D3 的依據。
 - plugin 的 TS 測試沒有斷言 role md 的內容，沒有為此修改任何 TS 測試。
 - `parent-session` 的 replace 讓 OpenCode 的條款與 core 有 7 處不同，
   清單由測試鎖定。
