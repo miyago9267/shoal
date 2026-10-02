@@ -3,7 +3,10 @@
 
 # role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
-role_text = "legacy"
+# core 條款就是由 Codex 1.8.1 的原文切出，Codex 的 addenda 放回 Codex 專屬的句子，
+# 所以 templates/agents/*.toml 與 legacy 逐位元組相同（src/agents 的原文暫時保留，供比對與回復）。
+# host 專屬的 sol-executor 沒有 core 條款，一律沿用 src/agents/sol-executor.md。
+role_text = "core"
 
 # 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
 [models]

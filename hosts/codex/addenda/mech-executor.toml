@@ -1,0 +1,10 @@
+# Codex 專屬：模型綁定說明。replace 放回含 Luna / Astra 的原句（core 的 route-judgment 是中立版本）。
+
+[[addendum]]
+id = "model-binding"
+at = "replace:route-judgment"
+text = '''
+Use the installed Luna/medium binding for this mechanical role. This role must
+never request Astra overrides; if the task needs judgment or cross-system/tool-heavy work,
+stop and report the boundary so the orchestrator can route it to `executor` or
+`verifier`.'''

@@ -104,11 +104,17 @@ class CheckCommandTests(unittest.TestCase):
         self.assertIn(f"缺少: {MIRROR}", run_render(self.root, "--check").stderr)
 
     def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
-        body = self.root / "hosts" / "codex" / "src" / "agents" / "executor.md"
-        body.write_text(body.read_text(encoding="utf-8") + "extra line\n", encoding="utf-8", newline="\n")
+        # executor 是 core 模式：來源是 core/contracts；sol-executor 是 legacy：來源是 src/agents
+        contract = self.root / "core" / "contracts" / "executor.toml"
+        contract.write_text(contract.read_text(encoding="utf-8")
+                            + '\n[[clause]]\nid = "extra"\nkind = "procedure"\ntext = "extra line"\n',
+                            encoding="utf-8", newline="\n")
         result = run_render(self.root, "--check")
         self.assertEqual(result.returncode, 1)
         self.assertIn("agents/executor.toml", result.stderr)
+        body = self.root / "hosts" / "codex" / "src" / "agents" / "sol-executor.md"
+        body.write_text(body.read_text(encoding="utf-8") + "extra line\n", encoding="utf-8", newline="\n")
+        self.assertIn("agents/sol-executor.toml", run_render(self.root, "--check").stderr)
 
     def test_write_repairs_dist_and_mirror(self) -> None:
         dist = self.root / "templates"
@@ -172,9 +178,15 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
 
     def test_developer_instructions_cannot_break_the_toml_string(self) -> None:
-        body = self.root / "hosts" / "codex" / "src" / "agents" / "scout.md"
-        body.write_text('bad """ body\n', encoding="utf-8", newline="\n")
+        contract = self.root / "core" / "contracts" / "scout.toml"
+        contract.write_text("[[clause]]\nid = \"bad\"\nkind = \"procedure\"\ntext = \'\'\'bad \"\"\" body\'\'\'\n",
+                            encoding="utf-8", newline="\n")
         self.assert_rejected("scout")
+
+    def test_legacy_developer_instructions_cannot_break_the_toml_string(self) -> None:
+        body = self.root / "hosts" / "codex" / "src" / "agents" / "sol-executor.md"
+        body.write_text('bad """ body\n', encoding="utf-8", newline="\n")
+        self.assert_rejected("sol-executor")
 
 
 class CatalogTests(unittest.TestCase):

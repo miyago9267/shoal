@@ -1,0 +1,9 @@
+# Codex 專屬：reasoning effort 說明；接在 approved-contract-only 同一行之後。
+
+[[addendum]]
+id = "reasoning-effort"
+at = "after:approved-contract-only"
+sep = "paragraph"
+join = "space"
+text = '''
+This work deserves consistently high reasoning effort.'''

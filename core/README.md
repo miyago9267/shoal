@@ -87,10 +87,17 @@ core（規格見
   `[[addendum]]` 有 `id`、`at`、`text`，選用 `sep`。`at` 是 `start`、`end`、
   `after:<條款 id>`、`before:<條款 id>` 或 `replace:<條款 id>`（用 host 專屬
   措辭取代那個條款；沒寫 `sep` 時沿用被取代條款的）。同一個位置有多個
-  addendum 時依檔案順序。
+  addendum 時依檔案順序。選用 `join` 指定「前一段與這個 addendum 之間」的
+  分隔（預設沿用前一段原本的 `sep`），用於把 host 的句子接在 core 段落結尾的
+  同一行，core 本身在那裡是換段。
 - `frames/` 與 `addenda/` 刻意放在 `src/` 之外，不會被 passthrough 帶進 dist。
 - 切到 `core` 的 host，每個 role 必須逐字包含每個未被 `replace` 的條款，
   每個 host 的 replace 清單由測試鎖定（新增 replace 要同時改測試）。
+- 目前只有 Codex 是 `core`：七個共同 role 的條款由 Codex 1.8.1 的原文切出，
+  Codex 專屬的句子（模型綁定、reasoning effort、`semantic_adjudication`）在
+  `hosts/codex/addenda/`，所以 `templates/agents/*.toml` 與切換前逐位元組相同。
+  `sol-executor` 是 Codex 專屬 role，維持 `src/agents` 的原文。其他 host 仍是
+  `legacy`。
 
 ## 各 host 的 role 子集與 effort
 

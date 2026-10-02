@@ -52,6 +52,9 @@ class Addendum:
     at: str  # start / end / after:<id> / before:<id> / replace:<id>
     text: str
     sep: str | None = None  # None：replace 沿用被取代條款的 sep，其他位置用 paragraph
+    # 前一段與這個 addendum 之間的分隔；None 沿用前一段原本的 sep。
+    # 用於把 host 專屬的句子接在 core 段落結尾的同一行（core 本身在那裡是換段）。
+    join: str | None = None
 
 
 def _load(path: Path) -> dict:
@@ -140,7 +143,7 @@ def parse_addenda(data: dict, label: str = "addenda") -> list[Addendum]:
     seen: set[str] = set()
     for index, item in enumerate(raw, 1):
         table = _check_table(
-            f"{label} 第 {index} 個 addendum", item, {"id", "at", "text"}, {"sep"}
+            f"{label} 第 {index} 個 addendum", item, {"id", "at", "text"}, {"sep", "join"}
         )
         aid = _check_id(f"{label} 第 {index} 個 addendum", table["id"])
         where = f"{label} addendum {aid}"
@@ -151,13 +154,14 @@ def parse_addenda(data: dict, label: str = "addenda") -> list[Addendum]:
             raise ContractError(
                 f"{where}: at 必須是 start、end、after:<id>、before:<id> 或 replace:<id>"
             )
-        sep = table.get("sep")
+        sep, join = table.get("sep"), table.get("join")
         out.append(
             Addendum(
                 aid,
                 table["at"],
                 _check_text(where, table["text"]),
                 None if sep is None else _check_sep(where, sep),
+                None if join is None else _check_sep(where, join),
             )
         )
     return out
@@ -227,15 +231,32 @@ def compose(clauses: list[Clause], addenda: list[Addendum]) -> str:
                     add
                 )
 
-    pieces: list[tuple[str, str]] = [(a.text, a.sep or "paragraph") for a in start]
+    pieces: list[tuple[str, str]] = []
+
+    def put(text: str, sep: str, join: str | None = None) -> None:
+        if join is not None:
+            if not pieces:
+                raise ContractError("join 前面沒有可接的段落（start 位置不可用 join）")
+            pieces[-1] = (pieces[-1][0], join)
+        pieces.append((text, sep))
+
+    def put_addendum(add: Addendum, default_sep: str = "paragraph") -> None:
+        put(add.text, add.sep or default_sep, add.join)
+
+    for add in start:
+        put_addendum(add)
     for clause in clauses:
-        pieces += [(a.text, a.sep or "paragraph") for a in before.get(clause.id, [])]
+        for add in before.get(clause.id, []):
+            put_addendum(add)
         rep = replace.get(clause.id)
-        pieces.append(
-            (rep.text, rep.sep or clause.sep) if rep else (clause.text, clause.sep)
-        )
-        pieces += [(a.text, a.sep or "paragraph") for a in after.get(clause.id, [])]
-    pieces += [(a.text, a.sep or "paragraph") for a in end]
+        if rep:
+            put_addendum(rep, clause.sep)
+        else:
+            put(clause.text, clause.sep)
+        for add in after.get(clause.id, []):
+            put_addendum(add)
+    for add in end:
+        put_addendum(add)
 
     body = "".join(text + SEPARATORS[sep] for text, sep in pieces[:-1])
     return body + pieces[-1][0] + "\n"

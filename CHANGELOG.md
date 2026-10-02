@@ -14,6 +14,11 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
 - 每個 `binding.toml` 新增 `role_text = "legacy" | "core"`，並可用
   `[roles.<name>].role_text` 逐 role 覆寫。目前五個 host 都是 `legacy`，
   沒有任何 core 條款，輸出與之前逐位元組相同。
+- Phase 2b-1：從 Codex 1.8.1 的原文切出七個共同 role（scout、mech-executor、
+  executor、plan-verifier、verifier、security-reviewer、security-executor）
+  的 `core/contracts`，Codex 切到 `role_text = "core"`；Codex 專屬的句子在
+  `hosts/codex/addenda/`。`templates/agents/*.toml` 與切換前逐位元組相同，
+  prompt lock、VERSION 與 marker 都不變。其他四個 host 仍是 `legacy`。
 
 權限由存取等級推導（`docs/specs/access-derivation/`）。
 

@@ -25,7 +25,7 @@ HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 # 新增 replace 必須同時改這裡（R5）；host 沒有 addenda 就是空。
 EXPECTED_REPLACES: dict[str, dict[str, list[str]]] = {
     "claude": {},
-    "codex": {},
+    "codex": {"mech-executor": ["route-judgment"]},
     "agy": {},
     "grok": {},
     "opencode": {},
@@ -54,8 +54,6 @@ HOST_SPECIFIC_TERMS = (
     "model_reasoning_effort",
     "sandbox_mode",
     "web_search",
-    "nohup",
-    "setsid",
 )
 
 
@@ -63,8 +61,8 @@ def clause(cid: str, text: str, sep: str = "paragraph", kind: str = "procedure")
     return f"[[clause]]\nid = \"{cid}\"\nkind = \"{kind}\"\nsep = \"{sep}\"\ntext = '''\n{text}'''\n\n"
 
 
-def addendum(aid: str, at: str, text: str, sep: str | None = None) -> str:
-    sep_line = "" if sep is None else f'sep = "{sep}"\n'
+def addendum(aid: str, at: str, text: str, sep: str | None = None, join: str | None = None) -> str:
+    sep_line = ("" if sep is None else f'sep = "{sep}"\n') + ("" if join is None else f'join = "{join}"\n')
     return f"[[addendum]]\nid = \"{aid}\"\nat = \"{at}\"\n{sep_line}text = '''\n{text}'''\n\n"
 
 
@@ -144,6 +142,17 @@ class ComposeTests(unittest.TestCase):
             + addendum("y", "before:b", "BEFORE", "space")
         )
         self.assertEqual(text, "A one. BEFORE B host.\n\nAFTER\n\nC three.\nD four.\n")
+
+    def test_join_changes_only_the_gap_before_the_addendum(self) -> None:
+        # core 在 d 之後是換段；host 句子接在同一行，之後再換段
+        text = self.compose(addendum("x", "after:b", "HOST.", "paragraph", "space"))
+        self.assertEqual(text, "A one. B two.\nwrapped. HOST.\n\nC three.\nD four.\n")
+        # 沒有 addendum 時 core 的版面不變
+        self.assertEqual(self.compose(), "A one. B two.\nwrapped.\n\nC three.\nD four.\n")
+
+    def test_join_at_start_is_rejected(self) -> None:
+        with self.assertRaisesRegex(contracts.ContractError, "join"):
+            self.compose(addendum("x", "start", "X", join="space"))
 
     def test_single_clause_has_no_trailing_separator(self) -> None:
         self.assertEqual(
@@ -257,6 +266,13 @@ class TempHost(unittest.TestCase):
         for host in HOSTS:
             shutil.rmtree(self.root / "hosts" / host / "addenda", ignore_errors=True)
             shutil.rmtree(self.root / "hosts" / host / "frames", ignore_errors=True)
+            # 不管 repo 目前哪個 host 已切到 core，這裡都從 legacy 開始
+            path = self.binding(host)
+            path.write_text(
+                path.read_text(encoding="utf-8").replace('\nrole_text = "core"\n', '\nrole_text = "legacy"\n', 1),
+                encoding="utf-8",
+                newline="\n",
+            )
 
     def write(self, rel: str, text: str) -> None:
         path = self.root / rel
@@ -506,6 +522,55 @@ class CoreContractTests(unittest.TestCase):
                     )
                     with self.subTest(file=path.name, clause=item.id, term=term):
                         self.assertIsNone(re.search(pattern, lowered), item.text)
+
+
+CODEX_CORE_ROLES = (
+    "scout",
+    "mech-executor",
+    "executor",
+    "plan-verifier",
+    "verifier",
+    "security-reviewer",
+    "security-executor",
+)
+# Codex 專屬內容（模型、reasoning effort、semantic_adjudication）只能放在這些 addenda；新增要同時改這裡。
+CODEX_ADDENDA = {
+    "mech-executor": ["model-binding"],
+    "plan-verifier": ["semantic-adjudication"],
+    "security-executor": ["reasoning-effort"],
+}
+
+
+class CodexCutTests(unittest.TestCase):
+    """2b-1：core 條款加 Codex addenda 逐位元組拼回 Codex 1.8.1 原文，Codex 因此能切到 core。"""
+
+    def test_codex_is_core_for_the_seven_shared_roles_only(self) -> None:
+        binding = render.load_toml(ROOT / "hosts" / "codex" / "binding.toml")
+        self.assertEqual(binding["role_text"], "core")
+        self.assertEqual(sorted(binding["roles"]), sorted(CODEX_CORE_ROLES))
+        for name in CODEX_CORE_ROLES:
+            self.assertEqual(render.role_text_mode(name, binding), "core", name)
+        self.assertNotIn("role_text", binding["extra_roles"]["sol-executor"])
+
+    def test_core_and_addenda_reassemble_the_legacy_text(self) -> None:
+        for name in CODEX_CORE_ROLES:
+            clauses = contracts.load_contract(ROOT / "core" / "contracts" / f"{name}.toml")
+            addenda = load_host_addenda(ROOT, "codex", name)
+            legacy = (ROOT / "hosts" / "codex" / "src" / "agents" / f"{name}.md").read_bytes()
+            with self.subTest(role=name):
+                self.assertGreater(len(clauses), 1)
+                self.assertEqual(contracts.compose(clauses, addenda).encode("utf-8"), legacy)
+
+    def test_codex_specific_content_lives_only_in_the_expected_addenda(self) -> None:
+        actual = {
+            path.stem: [a.id for a in contracts.load_addenda(path)]
+            for path in sorted((ROOT / "hosts" / "codex" / "addenda").glob("*.toml"))
+        }
+        self.assertEqual(actual, CODEX_ADDENDA)
+
+    def test_sol_executor_keeps_its_legacy_text(self) -> None:
+        legacy = (ROOT / "hosts" / "codex" / "src" / "agents" / "sol-executor.md").read_text(encoding="utf-8")
+        self.assertIn(legacy, render.RENDERERS["codex"](ROOT)["agents/sol-executor.toml"].decode("utf-8"))
 
 
 if __name__ == "__main__":

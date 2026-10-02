@@ -99,6 +99,15 @@ Miyago 已授權這條路線由 agent 決定並直接推進。
    比對 `agents/` 以外的檔案。
 8. host 專屬 role（`Explore`、`sol-executor`）維持 host 自己的文字。
 9. OpenCode 只有 5 個 role，`omitted_roles` 不變。
+10. 實作紀錄（2b-1）：Codex 七個共同 role 全部能由 core 條款加 addenda
+    逐位元組拼回，沒有 role 需要留在 `legacy`。條款文字逐字取自 Codex 原文，
+    含原本的換行位置，因此 scout 與 security-reviewer 的 leaf 條款換行位置
+    與其他 role 不同；要統一必須動 Codex 的輸出與 prompt lock，不在本步範圍。
+11. 實作紀錄（2a / 2b-1）：addendum 多一個選用欄位 `join`（前一段與該
+    addendum 之間的分隔），為 security-executor 的 reasoning effort 句子
+    接在 core 段落結尾同一行而設；`mech-executor` 開頭那段夾了模型綁定與
+    中立的路由義務，core 寫成中立的 `route-judgment`，Codex 以 `replace`
+    放回原句（目前唯一的 replace）。
 
 ## Phases
 
