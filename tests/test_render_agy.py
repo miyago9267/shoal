@@ -11,7 +11,7 @@ class AgyRenderTests(rh.HostRenderCase):
     GOLDEN_COUNT = 9
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "agents/scout/agent.md"
-    SRC_FILE = "agents/executor.md"
+    SRC_FILE = "rules/pilotfish-agy.md"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
 
     def test_effort_is_never_rendered(self) -> None:
         for rel, data in render.RENDERERS["agy"](ROOT).items():

@@ -1,0 +1,8 @@
+# agy 專屬：工具限制說明（Decision 6）。
+
+[[addendum]]
+id = "tool-limits"
+at = "after:identity"
+sep = "space"
+text = '''
+Your tools are limited to reading and searching; you cannot edit files or run commands.'''

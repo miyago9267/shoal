@@ -4,7 +4,7 @@
 
 # role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
-role_text = "legacy"
+role_text = "core"
 
 # agy 的 agent frontmatter 沒有 effort 欄位：明確宣告不支援，render 不輸出 effort，
 # 而且 role 不可設 effort（設了會被 render 拒絕，避免以為有生效）。

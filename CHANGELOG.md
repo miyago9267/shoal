@@ -19,6 +19,13 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
   的 `core/contracts`，Codex 切到 `role_text = "core"`；Codex 專屬的句子在
   `hosts/codex/addenda/`。`templates/agents/*.toml` 與切換前逐位元組相同，
   prompt lock、VERSION 與 marker 都不變。其他四個 host 仍是 `legacy`。
+- Phase 2b-2（agy）：agy 的七個 role 文字改由 core 條款產生，這會改變 agy
+  agent 的 prompt（`role_text = "core"`）：標題在 `hosts/agy/frames/`，工具限制
+  與 agy 專屬句子在 `hosts/agy/addenda/`；四個 role 的 `foreground-timeout`
+  以 agy 原本的「每個指令 10 分鐘內」措辭 replace。agy 因此新增取得 verifier 的
+  `direction_checkpoint`、plan-verifier 的 blocker 定義等 Codex 條款，並移除
+  scout 的最終訊息格式（Decision 3）。對照表在
+  `docs/specs/role-contracts/MAPPING-agy.md`。
 
 權限由存取等級推導（`docs/specs/access-derivation/`）。
 

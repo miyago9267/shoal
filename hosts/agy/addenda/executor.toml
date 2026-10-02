@@ -1,0 +1,7 @@
+# agy 專屬：agy 的 shell 工具沒有明確的 timeout 參數，改用 legacy 的「每個指令控制在 10 分鐘內」。
+
+[[addendum]]
+id = "foreground-limit"
+at = "replace:foreground-timeout"
+text = '''
+Run commands in the foreground and keep each under 10 minutes.'''

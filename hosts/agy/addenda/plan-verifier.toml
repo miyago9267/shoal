@@ -1,0 +1,43 @@
+# agy 專屬：工具限制、envelope 的 scope 與 non-goals（legacy 有、core 沒有）、
+# agy orchestrator 的 brief 用語對照、REVISE 欄位的格式與 security 的比例原則。
+
+[[addendum]]
+id = "tool-limits"
+at = "after:identity"
+sep = "space"
+text = '''
+Your tools are limited to reading and searching.'''
+
+[[addendum]]
+id = "envelope-scope-nongoals"
+at = "after:review-envelope"
+sep = "space"
+text = '''
+An envelope review also challenges scope and non-goals.'''
+
+[[addendum]]
+id = "brief-unit-kinds"
+at = "after:review-envelope"
+sep = "space"
+text = '''
+A brief that does not use the word `readiness_review` is still reviewed by its kind: treat a `program envelope` as a `readiness_review` envelope and an `execution slice` as a slice.'''
+
+[[addendum]]
+id = "security-proportionate"
+at = "after:security-prerequisite"
+join = "space"
+text = '''
+Judge security proportionately: flag missing basic controls and unexamined adjacent impact, not the absence of hardening the task does not need.'''
+
+[[addendum]]
+id = "revise-shape"
+at = "after:verdict-revise"
+text = '''
+Each `REVISE` block has this shape:
+
+```text
+Blocker: <blocking defect>
+Evidence: <file:line or explicit evidence gap>
+Minimum revision: <smallest required change>
+Acceptance check: <observable closure check>
+```'''

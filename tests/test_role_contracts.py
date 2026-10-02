@@ -26,9 +26,47 @@ HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 EXPECTED_REPLACES: dict[str, dict[str, list[str]]] = {
     "claude": {},
     "codex": {"mech-executor": ["route-judgment"]},
-    "agy": {},
+    "agy": {
+        role: ["foreground-timeout"]
+        for role in ("mech-executor", "executor", "verifier", "security-executor")
+    },
     "grok": {},
     "opencode": {},
+}
+
+# 2b-2：已切到 core 的 host（切換順序 agy、grok、OpenCode、Claude）與其 core role；
+# host 專屬 role（Claude 的 Explore）與 omitted_roles 不在內。
+CORE_ROLES = (
+    "scout",
+    "mech-executor",
+    "executor",
+    "plan-verifier",
+    "verifier",
+    "security-reviewer",
+    "security-executor",
+)
+EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
+    "agy": CORE_ROLES,
+}
+
+# host 專屬內容（工具限制、capability 說明、foreground 用語、brief 用語對照等）只能放在這些 addenda；
+# 新增 addendum 要同時改這裡。codex 另由 CODEX_ADDENDA 鎖定。
+EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
+    "agy": {
+        "scout": ["tool-limits"],
+        "mech-executor": ["foreground-limit"],
+        "executor": ["foreground-limit"],
+        "plan-verifier": [
+            "tool-limits",
+            "envelope-scope-nongoals",
+            "brief-unit-kinds",
+            "security-proportionate",
+            "revise-shape",
+        ],
+        "verifier": ["tool-limits", "default-contract", "foreground-limit"],
+        "security-reviewer": ["tool-limits", "tunnel-vision"],
+        "security-executor": ["proportionate-security", "foreground-limit"],
+    },
 }
 
 # R1：core 條款不得出現 host 專屬的工具、模型或機制名稱（不分大小寫，整詞比對）。
@@ -478,6 +516,42 @@ class VerbatimClauseTests(unittest.TestCase):
                 if ids:
                     actual[host][path.stem] = ids
         self.assertEqual(actual, EXPECTED_REPLACES)
+
+    def test_switched_hosts_use_core_for_exactly_the_expected_roles(self) -> None:
+        core = render.load_core(ROOT)
+        for host, expected in EXPECTED_CORE_HOSTS.items():
+            binding = render.load_toml(ROOT / "hosts" / host / "binding.toml")
+            actual = [
+                n for n in render._bound_roles(core, binding)
+                if render.role_text_mode(n, binding) == "core"
+            ]
+            with self.subTest(host=host):
+                self.assertEqual(sorted(actual), sorted(expected))
+
+    def test_host_addenda_are_locked(self) -> None:
+        for host, expected in EXPECTED_ADDENDA.items():
+            actual = {
+                path.stem: [a.id for a in contracts.load_addenda(path)]
+                for path in sorted((ROOT / "hosts" / host / "addenda").glob("*.toml"))
+            }
+            with self.subTest(host=host):
+                self.assertEqual(actual, expected)
+
+    def test_verifier_defaults_to_outcome_verification_and_unit_kinds_are_mapped(self) -> None:
+        # 各 host 的 orchestrator 不一定在 brief 點名 contract 或 readiness_review；
+        # 這兩條 addendum 避免 verifier 因 brief 格式不符而拒絕工作。
+        core = render.load_core(ROOT)
+        for host in EXPECTED_CORE_HOSTS:
+            binding = render.load_toml(ROOT / "hosts" / host / "binding.toml")
+            files = render.RENDERERS[host](ROOT)
+            roles = render._bound_roles(core, binding)
+            with self.subTest(host=host, role="verifier"):
+                text = rendered_text(host, "verifier", files)
+                self.assertIn("treat it as `outcome_verification`", text)
+            if "plan-verifier" in roles:
+                with self.subTest(host=host, role="plan-verifier"):
+                    text = rendered_text(host, "plan-verifier", files)
+                    self.assertIn("treat a `program envelope` as a `readiness_review` envelope", text)
 
     def test_addenda_files_belong_to_core_roles(self) -> None:
         roles = render.load_core(ROOT)["roles"]

@@ -1,0 +1,15 @@
+# agy 專屬：工具限制、tunnel vision 與比例原則（legacy 有、core 沒有）。
+
+[[addendum]]
+id = "tool-limits"
+at = "after:identity"
+sep = "space"
+text = '''
+Your tools are limited to reading, searching, and web lookup.'''
+
+[[addendum]]
+id = "tunnel-vision"
+at = "after:inspect-scope"
+sep = "space"
+text = '''
+Avoid tunnel vision: also check adjacent entry points, data flows, and side effects that the named boundary touches. Keep remediation proportionate: recommend the basic control that closes a concrete scenario, and do not propose restrictions that remove needed capability without a concrete threat.'''

@@ -1,0 +1,14 @@
+# agy 專屬：比例原則與 tunnel vision（legacy 有、core 沒有）、foreground 用語。
+
+[[addendum]]
+id = "proportionate-security"
+at = "after:work-defensively"
+sep = "space"
+text = '''
+Keep security basic and proportionate. Avoid tunnel vision: check that the change does not break adjacent flows or open a new path elsewhere, and do not add restrictions that remove needed capability without a concrete threat.'''
+
+[[addendum]]
+id = "foreground-limit"
+at = "replace:foreground-timeout"
+text = '''
+Run commands in the foreground and keep each under 10 minutes.'''
