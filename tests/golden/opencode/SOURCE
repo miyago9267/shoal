@@ -1,5 +1,5 @@
 repo: shoal
-ref: shoal@9d07203
-commit: 9d07203f2ffd639801845a9c1f54b8d308dfd570
+ref: shoal@1a4b84e
+commit: 1a4b84e780d578d664e843e5b02c6d2e463f777b
 path: hosts/opencode/dist
-dirty: false
+dirty: true

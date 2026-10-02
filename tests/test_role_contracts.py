@@ -31,7 +31,14 @@ EXPECTED_REPLACES: dict[str, dict[str, list[str]]] = {
         for role in ("mech-executor", "executor", "verifier", "security-executor")
     },
     "grok": {},
-    "opencode": {},
+    # OpenCode 的用語是 parent session；沒有 plan-verifier，main-session-carries 改寫成 parent session 的 Plan。
+    "opencode": {
+        "scout": ["no-delegate"],
+        "executor": ["no-spawn"],
+        "security-executor": ["no-spawn"],
+        "security-reviewer": ["main-session-carries", "no-delegate"],
+        "verifier": ["orchestrator-owns", "no-spawn"],
+    },
 }
 
 # 2b-2：已切到 core 的 host（切換順序 agy、grok、OpenCode、Claude）與其 core role；
@@ -48,6 +55,8 @@ CORE_ROLES = (
 EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
     "agy": CORE_ROLES,
     "grok": CORE_ROLES,
+    # OpenCode 只有 5 個 role（Decision 9），omitted_roles 不變。
+    "opencode": tuple(r for r in CORE_ROLES if r not in ("mech-executor", "plan-verifier")),
 }
 
 # host 專屬內容（工具限制、capability 說明、foreground 用語、brief 用語對照等）只能放在這些 addenda；
@@ -79,6 +88,28 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
         "verifier": ["capability-note", "default-contract"],
         "security-reviewer": ["capability-note"],
         "security-executor": ["reasoning-effort"],
+    },
+    "opencode": {
+        "scout": ["assigned-paths", "parent-session-owns", "parent-session-wording"],
+        "executor": ["assigned-scope", "parent-session-owns", "parent-session-wording"],
+        "verifier": [
+            "permission-checks",
+            "default-contract",
+            "report-extras",
+            "parent-session-owns",
+            "parent-session-wording",
+        ],
+        "security-reviewer": [
+            "inspect-surfaces",
+            "parent-session-carries",
+            "no-permission-grants",
+            "parent-session-wording",
+        ],
+        "security-executor": [
+            "credentials-and-blockers",
+            "parent-session-owns",
+            "parent-session-wording",
+        ],
     },
 }
 

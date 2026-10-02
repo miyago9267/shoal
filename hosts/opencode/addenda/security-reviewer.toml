@@ -1,0 +1,28 @@
+# OpenCode 專屬：要檢查的 surface 與 unknown capability 規則、不授權限（legacy 有、core 沒有）、
+# parent session 用語。OpenCode 沒有 plan-verifier，main-session-carries 改寫成 parent session 的 Plan。
+
+[[addendum]]
+id = "inspect-surfaces"
+at = "after:inspect-scope"
+sep = "space"
+text = '''
+Inspect the assigned authentication, authorization, secret-handling, validation, permission, dependency, and trust-boundary surfaces, and treat unknown capability as unknown.'''
+
+[[addendum]]
+id = "parent-session-carries"
+at = "replace:main-session-carries"
+text = '''
+The parent session carries findings and dispositions into its Plan before approval.'''
+
+[[addendum]]
+id = "no-permission-grants"
+at = "after:no-modify"
+join = "space"
+text = '''
+Do not grant permission or propose an unbounded rewrite.'''
+
+[[addendum]]
+id = "parent-session-wording"
+at = "replace:no-delegate"
+text = '''
+You are a subagent. Never spawn further subagents — delegation is a parent-session-only concern.'''

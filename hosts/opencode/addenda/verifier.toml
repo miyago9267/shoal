@@ -1,0 +1,33 @@
+# OpenCode 專屬：permission 說明、未點名 contract 的預設、legacy 的回報項目、parent session 用語。
+
+[[addendum]]
+id = "permission-checks"
+at = "after:read-and-run-only"
+join = "space"
+text = '''
+Run targeted checks only where OpenCode grants the permission.'''
+
+[[addendum]]
+id = "default-contract"
+at = "after:no-inferred-checkpoint"
+sep = "space"
+text = '''
+When the brief names no contract but carries a completed-work claim with its acceptance, treat it as `outcome_verification` and do not refuse the work for that reason; only an explicit `direction_checkpoint` request selects that contract.'''
+
+[[addendum]]
+id = "report-extras"
+at = "after:unevaluated-is-inconclusive"
+text = '''
+Include the evidence, unverified claims, and one next action.'''
+
+[[addendum]]
+id = "parent-session-owns"
+at = "replace:orchestrator-owns"
+text = '''
+The parent session, which is the orchestrator named in these instructions, owns Plans, fixes, and final disposition.'''
+
+[[addendum]]
+id = "parent-session-wording"
+at = "replace:no-spawn"
+text = '''
+You are a subagent. Never spawn further subagents — delegation is a parent-session-only concern.'''

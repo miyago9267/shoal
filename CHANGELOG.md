@@ -33,6 +33,14 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
   `derived`（Decision 7）；`roles/*.toml` 與 `config.snippet.toml` 不變。移除
   scout 的最終訊息格式（Decision 3）。對照表在
   `docs/specs/role-contracts/MAPPING-grok.md`。
+- Phase 2b-2（OpenCode）：OpenCode 的五個 role 文字改由 core 條款產生，這會
+  改變 OpenCode agent 的 prompt（`role_text = "core"`）：frontmatter、標題與
+  permission 在 `hosts/opencode/frames/`，OpenCode 專屬句子在
+  `hosts/opencode/addenda/`；`no-spawn`、`no-delegate`、`orchestrator-owns`、
+  `main-session-carries` 共 7 處以 parent session 用語 replace。verifier 新增
+  `INCONCLUSIVE` 與 P0 到 P4（Decision 2），移除六欄與五項回報格式及
+  `READY`/`REVISE` 格式（Decision 3）。plugin 的 TS 與測試不變。對照表在
+  `docs/specs/role-contracts/MAPPING-opencode.md`。
 
 權限由存取等級推導（`docs/specs/access-derivation/`）。
 

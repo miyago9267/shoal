@@ -17,7 +17,7 @@ class OpencodeRenderTests(rh.HostRenderCase):
     GOLDEN_COUNT = 7
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.md"
-    SRC_FILE = "roles/executor.md"
+    SRC_FILE = "../frames/executor.md"  # core 模式下 src/roles 不參與 render，改改外框（路徑相對 src/）
 
     def test_omitted_roles_are_not_rendered(self) -> None:
         rendered = render.RENDERERS["opencode"](ROOT)
