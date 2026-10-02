@@ -73,6 +73,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
             "brief-unit-kinds",
             "security-proportionate",
             "revise-shape",
+            "slice-inherits-envelope",
         ],
         "verifier": ["tool-limits", "default-contract", "foreground-limit"],
         "security-reviewer": ["tool-limits", "tunnel-vision"],

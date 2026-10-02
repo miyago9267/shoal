@@ -108,6 +108,23 @@ Miyago 已授權這條路線由 agent 決定並直接推進。
     接在 core 段落結尾同一行而設；`mech-executor` 開頭那段夾了模型綁定與
     中立的路由義務，core 寫成中立的 `route-judgment`，Codex 以 `replace`
     放回原句（目前唯一的 replace）。
+12. 實作紀錄（2b-2）：`review-slice` 要求 slice 有 slice-local budget 與
+    stop conditions。若 host 的 orchestration policy 把這兩項放在 program
+    envelope、slice 不寫（agy、grok；上游 pilotfish-grok v1.0.6 的 policy 與
+    agy 的 SKILL 皆然），該 host 以 `after:review-slice` 的 addendum
+    `slice-inherits-envelope` 說明：envelope 已載明 budget 與 stop
+    conditions 時 slice 沿用，slice 層缺少不算 blocker，避免 plan-verifier 多出
+    一輪 REVISE 而耗掉「同一 unit 兩次 REVISE 即停下詢問」的額度。Claude 的
+    policy 要求 slice 自帶 budget 與 stops，不加；OpenCode 沒有 plan-verifier。
+    不修改 core 條款。
+13. 實作紀錄（2b-2）：host 原有的義務只要 Decisions 沒有明文移除，就以 addendum
+    或 `replace` 保留；Decision 4 不代表可以刪掉 host 原本就有的子句（例如 agy
+    與 Claude 的 verifier、security-executor 的「跑不完就不要啟動」，core 的
+    `handoff-long-command` 沒有這句，由各 host 補回）。每個 host 的
+    `MAPPING-<host>.md` 逐 role 列出對照，義務被收窄時標「收窄」，並列出 core
+    新增的義務。host 的機制與條款不合時以 `replace` 處理，清單由測試鎖定：
+    agy 的 `foreground-timeout`（agy 的 shell 工具沒有 timeout 參數，沿用其
+    「每個指令 10 分鐘內」措辭）、OpenCode 的 parent session 用語。
 
 ## Phases
 

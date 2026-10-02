@@ -1,5 +1,5 @@
 repo: shoal
-ref: shoal@e7a9e28
-commit: e7a9e281cdd6e6da8bcdece0ce96b4e7aa31a915
+ref: shoal@ccc3c03
+commit: ccc3c03ee7c35269597b4bd8c4c48360e57161dd
 path: hosts/agy/dist
 dirty: true

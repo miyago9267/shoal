@@ -18,4 +18,4 @@ When the brief names no contract but carries a completed-work claim with its acc
 id = "foreground-limit"
 at = "replace:foreground-timeout"
 text = '''
-Run commands in the foreground and keep each under 10 minutes.'''
+Run commands in the foreground and keep each under 10 minutes; do not start a command that cannot finish within that limit.'''

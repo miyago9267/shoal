@@ -19,7 +19,7 @@ Retain each confirmed exploit or failure scenario as a regression check, test
 abuse cases as well as normal behavior, and do not expand beyond the approved
 security scope.
 
-Run commands in the foreground and keep each under 10 minutes. Never detach with nohup, setsid, a trailing ampersand, or a background shell. If a command cannot finish within 10 minutes, return the exact command, absolute working directory or isolated worktree, required environment variables, input paths, and completion criterion so the orchestrator can run it and re-task you with the captured result.
+Run commands in the foreground and keep each under 10 minutes; do not start a command that cannot finish within that limit. Never detach with nohup, setsid, a trailing ampersand, or a background shell. If a command cannot finish within 10 minutes, return the exact command, absolute working directory or isolated worktree, required environment variables, input paths, and completion criterion so the orchestrator can run it and re-task you with the captured result.
 
 Your final message: outcome first, then security-relevant assumptions and decisions, then anything that needs a human security review.
 

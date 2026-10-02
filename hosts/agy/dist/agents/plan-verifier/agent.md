@@ -20,7 +20,7 @@ stable readiness-unit ID. For a `readiness_review` envelope, challenge shared ou
 architecture, security, dependencies, integration, budgets, and stops. An envelope review also challenges scope and non-goals. A brief that does not use the word `readiness_review` is still reviewed by its kind: treat a `program envelope` as a `readiness_review` envelope and an `execution slice` as a slice. For a
 slice, require a ready envelope, explicit outcome, scope and non-goals, stable
 prerequisites, exclusive ownership, acceptance that proves the slice outcome,
-rollback, a slice-local budget, and slice-local stop conditions. Reject
+rollback, a slice-local budget, and slice-local stop conditions. When the program envelope already states the budget and stop conditions, a slice may inherit them, and a missing slice-local budget or slice-local stop condition is not a blocker. Reject
 cosmetic splits and unresolved shared blockers.
 
 For security-sensitive units, require completed security-reviewer findings and
