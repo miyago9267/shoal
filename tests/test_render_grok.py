@@ -12,14 +12,22 @@ class GrokRenderTests(rh.HostRenderCase):
     GOLDEN_COUNT = 15
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.toml"
-    SRC_FILE = "agents/executor.md"
+    SRC_FILE = "config.snippet.toml"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
 
     def test_vendored_files_are_copied_verbatim(self) -> None:
+        # Decision 7：agents/ 改由 core 條款產生，不再逐字等於上游；其餘檔案仍逐字複製。
         src = ROOT / "hosts" / "grok" / "src"
         rendered = render.RENDERERS["grok"](ROOT)
         for path in src.rglob("*"):
-            if path.is_file():
-                self.assertEqual(rendered[path.relative_to(src).as_posix()], path.read_bytes())
+            rel = path.relative_to(src)
+            if path.is_file() and rel.parts[0] != "agents":
+                self.assertEqual(rendered[rel.as_posix()], path.read_bytes())
+
+    def test_agents_are_rendered_from_core_not_from_src(self) -> None:
+        src = ROOT / "hosts" / "grok" / "src" / "agents"
+        rendered = render.RENDERERS["grok"](ROOT)
+        for path in src.glob("*.md"):
+            self.assertNotEqual(rendered[f"agents/{path.name}"], path.read_bytes(), path.name)
 
     def test_role_toml_carries_reasoning_effort(self) -> None:
         rendered = render.RENDERERS["grok"](ROOT)
@@ -28,7 +36,7 @@ class GrokRenderTests(rh.HostRenderCase):
         self.assertEqual(efforts, {"scout": "low", "mech-executor": "low", "security-reviewer": "high"})
 
     def test_agent_model_must_match_binding(self) -> None:
-        self.edit(self.root / "hosts" / "grok" / "src" / "agents" / "scout.md", "model: inherit", "model: grok-4.5")
+        self.edit(self.root / "hosts" / "grok" / "frames" / "scout.md", "model: inherit", "model: grok-4.5")
         self.assert_rejected("scout")
 
     def test_read_only_role_must_use_read_only_capability(self) -> None:
@@ -44,6 +52,7 @@ class GrokRenderTests(rh.HostRenderCase):
 class UpstreamLockTests(unittest.TestCase):
     def test_lock_pins_every_vendored_or_forked_host(self) -> None:
         lock = tomllib.loads((ROOT / "upstream.lock").read_text(encoding="utf-8"))
+        self.assertEqual(lock["grok"]["kind"], "derived")
         self.assertEqual(lock["grok"]["upstream"], "Nanako0129/pilotfish-grok")
         self.assertEqual(lock["grok"]["version"], "v1.0.6")
         self.assertEqual(lock["claude"]["upstream"], "Nanako0129/pilotfish")

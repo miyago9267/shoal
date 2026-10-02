@@ -1,0 +1,36 @@
+# grok 專屬：capability 說明、envelope 的 scope 與 non-goals（legacy 有、core 沒有）、
+# brief 用語對照、REVISE 欄位的格式。
+
+[[addendum]]
+id = "capability-note"
+at = "after:identity"
+sep = "space"
+text = '''
+Capability is enforced as read-only: no shell, no file edits.'''
+
+[[addendum]]
+id = "envelope-scope-nongoals"
+at = "after:review-envelope"
+sep = "space"
+text = '''
+An envelope review also challenges scope and non-goals.'''
+
+[[addendum]]
+id = "brief-unit-kinds"
+at = "after:review-envelope"
+sep = "space"
+text = '''
+A brief that does not use the word `readiness_review` is still reviewed by its kind: treat a `program envelope` as a `readiness_review` envelope and an `execution slice` as a slice.'''
+
+[[addendum]]
+id = "revise-shape"
+at = "after:verdict-revise"
+text = '''
+Each `REVISE` block has this shape:
+
+```text
+Blocker: <blocking defect>
+Evidence: <file:line or explicit evidence gap>
+Minimum revision: <smallest required change>
+Acceptance check: <observable closure check>
+```'''

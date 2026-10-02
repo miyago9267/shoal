@@ -473,7 +473,7 @@ def _grok_role_toml(name: str, spec: dict, perm: Permission) -> bytes:
 
 
 def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
-    """agents/*.md 與 config.snippet.toml 逐字取自 vendored src；roles/*.toml 由 binding 產生。"""
+    """config.snippet.toml 等 agents/ 以外的檔案逐字取自 vendored src；agents/*.md 依 role_text 產生（core 時 frame 內含 frontmatter）；roles/*.toml 由 binding 產生。"""
     perms = validate_grok(core, binding)
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):

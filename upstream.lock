@@ -1,14 +1,16 @@
 # 記錄各 host 對應的上游與版本（spec R6）。
 # 同步上游只透過人工 diff review，不自動更新。
 # kind: vendored = 上游文字逐字放進 hosts/<host>/src/
+#       derived = 原本是 vendored，agents/ 的 role 文字已改由 core 條款產生
+#                 （不再逐字等於上游），agents/ 以外的檔案仍逐字取自上游
 #       fork-base = 由上游 fork 出來，policy 已分岔，此為 fork 的基準版本
 #       compare-base = 目前對照追到的上游版本，內容已自行演進
 
 [grok]
-kind = "vendored"
+kind = "derived"
 upstream = "Nanako0129/pilotfish-grok"
 version = "v1.0.6"
-source = "dotfile plugins/pilotfish-grok/templates @ b65a243"
+source = "dotfile plugins/pilotfish-grok/templates @ b65a243（agents/ 於 2b-2 改由 core 條款產生）"
 path = "hosts/grok/src"
 
 [claude]

@@ -1,0 +1,15 @@
+# grok 專屬：capability 說明、未點名 contract 的預設。
+
+[[addendum]]
+id = "capability-note"
+at = "after:identity"
+sep = "space"
+text = '''
+Capability is enforced as execute (read and shell, no file edits).'''
+
+[[addendum]]
+id = "default-contract"
+at = "after:no-inferred-checkpoint"
+sep = "space"
+text = '''
+When the brief names no contract but carries a completed-work claim with its acceptance, treat it as `outcome_verification` and do not refuse the work for that reason; only an explicit `direction_checkpoint` request selects that contract.'''

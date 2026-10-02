@@ -26,6 +26,13 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
   `direction_checkpoint`、plan-verifier 的 blocker 定義等 Codex 條款，並移除
   scout 的最終訊息格式（Decision 3）。對照表在
   `docs/specs/role-contracts/MAPPING-agy.md`。
+- Phase 2b-2（grok）：grok 的七個 role 文字改由 core 條款產生，這會改變 grok
+  agent 的 prompt（`role_text = "core"`）：frontmatter 在 `hosts/grok/frames/`，
+  `${{ tools.* }}` 模板行與 capability 說明在 `hosts/grok/addenda/`，沒有
+  replace。`agents/*.md` 不再逐位元組等於上游 v1.0.6，`upstream.lock` 改記
+  `derived`（Decision 7）；`roles/*.toml` 與 `config.snippet.toml` 不變。移除
+  scout 的最終訊息格式（Decision 3）。對照表在
+  `docs/specs/role-contracts/MAPPING-grok.md`。
 
 權限由存取等級推導（`docs/specs/access-derivation/`）。
 

@@ -47,6 +47,7 @@ CORE_ROLES = (
 )
 EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
     "agy": CORE_ROLES,
+    "grok": CORE_ROLES,
 }
 
 # host 專屬內容（工具限制、capability 說明、foreground 用語、brief 用語對照等）只能放在這些 addenda；
@@ -66,6 +67,18 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
         "verifier": ["tool-limits", "default-contract", "foreground-limit"],
         "security-reviewer": ["tool-limits", "tunnel-vision"],
         "security-executor": ["proportionate-security", "foreground-limit"],
+    },
+    "grok": {
+        "scout": ["tool-templates"],
+        "plan-verifier": [
+            "capability-note",
+            "envelope-scope-nongoals",
+            "brief-unit-kinds",
+            "revise-shape",
+        ],
+        "verifier": ["capability-note", "default-contract"],
+        "security-reviewer": ["capability-note"],
+        "security-executor": ["reasoning-effort"],
     },
 }
 

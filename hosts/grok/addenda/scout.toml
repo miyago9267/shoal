@@ -1,0 +1,9 @@
+# grok 專屬：`${{ tools.* }}` 模板行（grok 在載入時展開成實際工具名）與 execute 工具限制。
+
+[[addendum]]
+id = "tool-templates"
+at = "after:state-evidence-gap"
+text = '''
+Use ${{ tools.by_kind.list }} for patterns, ${{ tools.by_kind.search }} for
+content, and ${{ tools.by_kind.read }} for known paths. Do not use execute tools
+to mutate the workspace.'''

@@ -1,0 +1,8 @@
+# grok 專屬：capability 說明。
+
+[[addendum]]
+id = "capability-note"
+at = "after:identity"
+sep = "space"
+text = '''
+Capability is enforced as read-only (including web search when available).'''

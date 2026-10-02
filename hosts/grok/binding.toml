@@ -1,11 +1,13 @@
 # grok host binding：存取等級對應的 capability mode、每個 role 的 roles/*.toml（description、reasoning effort）。
 # 數值等於 dotfile b65a243 的 plugins/pilotfish-grok/templates/roles/（vendored 自
 # Nanako0129/pilotfish-grok v1.0.6，見 upstream.lock）。
-# agents/*.md 與 config.snippet.toml 逐字放在 src/，不經 render 改寫。
+# config.snippet.toml 逐字放在 src/，不經 render 改寫。agents/*.md 在 core 模式由
+# frames/（frontmatter、含 model: inherit）、core 條款與 addenda/ 產生；src/agents/
+# 是 legacy 原文，只在 role_text = "legacy" 時使用。
 
 # role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
-role_text = "legacy"
+role_text = "core"
 
 # 所有 agent 的 frontmatter 都是 model: inherit；effort 寫在 roles/*.toml 的 reasoning_effort。
 # 不指定模型：resolver 不介入，每個 role 都解析成 inherit。
