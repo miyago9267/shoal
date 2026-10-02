@@ -3,7 +3,7 @@
 
 用法：python3 tools/render.py --host claude|codex|agy|grok|opencode (--check|--write|--explain) [--root DIR]
 
---explain 只印出每個 role 的選模過程，不讀也不改 dist。
+--explain 只印出每個 role 的選模與權限推導過程，不讀也不改 dist。
 exit code：0 成功；1 --check 發現 dist 與 render 結果不同；2 來源驗證失敗或沒有模型滿足規則。
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ import json
 import re
 import sys
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -22,6 +23,19 @@ import resolve  # noqa: E402
 REPO = Path(__file__).resolve().parents[1]
 
 ACCESS = {"read-only", "write", "verify"}
+# core 的 host 中立能力詞彙；各 host 在 binding 的 [capabilities.<name>] 宣告對應（可以是空表）。
+CAPABILITIES = {"web"}
+# 各 host 的權限欄位：[access.*]、[capabilities.*] 與 role 層級覆寫只能用這些 key。
+PERMISSION_KEYS = {
+    "claude": ("tools", "disallowedTools"),
+    "codex": ("sandbox_mode", "web_search"),
+    "agy": ("tools",),
+    "grok": ("capability_mode",),
+    "opencode": ("required_capabilities",),
+}
+LIST_KEYS = {"tools", "disallowedTools", "required_capabilities"}
+# 同一組 key 互斥（Claude 的 allowlist 與 denylist）；覆寫其中一個時，推導出的其他個會被丟掉。
+EXCLUSIVE_KEYS = {"claude": ("tools", "disallowedTools")}
 TIERS = ("fast", "standard", "strong", "frontier")
 READ_ONLY_FORBIDDEN_TOOLS = {"Write", "Edit", "Bash", "NotebookEdit"}
 # frontmatter 之後緊接一行空白，再接 body。
@@ -42,11 +56,89 @@ def load_toml(path: Path) -> dict:
         raise RenderError(f"無法讀取 {path}: {exc}") from exc
 
 
-def _tools_of(name: str, spec: dict) -> tuple[str, list[str]]:
-    keys = [k for k in ("tools", "disallowedTools") if k in spec]
-    if len(keys) != 1:
-        raise RenderError(f"{name}: binding 必須恰好有 tools 或 disallowedTools 其中之一")
-    return keys[0], list(spec[keys[0]])
+@dataclass
+class Permission:
+    """一個 role 在某個 host 推導出的權限欄位，以及推導過程（給 --explain 與驗證用）。"""
+    access: str
+    capabilities: list[str]
+    fields: dict[str, object]
+    tables: list[str]
+    overridden: list[str]
+
+
+def _check_field(where: str, key: str, value: object) -> None:
+    if key in LIST_KEYS:
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise RenderError(f"{where}: {key} 必須是字串陣列")
+    elif not isinstance(value, str):
+        raise RenderError(f"{where}: {key} 必須是字串")
+
+
+def validate_access_tables(host: str, binding: dict) -> None:
+    """binding 的 [access.<level>]、[capabilities.<name>]：名稱在詞彙內、欄位屬於這個 host、型別正確。"""
+    keys = PERMISSION_KEYS[host]
+    for kind, vocabulary in (("access", ACCESS), ("capabilities", CAPABILITIES)):
+        for level, table in binding.get(kind, {}).items():
+            if level not in vocabulary:
+                raise RenderError(f"[{kind}.{level}]: 名稱必須是 {sorted(vocabulary)}")
+            unknown = sorted(set(table) - set(keys))
+            if unknown:
+                raise RenderError(f"[{kind}.{level}]: {host} 不接受欄位 {', '.join(unknown)}（只有 {', '.join(keys)}）")
+            for key, value in table.items():
+                _check_field(f"[{kind}.{level}]", key, value)
+
+
+def derive_permission(host: str, name: str, access: str, capabilities: list[str],
+                      binding: dict, spec: dict) -> Permission:
+    """對應表 [access.<level>] 疊加 [capabilities.<name>]，最後套用 role 層級的選用覆寫。
+
+    capability 的 list 欄位附加到 access 表同名的 list（access 表沒有該 list，代表這個等級本來
+    不受限，不輸出）；scalar 欄位直接設定，與 access 表衝突時失敗。覆寫以欄位為單位整個取代。
+    """
+    if access not in ACCESS:
+        raise RenderError(f"{name}: access 必須是 {sorted(ACCESS)}")
+    table = binding.get("access", {}).get(access)
+    if table is None:
+        raise RenderError(f"{name}: access = \"{access}\"，但 binding 沒有 [access.{access}]")
+    fields = {k: list(v) if isinstance(v, list) else v for k, v in table.items()}
+    tables = [f"access.{access}"]
+    for cap in capabilities:
+        ctable = binding.get("capabilities", {}).get(cap)
+        if ctable is None:
+            raise RenderError(f"{name}: capability \"{cap}\"，但 binding 沒有 [capabilities.{cap}]")
+        tables.append(f"capabilities.{cap}")
+        for key, value in ctable.items():
+            if isinstance(value, list):
+                if key in fields:
+                    fields[key] += [v for v in value if v not in fields[key]]
+            elif key in fields and fields[key] != value:
+                raise RenderError(f"{name}: [capabilities.{cap}].{key} 與 [access.{access}].{key} 衝突")
+            else:
+                fields[key] = value
+    overridden = [k for k in PERMISSION_KEYS[host] if k in spec]
+    for key in overridden:
+        _check_field(f"{name}", key, spec[key])
+        fields[key] = spec[key]
+    exclusive = EXCLUSIVE_KEYS.get(host, ())
+    if any(k in spec for k in exclusive):
+        for key in exclusive:
+            if key not in spec:
+                fields.pop(key, None)
+    return Permission(access, list(capabilities), fields, tables, overridden)
+
+
+def derive_permissions(host: str, core: dict, binding: dict) -> dict[str, Permission]:
+    """此 host 每個實際提供的 role（含 extra_roles）的權限；順序與輸出順序一致。"""
+    validate_access_tables(host, binding)
+    out: dict[str, Permission] = {}
+    for name in _bound_roles(core, binding):
+        role = core["roles"][name]
+        out[name] = derive_permission(host, name, role["access"], role.get("capabilities", []),
+                                      binding, binding["roles"][name])
+    for name, spec in binding.get("extra_roles", {}).items():
+        out[name] = derive_permission(host, name, spec.get("access"), spec.get("capabilities", []),
+                                      binding, spec)
+    return out
 
 
 def load_core(root: Path) -> dict:
@@ -87,6 +179,9 @@ def validate_catalog(core: dict, binding: dict) -> None:
             raise RenderError(f"{name}: access 必須是 {sorted(ACCESS)}")
         if role.get("tier") not in TIERS:
             raise RenderError(f"{name}: tier 必須是 {list(TIERS)}")
+        caps = role.get("capabilities", [])
+        if not isinstance(caps, list) or not set(caps) <= CAPABILITIES:
+            raise RenderError(f"{name}: capabilities 必須是 {sorted(CAPABILITIES)} 的子集")
     omitted = binding.get("omitted_roles", [])
     for name in omitted:
         if name not in catalog:
@@ -104,23 +199,29 @@ def validate_catalog(core: dict, binding: dict) -> None:
             resolve_model(name, core, binding)  # 沒有模型滿足規則時在這裡 exit 2
 
 
-def validate_claude(core: dict, binding: dict) -> None:
+def _claude_tools(name: str, perm: Permission) -> tuple[str, list[str]]:
+    keys = [k for k in ("tools", "disallowedTools") if k in perm.fields]
+    if len(keys) != 1:
+        raise RenderError(f"{name}: 推導結果必須恰好有 tools 或 disallowedTools 其中之一")
+    return keys[0], list(perm.fields[keys[0]])
+
+
+def validate_claude(core: dict, binding: dict) -> dict[str, Permission]:
     validate_catalog(core, binding)
-    catalog, bound = core["roles"], binding["roles"]
-    specs = [(n, catalog[n]["access"], bound[n]) for n in catalog]
-    specs += [(n, s.get("access"), s) for n, s in binding.get("extra_roles", {}).items()]
-    for name, access, spec in specs:
-        kind, tools = _tools_of(name, spec)
-        if access == "read-only":
+    perms = derive_permissions("claude", core, binding)
+    for name, perm in perms.items():
+        kind, tools = _claude_tools(name, perm)
+        if perm.access == "read-only":
             if kind != "tools":
                 raise RenderError(f"{name}: read-only role 必須用 tools allowlist，不可用 {kind}")
             bad = sorted(READ_ONLY_FORBIDDEN_TOOLS & set(tools))
             if bad:
                 raise RenderError(f"{name}: read-only role 的 tools 不可包含 {', '.join(bad)}")
+    return perms
 
 
-def _frontmatter(name: str, spec: dict, model: str) -> str:
-    kind, tools = _tools_of(name, spec)
+def _frontmatter(name: str, spec: dict, perm: Permission, model: str) -> str:
+    kind, tools = _claude_tools(name, perm)
     fields = {"name": name, "description": spec["description"], "model": model, "effort": spec["effort"]}
     lines = [f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS]
     lines.append(f"{kind}: {', '.join(tools)}")
@@ -129,12 +230,12 @@ def _frontmatter(name: str, spec: dict, model: str) -> str:
 
 def render_claude(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     """回傳 {相對於 dist 的路徑: bytes}，結構等於舊 pilotfish-claude 的 templates/。"""
-    validate_claude(core, binding)
+    perms = validate_claude(core, binding)
     out: dict[str, bytes] = {}
 
     def agent(name: str, spec: dict, model: str) -> None:
         body = (src / "agents" / f"{name}.md").read_bytes()
-        out[f"agents/{name}.md"] = _frontmatter(name, spec, model).encode("utf-8") + body
+        out[f"agents/{name}.md"] = _frontmatter(name, spec, perms[name], model).encode("utf-8") + body
 
     for name in core["roles"]:
         agent(name, binding["roles"][name], resolve_model(name, core, binding))
@@ -160,37 +261,34 @@ def resolve_root_model(core: dict, binding: dict) -> object:
         raise RenderError(f"[root]: {exc}") from exc
 
 
-def validate_codex(core: dict, binding: dict) -> None:
+def validate_codex(core: dict, binding: dict) -> dict[str, Permission]:
     validate_catalog(core, binding)
-    catalog = core["roles"]
-    specs = [(n, catalog[n]["access"], binding["roles"][n]) for n in catalog]
-    specs += [(n, s.get("access"), s) for n, s in binding.get("extra_roles", {}).items()]
-    for name, access, spec in specs:
-        if access not in ACCESS:
-            raise RenderError(f"{name}: access 必須是 {sorted(ACCESS)}")
-        sandbox = spec.get("sandbox_mode")
-        if access == "read-only" and sandbox != "read-only":
+    perms = derive_permissions("codex", core, binding)
+    for name, perm in perms.items():
+        sandbox = perm.fields.get("sandbox_mode")
+        if perm.access == "read-only" and sandbox != "read-only":
             raise RenderError(f"{name}: read-only role 必須設 sandbox_mode = \"read-only\"")
-        if access != "read-only" and sandbox == "read-only":
-            raise RenderError(f"{name}: {access} role 不可設 sandbox_mode = \"read-only\"")
+        if perm.access != "read-only" and sandbox == "read-only":
+            raise RenderError(f"{name}: {perm.access} role 不可設 sandbox_mode = \"read-only\"")
     if binding.get("root", {}).get("tier") not in TIERS:
         raise RenderError(f"binding 的 [root].tier 必須是 {list(TIERS)}")
     resolve_root_model(core, binding)
+    return perms
 
 
 def _toml_str(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _codex_agent(name: str, spec: dict, model: str, body: bytes) -> bytes:
+def _codex_agent(name: str, spec: dict, perm: Permission, model: str, body: bytes) -> bytes:
     text = body.decode("utf-8")
     if '"""' in text or "\\" in text:
         raise RenderError(f"{name}: developer_instructions 不可含 三個雙引號 或反斜線")
     fields = {"name": name, "description": spec["description"], "model": model,
               "model_reasoning_effort": spec["effort"]}
     for key in CODEX_OPTIONAL_KEYS:
-        if key in spec:
-            fields[key] = spec[key]
+        if key in perm.fields:
+            fields[key] = perm.fields[key]
     head = "".join(f"{k} = {_toml_str(v)}\n" for k, v in fields.items())
     data = f'{head}\ndeveloper_instructions = """\n{text}"""\n'
     parsed = tomllib.loads(data)
@@ -201,12 +299,12 @@ def _codex_agent(name: str, spec: dict, model: str, body: bytes) -> bytes:
 
 def render_codex(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     """回傳 {相對於 templates/ 的路徑: bytes}；templates/ 就是 codex 的 dist。"""
-    validate_codex(core, binding)
+    perms = validate_codex(core, binding)
     out: dict[str, bytes] = {}
 
     def agent(name: str, spec: dict, model: str) -> None:
         body = (src / "agents" / f"{name}.md").read_bytes()
-        out[f"agents/{name}.toml"] = _codex_agent(name, spec, model, body)
+        out[f"agents/{name}.toml"] = _codex_agent(name, spec, perms[name], model, body)
 
     for name in core["roles"]:
         agent(name, binding["roles"][name], resolve_model(name, core, binding))
@@ -251,10 +349,11 @@ AGY_MODELS = {"flash", "pro", "inherit"}
 AGY_READ_ONLY_FORBIDDEN_TOOLS = {"run_command"}
 
 
-def validate_agy(core: dict, binding: dict) -> None:
+def validate_agy(core: dict, binding: dict) -> dict[str, Permission]:
     validate_catalog(core, binding)
     if binding.get("supports_effort") is not False:
         raise RenderError("agy binding 必須設 supports_effort = false（frontmatter 沒有 effort 欄位）")
+    perms = derive_permissions("agy", core, binding)
     for name in _bound_roles(core, binding):
         spec = binding["roles"][name]
         if "effort" in spec:
@@ -262,30 +361,31 @@ def validate_agy(core: dict, binding: dict) -> None:
         model = resolve_model(name, core, binding)
         if model not in AGY_MODELS:
             raise RenderError(f"{name}: agy model 只接受 {sorted(AGY_MODELS)}，收到 {model}")
-        if core["roles"][name]["access"] == "read-only":
-            if "tools" not in spec:
+        if perms[name].access == "read-only":
+            if "tools" not in perms[name].fields:
                 raise RenderError(f"{name}: read-only role 必須用 tools allowlist")
-            bad = sorted(AGY_READ_ONLY_FORBIDDEN_TOOLS & set(spec["tools"]))
+            bad = sorted(AGY_READ_ONLY_FORBIDDEN_TOOLS & set(perms[name].fields["tools"]))
             if bad:
                 raise RenderError(f"{name}: read-only role 的 tools 不可包含 {', '.join(bad)}")
+    return perms
 
 
-def _agy_frontmatter(name: str, spec: dict, model: str) -> str:
+def _agy_frontmatter(name: str, spec: dict, perm: Permission, model: str) -> str:
     desc = "".join(f"  {line}\n" for line in spec["description"].rstrip("\n").split("\n"))
     text = f"---\nname: {name}\ndescription: >\n{desc}model: {model}\n"
-    if "tools" in spec:
-        text += "tools:\n" + "".join(f"    - {tool}\n" for tool in spec["tools"])
+    if "tools" in perm.fields:
+        text += "tools:\n" + "".join(f"    - {tool}\n" for tool in perm.fields["tools"])
     return text + "---\n\n"
 
 
 def render_agy(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     """回傳 {相對於 dist 的路徑: bytes}，結構等於 dotfile plugins/pilotfish-agy/templates/。"""
-    validate_agy(core, binding)
+    perms = validate_agy(core, binding)
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):
         body = (src / "agents" / f"{name}.md").read_bytes()
         model = resolve_model(name, core, binding)
-        out[f"agents/{name}/agent.md"] = _agy_frontmatter(name, binding["roles"][name], model).encode("utf-8") + body
+        out[f"agents/{name}/agent.md"] = _agy_frontmatter(name, binding["roles"][name], perms[name], model).encode("utf-8") + body
     _passthrough(src, out, {"agents"})
     return out
 
@@ -294,21 +394,22 @@ def render_agy(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
 GROK_CAPABILITY_MODES = {"read-only", "execute", "all"}
 
 
-def validate_grok(core: dict, binding: dict) -> None:
+def validate_grok(core: dict, binding: dict) -> dict[str, Permission]:
     validate_catalog(core, binding)
+    perms = derive_permissions("grok", core, binding)
     for name in _bound_roles(core, binding):
-        spec = binding["roles"][name]
-        if spec.get("capability_mode") not in GROK_CAPABILITY_MODES:
+        mode = perms[name].fields.get("capability_mode")
+        if mode not in GROK_CAPABILITY_MODES:
             raise RenderError(f"{name}: capability_mode 必須是 {sorted(GROK_CAPABILITY_MODES)}")
-        read_only = core["roles"][name]["access"] == "read-only"
-        if read_only != (spec["capability_mode"] == "read-only"):
+        if (perms[name].access == "read-only") != (mode == "read-only"):
             raise RenderError(f"{name}: capability_mode 必須在（且僅在）read-only role 設為 read-only")
+    return perms
 
 
-def _grok_role_toml(name: str, spec: dict) -> bytes:
+def _grok_role_toml(name: str, spec: dict, perm: Permission) -> bytes:
     head = f"# {spec['comment']}\n" if "comment" in spec else ""
     data = (f"{head}description = {_toml_str(spec['description'])}\n"
-            f"default_capability_mode = {_toml_str(spec['capability_mode'])}\n"
+            f"default_capability_mode = {_toml_str(perm.fields['capability_mode'])}\n"
             f"reasoning_effort = {_toml_str(spec['effort'])}\n")
     parsed = tomllib.loads(data)
     if parsed["description"] != spec["description"] or parsed["reasoning_effort"] != spec["effort"]:
@@ -318,7 +419,7 @@ def _grok_role_toml(name: str, spec: dict) -> bytes:
 
 def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     """agents/*.md 與 config.snippet.toml 逐字取自 vendored src；roles/*.toml 由 binding 產生。"""
-    validate_grok(core, binding)
+    perms = validate_grok(core, binding)
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):
         body = (src / "agents" / f"{name}.md").read_bytes()
@@ -327,7 +428,7 @@ def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         if not match or match.group(1).decode("utf-8") != expected:
             raise RenderError(f"{name}: src/agents/{name}.md 的 model 必須等於 binding 解析出的 {expected}")
         out[f"agents/{name}.md"] = body
-        out[f"roles/{name}.toml"] = _grok_role_toml(name, binding["roles"][name])
+        out[f"roles/{name}.toml"] = _grok_role_toml(name, binding["roles"][name], perms[name])
     _passthrough(src, out, {"agents"})
     return out
 
@@ -336,8 +437,9 @@ def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
 OPENCODE_FALLBACKS = {"none", "ordered_candidates", "same_capability"}
 
 
-def validate_opencode(core: dict, binding: dict) -> None:
+def validate_opencode(core: dict, binding: dict) -> dict[str, Permission]:
     validate_catalog(core, binding)
+    perms = derive_permissions("opencode", core, binding)
     providers = binding.get("providers", {})
     for name in _bound_roles(core, binding):
         spec = binding["roles"][name]
@@ -345,15 +447,18 @@ def validate_opencode(core: dict, binding: dict) -> None:
             raise RenderError(f"{name}: fallback 必須是 {sorted(OPENCODE_FALLBACKS)}")
         if spec["fallback"] == "none" and spec.get("fallback_candidates"):
             raise RenderError(f"{name}: fallback = \"none\" 不可有 fallback_candidates")
+        if "required_capabilities" not in perms[name].fields:
+            raise RenderError(f"{name}: 推導結果必須有 required_capabilities")
         candidates = [resolve_model(name, core, binding), *spec.get("fallback_candidates", [])]
         for cand in candidates:
             try:
                 supported = providers[cand["provider"]]["models"][cand["model"]]["supported"]
             except KeyError as exc:
                 raise RenderError(f"{name}: candidate {cand} 不在 binding 的 [providers] 內") from exc
-            missing = sorted(set(spec["required_capabilities"]) - set(supported))
+            missing = sorted(set(perms[name].fields.get("required_capabilities", [])) - set(supported))
             if missing:
                 raise RenderError(f"{name}: {cand['provider']}/{cand['model']} 不支援 {', '.join(missing)}")
+    return perms
 
 
 def _json_bytes(value: object) -> bytes:
@@ -362,7 +467,7 @@ def _json_bytes(value: object) -> bytes:
 
 def render_opencode(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     """roles/*.md 逐字取自 src；catalog.json、routing.json 由 binding 產生。TS plugin 不經 render。"""
-    validate_opencode(core, binding)
+    perms = validate_opencode(core, binding)
     names = _bound_roles(core, binding)
     stray = sorted(p.name for p in (src / "roles").glob("*.md") if p.stem not in names)
     if stray:
@@ -377,7 +482,7 @@ def render_opencode(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         routes[name] = {"agent": name,
                         "candidates": [dict(primary), *map(dict, spec["fallback_candidates"])],
                         "fallback": spec["fallback"],
-                        "requiredCapabilities": list(spec["required_capabilities"])}
+                        "requiredCapabilities": list(perms[name].fields["required_capabilities"])}
     providers = {
         pname: {"authenticated": p["authenticated"], "identity": p["identity"],
                 "models": {m: {"capabilities": {"supported": list(v["supported"]), "source": v["source"]}}
@@ -484,19 +589,34 @@ def _explain_one(label: str, tier: str, security: bool, core: dict, binding: dic
     return lines
 
 
+def _explain_permission(name: str, perm: Permission, section: str) -> list[str]:
+    """權限推導：access、capabilities、套用的對應表、覆寫，以及推導出的欄位。"""
+    tables = "、".join(f"[{t}]" for t in perm.tables)
+    over = f"{'、'.join(perm.overridden)}（{section}）" if perm.overridden else "無"
+    lines = [f"  權限：access={perm.access}  capabilities={','.join(perm.capabilities) or '無'}"
+             f"  對應表={tables}  覆寫={over}"]
+    lines += [f"    {k} = {json.dumps(v, ensure_ascii=False)}" for k, v in perm.fields.items()]
+    if not perm.fields:
+        lines.append("    （此等級沒有權限欄位輸出）")
+    return lines
+
+
 def explain(root: Path, host: str) -> str:
-    """印出每個 role 的 tier、候選模型（含被排除的原因）、最後結果，以及它是 resolver 選的還是手動 pin 的。"""
+    """印出每個 role 的 tier、候選模型（含被排除的原因）、結果（resolver 選的或手動 pin 的）與權限推導。"""
     core, binding = load_core(root), load_toml(root / "hosts" / host / "binding.toml")
     validate_catalog(core, binding)
+    perms = derive_permissions(host, core, binding)
     mode = 'selection = "inherit"' if binding.get("selection") == "inherit" else "規則（catalog + tiers）"
     out = [f"host: {host}", f"選模方式: {mode}", ""]
     for name in _bound_roles(core, binding):
         role = core["roles"][name]
         pin = binding["roles"][name].get("model")
         out += _explain_one(name, role["tier"], bool(role.get("security")), core, binding,
-                            None if pin is None else (pin, f"[roles.{name}].model")) + [""]
+                            None if pin is None else (pin, f"[roles.{name}].model"))
+        out += _explain_permission(name, perms[name], f"[roles.{name}]") + [""]
     for name, spec in binding.get("extra_roles", {}).items():
-        out += [f"{name}（host 專屬 role）", f"  結果：{_name(spec['model'])}（手動指定 [extra_roles.{name}].model）", ""]
+        out += [f"{name}（host 專屬 role）", f"  結果：{_name(spec['model'])}（手動指定 [extra_roles.{name}].model）"]
+        out += _explain_permission(name, perms[name], f"[extra_roles.{name}]") + [""]
     if "root" in binding:
         rt = binding["root"]
         pin = rt.get("model")

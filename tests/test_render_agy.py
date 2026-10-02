@@ -31,13 +31,18 @@ class AgyRenderTests(rh.HostRenderCase):
         self.assert_rejected("gemini-3")
 
     def test_read_only_role_needs_tools_without_run_command(self) -> None:
-        self.edit(self.binding, '"list_dir", "send_message"]', '"list_dir", "run_command"]')
+        self.edit(self.binding, '[access.read-only]\ntools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message"]',
+                  '[access.read-only]\ntools = ["view_file", "grep_search", "find_by_name", "list_dir", "run_command"]')
+        self.assert_rejected("run_command")
+
+    def test_role_override_cannot_give_read_only_role_run_command(self) -> None:
+        self.edit(self.binding, "[roles.scout]\n", '[roles.scout]\ntools = ["view_file", "run_command"]\n')
         self.assert_rejected("run_command")
 
     def test_read_only_role_without_tools_is_rejected(self) -> None:
         text = self.binding.read_text(encoding="utf-8")
-        head, tail = text.split("[roles.scout]\ntools = ", 1)
-        self.binding.write_text(head + "[roles.scout]\n" + tail.split("\n", 1)[1], encoding="utf-8", newline="\n")
+        head, tail = text.split("[access.read-only]\ntools = ", 1)
+        self.binding.write_text(head + "[access.read-only]\n" + tail.split("\n", 1)[1], encoding="utf-8", newline="\n")
         self.assert_rejected("scout")
 
     def test_tiers_map_to_expected_models(self) -> None:

@@ -32,11 +32,11 @@ class GrokRenderTests(rh.HostRenderCase):
         self.assert_rejected("scout")
 
     def test_read_only_role_must_use_read_only_capability(self) -> None:
-        self.edit(self.binding, 'capability_mode = "read-only"', 'capability_mode = "all"')
+        self.edit(self.binding, '[access.read-only]\ncapability_mode = "read-only"', '[access.read-only]\ncapability_mode = "all"')
         self.assert_rejected("capability_mode")
 
     def test_write_role_cannot_use_read_only_capability(self) -> None:
-        self.edit(self.binding, '[roles.executor]\neffort = "medium"\ncapability_mode = "all"',
+        self.edit(self.binding, '[roles.executor]\neffort = "medium"',
                   '[roles.executor]\neffort = "medium"\ncapability_mode = "read-only"')
         self.assert_rejected("executor")
 

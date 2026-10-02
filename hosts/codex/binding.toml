@@ -1,4 +1,4 @@
-# Codex host binding：可用模型、每個 role 的 effort / description / sandbox。
+# Codex host binding：可用模型、存取等級對應的 sandbox、每個 role 的 effort / description。
 # 數值等於 pilotfish-codex 61a411b 的 templates/ 現況；templates/ 就是 codex 的 dist。
 
 # 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
@@ -13,9 +13,22 @@ tier = "fast"
 model_reasoning_effort = "max"
 plan_mode_reasoning_effort = "xhigh"
 
+# 存取等級 -> sandbox_mode；write 不輸出 sandbox_mode（沿用 Codex 預設）。
+# role 要例外時才在 [roles.<name>] 寫 sandbox_mode / web_search 覆寫；覆寫不能讓 read-only role 變可寫，
+# 也不能讓非 read-only role 變 read-only。
+[access.read-only]
+sandbox_mode = "read-only"
+
+[access.write]
+
+[access.verify]
+sandbox_mode = "workspace-write"
+
+[capabilities.web]
+web_search = "live"
+
 [roles.scout]
 effort = "low"
-sandbox_mode = "read-only"
 description = "Read-only reconnaissance for broad codebase sweeps or focused lookup of files, symbols, usages, configuration values, and existing flows."
 
 [roles.mech-executor]
@@ -28,18 +41,14 @@ description = "Implementation requiring local engineering judgment: features, bu
 
 [roles.plan-verifier]
 effort = "high"
-sandbox_mode = "read-only"
 description = "Read-only Sol review of a material Plan: readiness review before approval or one-shot semantic adjudication after a fingerprinted Luna disagreement."
 
 [roles.verifier]
 effort = "high"
-sandbox_mode = "workspace-write"
 description = "Fresh-context calibrated outcome or direction-checkpoint verification. Given an explicit contract, independently runs checks and returns CONFIRMED/REFUTED/INCONCLUSIVE for completed outcomes or CONTINUE/PIVOT/ROLLBACK for direction checkpoints. Read-and-run only; never plans, edits, fixes, or delegates."
 
 [roles.security-reviewer]
 effort = "high"
-sandbox_mode = "read-only"
-web_search = "live"
 description = "Read-only security analysis before approval for authentication, authorization, secrets, crypto, validation, hardening, dependency evidence, and threat review."
 
 [roles.security-executor]

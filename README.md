@@ -4,14 +4,14 @@
 Claude Code、Codex CLI、Gemini/agy、Grok Build、OpenCode。
 
 shoal 只維護一份 role 定義（`scout`、`executor`、`verifier` 等）。每個 host
-用自己的 binding 決定 model、effort 與工具限制，再由 renderer 產生該 host
+用自己的 binding 決定 model、effort，並把 role 的存取等級對應成該 host 的權限欄位，再由 renderer 產生該 host
 要安裝的檔案。產物有 golden 測試，改動一律看得到 diff。
 
 ## 目錄結構
 
 ```text
 core/roles.toml            host 中立的 role 定義
-hosts/<host>/binding.toml  tier 對應的 model、effort、工具限制
+hosts/<host>/binding.toml  可用 model、access 對應的權限、effort
 hosts/<host>/src/          該 host 的 policy 與 skill 原文
 hosts/<host>/dist/         render 產出，已 commit（codex 產出在 templates/）
 tools/render.py            renderer 與 --check

@@ -16,21 +16,33 @@ version = 1
 "openai/gpt-5.6-luna" = { provider = "openai", model = "gpt-5.6-luna" }
 "openai/gpt-5.6-sol" = { provider = "openai", model = "gpt-5.6-sol" }
 
+# 存取等級 -> required_capabilities（candidate 在 [providers] 內必須支援的能力）。
+# 這是模型能力需求，不是權限；read-only 的 scout（fast）只要 tools 與 streaming，
+# security-reviewer 要 reasoning，所以後者在 [roles.security-reviewer] 保留覆寫。
+[access.read-only]
+required_capabilities = ["tools", "streaming"]
+
+[access.write]
+required_capabilities = ["tools", "streaming", "reasoning"]
+
+[access.verify]
+required_capabilities = ["tools", "streaming", "reasoning"]
+
+# OpenCode 沒有獨立的 web 權限：宣告 capability 已知，但不輸出任何欄位。
+[capabilities.web]
+
 # fallback：none / ordered_candidates / same_capability；fallback_candidates 接在第一順位之後。
 [roles.scout]
 fallback = "ordered_candidates"
 fallback_candidates = [{ provider = "google", model = "gemini-2.5-flash" }]
-required_capabilities = ["tools", "streaming"]
 
 [roles.executor]
 fallback = "same_capability"
 fallback_candidates = [{ provider = "xai", model = "grok-4.6" }]
-required_capabilities = ["tools", "streaming", "reasoning"]
 
 [roles.verifier]
 fallback = "same_capability"
 fallback_candidates = [{ provider = "xai", model = "grok-4.6" }]
-required_capabilities = ["tools", "streaming", "reasoning"]
 
 [roles.security-reviewer]
 fallback = "none"
@@ -40,7 +52,6 @@ required_capabilities = ["tools", "streaming", "reasoning"]
 [roles.security-executor]
 fallback = "same_capability"
 fallback_candidates = [{ provider = "openai", model = "gpt-5.6-luna" }]
-required_capabilities = ["tools", "streaming", "reasoning"]
 
 # catalog.json 的 providers；key 順序即輸出順序。
 [providers.deepseek]

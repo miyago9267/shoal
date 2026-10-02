@@ -540,8 +540,8 @@ class SwapModelMutationTests(unittest.TestCase):
         binding = self.root / "hosts" / "opencode" / "binding.toml"
         binding.write_text(
             binding.read_text(encoding="utf-8").replace(
-                "[roles.scout]",
-                '"deepseek/deepseek-v5-flash" = { provider = "deepseek", model = "deepseek-v5-flash" }\n\n[roles.scout]',
+                "[access.read-only]",
+                '"deepseek/deepseek-v5-flash" = { provider = "deepseek", model = "deepseek-v5-flash" }\n\n[access.read-only]',
                 1,
             ),
             encoding="utf-8",

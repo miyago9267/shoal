@@ -1,4 +1,4 @@
-# agy (Gemini / Antigravity) host binding：可用模型、每個 role 的 tools 與 description。
+# agy (Gemini / Antigravity) host binding：可用模型、存取等級對應的 tools、每個 role 的 description。
 # 數值等於 dotfile b65a243 的 plugins/pilotfish-agy/templates/ 現況。
 # description 的換行與 agent.md 的 folded scalar（description: >）逐行對應。
 
@@ -12,8 +12,21 @@ supports_effort = false
 "google/gemini-flash" = "flash"
 "google/gemini-pro" = "pro"
 
-[roles.scout]
+# 存取等級 -> tools。read-only 與 verify 是 allowlist；write 不寫 tools（不限制）。
+# role 要例外時才在 [roles.<name>] 寫 tools 覆寫；read-only 的結果不可含 run_command。
+[access.read-only]
 tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message"]
+
+[access.write]
+
+[access.verify]
+tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message", "run_command"]
+
+# capability 的 tools 附加到 access 表的 tools allowlist；write 沒有 allowlist，不輸出。
+[capabilities.web]
+tools = ["read_url_content", "search_web"]
+
+[roles.scout]
 description = '''
 Read-only reconnaissance for broad codebase sweeps or focused lookup of files,
 symbols, usages, configuration values, and existing flows. Returns concise
@@ -35,7 +48,6 @@ done criteria.
 '''
 
 [roles.plan-verifier]
-tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message"]
 description = '''
 Read-only fresh-context review of one stable Plan envelope or execution slice
 before approval. Returns bare READY or structured REVISE; never executes,
@@ -43,7 +55,6 @@ writes, or fixes.
 '''
 
 [roles.verifier]
-tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message", "run_command"]
 description = '''
 Fresh-context calibrated outcome verification after implementation. Give it
 the claimed acceptance and relevant diff or paths; it runs tests, drives the
@@ -51,7 +62,6 @@ affected flow, and returns CONFIRMED, REFUTED, or INCONCLUSIVE.
 '''
 
 [roles.security-reviewer]
-tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message", "read_url_content", "search_web"]
 description = '''
 Read-only security analysis before approval: authentication/authorization,
 secrets, crypto, validation, hardening, dependency vulnerabilities, and threat

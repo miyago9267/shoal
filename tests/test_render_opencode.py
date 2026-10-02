@@ -39,7 +39,7 @@ class OpencodeRenderTests(rh.HostRenderCase):
 
     def test_omitted_role_cannot_also_be_bound(self) -> None:
         self.edit(self.binding, "[roles.scout]\n", '[roles.mech-executor]\nfallback = "none"\nfallback_candidates = []\n'
-                  'required_capabilities = ["tools"]\n\n[roles.scout]\n')
+                  '\n[roles.scout]\n')
         self.assert_rejected("mech-executor")
 
     def test_omitted_role_must_exist_in_catalog(self) -> None:
@@ -56,8 +56,8 @@ class OpencodeRenderTests(rh.HostRenderCase):
         self.assert_rejected("security-reviewer")
 
     def test_candidate_must_be_in_providers(self) -> None:
-        self.edit(self.binding, '{ provider = "xai", model = "grok-4.6" }]\nrequired_capabilities = ["tools", "streaming", "reasoning"]\n\n[roles.verifier]',
-                  '{ provider = "xai", model = "grok-9" }]\nrequired_capabilities = ["tools", "streaming", "reasoning"]\n\n[roles.verifier]')
+        self.edit(self.binding, '{ provider = "xai", model = "grok-4.6" }]\n\n[roles.verifier]',
+                  '{ provider = "xai", model = "grok-9" }]\n\n[roles.verifier]')
         self.assert_rejected("grok-9")
 
     def test_candidate_must_support_required_capabilities(self) -> None:

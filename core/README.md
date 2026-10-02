@@ -4,7 +4,8 @@ host 中立的來源，供 `tools/render.py` 產生各 host 的輸出。
 
 - `roles.toml`：canonical role catalog。每個 role 標 `access`
   （read-only / write / verify）、`tier`（fast / standard / strong /
-  frontier）與 `security`。不寫任何 model 名稱。
+  frontier）與 `security`，需要額外能力時加 `capabilities`（目前只有
+  `"web"`）。不寫任何 model 名稱，也不寫任何 host 專屬的工具名稱。
 - `models.toml`：模型目錄。key 是 `vendor/name`，欄位有 `vendor`、
   `capability`（1-5）、`cost`（1-5）、`flags`。不寫任何 host 專屬的名稱。
   初版數值是校準到能重現現行配置，不是客觀量測。
@@ -14,7 +15,7 @@ host 中立的來源，供 `tools/render.py` 產生各 host 的輸出。
   確定的。
 - `hosts/<host>/binding.toml` 的 `[models]` 宣告該 host 可用的模型與
   host 內名稱，resolver 只在這個集合內選；grok 不指定模型，用
-  `selection = "inherit"`。effort、description、工具限制也在 binding。
+  `selection = "inherit"`。effort 與 description 也在 binding。
 - 手動覆寫優先於規則：`[roles.<name>].model` > `[tiers].<tier>` > 規則。
   `[tiers]` 與 role 的 `model` 只在要手動指定時才寫。手動指定不能繞過
   security 排除；`security = true` 的 role 被指定到帶旗標的模型時，
@@ -23,13 +24,40 @@ host 中立的來源，供 `tools/render.py` 產生各 host 的輸出。
   候選模型、被排除的原因與結果。換模型的步驟見
   [docs/model-catalog.md](../docs/model-catalog.md)。
 - host 專屬 role（例如 Claude 的 `Explore`、Codex 的 `sol-executor`）
-  放在該 host 的 binding，不進 core。
+  放在該 host 的 binding，不進 core；它們在 `[extra_roles.<name>]` 自己
+  宣告 `access`（與選用的 `capabilities`），權限同樣由對應表推導。
 - `mech-executor` 是 `fast` tier：Codex 的 fast 與 standard 選到不同
   model，`mech-executor` 與 `executor` 因此分開；Claude 的 fast 與
   standard 選到同一個 model，所以 Claude 的輸出不受影響。
 - `security = true` 的 role 不會選到帶 `refuses_defensive_security` 旗標
   的模型（例如 Claude 的 fable，分類器會誤拒防禦性資安工作）。取代舊的
   `security_avoid_frontier` 開關。
+
+## 權限由 access 與 capabilities 推導
+
+role 只在 `roles.toml` 宣告 `access` 與 `capabilities`；各 host 的權限欄位
+由該 host 的 `binding.toml` 對應表產生（規格見
+[docs/specs/access-derivation/SPEC.md](../docs/specs/access-derivation/SPEC.md)）：
+
+- `[access.<level>]`：這個存取等級在該 host 要輸出的權限欄位。binding 用到
+  的每個等級都要有對應表；`write` 沒有欄位要輸出時寫空表。
+- `[capabilities.<name>]`（選用）：role 宣告了某個 capability，binding 就必須
+  有這張表（可以是空表，表示這個 host 沒有對應的開關）。list 欄位附加到
+  access 表同名的 list（access 表沒有該 list 代表不受限，不輸出）；scalar
+  欄位直接設定，與 access 表衝突時 render 失敗。
+- `[roles.<name>]` 可以寫同名欄位當**覆寫**，以欄位為單位整個取代推導值。
+  Claude 的 `tools` 與 `disallowedTools` 互斥，覆寫其中一個會丟掉另一個。
+  覆寫只在現況無法由 access 加 capabilities 推導時才留，不為單一 role 發明
+  capability。
+- 驗證對推導後的結果做：read-only role 必須是 allowlist 且不含寫入工具
+  （Claude、agy），Codex read-only 必須是 `sandbox_mode = "read-only"`，
+  grok 必須是 `capability_mode = "read-only"`。覆寫不能繞過這些檢查。
+- 各 host 的權限欄位：Claude `tools` / `disallowedTools`、Codex
+  `sandbox_mode` / `web_search`、agy `tools`、grok `capability_mode`、
+  OpenCode `required_capabilities`（模型能力需求，不是權限，仍沿用同一套
+  對應表）。
+- `--explain` 對每個 role 印出 `access`、`capabilities`、套用的對應表、
+  覆寫與推導出的欄位。
 
 policy 文字目前還在各 host 底下（例如 `hosts/claude/src/`），不在 core。
 原因是 claude 和 codex 的 policy 已經分岔，先搬家並用 golden test

@@ -5,6 +5,21 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+權限由存取等級推導（`docs/specs/access-derivation/`）。
+
+- `core/roles.toml` 的 role 可加 host 中立的 `capabilities = [...]`（目前只有
+  `"web"`，`security-reviewer` 使用）；各 host 的 `binding.toml` 新增
+  `[access.<level>]` 與 `[capabilities.<name>]` 對應表，權限欄位（Claude
+  `tools` / `disallowedTools`、Codex `sandbox_mode` / `web_search`、agy
+  `tools`、grok `capability_mode`、OpenCode `required_capabilities`）由對應表
+  推導。role 層級的同名欄位變成選用覆寫，目前只剩 OpenCode
+  `security-reviewer` 的 `required_capabilities`。
+- 驗證改成對推導後的結果做：read-only role 不可被對應表或覆寫變成可寫，
+  違反時 exit 2；role 用了 binding 沒有對應的 capability 也 exit 2。
+- `render --host <h> --explain` 每個 role 多印權限推導：`access`、
+  `capabilities`、套用的對應表、覆寫與推導出的欄位。
+- 五個 host 的 dist、`templates/` 與 golden 與之前逐位元組相同。
+
 模型目錄與自動選模（`docs/specs/model-catalog/`，M1-M3）。
 
 - 新增 `core/models.toml`（模型目錄）、`core/tiers.toml`（tier 選模規則）與

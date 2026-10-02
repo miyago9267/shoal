@@ -120,14 +120,20 @@ class ValidationTests(unittest.TestCase):
         self.assertIn(b"\nmodel: opus\n", render.RENDERERS["claude"](self.root)["agents/security-reviewer.md"])
 
     def test_read_only_role_must_use_tools_allowlist(self) -> None:
-        self.edit(self.binding, '[roles.scout]\neffort = "low"\ntools = ["Read", "Glob", "Grep"]',
-                  '[roles.scout]\neffort = "low"\ndisallowedTools = ["Agent"]')
+        self.edit(self.binding, '[access.read-only]\ntools = ["Read", "Glob", "Grep"]',
+                  '[access.read-only]\ndisallowedTools = ["Agent"]')
         self.assert_rejected("scout")
 
     def test_read_only_role_cannot_include_write_tools(self) -> None:
-        self.edit(self.binding, 'tools = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]',
-                  'tools = ["Read", "Bash", "Edit"]')
+        self.edit(self.binding, '[access.read-only]\ntools = ["Read", "Glob", "Grep"]',
+                  '[access.read-only]\ntools = ["Read", "Bash", "Edit"]')
         self.assert_rejected("Bash")
+
+    def test_role_override_cannot_give_read_only_role_write_tools(self) -> None:
+        self.edit(self.binding, '[roles.scout]\neffort = "low"\n', '[roles.scout]\neffort = "low"\ntools = ["Read", "Write"]\n')
+        self.assert_rejected("Write")
+        self.edit(self.binding, 'tools = ["Read", "Write"]\n', 'disallowedTools = ["Agent"]\n')
+        self.assert_rejected("scout")
 
     def test_every_role_needs_a_binding(self) -> None:
         self.roles.write_text(

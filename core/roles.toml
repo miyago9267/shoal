@@ -2,6 +2,8 @@
 # access: read-only / write / verify；tier: fast / standard / strong / frontier。
 # 模型由 core/tiers.toml 的規則在各 host 的可用模型內選出；
 # security = true 的 role 不會選到帶 refuses_defensive_security 旗標的模型（見 core/models.toml）。
+# capabilities（選用）：access 之外的 host 中立能力，目前只有 "web"。各 host 的 binding 用
+# [access.<level>] 與 [capabilities.<name>] 把 access 與 capabilities 對應成該 host 的權限欄位。
 
 [roles.scout]
 access = "read-only"
@@ -32,6 +34,7 @@ security = false
 access = "read-only"
 tier = "strong"
 security = true
+capabilities = ["web"]
 
 [roles.security-executor]
 access = "write"

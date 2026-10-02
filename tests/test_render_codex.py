@@ -141,11 +141,15 @@ class BindingTests(unittest.TestCase):
         self.assertIn(expected, result.stderr)
 
     def test_read_only_role_must_use_read_only_sandbox(self) -> None:
-        self.edit(self.binding, 'effort = "low"\nsandbox_mode = "read-only"', 'effort = "low"\nsandbox_mode = "workspace-write"')
+        self.edit(self.binding, '[access.read-only]\nsandbox_mode = "read-only"', '[access.read-only]\nsandbox_mode = "workspace-write"')
         self.assert_rejected("scout")
 
     def test_read_only_role_without_sandbox_is_rejected(self) -> None:
-        self.edit(self.binding, 'effort = "low"\nsandbox_mode = "read-only"\n', 'effort = "low"\n')
+        self.edit(self.binding, '[access.read-only]\nsandbox_mode = "read-only"\n', '[access.read-only]\n')
+        self.assert_rejected("scout")
+
+    def test_role_override_cannot_make_read_only_role_writable(self) -> None:
+        self.edit(self.binding, 'effort = "low"\ndescription = "Read-only reconnaissance', 'effort = "low"\nsandbox_mode = "workspace-write"\ndescription = "Read-only reconnaissance')
         self.assert_rejected("scout")
 
     def test_write_role_cannot_be_read_only(self) -> None:
