@@ -86,6 +86,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
             "envelope-scope-nongoals",
             "brief-unit-kinds",
             "revise-shape",
+            "slice-inherits-envelope",
         ],
         "verifier": ["capability-note", "default-contract"],
         "security-reviewer": ["capability-note"],

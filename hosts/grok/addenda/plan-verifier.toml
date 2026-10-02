@@ -1,5 +1,5 @@
 # grok 專屬：capability 說明、envelope 的 scope 與 non-goals（legacy 有、core 沒有）、
-# brief 用語對照、REVISE 欄位的格式。
+# brief 用語對照、slice 沿用 envelope 的 budget 與 stops、REVISE 欄位的格式。
 
 [[addendum]]
 id = "capability-note"
@@ -34,3 +34,10 @@ Evidence: <file:line or explicit evidence gap>
 Minimum revision: <smallest required change>
 Acceptance check: <observable closure check>
 ```'''
+
+[[addendum]]
+id = "slice-inherits-envelope"
+at = "after:review-slice"
+sep = "space"
+text = '''
+When the program envelope already states the budget and stop conditions, a slice may inherit them, and a missing slice-local budget or slice-local stop condition is not a blocker.'''

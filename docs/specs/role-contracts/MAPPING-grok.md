@@ -79,6 +79,7 @@ Decision 7：切換後 `agents/*.md` 不再逐位元組等於上游 v1.0.6，
 | L14-16 envelope 挑戰 shared outcome、architecture、security、dependencies、integration、budgets、stops | `review-envelope` | 保留 |
 | L14-15 envelope 另外挑戰 scope 與 non-goals | addendum `envelope-scope-nongoals` | 保留（core 的 envelope 清單沒有這兩項，無 Decision 可引用） |
 | L16-18 slice 需要 ready envelope、outcome、scope 與 non-goals、prerequisites、ownership、acceptance、rollback | `review-slice` | 保留 |
+| 無（上游 v1.0.6 的 policy 把 budget 與 stops 放在 program envelope，slice 不寫） | addendum `slice-inherits-envelope`：envelope 已載明時 slice 沿用，slice 層缺少不算 blocker | 調和 core 新增的 slice-local budget 與 stops（D12） |
 | L18 拒絕表面切分與未解的共同 blocker | `reject-splits` | 保留 |
 | L20-21 security 單元需先有 `security-reviewer` findings 與 dispositions | `security-prerequisite` | 保留 |
 | L23-26 回傳恰好一種形式；`READY` 不含其他文字 | `verdict-form`、`verdict-ready` | 保留 |
@@ -87,8 +88,7 @@ Decision 7：切換後 `agents/*.md` 不再逐位元組等於上游 v1.0.6，
 | L36 不可再 spawn subagent | `no-spawn` | 保留 |
 | 無（legacy 沒有）brief 用語 | addendum `brief-unit-kinds`：`program envelope` 視為 `readiness_review` envelope、`execution slice` 視為 slice | 新增，見下 |
 
-core 新增、legacy 沒有：`blocker-definition`、`all-known-blockers`、
-`no-revise-for-minor`、`priority-scale`（D1、前言）。
+core 新增、legacy 沒有：見文末「core 新增的義務」。
 
 ## security-reviewer
 
@@ -102,7 +102,7 @@ core 新增、legacy 沒有：`blocker-definition`、`all-known-blockers`、
 | L19-20 回報 severity、unit ID、`file:line` 證據或證據缺口、假設、最小補救、acceptance check | `report-fields` | 保留 |
 | L20-22 main session 在該單元第一次 `plan-verifier` 之前把 findings 與 dispositions 帶進 Plan | `main-session-carries` | 保留 |
 | L22-23 不修改檔案與外部狀態、不產出實作 brief、不修 finding | `no-modify` | 保留 |
-| L23-24 這是核准前的證據；核准後的實作屬 `security-executor` | `no-modify`（`approved implementation belongs to security-executor`）；「核准前」由 frontmatter 與 `main-session-carries` 承接 | 保留 |
+| L23-24 這是核准前的證據；核准後的實作屬 `security-executor` | `no-modify`（`approved implementation belongs to security-executor`）；「核准前」由 frontmatter 的 description 與 `main-session-carries` 的時序承接，沒有逐字句子 | 收窄（依 Decisions 前言：以 Codex 原句為準；核准後的實作歸屬保留） |
 | L26 不可再 spawn subagent | `no-delegate` | 保留 |
 
 ## security-executor
@@ -129,26 +129,48 @@ core 新增、legacy 沒有：`blocker-definition`、`all-known-blockers`、
 | L15 獨立 leaf outcome verifier、不可 delegate | `identity` | 保留 |
 | L15-16 capability 由 grok 強制為 execute：可讀與 shell，不可編輯 | addendum `capability-note` | 保留（D6） |
 | L16-17 接收確切 claim 與 acceptance 加 diff 或路徑 | `outcome-input` | 保留 |
-| L19-20 獨立重現檢查、驅動受影響流程、檢查 claim 相關邊界與 diff 涵蓋 | `falsify-claim`、`primary-flow-first`、`edge-set-after-evidence` | 保留（D2） |
+| L19-20 獨立重現檢查、驅動受影響流程、檢查 claim 相關邊界與 diff 涵蓋 | `falsify-claim`、`primary-flow-first`、`edge-set-after-evidence` | 收窄（依 Decisions 前言：以 Codex 原句為準；邊界檢查改為主流程取得證據之後才做）；D2 |
 | L20-22 只回報與 claim 相關且可重現的問題；實作造成的回歸算相關 | `report-relevant-issues` | 保留 |
 | L24-33 三種 verdict 與判準 | `verdict-form`、`verdict-confirmed`、`verdict-refuted`、`verdict-inconclusive` | 保留（D2） |
 | L35-37 REFUTED 優先；未評估的條件使結果為 INCONCLUSIVE | `refuted-takes-precedence`、`unevaluated-is-inconclusive` | 保留 |
 | L39-40 每個 finding 的欄位 | `finding-fields` | 保留 |
 | L42-50 P0 到 P4 的定義、受限或可復原的失敗是 P2 | `priority-is-impact`、`priority-scale`、`bounded-failure-is-p2` | 保留（D2） |
 | L52-53 不規劃、不編輯、不修復、不 delegate；main-session orchestrator 擁有 Plan、修復與最終處置 | `no-plan-edit-fix`、`orchestrator-owns` | 保留 |
-| L55-57 security 敏感驗證要徹底：測 abuse case、遮蔽 secret、無法安全驗證就回 INCONCLUSIVE | `security-verification` | 保留 |
+| L55-57 security 敏感驗證要徹底：測 abuse case、遮蔽 secret、無法安全驗證就回 INCONCLUSIVE | `security-verification`（abuse case、secret、INCONCLUSIVE 都在；「remains thorough」一句沒有逐字承接） | 收窄（依 Decisions 前言：以 Codex 原句為準） |
 | L59-65 前景、不 detach、跑不完回報完整指令與條件、重新檢查 artifact binding | `foreground-timeout`、`no-detach`、`handoff-long-command`、`inspect-bindings` | 保留（D4） |
 | L67 不可再 spawn subagent | `no-spawn` | 保留 |
 
-core 新增、legacy 沒有（D2）：`name-one-contract`、`no-inferred-checkpoint`、
-`direction_checkpoint` 的全部條款、`recheck`。
-grok 沒有 orchestration policy，不會在 brief 點名 contract，因此加 addendum
+core 新增、legacy 沒有：見文末「core 新增的義務」。
+shoal 沒有 vendor 上游 v1.0.6 的 policy 檔（`rules.pilotfish-grok.md`），repo
+內看不到 grok 的 orchestrator 如何寫 brief；legacy 的 verifier 只說「接收確切
+claim 與 acceptance 加 diff 或路徑」，沒有點名 contract。因此加 addendum
 `default-contract`：未點名 contract 但有完成工作的 claim 與 acceptance 時視為
 `outcome_verification`。
 
+## core 新增的義務
+
+新文字有、舊文字沒有的要求（括號內是對應條款）：
+
+- scout：無。
+- mech-executor：`route-judgment`（需要判斷或跨系統、重工具的工作時停下，
+  回報邊界供 orchestrator 轉給 `executor` 或 `verifier`）。
+- executor：無。
+- plan-verifier：`review-slice` 的 slice-local budget 與 slice-local stop
+  conditions（以 `slice-inherits-envelope` 調和）；`blocker-definition`、
+  `all-known-blockers`、`no-revise-for-minor`（含 future-slice completeness 不算
+  REVISE 理由，D1）、`priority-scale`。
+- verifier：`name-one-contract` 與 `no-inferred-checkpoint`（以
+  `default-contract` 調和）；`direction_checkpoint` 的全部條款（D2）；
+  `recheck`；`falsify-claim` 的「calibrated to reproducible evidence rather
+  than suspicion or finding volume」；`primary-flow-first` 與
+  `edge-set-after-evidence` 的先後順序。
+- security-reviewer：無。
+- security-executor：無。
+
 ## 風險與備註
 
-- 唯一被刪除的義務是 scout 的最終訊息格式（D3）。
+- 唯一被刪除的義務是 scout 的最終訊息格式（D3）；標示「收窄」的是措辭或條件
+  收緊，不是刪除。
 - `reasoning-effort` 的歸類：D5 只明列 Codex 的 effort 說明是 Codex addendum；
   grok 的同一句沿用同樣處理，保留而不刪。
 - `brief-unit-kinds` 與 `default-contract` 的文字與 agy、Claude 相同；若
