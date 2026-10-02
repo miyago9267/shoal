@@ -27,7 +27,7 @@ class AgyRenderTests(rh.HostRenderCase):
         self.assert_rejected("effort")
 
     def test_model_must_be_flash_pro_or_inherit(self) -> None:
-        self.edit(self.binding, 'fast = "flash"', 'fast = "gemini-3"')
+        self.edit(self.binding, '"google/gemini-flash" = "flash"', '"google/gemini-flash" = "gemini-3"')
         self.assert_rejected("gemini-3")
 
     def test_read_only_role_needs_tools_without_run_command(self) -> None:
@@ -42,8 +42,8 @@ class AgyRenderTests(rh.HostRenderCase):
 
     def test_tiers_map_to_expected_models(self) -> None:
         binding = render.load_toml(ROOT / "hosts" / "agy" / "binding.toml")
-        roles = render.load_toml(ROOT / "core" / "roles.toml")["roles"]
-        models = {n: render.resolve_model(n, roles, binding) for n in roles}
+        core = render.load_core(ROOT)
+        models = {n: render.resolve_model(n, core, binding) for n in core["roles"]}
         self.assertEqual({n for n, m in models.items() if m == "flash"}, {"scout", "mech-executor"})
         self.assertEqual(len(models), 7)
 

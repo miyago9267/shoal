@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -118,9 +119,11 @@ class HostRenderCase(unittest.TestCase):
         self.assertFalse((self.dist / "extra.md").exists())
 
     # --- 共通驗證 ---
-    def test_binding_must_declare_security_avoid_frontier(self) -> None:
-        self.edit(self.binding, "security_avoid_frontier = false\n", "")
-        self.assert_rejected("security_avoid_frontier")
+    def test_binding_must_declare_models_or_inherit(self) -> None:
+        text = self.binding.read_text(encoding="utf-8").replace('selection = "inherit"\n', "")
+        text = re.sub(r"(?ms)^\[models\]\n.*?(?=^\[|\Z)", "", text)
+        self.binding.write_text(text, encoding="utf-8", newline="\n")
+        self.assert_rejected("[models]")
 
     def test_every_role_needs_a_binding_or_omission(self) -> None:
         roles = self.root / "core" / "roles.toml"

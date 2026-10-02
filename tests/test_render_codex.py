@@ -159,21 +159,13 @@ class BindingTests(unittest.TestCase):
             encoding="utf-8", newline="\n")
         self.assert_rejected("ghost")
 
-    def test_binding_must_declare_security_avoid_frontier(self) -> None:
-        self.edit(self.binding, "security_avoid_frontier = false\n", "")
-        self.assert_rejected("security_avoid_frontier")
-
     def test_unknown_root_tier_is_rejected(self) -> None:
         self.edit(self.binding, '[root]\ntier = "fast"', '[root]\ntier = "nope"')
         self.assert_rejected("[root].tier")
 
     def test_security_roles_may_use_frontier_model_when_host_allows_it(self) -> None:
-        # 預設設定：security role 用 sol，而 sol 同時是 frontier tier 的 model，且 --check 通過
+        # 預設設定：security role 用 sol（沒有 refuses_defensive_security 旗標），而 sol 同時是 frontier tier 的 model，且 --check 通過
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
-
-    def test_security_roles_are_rejected_when_host_avoids_frontier(self) -> None:
-        self.edit(self.binding, "security_avoid_frontier = false", "security_avoid_frontier = true")
-        self.assert_rejected("security-reviewer")
 
     def test_developer_instructions_cannot_break_the_toml_string(self) -> None:
         body = self.root / "hosts" / "codex" / "src" / "agents" / "scout.md"
@@ -184,8 +176,9 @@ class BindingTests(unittest.TestCase):
 class CatalogTests(unittest.TestCase):
     def test_binding_tiers_cover_expected_models(self) -> None:
         binding = render.load_toml(ROOT / "hosts" / "codex" / "binding.toml")
-        roles = render.load_toml(ROOT / "core" / "roles.toml")["roles"]
-        models = {n: render.resolve_model(n, roles, binding) for n in roles}
+        core = render.load_core(ROOT)
+        roles = core["roles"]
+        models = {n: render.resolve_model(n, core, binding) for n in roles}
         self.assertEqual(models["scout"], "gpt-6-luna")
         self.assertEqual(models["mech-executor"], "gpt-6-luna")
         self.assertEqual(models["executor"], "gpt-6-astra")
@@ -195,7 +188,8 @@ class CatalogTests(unittest.TestCase):
 
     def test_claude_output_does_not_depend_on_fast_vs_standard_split(self) -> None:
         binding = render.load_toml(ROOT / "hosts" / "claude" / "binding.toml")
-        self.assertEqual(binding["tiers"]["fast"], binding["tiers"]["standard"])
+        core = render.load_core(ROOT)
+        self.assertEqual(render.resolve_model("scout", core, binding), render.resolve_model("executor", core, binding))
 
 
 if __name__ == "__main__":

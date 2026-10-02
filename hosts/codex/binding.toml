@@ -1,16 +1,13 @@
-# Codex host binding：tier 對應 model、每個 role 的 effort / description / sandbox。
+# Codex host binding：可用模型、每個 role 的 effort / description / sandbox。
 # 數值等於 pilotfish-codex 61a411b 的 templates/ 現況；templates/ 就是 codex 的 dist。
 
-# codex 的 security role 本來就用 sol（同時是 frontier），不套用 Anthropic 分類器的限制。
-security_avoid_frontier = false
+# 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
+[models]
+"openai/gpt-6-luna" = "gpt-6-luna"
+"openai/gpt-6-astra" = "gpt-6-astra"
+"openai/gpt-6-sol" = "gpt-6-sol"
 
-[tiers]
-fast = "gpt-6-luna"
-standard = "gpt-6-astra"
-strong = "gpt-6-sol"
-frontier = "gpt-6-sol"
-
-# config.snippet.toml 的 root model 與 effort；model 由 tier 解析。
+# config.snippet.toml 的 root model 與 effort；model 由 tier 解析（寫 model 則為手動指定）。
 [root]
 tier = "fast"
 model_reasoning_effort = "max"

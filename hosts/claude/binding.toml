@@ -1,14 +1,14 @@
-# Claude host binding：tier 對應 model、每個 role 的 effort / description / 工具限制。
+# Claude host binding：可用模型、每個 role 的 effort / description / 工具限制。
 # 數值等於 pilotfish-claude 1ea9841 目前上線的設定。
 
-# security role 不得解析到 frontier model（Anthropic 分類器會誤拒防禦性資安工作）。
-security_avoid_frontier = true
-
-[tiers]
-fast = "sonnet"
-standard = "sonnet"
-strong = "opus"
-frontier = "fable"
+# 這個 host 可用的模型與其 alias；resolver 只在這裡選（規則見 core/tiers.toml）。
+# security role 不會選到 fable（帶 refuses_defensive_security 旗標，分類器會誤拒防禦性資安工作）。
+# 要手動指定某個 tier 的模型時，才另外寫 [tiers]；某個 role 要 pin 就在 [roles.<name>] 寫 model。
+[models]
+"anthropic/haiku" = "haiku"
+"anthropic/sonnet" = "sonnet"
+"anthropic/opus" = "opus"
+"anthropic/fable" = "fable"
 
 [roles.scout]
 effort = "low"

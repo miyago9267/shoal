@@ -109,18 +109,15 @@ class ValidationTests(unittest.TestCase):
         self.assertIn(old, text)
         path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
 
-    def test_security_role_cannot_resolve_to_frontier_model(self) -> None:
+    def test_security_role_on_frontier_tier_skips_flagged_model(self) -> None:
+        # fable 帶 refuses_defensive_security，frontier 的 security role 改選次高的 opus，與 dist 一致
         self.edit(
             self.roles,
             '[roles.security-reviewer]\naccess = "read-only"\ntier = "strong"',
             '[roles.security-reviewer]\naccess = "read-only"\ntier = "frontier"',
         )
-        self.assert_rejected("security-reviewer")
-
-    def test_security_check_compares_resolved_model_not_tier_name(self) -> None:
-        # strong 被改成和 frontier 同一個 model，security role 一樣要被擋
-        self.edit(self.binding, 'strong = "opus"', 'strong = "fable"')
-        self.assert_rejected("frontier")
+        self.assertEqual(run_render(self.root, "--check").returncode, 0)
+        self.assertIn(b"\nmodel: opus\n", render.RENDERERS["claude"](self.root)["agents/security-reviewer.md"])
 
     def test_read_only_role_must_use_tools_allowlist(self) -> None:
         self.edit(self.binding, '[roles.scout]\neffort = "low"\ntools = ["Read", "Glob", "Grep"]',

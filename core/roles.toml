@@ -1,6 +1,7 @@
 # Canonical role catalog：host 中立，不寫任何 model 名稱。
 # access: read-only / write / verify；tier: fast / standard / strong / frontier。
-# security = true 的 role 是否可解析到 frontier model，由各 host binding 的 security_avoid_frontier 決定。
+# 模型由 core/tiers.toml 的規則在各 host 的可用模型內選出；
+# security = true 的 role 不會選到帶 refuses_defensive_security 旗標的模型（見 core/models.toml）。
 
 [roles.scout]
 access = "read-only"

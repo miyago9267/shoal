@@ -1,0 +1,21 @@
+# tier 的選模規則；resolver 只在該 host 的可用模型內選（hosts/<host>/binding.toml 的 [models]）。
+#
+# pick = "cheapest"：capability 不低於 min_capability 的模型中，cost 最低者；
+#   同分時取 capability 較低者，再依 key 字典序，結果是確定的。
+# pick = "most_capable"：capability 最高者；同分時取 cost 較低者，再依 key 字典序。
+# 門檻與 core/models.toml 的數值一起校準，單獨調整會改變 render 結果。
+
+[tiers.fast]
+min_capability = 2
+pick = "cheapest"
+
+[tiers.standard]
+min_capability = 3
+pick = "cheapest"
+
+[tiers.strong]
+min_capability = 4
+pick = "cheapest"
+
+[tiers.frontier]
+pick = "most_capable"

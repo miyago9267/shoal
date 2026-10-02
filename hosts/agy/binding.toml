@@ -1,20 +1,16 @@
-# agy (Gemini / Antigravity) host binding：tier 對應 model、每個 role 的 tools 與 description。
+# agy (Gemini / Antigravity) host binding：可用模型、每個 role 的 tools 與 description。
 # 數值等於 dotfile b65a243 的 plugins/pilotfish-agy/templates/ 現況。
 # description 的換行與 agent.md 的 folded scalar（description: >）逐行對應。
-
-# agy 的 security role 不受 Anthropic 分類器限制。
-security_avoid_frontier = false
 
 # agy 的 agent frontmatter 沒有 effort 欄位：明確宣告不支援，render 不輸出 effort，
 # 而且 role 不可設 effort（設了會被 render 拒絕，避免以為有生效）。
 supports_effort = false
 
+# 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
 # model 欄位只接受 flash / pro / inherit。
-[tiers]
-fast = "flash"
-standard = "pro"
-strong = "pro"
-frontier = "pro"
+[models]
+"google/gemini-flash" = "flash"
+"google/gemini-pro" = "pro"
 
 [roles.scout]
 tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message"]

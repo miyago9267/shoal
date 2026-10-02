@@ -1,9 +1,7 @@
-# OpenCode host binding：tier 對應 provider/model、每個 role 的 fallback 與必要能力，
+# OpenCode host binding：可用的 provider/model、每個 role 的 fallback 與必要能力，
 # 以及 catalog.json 的 provider 清單。render 產生 dist/catalog.json 與 dist/routing.json。
 # 數值等於 dotfile b65a243 的 .opencode/pilotfish/{catalog,routing}.json 現況。
 # pi-routing.json 由 dotfile 擁有，不在這裡產生。
-
-security_avoid_frontier = false
 
 # OpenCode 沒有 mech-executor、plan-verifier；這兩個 role 不產生 agent，也不進 routing。
 omitted_roles = ["mech-executor", "plan-verifier"]
@@ -11,12 +9,12 @@ omitted_roles = ["mech-executor", "plan-verifier"]
 [routing]
 version = 1
 
-# 每個 role 的第一順位 candidate 由 tier 解析。
-[tiers]
-fast = { provider = "deepseek", model = "deepseek-v4-flash" }
-standard = { provider = "openai", model = "gpt-5.6-luna" }
-strong = { provider = "openai", model = "gpt-5.6-sol" }
-frontier = { provider = "openai", model = "gpt-5.6-sol" }
+# 這個 host 的第一順位 candidate 只在這裡選（規則見 core/tiers.toml），值是 {provider, model}。
+# fallback 用的 gemini-2.5-flash、grok-4.6 只出現在 per-role 的 fallback_candidates，不納入 resolver。
+[models]
+"deepseek/deepseek-v4-flash" = { provider = "deepseek", model = "deepseek-v4-flash" }
+"openai/gpt-5.6-luna" = { provider = "openai", model = "gpt-5.6-luna" }
+"openai/gpt-5.6-sol" = { provider = "openai", model = "gpt-5.6-sol" }
 
 # fallback：none / ordered_candidates / same_capability；fallback_candidates 接在第一順位之後。
 [roles.scout]
