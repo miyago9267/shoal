@@ -5,6 +5,16 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
+
+- 新增 `core/contracts/<role>.toml` 的條款格式與 `tools/contracts.py`，
+  以及 `hosts/<h>/frames/`（外框）與 `hosts/<h>/addenda/<role>.toml`
+  （host 補充，定位語法 `start` / `end` / `after:` / `before:` / `replace:`）。
+  兩個目錄放在 `src/` 之外，不會進 dist。
+- 每個 `binding.toml` 新增 `role_text = "legacy" | "core"`，並可用
+  `[roles.<name>].role_text` 逐 role 覆寫。目前五個 host 都是 `legacy`，
+  沒有任何 core 條款，輸出與之前逐位元組相同。
+
 權限由存取等級推導（`docs/specs/access-derivation/`）。
 
 - `core/roles.toml` 的 role 可加 host 中立的 `capabilities = [...]`（目前只有

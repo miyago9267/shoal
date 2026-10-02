@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import contracts  # noqa: E402
 import resolve  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
@@ -37,6 +38,8 @@ LIST_KEYS = {"tools", "disallowedTools", "required_capabilities"}
 # 同一組 key 互斥（Claude 的 allowlist 與 denylist）；覆寫其中一個時，推導出的其他個會被丟掉。
 EXCLUSIVE_KEYS = {"claude": ("tools", "disallowedTools")}
 TIERS = ("fast", "standard", "strong", "frontier")
+# role 文字來源：core = core/contracts 的條款加 host 的 frames/addenda；legacy = host src 內的原文。
+ROLE_TEXT_MODES = ("core", "legacy")
 READ_ONLY_FORBIDDEN_TOOLS = {"Write", "Edit", "Bash", "NotebookEdit"}
 # frontmatter 之後緊接一行空白，再接 body。
 FRONTMATTER_KEYS = ("name", "description", "model", "effort")
@@ -146,7 +149,47 @@ def load_core(root: Path) -> dict:
     core: dict = {}
     for name in ("roles", "models", "tiers"):
         core.update(load_toml(root / "core" / f"{name}.toml"))
+    core["contracts"] = load_contracts(root, core["roles"])
     return core
+
+
+def load_contracts(root: Path, roles: dict) -> dict[str, list[contracts.Clause]]:
+    """core/contracts/<role>.toml；檔名必須是 roles.toml 的 role。沒有檔案的 role 不在結果內。"""
+    out: dict[str, list[contracts.Clause]] = {}
+    for path in sorted((root / "core" / "contracts").glob("*.toml")):
+        if path.stem not in roles:
+            raise RenderError(f"core/contracts/{path.name}: roles.toml 沒有 role {path.stem}")
+        try:
+            out[path.stem] = contracts.load_contract(path)
+        except contracts.ContractError as exc:
+            raise RenderError(f"core/contracts/{path.name}: {exc}") from exc
+    return out
+
+
+def role_text_mode(name: str, binding: dict) -> str:
+    """[roles.<name>].role_text 覆寫 binding 頂層的 role_text。"""
+    return binding["roles"][name].get("role_text", binding["role_text"])
+
+
+def role_body(name: str, core: dict, binding: dict, src: Path,
+              legacy: Callable[[], bytes]) -> bytes:
+    """role 的正文 bytes：legacy 時是 src 原文，core 時是 frame + 依序排列的條款與 addenda。
+
+    frames/ 與 addenda/ 在 hosts/<host>/ 底下、src/ 之外，不會被 passthrough 帶進 dist。
+    """
+    if role_text_mode(name, binding) == "legacy":
+        return legacy()
+    clauses = core["contracts"].get(name)
+    if clauses is None:
+        raise RenderError(f'{name}: role_text = "core"，但 core/contracts/{name}.toml 不存在')
+    host_dir = src.parent
+    try:
+        addenda = contracts.load_addenda(host_dir / "addenda" / f"{name}.toml")
+        frame = contracts.load_frame(host_dir / "frames", name)
+        text = contracts.apply_frame(frame, contracts.compose(clauses, addenda))
+    except contracts.ContractError as exc:
+        raise RenderError(f"{name}: {exc}") from exc
+    return text.encode("utf-8")
 
 
 def resolve_resolution(name: str, core: dict, binding: dict) -> resolve.Resolution:
@@ -162,6 +205,10 @@ def resolve_model(name: str, core: dict, binding: dict) -> object:
         return resolve_resolution(name, core, binding).model
     except resolve.ResolveError as exc:
         raise RenderError(f"role {name}: {exc}") from exc
+
+
+def _legacy_body(src: Path, folder: str, name: str) -> bytes:
+    return (src / folder / f"{name}.md").read_bytes()
 
 
 def validate_catalog(core: dict, binding: dict) -> None:
@@ -182,6 +229,14 @@ def validate_catalog(core: dict, binding: dict) -> None:
         caps = role.get("capabilities", [])
         if not isinstance(caps, list) or not set(caps) <= CAPABILITIES:
             raise RenderError(f"{name}: capabilities 必須是 {sorted(CAPABILITIES)} 的子集")
+    if binding.get("role_text") not in ROLE_TEXT_MODES:
+        raise RenderError(f"binding 的 role_text 必須是 {list(ROLE_TEXT_MODES)}")
+    for name, spec in bound.items():
+        if spec.get("role_text", "legacy") not in ROLE_TEXT_MODES:
+            raise RenderError(f"{name}: role_text 必須是 {list(ROLE_TEXT_MODES)}")
+    for name, spec in binding.get("extra_roles", {}).items():
+        if "role_text" in spec:
+            raise RenderError(f"{name}: host 專屬 role 沒有 core 條款，不可設 role_text")
     omitted = binding.get("omitted_roles", [])
     for name in omitted:
         if name not in catalog:
@@ -233,14 +288,14 @@ def render_claude(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     perms = validate_claude(core, binding)
     out: dict[str, bytes] = {}
 
-    def agent(name: str, spec: dict, model: str) -> None:
-        body = (src / "agents" / f"{name}.md").read_bytes()
+    def agent(name: str, spec: dict, model: str, body: bytes) -> None:
         out[f"agents/{name}.md"] = _frontmatter(name, spec, perms[name], model).encode("utf-8") + body
 
     for name in core["roles"]:
-        agent(name, binding["roles"][name], resolve_model(name, core, binding))
+        agent(name, binding["roles"][name], resolve_model(name, core, binding),
+              role_body(name, core, binding, src, lambda n=name: _legacy_body(src, "agents", n)))
     for name, spec in binding.get("extra_roles", {}).items():
-        agent(name, spec, spec["model"])
+        agent(name, spec, spec["model"], _legacy_body(src, "agents", name))
 
     for path in sorted(src.rglob("*")):
         rel = path.relative_to(src)
@@ -302,14 +357,14 @@ def render_codex(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     perms = validate_codex(core, binding)
     out: dict[str, bytes] = {}
 
-    def agent(name: str, spec: dict, model: str) -> None:
-        body = (src / "agents" / f"{name}.md").read_bytes()
+    def agent(name: str, spec: dict, model: str, body: bytes) -> None:
         out[f"agents/{name}.toml"] = _codex_agent(name, spec, perms[name], model, body)
 
     for name in core["roles"]:
-        agent(name, binding["roles"][name], resolve_model(name, core, binding))
+        agent(name, binding["roles"][name], resolve_model(name, core, binding),
+              role_body(name, core, binding, src, lambda n=name: _legacy_body(src, "agents", n)))
     for name, spec in binding.get("extra_roles", {}).items():
-        agent(name, spec, spec["model"])
+        agent(name, spec, spec["model"], _legacy_body(src, "agents", name))
 
     root = binding["root"]
     values = {"model": resolve_root_model(core, binding),
@@ -383,7 +438,7 @@ def render_agy(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     perms = validate_agy(core, binding)
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):
-        body = (src / "agents" / f"{name}.md").read_bytes()
+        body = role_body(name, core, binding, src, lambda n=name: _legacy_body(src, "agents", n))
         model = resolve_model(name, core, binding)
         out[f"agents/{name}/agent.md"] = _agy_frontmatter(name, binding["roles"][name], perms[name], model).encode("utf-8") + body
     _passthrough(src, out, {"agents"})
@@ -422,7 +477,7 @@ def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     perms = validate_grok(core, binding)
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):
-        body = (src / "agents" / f"{name}.md").read_bytes()
+        body = role_body(name, core, binding, src, lambda n=name: _legacy_body(src, "agents", n))
         match = re.search(rb"^model: (.+)$", body.split(b"\n---\n", 1)[0], re.MULTILINE)
         expected = resolve_model(name, core, binding)
         if not match or match.group(1).decode("utf-8") != expected:
@@ -472,7 +527,9 @@ def render_opencode(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     stray = sorted(p.name for p in (src / "roles").glob("*.md") if p.stem not in names)
     if stray:
         raise RenderError(f"src/roles 有 binding 沒有的 role: {', '.join(stray)}")
-    out = {f"roles/{name}.md": (src / "roles" / f"{name}.md").read_bytes() for name in names}
+    out = {f"roles/{name}.md": role_body(name, core, binding, src,
+                                         lambda n=name: _legacy_body(src, "roles", n))
+           for name in names}
 
     agents, routes = {}, {}
     for name in names:

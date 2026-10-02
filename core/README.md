@@ -63,6 +63,35 @@ policy 文字目前還在各 host 底下（例如 `hosts/claude/src/`），不�
 原因是 claude 和 codex 的 policy 已經分岔，先搬家並用 golden test
 證明行為不變；要到 P5 才合併成 host 中立的 `core/policy/`。
 
+## role 條款（core/contracts）
+
+role 的 prompt 文字正在從各 host 手寫的 `src/agents`（或 `src/roles`）統一到
+core（規格見
+[docs/specs/role-contracts/SPEC.md](../docs/specs/role-contracts/SPEC.md)）。
+每個 host 在 binding 以 `role_text` 選來源：`"legacy"` 輸出 `src` 內的原文，
+`"core"` 輸出 core 條款加該 host 的外框與補充。`[roles.<name>].role_text`
+可以逐 role 覆寫；host 專屬 role（`extra_roles`）一律 legacy，不可設定。
+
+- `core/contracts/<role>.toml`：host 中立的條款，順序即輸出順序。每個
+  `[[clause]]` 有 `id`（小寫英數加連字號）、`kind`、`text`，選用 `sep`。
+  `text` 是逐字文字（可含換行），頭尾不可有空白；`sep` 是這個條款之後接
+  什麼：`paragraph`（空行，預設）、`space`（同一行接續）、`newline`（換行，
+  用於條列）。一個條款一條義務。`kind` 只能是 `identity`、`scope`、
+  `boundary`、`procedure`、`escalation`、`verdict`、`severity`、`security`、
+  `foreground`、`final-message`、`leaf`。條款文字不寫 host 專屬的工具、
+  模型或機制名稱，`tests/test_role_contracts.py` 有檢查。
+- `hosts/<h>/frames/<role>.md`（找不到則 `default.md`）：外框，例如
+  frontmatter 之後的標題與前言；必須恰好有一個 `{{role_body}}`，條款與
+  addenda 排好後放在那裡。沒有外框就只輸出條款。
+- `hosts/<h>/addenda/<role>.toml`：只在該 host 有意義的補充。每個
+  `[[addendum]]` 有 `id`、`at`、`text`，選用 `sep`。`at` 是 `start`、`end`、
+  `after:<條款 id>`、`before:<條款 id>` 或 `replace:<條款 id>`（用 host 專屬
+  措辭取代那個條款；沒寫 `sep` 時沿用被取代條款的）。同一個位置有多個
+  addendum 時依檔案順序。
+- `frames/` 與 `addenda/` 刻意放在 `src/` 之外，不會被 passthrough 帶進 dist。
+- 切到 `core` 的 host，每個 role 必須逐字包含每個未被 `replace` 的條款，
+  每個 host 的 replace 清單由測試鎖定（新增 replace 要同時改測試）。
+
 ## 各 host 的 role 子集與 effort
 
 - host 沒有的 role 要在 binding 用 `omitted_roles = [...]` 明列
