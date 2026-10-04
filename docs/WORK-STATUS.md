@@ -2,7 +2,7 @@
 id: pilotfish-work-status
 title: Pilotfish Codex work status
 status: active
-updated: 2026-09-23
+updated: 2026-10-04
 owner: Miyago
 ---
 
@@ -202,6 +202,16 @@ rechecked after the new role bindings are installed:
 
 ## Open todo
 
+### Approved — Skills Map specs
+
+2026-10-04 依 plan-verifier 審查意見修正後，Miyago 核准為後續設定基準。
+
+- [x] `docs/specs/review-tradeoff-privacy/SPEC.md`（verifier 列隱含權衡、
+  security-reviewer 補隱私檢查；A3 列為 non-goal）。待實作 A1-A3。
+- [x] `docs/specs/claude-eval-parity/SPEC.md`、`TASKS.md`、`TESTS.md`
+  （Claude prompt surface 加入 lock、role-fitness host adapter、content 層
+  失敗分類）。Open questions 3、4 仍待決定；付費 run 需另行核准。
+
 ### In progress — P0 policy installation safety
 
 - [x] runtime mode 將 Pilotfish policy 整合到 active root `AGENTS.md`，保留
@@ -235,7 +245,10 @@ rechecked after the new role bindings are installed:
 - [ ] 驗證 local `sync_codex_runtime.py` 在 user policy 變更與 Pilotfish
   policy 更新後不會互相覆蓋。
 - [ ] 評估是否保留本機 migration helper，或在正式 installer 完成後移除。
-- [ ] 不得修改 Claude policy；Claude 目前維持 Pilotfish v1.2.1。
+- [x] 「不得修改 Claude policy；Claude 維持 Pilotfish v1.2.1」已解除。
+  2026-10-04 Miyago 決定：解除限制，Claude 不鎖版本。此條原指
+  `~/dotfile/config/ai/claude/CLAUDE.md`，該檔已不存在；本 repo 的
+  `hosts/claude` 是 `1.4.2-claude.1` 並使用 core 條款。
 
 ## Known constraints
 
@@ -258,7 +271,8 @@ rechecked after the new role bindings are installed:
 - Codex user policy：`~/dotfile/config/ai/codex/AGENTS.md`
 - Codex runtime policy：`~/dotfile/config/ai/codex/AGENTS.runtime.md`
 - Codex local sync：`~/.codex/pilotfish/sync_codex_runtime.py`
-- Claude policy（唯讀於本任務）：`~/dotfile/config/ai/claude/CLAUDE.md`
+- Claude policy：由本 repo 的 `hosts/claude/dist` 經 dotfile hook 同步；
+  舊的 `~/dotfile/config/ai/claude/CLAUDE.md` 已不存在，唯讀限制已解除。
 
 ## Next smallest action
 
