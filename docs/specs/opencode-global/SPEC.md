@@ -69,8 +69,8 @@ Claude（`~/.claude`，auto-update）、Codex（`~/.codex`）、agy（`~/.gemini
   只檢查是否宣告。
 - **R6（既有行為不變）**：`--target <project>` 的行為、輸出與測試不變。
 - **R7（dotfile）**：`~/.config/opencode` 是 dotfile 追蹤的目錄；安裝產生的
-  agents、plugin、`pilotfish/*.json` 以獨立 commit 進 dotfile，manifest 與
-  備份不進版控（R2）。dotfile 兩份 spec 記錄推翻原決定的日期與理由。
+  agents 與 `pilotfish/*.json` 以獨立 commit 進 dotfile；plugin bundle 是 build
+  產物，比照 `opencode-harness` 加入 `.gitignore`；manifest 與備份不進版控（R2）。dotfile 兩份 spec 記錄推翻原決定的日期與理由。
 
 ## Non-goals
 
