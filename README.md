@@ -7,6 +7,26 @@ shoal 只維護一份 role 定義（`scout`、`executor`、`verifier` 等）。�
 用自己的 binding 決定 model、effort，並把 role 的存取等級對應成該 host 的權限欄位，再由 renderer 產生該 host
 要安裝的檔案。產物有 golden 測試，改動一律看得到 diff。
 
+![render 流程：core 與 host binding 經 render.py 產生五個 host 的 dist](./docs/assets/shoal-render-pipeline.svg)
+
+## 選模
+
+role 只寫 tier，不寫模型。resolver 在每個 host 的模型目錄裡排除 capability
+不到門檻的模型，再依 tier 規則挑一個；grok 設為 `inherit`，沿用 grok 自己的
+選模。用 `python3 tools/render.py --host <host> --explain` 可以看到每個 role
+的候選、排除原因與結果。
+
+![選模矩陣：七個 role 在五個 host 選出的模型](./docs/assets/shoal-model-routing.svg)
+
+## 呼叫鏈
+
+main session 先判斷互動形態與風險，小而局部的工作直接做；有風險或大型工作
+才走五道關卡，依階段派唯讀、審查或寫入的 role。完整規則在各 host 的
+orchestration policy（例如
+`hosts/claude/dist/skills/pilotfish-orchestration/references/orchestration-policy.md`）。
+
+![呼叫鏈：互動形態、風險判斷、五道關卡與各 host 的執行時機制](./docs/assets/shoal-call-chain.svg)
+
 ## 目錄結構
 
 ```text

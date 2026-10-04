@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">shoal 呼叫鏈</title>
+  <desc id="desc">main session 先判斷互動形態與風險；小而局部的工作直接做，有風險或大型工作依 Discovery、Plan、Approval、Execution、Verification 五道關卡進行，分別派 scout、plan-verifier、executor 系列與 verifier。資安工作改走 security-reviewer 與 security-executor。下方列出各 host 在執行時的約束機制。</desc>
+  <defs>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" class="arrow"/></marker>
+    <marker id="arrow-red" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" class="red"/></marker>
+    <style>
+      .bg { fill: #f7f9fc; } .fg { fill: #152238; } .muted { fill: #66758a; }
+      .route { stroke: #9aaabd; fill: none; stroke-width: 2; }
+      .sec-route { stroke: #c94a4a; fill: none; stroke-width: 2; stroke-dasharray: 6 5; }
+      .blue { fill: #3f6fe5; } .purple { fill: #7954c6; } .amber { fill: #cf8427; } .green { fill: #26986d; } .red { fill: #c94a4a; }
+      .soft-blue { fill: #eaf0ff; stroke: #b9cbfa; } .soft-purple { fill: #f1ecff; stroke: #d3c2f4; }
+      .soft-amber { fill: #fff3e2; stroke: #efd2a5; } .soft-green { fill: #e7f7ef; stroke: #b8e3ce; }
+      .soft-red { fill: #fdeaea; stroke: #efb7b7; } .card { fill: #ffffff; stroke: #d8e0ea; }
+      .kicker { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 1.8px; }
+      .title { font: 600 30px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .section { font: 600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 1.2px; }
+      .label { font: 600 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .small { font: 400 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .tiny { font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .arrow { fill: #9aaabd; }
+      @media (prefers-color-scheme: dark) {
+        .bg { fill: #101827; } .fg { fill: #f3f6fb; } .muted { fill: #a6b3c5; }
+        .route { stroke: #708198; }
+        .soft-blue { fill: #1b2d59; stroke: #4768af; } .soft-purple { fill: #302347; stroke: #6d55a2; }
+        .soft-amber { fill: #49341d; stroke: #9d743f; } .soft-green { fill: #1b4233; stroke: #438f6d; }
+        .soft-red { fill: #4a2224; stroke: #a04f52; } .card { fill: #172235; stroke: #314054; }
+        .arrow { fill: #708198; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" class="bg"/>
+  <text x="48" y="45" class="kicker muted">SHOAL / CALL CHAIN</text>
+  <text x="48" y="88" class="title fg">一個需求在 main session 裡怎麼走</text>
+  <text x="48" y="120" class="small muted">main session 負責判斷、Plan、核准、整合與最終結論；role 只做被派的那一段，不再往下派。</text>
+
+  <!-- row 1: triage -->
+  <rect x="48" y="150" width="190" height="96" rx="14" class="card"/>
+  <text x="70" y="188" class="label fg">使用者需求</text>
+  <text x="70" y="216" class="tiny muted">進入 main session</text>
+
+  <rect x="280" y="150" width="350" height="96" rx="14" class="soft-purple"/>
+  <text x="302" y="178" class="section purple">① 互動形態</text>
+  <text x="302" y="204" class="tiny fg"><tspan class="mono">co_discover</tspan>　結果或驗收還不清楚</text>
+  <text x="302" y="222" class="tiny fg"><tspan class="mono">explore_then_plan</tspan>　方向清楚但範圍大</text>
+  <text x="302" y="240" class="tiny fg"><tspan class="mono">execute</tspan>　清楚且有邊界</text>
+
+  <rect x="672" y="150" width="380" height="96" rx="14" class="soft-red"/>
+  <text x="694" y="178" class="section red">② 風險先於大小</text>
+  <text x="694" y="204" class="tiny fg">使用者要求獨立審查、資安、破壞性或外部變更、</text>
+  <text x="694" y="222" class="tiny fg">資料與 migration、release、跨元件驗收</text>
+  <text x="694" y="240" class="tiny muted">檔案數多、一般 docs 或 UI 不算觸發</text>
+
+  <rect x="1094" y="150" width="258" height="96" rx="14" class="soft-green"/>
+  <text x="1116" y="178" class="section green">③ 小而局部</text>
+  <text x="1116" y="206" class="small fg">沒有風險觸發</text>
+  <text x="1116" y="230" class="small fg">→ main 直接做</text>
+
+  <path d="M238 198 L276 198" class="route" marker-end="url(#arrow)"/>
+  <path d="M630 198 L668 198" class="route" marker-end="url(#arrow)"/>
+  <path d="M1052 198 L1090 198" class="route" marker-end="url(#arrow)"/>
+  <path d="M862 246 L862 268 L182 268 L182 300" class="route" marker-end="url(#arrow)"/>
+  <text x="200" y="292" class="tiny muted">有風險或大型工作</text>
+
+  <!-- row 2: lifecycle gates -->
+  <text x="48" y="330" class="section blue">LIFECYCLE 五道關卡</text>
+  <g>
+    <rect x="48" y="344" width="236" height="74" rx="14" class="soft-blue"/>
+    <text x="70" y="374" class="label fg">Discovery</text>
+    <text x="70" y="400" class="tiny muted">main 定問題、範圍與停止點</text>
+
+    <rect x="315" y="344" width="236" height="74" rx="14" class="soft-blue"/>
+    <text x="337" y="374" class="label fg">Plan</text>
+    <text x="337" y="400" class="tiny muted">main 綜合成一份 Plan</text>
+
+    <rect x="582" y="344" width="236" height="74" rx="14" class="soft-blue"/>
+    <text x="604" y="374" class="label fg">Approval</text>
+    <text x="604" y="400" class="tiny muted">使用者明確核准才動檔案</text>
+
+    <rect x="849" y="344" width="236" height="74" rx="14" class="soft-blue"/>
+    <text x="871" y="374" class="label fg">Execution</text>
+    <text x="871" y="400" class="tiny muted">核准的契約固定範圍與驗收</text>
+
+    <rect x="1116" y="344" width="236" height="74" rx="14" class="soft-blue"/>
+    <text x="1138" y="374" class="label fg">Verification</text>
+    <text x="1138" y="400" class="tiny muted">對照確切的完成聲明</text>
+  </g>
+  <path d="M284 381 L311 381" class="route" marker-end="url(#arrow)"/>
+  <path d="M551 381 L578 381" class="route" marker-end="url(#arrow)"/>
+  <path d="M818 381 L845 381" class="route" marker-end="url(#arrow)"/>
+  <path d="M1085 381 L1112 381" class="route" marker-end="url(#arrow)"/>
+
+  <!-- role chips -->
+  <rect x="48" y="440" width="236" height="64" rx="12" class="card"/>
+  <text x="66" y="466" class="mono fg">scout · Explore</text>
+  <text x="66" y="490" class="tiny muted">唯讀蒐集證據，回報事實</text>
+
+  <rect x="315" y="440" width="236" height="64" rx="12" class="soft-red"/>
+  <text x="333" y="466" class="mono fg">security-reviewer</text>
+  <text x="333" y="490" class="tiny muted">資安工作：核准前唯讀審查</text>
+  <rect x="315" y="516" width="236" height="64" rx="12" class="card"/>
+  <text x="333" y="542" class="mono fg">plan-verifier</text>
+  <text x="333" y="566" class="tiny muted">風險單元必審：READY / REVISE</text>
+
+  <rect x="582" y="440" width="236" height="64" rx="12" class="card"/>
+  <text x="600" y="466" class="small fg">Plan 交給使用者</text>
+  <text x="600" y="490" class="tiny muted">廣泛的需求不等於核准 Plan</text>
+
+  <rect x="849" y="440" width="236" height="64" rx="12" class="card"/>
+  <text x="867" y="466" class="mono fg">mech-executor</text>
+  <text x="867" y="490" class="tiny muted">規格完整的重複工作</text>
+  <rect x="849" y="516" width="236" height="64" rx="12" class="card"/>
+  <text x="867" y="542" class="mono fg">executor</text>
+  <text x="867" y="566" class="tiny muted">需要局部判斷的實作</text>
+  <rect x="849" y="592" width="236" height="64" rx="12" class="soft-red"/>
+  <text x="867" y="618" class="mono fg">security-executor</text>
+  <text x="867" y="642" class="tiny muted">核准後的資安實作</text>
+
+  <rect x="1116" y="440" width="236" height="84" rx="12" class="card"/>
+  <text x="1134" y="466" class="mono fg">verifier</text>
+  <text x="1134" y="490" class="tiny muted">CONFIRMED / REFUTED</text>
+  <text x="1134" y="510" class="tiny muted">/ INCONCLUSIVE</text>
+  <rect x="1116" y="540" width="236" height="64" rx="12" class="soft-green"/>
+  <text x="1134" y="566" class="small fg">main 整合、回報</text>
+  <text x="1134" y="590" class="tiny muted">驗證過才能說完成</text>
+
+  <path d="M551 472 L566 472 L566 624 L845 624" class="sec-route" marker-end="url(#arrow-red)"/>
+  <text x="600" y="614" class="tiny red">資安工作不走一般 executor</text>
+  <path d="M1234 524 L1234 536" class="route" marker-end="url(#arrow)"/>
+
+  <!-- rule band -->
+  <rect x="48" y="676" width="1304" height="40" rx="12" class="soft-amber"/>
+  <text x="70" y="702" class="tiny fg">role 都是 leaf，不再派 subagent　·　同一 tier 失敗兩次就升 tier 或由 main 接手　·　派工前先過 dispatch brake：證據還在變、範圍重疊就不派</text>
+
+  <!-- row 3: host enforcement -->
+  <text x="48" y="748" class="section green">各 HOST 的執行時機制</text>
+  <g>
+    <rect x="48" y="762" width="246" height="112" rx="14" class="soft-green"/>
+    <text x="66" y="790" class="label fg">Claude Code</text>
+    <text x="66" y="816" class="tiny fg">Agent tool 派 named role</text>
+    <text x="66" y="836" class="tiny fg">orchestration skill 按需載入</text>
+
+    <rect x="312" y="762" width="246" height="112" rx="14" class="soft-green"/>
+    <text x="330" y="790" class="label fg">Codex CLI</text>
+    <text x="330" y="816" class="tiny fg">UserPromptSubmit hook</text>
+    <text x="330" y="836" class="tiny fg">pilotfish_autoroute_gate</text>
+    <text x="330" y="856" class="tiny muted">依工作分流 Luna、Sol、Astra</text>
+
+    <rect x="576" y="762" width="246" height="112" rx="14" class="soft-green"/>
+    <text x="594" y="790" class="label fg">Gemini / agy</text>
+    <text x="594" y="816" class="tiny fg">rules + orchestration skill</text>
+    <text x="594" y="836" class="tiny fg">agents 以 symlink 讀 dist</text>
+
+    <rect x="840" y="762" width="246" height="112" rx="14" class="soft-green"/>
+    <text x="858" y="790" class="label fg">Grok Build</text>
+    <text x="858" y="816" class="tiny fg">PreToolUse：plan mode 擋可寫入</text>
+    <text x="858" y="836" class="tiny fg">的 subagent</text>
+    <text x="858" y="856" class="tiny fg">SubagentStop：檢查審查回報格式</text>
+
+    <rect x="1104" y="762" width="248" height="112" rx="14" class="soft-green"/>
+    <text x="1122" y="790" class="label fg">OpenCode</text>
+    <text x="1122" y="816" class="tiny fg">plugin 註冊 pilotfish_route</text>
+    <text x="1122" y="836" class="tiny fg">依 catalog / routing.json 選模</text>
+  </g>
+</svg>

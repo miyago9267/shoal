@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">shoal 選模矩陣</title>
+  <desc id="desc">七個 role 依 tier 在各 host 的模型目錄中選模。fast 取 capability 至少 2 中最便宜的，standard 至少 3，strong 至少 4，frontier 取最強。Grok Build 為 inherit，沿用 grok 自己的模型設定。資料來自 tools/render.py --explain，v1.2.0。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f9fc; } .fg { fill: #152238; } .muted { fill: #66758a; }
+      .line { stroke: #d8e0ea; } .card { fill: #ffffff; stroke: #d8e0ea; }
+      .blue { fill: #3f6fe5; } .purple { fill: #7954c6; } .amber { fill: #cf8427; } .green { fill: #26986d; } .red { fill: #c94a4a; }
+      .soft-blue { fill: #eaf0ff; stroke: #b9cbfa; } .soft-purple { fill: #f1ecff; stroke: #d3c2f4; }
+      .soft-amber { fill: #fff3e2; stroke: #efd2a5; } .soft-green { fill: #e7f7ef; stroke: #b8e3ce; }
+      .kicker { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 1.8px; }
+      .title { font: 600 30px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .section { font: 600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 1.2px; }
+      .head { font: 600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .cell { font: 400 15px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .small { font: 400 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .tiny { font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .pill { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #ffffff; }
+      @media (prefers-color-scheme: dark) {
+        .bg { fill: #101827; } .fg { fill: #f3f6fb; } .muted { fill: #a6b3c5; }
+        .line { stroke: #314054; } .card { fill: #172235; stroke: #314054; }
+        .soft-blue { fill: #1b2d59; stroke: #4768af; } .soft-purple { fill: #302347; stroke: #6d55a2; }
+        .soft-amber { fill: #49341d; stroke: #9d743f; } .soft-green { fill: #1b4233; stroke: #438f6d; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" class="bg"/>
+  <text x="48" y="45" class="kicker muted">SHOAL / MODEL ROUTING</text>
+  <text x="48" y="88" class="title fg">role 只寫 tier，各 host 自動選出模型</text>
+  <text x="48" y="120" class="small muted">resolver 在 host 的模型目錄裡，先排除 capability 不到門檻的模型，再依 tier 規則挑一個。</text>
+
+  <rect x="48" y="146" width="310" height="70" rx="12" class="soft-green"/>
+  <rect x="66" y="166" width="52" height="26" rx="13" class="green"/><text x="78" y="184" class="pill">fast</text>
+  <text x="178" y="176" class="small fg">capability ≥ 2</text><text x="178" y="200" class="small muted">取最便宜</text>
+  <rect x="379" y="146" width="310" height="70" rx="12" class="soft-blue"/>
+  <rect x="397" y="166" width="83" height="26" rx="13" class="blue"/><text x="409" y="184" class="pill">standard</text>
+  <text x="509" y="176" class="small fg">capability ≥ 3</text><text x="509" y="200" class="small muted">取最便宜</text>
+  <rect x="710" y="146" width="310" height="70" rx="12" class="soft-amber"/>
+  <rect x="728" y="166" width="68" height="26" rx="13" class="amber"/><text x="740" y="184" class="pill">strong</text>
+  <text x="840" y="176" class="small fg">capability ≥ 4</text><text x="840" y="200" class="small muted">取最便宜</text>
+  <rect x="1041" y="146" width="310" height="70" rx="12" class="soft-purple"/>
+  <rect x="1059" y="166" width="83" height="26" rx="13" class="purple"/><text x="1071" y="184" class="pill">frontier</text>
+  <text x="1171" y="176" class="small fg">不設門檻</text><text x="1171" y="200" class="small muted">取最強</text>
+  <rect x="48" y="250" width="1304" height="448" rx="14" class="card"/>
+  <text x="66" y="284" class="head muted">role</text>
+  <text x="286" y="284" class="head muted">tier</text>
+  <text x="398" y="284" class="head muted">存取等級</text>
+  <text x="558" y="284" class="head muted">Claude Code</text>
+  <text x="718" y="284" class="head muted">Codex CLI</text>
+  <text x="878" y="284" class="head muted">Gemini / agy</text>
+  <text x="1038" y="284" class="head muted">OpenCode</text>
+  <text x="1258" y="284" class="head muted">Grok Build</text>
+  <line x1="48" y1="306" x2="1352" y2="306" class="line"/>
+  <text x="66" y="340" class="mono fg">scout</text>
+  <rect x="280" y="322" width="52" height="26" rx="13" class="green"/><text x="291" y="340" class="pill">fast</text>
+  <text x="398" y="340" class="small fg">read-only</text>
+  <text x="558" y="340" class="cell fg">sonnet</text>
+  <text x="718" y="340" class="cell fg">gpt-6-luna</text>
+  <text x="878" y="340" class="cell fg">gemini-flash</text>
+  <text x="1038" y="340" class="cell fg">deepseek-v4-flash</text>
+  <text x="1258" y="340" class="cell muted">inherit</text>
+  <line x1="48" y1="362" x2="1352" y2="362" class="line"/>
+  <text x="66" y="396" class="mono fg">mech-executor</text>
+  <rect x="280" y="378" width="52" height="26" rx="13" class="green"/><text x="291" y="396" class="pill">fast</text>
+  <text x="398" y="396" class="small fg">write</text>
+  <text x="558" y="396" class="cell fg">sonnet</text>
+  <text x="718" y="396" class="cell fg">gpt-6-luna</text>
+  <text x="878" y="396" class="cell fg">gemini-flash</text>
+  <text x="1038" y="396" class="cell muted">—</text>
+  <text x="1258" y="396" class="cell muted">inherit</text>
+  <line x1="48" y1="418" x2="1352" y2="418" class="line"/>
+  <text x="66" y="452" class="mono fg">executor</text>
+  <rect x="280" y="434" width="83" height="26" rx="13" class="blue"/><text x="291" y="452" class="pill">standard</text>
+  <text x="398" y="452" class="small fg">write</text>
+  <text x="558" y="452" class="cell fg">sonnet</text>
+  <text x="718" y="452" class="cell fg">gpt-6-astra</text>
+  <text x="878" y="452" class="cell fg">gemini-pro</text>
+  <text x="1038" y="452" class="cell fg">gpt-5.6-luna</text>
+  <text x="1258" y="452" class="cell muted">inherit</text>
+  <line x1="48" y1="474" x2="1352" y2="474" class="line"/>
+  <text x="66" y="508" class="mono fg">plan-verifier</text>
+  <rect x="280" y="490" width="83" height="26" rx="13" class="purple"/><text x="291" y="508" class="pill">frontier</text>
+  <text x="398" y="508" class="small fg">read-only</text>
+  <text x="558" y="508" class="cell fg">fable</text>
+  <text x="718" y="508" class="cell fg">gpt-6-sol</text>
+  <text x="878" y="508" class="cell fg">gemini-pro</text>
+  <text x="1038" y="508" class="cell muted">—</text>
+  <text x="1258" y="508" class="cell muted">inherit</text>
+  <line x1="48" y1="530" x2="1352" y2="530" class="line"/>
+  <text x="66" y="564" class="mono fg">verifier</text>
+  <rect x="280" y="546" width="68" height="26" rx="13" class="amber"/><text x="291" y="564" class="pill">strong</text>
+  <text x="398" y="564" class="small fg">verify</text>
+  <text x="558" y="564" class="cell fg">opus</text>
+  <text x="718" y="564" class="cell fg">gpt-6-sol</text>
+  <text x="878" y="564" class="cell fg">gemini-pro</text>
+  <text x="1038" y="564" class="cell fg">gpt-5.6-sol</text>
+  <text x="1258" y="564" class="cell muted">inherit</text>
+  <line x1="48" y1="586" x2="1352" y2="586" class="line"/>
+  <text x="66" y="620" class="mono fg">security-reviewer</text>
+  <rect x="227" y="604" width="44" height="22" rx="11" class="red"/><text x="235" y="620" class="pill" style="font-size:12px">資安</text>
+  <rect x="280" y="602" width="68" height="26" rx="13" class="amber"/><text x="291" y="620" class="pill">strong</text>
+  <text x="398" y="620" class="small fg">read-only + web</text>
+  <text x="558" y="620" class="cell fg">opus</text>
+  <text x="718" y="620" class="cell fg">gpt-6-sol</text>
+  <text x="878" y="620" class="cell fg">gemini-pro</text>
+  <text x="1038" y="620" class="cell fg">gpt-5.6-sol</text>
+  <text x="1258" y="620" class="cell muted">inherit</text>
+  <line x1="48" y1="642" x2="1352" y2="642" class="line"/>
+  <text x="66" y="676" class="mono fg">security-executor</text>
+  <rect x="227" y="660" width="44" height="22" rx="11" class="red"/><text x="235" y="676" class="pill" style="font-size:12px">資安</text>
+  <rect x="280" y="658" width="68" height="26" rx="13" class="amber"/><text x="291" y="676" class="pill">strong</text>
+  <text x="398" y="676" class="small fg">write</text>
+  <text x="558" y="676" class="cell fg">opus</text>
+  <text x="718" y="676" class="cell fg">gpt-6-sol</text>
+  <text x="878" y="676" class="cell fg">gemini-pro</text>
+  <text x="1038" y="676" class="cell fg">gpt-5.6-sol</text>
+  <text x="1258" y="676" class="cell muted">inherit</text>
+  <line x1="540" y1="262" x2="540" y2="686" class="line"/>
+  <line x1="700" y1="262" x2="700" y2="686" class="line"/>
+  <line x1="860" y1="262" x2="860" y2="686" class="line"/>
+  <line x1="1020" y1="262" x2="1020" y2="686" class="line"/>
+  <line x1="1240" y1="262" x2="1240" y2="686" class="line"/>
+  <rect x="48" y="728" width="640" height="118" rx="14" class="soft-blue"/>
+  <text x="70" y="758" class="section blue">例：CLAUDE 的 SCOUT（FAST）</text>
+  <text x="70" y="786" class="small fg">haiku capability 1，低於門檻 2，排除</text>
+  <text x="70" y="812" class="small fg">剩下 sonnet、opus、fable，sonnet 的 cost 2 最低</text>
+  <text x="70" y="836" class="small fg">→ scout 用 sonnet</text>
+  <rect x="712" y="728" width="640" height="118" rx="14" class="soft-amber"/>
+  <text x="734" y="758" class="section amber">表格說明</text>
+  <text x="734" y="786" class="small fg">— ：該 host 沒有提供這個 role</text>
+  <text x="734" y="812" class="small fg">inherit：Grok Build 不介入選模，只輸出權限欄位</text>
+  <text x="734" y="836" class="tiny muted">另有手動指定：Claude Explore → haiku、Codex sol-executor → gpt-6-sol</text>
+  <text x="48" y="878" class="tiny muted">資料來源：python3 tools/render.py --host &lt;host&gt; --explain（shoal v1.2.0）</text>
+</svg>
