@@ -106,8 +106,9 @@
 
 ## 文件與版本（G4）
 
-- **AC-GW-050:** The root `VERSION` shall be `1.1.0`, and `CHANGELOG.md`
-  shall have a `## v1.1.0` section and no `## Unreleased`.
+- **AC-GW-050:** The root `VERSION` shall be `1.1.0`, and the first release
+  heading of `CHANGELOG.md` shall be `## v1.1.0` (the test compares it with
+  `VERSION`, so it keeps working at the next bump).
 - **AC-GW-051:** `upstream.lock` shall record the grok host version
   `1.0.6-shoal.1`, with upstream `Nanako0129/pilotfish-grok`.
 - **AC-GW-052:** `README.md` shall link to `Nanako0129/pilotfish-grok`, list

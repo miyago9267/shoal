@@ -45,12 +45,12 @@
 
 ## Phase G4 — 文件與版本
 
-- [ ] README host 表、安裝方式、歸屬連結。
-- [ ] `INSTALL.md` 新增 grok 段落。
-- [ ] `upstream.lock` 的 grok 項目。
-- [ ] 根目錄 `VERSION` 改 `1.1.0`；`CHANGELOG.md` 的 `## Unreleased`
+- [x] README host 表、安裝方式、歸屬連結。
+- [x] `INSTALL.md` 新增 grok 段落。
+- [x] `upstream.lock` 的 grok 項目。
+- [x] 根目錄 `VERSION` 改 `1.1.0`；`CHANGELOG.md` 的 `## Unreleased`
       改 `## v1.1.0`。
-- [ ] `core/README.md` 視需要更新。
+- [x] `core/README.md`：檢查後不需更新（它不描述 grok 的 rules、hooks 或安裝）。
 
 ## 由 main session 處理
 

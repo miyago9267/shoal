@@ -353,3 +353,50 @@ Report all of the following in the agent's completion message:
 - preserved or unresolved custom roles, extra files, and pending state; and
 - confirmation that no credentials, shell startup files, or elevated
   privileges were used.
+
+## Grok Build
+
+The Grok Build host is installed by `tools/install_grok.py`, not by the Codex
+installer above. It installs what is committed at `HEAD` of a shoal checkout:
+`agents/`, `roles/`, `rules/pilotfish-grok.md`, and the native hooks
+(`hooks/pilotfish-grok.json` plus `hooks/pilotfish-grok/`) under the Grok home.
+The default home is `$GROK_HOME`, else `~/.grok`; pass `--grok-home DIR` to
+select another. The installer is Python 3.11 or newer and needs `git`.
+
+Every command that writes (install, `--restore`, `--uninstall`) is a dry-run
+until `--apply` is given. The installer opens only the paths it manages and
+`config.toml`; it does not read credentials, sessions or history, and does not
+touch `~/.claude`.
+
+```bash
+# 1. Dry-run: lists files to add, replace or skip, and flags config problems.
+python3 tools/install_grok.py
+
+# 2. Install after the user approves the dry-run output.
+python3 tools/install_grok.py --apply
+
+# Roll back one install from its backup directory.
+python3 tools/install_grok.py --restore ~/.grok/backups/shoal-<timestamp> --apply
+
+# Remove only the files shoal installed (config.toml is not modified).
+python3 tools/install_grok.py --uninstall --apply
+```
+
+Before the first write it copies every file it will replace, plus
+`config.toml`, to `<grok-home>/backups/shoal-<timestamp>/`. After installing it
+checks that each file has the same SHA-256 as the committed dist and that the
+rules marker matches `hosts/grok/VERSION`; a mismatch exits 1.
+
+If `[subagents.toggle]` in `config.toml` sets a shoal role (`scout`,
+`plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`,
+`security-executor`) to `false`, the dry-run flags it and nothing is changed.
+`--fix-toggles` deletes exactly those lines and keeps every other byte; it
+aborts without writing if the table cannot be edited that way (for example
+inline or dotted keys). Other `config.toml` keys, including the Claude
+compatibility cells in `config.snippet.toml`, are not managed by this
+installer; merge them by hand.
+
+The hooks add a `SubagentStop` format gate for `verifier`, `plan-verifier` and
+`security-reviewer`, and a `PreToolUse` guard that denies write-capable
+`spawn_subagent` calls while Grok is in plan mode. Start a new Grok session
+after installing: agents, rules and hooks are read at session start.

@@ -107,6 +107,32 @@ class UpstreamLockTests(unittest.TestCase):
             for key in ("upstream", "version", "kind", "source"):
                 self.assertIn(key, entry, f"{host}.{key}")
 
+    def test_lock_records_the_grok_host_version(self) -> None:  # AC-GW-051
+        lock = tomllib.loads((ROOT / "upstream.lock").read_text(encoding="utf-8"))
+        version = (ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip()
+        self.assertEqual(lock["grok"]["marker_version"], version)
+        self.assertEqual(lock["grok"]["upstream"], "Nanako0129/pilotfish-grok")
+
+
+class GrokDocsTests(unittest.TestCase):
+    def read(self, name: str) -> str:
+        return (ROOT / name).read_text(encoding="utf-8")
+
+    def test_changelog_top_release_matches_product_version(self) -> None:  # AC-GW-050
+        version = self.read("VERSION").strip()
+        top = re.search(r"(?m)^## v(\S+)$", self.read("CHANGELOG.md"))
+        self.assertEqual(top.group(1), version)
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+
+    def test_readme_and_install_describe_the_grok_installer(self) -> None:  # AC-GW-052
+        readme, install = self.read("README.md"), self.read("INSTALL.md")
+        self.assertIn("https://github.com/Nanako0129/pilotfish-grok", readme)
+        self.assertIn("tools/install_grok.py", readme)
+        self.assertIn("1.0.6-shoal.1", readme)
+        self.assertIn("## Grok Build", install)
+        for flag in ("--apply", "--fix-toggles", "--restore", "--uninstall"):
+            self.assertIn(flag, install)
+
 
 if __name__ == "__main__":
     unittest.main()

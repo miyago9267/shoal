@@ -10,8 +10,9 @@
 kind = "derived"
 upstream = "Nanako0129/pilotfish-grok"
 version = "v1.0.6"
-source = "dotfile plugins/pilotfish-grok/templates @ b65a243（agents/ 於 2b-2 改由 core 條款產生）"
+source = "dotfile plugins/pilotfish-grok/templates @ b65a243（agents/ 於 2b-2 改由 core 條款產生；rules/pilotfish-grok.md 逐字取自上游 v1.0.6，只有 marker 由 hosts/grok/VERSION 產生；hooks/ 為 shoal 自有，由 tools/install_grok.py 安裝）"
 path = "hosts/grok/src"
+marker_version = "1.0.6-shoal.1"  # <!-- pilotfish-grok v... --> 的版本；等於 hosts/grok/VERSION
 
 [claude]
 kind = "fork-base"

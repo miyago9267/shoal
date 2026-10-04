@@ -3,7 +3,36 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
-## Unreleased
+## v1.1.0
+
+role-only 路線的四步（模型目錄、權限推導、role 契約、新增 host）完成，並補齊
+grok host 的 workflow（`docs/specs/grok-workflow/`）。新功能、沒有破壞性變更；
+grok、agy、OpenCode、Claude 的 role 文字改由 core 條款產生，agent prompt 因此
+有差異，細節見各段與 `docs/specs/role-contracts/MAPPING-*.md`。
+
+### Features
+
+grok host 補齊 orchestration policy、原生 hooks 與安裝路徑
+（`docs/specs/grok-workflow/`，G1-G4）。
+
+- 新增 `hosts/grok/VERSION`（`1.0.6-shoal.1`，衍生自上游
+  `Nanako0129/pilotfish-grok` v1.0.6）與 `rules/pilotfish-grok.md`：上游
+  orchestration rules 逐字放在 `hosts/grok/src/rules/`，renderer 只把 marker
+  換成 `<!-- pilotfish-grok v<VERSION> -->`；上游原文另存為測試 fixture，
+  測試確認兩者只差 marker 一行。
+- 新增 grok 原生 hooks（`hosts/grok/dist/hooks/`，只用 Python 標準函式庫）：
+  `SubagentStop` 格式 gate 檢查 `verifier`、`plan-verifier`、
+  `security-reviewer` 的最後回覆（三個 entry 各自定錨 matcher），不合格式時
+  退回重送，`stopHookActive` 時放行、任何解析錯誤 fail-open；`PreToolUse`
+  防護在 plan mode 拒絕產生可寫入的 subagent（plan mode 本身不擋 subagent）。
+- 新增 `tools/install_grok.py`：從 committed HEAD 安裝 agents、roles、rules 與
+  hooks 到 grok home。預設 dry-run，`--apply` 才寫入；寫入前備份被取代的檔案
+  與 `config.toml`；`--fix-toggles` 以最小文字編輯移除 `[subagents.toggle]`
+  中停用 shoal role 的 key；`--restore` 逐位元組還原、`--uninstall` 只移除
+  shoal 的檔案；安裝後驗證 hash 與 rules marker。不讀 credential、session、
+  history。
+- README 的 host 表、安裝方式與歸屬連結（`pilotfish-grok`）、`INSTALL.md` 的
+  Grok Build 段落與 `upstream.lock` 反映 grok 由 shoal 安裝。
 
 不寫程式碼新增 host（`docs/specs/new-host/`，N1-N3）。
 
@@ -97,6 +126,17 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
   render 失敗。
 - 五個 host 的 dist、`templates/` 與 golden 與之前逐位元組相同。
 - 新增 [docs/model-catalog.md](./docs/model-catalog.md)：登記新模型與換模型的步驟。
+
+### Fixes
+
+- grok 的 rules 與 agents 不再靠手動複製：先前 `~/.grok/rules` 可停在上游舊版
+  （v1.0.4）而沒有被發現；現在由 installer 從 committed dist 安裝並驗證 hash
+  與 marker。
+- grok config 的 `[subagents.toggle]` 把 shoal role 設成 `false` 時，installer
+  會標示出來，`--fix-toggles` 可只移除那幾個 key。
+- 測試避開 Python 3.12 才支援的 f-string 寫法，修正 3.11 的 CI。
+- role 文字審查後的調整：grok 補上 slice 沿用 envelope 的 addendum、agy 補回
+  do-not-start 子句，並修正 grok、agy、OpenCode 的對照表。
 
 ## v1.0.0
 
