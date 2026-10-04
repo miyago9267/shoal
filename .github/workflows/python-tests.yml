@@ -2,6 +2,7 @@ name: Python tests
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "install/**"
       - "hooks/**"
@@ -11,6 +12,7 @@ on:
       - "tools/**"
       - "README.md"
       - "CHANGELOG.md"
+      - "hosts/claude/**"
       - "hosts/codex/**"
       - "docs/README.zh-*.md"
       - "docs/specs/dispatch-verification/**"
@@ -28,6 +30,7 @@ on:
       - "tools/**"
       - "README.md"
       - "CHANGELOG.md"
+      - "hosts/claude/**"
       - "hosts/codex/**"
       - "docs/README.zh-*.md"
       - "docs/specs/dispatch-verification/**"
@@ -64,10 +67,24 @@ jobs:
       - name: Check Python syntax
         run: python -m py_compile hooks/pilotfish_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py install/evaluate_dispatch.py install/validate_prompt_lock.py
 
+      # Renewal 綠燈路徑：只有 PR 帶 label lock-renewal，或 push 到 main 的 head
+      # commit message 含一行 "Lock-Renewal: approved"，才放寬 LOCK.json 的變動。
+      # commit message 是不可信輸入，只經環境變數傳入，不插進指令字串。
       - name: Enforce prompt document lock
+        shell: bash
         env:
           PROMPT_LOCK_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: python install/validate_prompt_lock.py --base-ref "${PROMPT_LOCK_BASE}"
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HAS_RENEWAL_LABEL: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'lock-renewal') }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          flags=()
+          if [ "${EVENT_NAME}" = "pull_request" ] && [ "${PR_HAS_RENEWAL_LABEL}" = "true" ]; then
+            flags+=(--allow-lock-update)
+          elif [ "${EVENT_NAME}" = "push" ] && printf '%s\n' "${HEAD_COMMIT_MESSAGE}" | tr -d '\r' | grep -qx 'Lock-Renewal: approved'; then
+            flags+=(--allow-lock-update)
+          fi
+          python install/validate_prompt_lock.py --base-ref "${PROMPT_LOCK_BASE}" ${flags[@]+"${flags[@]}"}
 
       - name: Check shell syntax
         if: runner.os != 'Windows'
