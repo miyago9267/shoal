@@ -3,7 +3,7 @@ title: Claude host 的 eval parity 與失敗分類
 status: approved
 approved_by: Miyago
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -22,8 +22,9 @@ updated: 2026-10-04
 1.1.0 相比，`hosts/claude`、lock 與 content runner 沒有差異）：
 
 - **prompt 保護只涵蓋 Codex。** `docs/specs/prompt-document-lock/LOCK.json`
-  有 16 個 surface（SPEC.md:79 寫的 15 是舊數字），全部是 `templates/`、
-  `plugin/` 與 `INSTALL_PROMPT.md`；沒有 `hosts/claude`。Claude host 的
+  有 16 個 surface（SPEC.md:79 寫的 15 是舊數字；B0 後為 27，見下方
+  Decision 2、6），全部是 `templates/`、`plugin/` 與 `INSTALL_PROMPT.md`；
+  沒有 `hosts/claude`。Claude host 的
   prompt 只受 `tests/test_render_claude.py` 與 golden 保護：能偵測「有沒有
   變」，但沒有變更預算與 `required_fragments`。
 - **CI 不會擋 Claude 的變更。** `.github/workflows/python-tests.yml` 的
@@ -173,6 +174,14 @@ inconclusive 路徑（`run_role_fitness_content.py:379`）歸入 `unclassified`�
    驗算，不能只看單檔。B0 在訂預算時要實際渲染一次典型的 core 條款改動，
    確認每個 surface 仍落在預算內。lock 只保護 dist；來源（`core/`、
    `hosts/claude/addenda/`）仍由 `render --check` 與 golden 保護。
+   - **實作結果（2026-10-05，main session 決定，待 Miyago 確認）**：
+     模擬「單一 core 條款同時改動所有 core agent」後，`executor`、
+     `mech-executor`、`security-executor` 三個 surface 的
+     `max_change_ratio` 訂為 0.35（validator 的 hard ceiling
+     `HARD_MAX_CHANGE_RATIO`），其餘 8 個維持 0.2。原因：validator 以行為單位
+     計算，Claude 的段落是單一長行，改一句會把整段算兩次（一行刪、一行
+     增），0.2 會擋掉正常的單一條款修改。這偏離上面「比例 0.2」的預設，
+     Miyago 若不同意，需重訂這三個 surface 的預算。
 3. **介面先抽、行為不變**：先重構 Codex 路徑並證明零行為變化，再加
    Claude adapter，避免兩件事混在同一個 diff。
 4. **失敗分類以 runner stage dict 推導**：分類器的輸入是
@@ -213,14 +222,18 @@ inconclusive 路徑（`run_role_fitness_content.py:379`）歸入 `unclassified`�
    號變更，不要求根目錄 `VERSION` 變更；這符合 README「各 host 版本另外
    維護，互不連動」。理由：在 repo 或 fork 裡客製單一 host 的 prompt，
    不應該推動整個 shoal 的產品版本。
-   - 現況：`install/validate_prompt_lock.py` 的 VERSION gate 寫死根目錄
-     `VERSION`（`_validate_lock_shape`），B0 要改成依 surface 所屬 host
-     判斷。
-   - Claude host 的版本目前只是 `SKILL.md` 裡的 marker 註解
-     （`pilotfish-claude v1.4.2-claude.1`），B0 要給它正式位置（例如
-     `hosts/claude/VERSION`），並檢查與 marker 一致。
-   - Codex surface 是否一併改用 `hosts/codex/VERSION`，在 B0 設計時
-     決定；預設一併改，讓所有 host 行為一致。
+   - 原況：`install/validate_prompt_lock.py` 的 VERSION gate 寫死根目錄
+     `VERSION`（`_validate_lock_shape`）。**已實作（B0，2026-10-05）**：
+     `LOCK.json` 升為 schema v2，每個 surface 有必填的 `version_file`
+     （格式 `hosts/<host>/VERSION`），validator 依 surface 逐一檢查所屬
+     host 的版本檔相對 base 是否變更；`version_gate` 只剩
+     `require_change_for_protected_surfaces`。
+   - Claude host 的版本原本只是 `SKILL.md` 裡的 marker 註解。**已實作**：
+     正式位置為 `hosts/claude/VERSION`（目前 `1.4.2-claude.2`），測試檢查
+     與 marker 一致。
+   - Codex surface 一併改用 `hosts/codex/VERSION`：**已採用並已實作**，
+     16 個 Codex surface 全部對應該檔，不再看根目錄 `VERSION`，讓所有
+     host 行為一致。
 
 ## Live run 與成本
 

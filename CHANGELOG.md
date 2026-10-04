@@ -34,6 +34,24 @@ OpenCode 全域安裝（`docs/specs/opencode-global/`，O1-O2）。
   否則用全域 `<config-dir>/pilotfish/`，全域路徑同樣做穿越檢查。同一個 instance
   載入多份 plugin 時只註冊一次 `pilotfish_route`。
 
+Prompt lock 依 host 判斷版本，並納入 Claude surface
+（`docs/specs/claude-eval-parity/`，B0）。
+
+- `LOCK.json` 升為 schema v2：每個 surface 有必填的 `version_file`
+  （`hosts/<host>/VERSION`），`version_gate` 只剩
+  `require_change_for_protected_surfaces`。protected surface 有變更時，只要求該
+  surface 所屬 host 的版本檔變更，不再看根目錄 `VERSION`；Codex 的 16 個 surface
+  對應 `hosts/codex/VERSION`。
+- Claude host 的 8 個 agent、`pilotfish-orchestration` 的 `SKILL.md` 與 2 份
+  reference 共 11 個 surface 加入 lock（共 27 個）。`executor`、`mech-executor`、
+  `security-executor` 的 `max_change_ratio` 為 0.35，其餘 0.2。
+- CI `python-tests` 的 `paths` 加入 `hosts/claude/**`。lock renewal 有兩條綠燈
+  路徑：PR label `lock-renewal`，或 main push 的 head commit 含
+  `Lock-Renewal: approved`；兩者只放寬 `LOCK.json` 的變動，既有 surface 的預算與
+  版本檢查照常。
+- 新增 `hosts/claude/VERSION`，Claude host 版本 `1.4.2-claude.2`，測試檢查與
+  `SKILL.md` marker 一致。
+
 ### 已知限制
 
 - 專案 plugin 的共存警告只檢查目前目錄與其 git root；`--target` 沒有集中記錄，

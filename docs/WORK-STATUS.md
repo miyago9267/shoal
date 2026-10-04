@@ -207,10 +207,16 @@ rechecked after the new role bindings are installed:
 2026-10-04 依 plan-verifier 審查意見修正後，Miyago 核准為後續設定基準。
 
 - [x] `docs/specs/review-tradeoff-privacy/SPEC.md`（verifier 列隱含權衡、
-  security-reviewer 補隱私檢查；A3 列為 non-goal）。待實作 A1-A3。
+  security-reviewer 補隱私檢查；A3 列為 non-goal）。Spec A 的 A1-A3 已完成並
+  push（v1.2.0）。
 - [x] `docs/specs/claude-eval-parity/SPEC.md`、`TASKS.md`、`TESTS.md`
   （Claude prompt surface 加入 lock、role-fitness host adapter、content 層
   失敗分類）。Open questions 全部已決定；付費 run 需另行核准。
+  - Spec B 的 B0 已完成（2026-10-05）：lock 依 host 判斷版本，27 個 surface
+    （含 11 個 Claude），CI 納入 `hosts/claude/**` 與 renewal 綠燈路徑。
+    B0 的 CI 實證（main push trailer 路徑）待 renewal commit 的結果。
+  - B1、B2、B3 待實作。
+  - B4、B5 為付費 run，需另行核准。
 
 ### In progress — P0 policy installation safety
 

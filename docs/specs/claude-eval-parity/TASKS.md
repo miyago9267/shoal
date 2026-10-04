@@ -17,27 +17,42 @@
 
 ## Phase B0 — Claude prompt surface 加入 lock
 
-- [ ] VERSION gate 改為依 surface 所屬 host 判斷（Decision 6）：
+- [x] VERSION gate 改為依 surface 所屬 host 判斷（Decision 6）：
       `validate_prompt_lock.py`、`LOCK.json` schema 與對應測試。
-- [ ] 給 Claude host 版本正式位置（例如 `hosts/claude/VERSION`），並檢查
-      與 `SKILL.md` 的 marker 一致。
-- [ ] 決定 Codex surface 是否一併改用 `hosts/codex/VERSION`（該檔已存在，
-      1.8.1；目前 gate 仍讀根目錄 `VERSION`）。
-- [ ] 依 Decision 2 為 11 個 Claude surface 訂出 `max_lines`、`max_bytes`、
+- [x] 給 Claude host 版本正式位置 `hosts/claude/VERSION`
+      （`1.4.2-claude.2`），測試檢查與 `SKILL.md` 的 marker 一致
+      （`5d38a3d`）。
+- [x] Codex surface 一併改用 `hosts/codex/VERSION`（已採用；16 個 Codex
+      surface 全部對應該檔，不再讀根目錄 `VERSION`）。
+- [x] 依 Decision 2 為 11 個 Claude surface 訂出 `max_lines`、`max_bytes`、
       變更預算與 `required_fragments`；實際渲染一次「單一 core 條款同時
-      改動所有 core agent」的情境，確認每個 surface 仍在預算內。
-- [ ] `.github/workflows/python-tests.yml`：`pull_request` 與 `push` 的
-      `paths` 加入 `hosts/claude/**`。
-- [ ] 實作 renewal 綠燈路徑（R2）：PR label `lock-renewal` 與 main push
+      改動所有 core agent」的情境，確認每個 surface 仍在預算內。結果：
+      `executor`、`mech-executor`、`security-executor` 的
+      `max_change_ratio` 訂為 0.35，其餘 0.2（SPEC Decision 2，2026-10-05，
+      待 Miyago 確認）。
+- [x] `.github/workflows/python-tests.yml`：`pull_request` 與 `push` 的
+      `paths` 加入 `hosts/claude/**`（`1124088`）。
+- [x] 實作 renewal 綠燈路徑（R2）：PR label `lock-renewal` 與 main push
       的 `Lock-Renewal: approved` trailer 才對 lock 檢查加
-      `--allow-lock-update`；PR 的 `types` 加 `labeled`、`unlabeled`。
-- [ ] 以一次 `--allow-lock-update` renewal 更新 `LOCK.json`，同一個
+      `--allow-lock-update`；PR 的 `types` 加 `labeled`、`unlabeled`
+      （`1124088`；離線測試 `tests/test_ci_workflow.py` 已過）。
+- [x] 以一次 `--allow-lock-update` renewal 更新 `LOCK.json`，同一個
       commit 不改任何 prompt 內容（`git diff --name-only` 只含 lock、
       validator、版本檔與測試）；renewal 經上述路徑送出，CI 為綠。
+  - 驗證程度：renewal commit `91a23e6` 只改 `LOCK.json`、validator 與測試，
+    不含 prompt 內容，且帶 `Lock-Renewal: approved` trailer；離線已過。
+    main push 的 trailer 路徑已由該 commit 的 CI 驗證（2026-10-05，
+    Python tests 在 macos、ubuntu、windows 都是 success）。PR label 路徑
+    沒有真實 PR 驗證過。
 - [ ] 確認 `validate_prompt_lock.py` 對新 surface 生效：故意改動一個
       Claude agent 會被擋下，且只改 `hosts/claude/dist/agents/*.md` 的 PR
       會觸發 workflow。
-- [ ] 更新 `docs/specs/prompt-document-lock/SPEC.md` 的 surface 清單與數量。
+  - 驗證程度：離線測試已過（Claude agent 超出預算、缺 required fragment、
+    未 bump `hosts/claude/VERSION` 都會失敗並指出 surface）；`paths`
+    觸發只由 `tests/test_ci_workflow.py` 檢查設定，尚未由真實 PR 驗證。
+    第一次真實 renewal 或 Claude prompt PR 確認 CI 行為後再勾。
+- [x] 更新 `docs/specs/prompt-document-lock/SPEC.md` 的 surface 清單與數量
+      （27 個）。
 
 ## Phase B1 — host adapter 介面
 
