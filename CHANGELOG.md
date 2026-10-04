@@ -129,6 +129,8 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
 
 ### Fixes
 
+- `tools/install_grok.py` 取代既有檔案時保留原本的權限，不再把 `config.toml`
+  放寬成 0644；備份目錄改為 0700、備份檔 0600。
 - grok 的 rules 與 agents 不再靠手動複製：先前 `~/.grok/rules` 可停在上游舊版
   （v1.0.4）而沒有被發現；現在由 installer 從 committed dist 安裝並驗證 hash
   與 marker。

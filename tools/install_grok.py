@@ -28,6 +28,7 @@ import io
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tarfile
@@ -242,11 +243,21 @@ def describe(plan: Plan, fix_toggles: bool) -> list[str]:
 
 
 # ---- 寫入 ----
-def write_file(path: Path, data: bytes, executable: bool = False) -> None:
+def write_file(
+    path: Path, data: bytes, executable: bool = False, mode: int | None = None
+) -> None:
+    """取代既有檔案時保留原本的權限：config.toml 可能放 api_key，不能被放寬成 0644。"""
+    if mode is None:
+        if executable:
+            mode = 0o755
+        elif path.exists():
+            mode = stat.S_IMODE(path.stat().st_mode)
+        else:
+            mode = 0o644
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".shoal-tmp")
     tmp.write_bytes(data)
-    os.chmod(tmp, 0o755 if executable else 0o644)
+    os.chmod(tmp, mode)
     os.replace(tmp, path)
 
 
@@ -269,10 +280,13 @@ def make_backup(
         if not target.exists():
             break
         n += 1
+    # 備份可能含 config.toml 的 secret：目錄 0700、檔案 0600
+    (target / "files").mkdir(parents=True, mode=0o700)
+    os.chmod(target, 0o700)
     for rel, data in saved.items():
-        write_file(target / "files" / rel, data)
+        write_file(target / "files" / rel, data, mode=0o600)
     if config is not None:
-        write_file(target / "files" / CONFIG, config)
+        write_file(target / "files" / CONFIG, config, mode=0o600)
     manifest = {
         "version": 1,
         "action": action,

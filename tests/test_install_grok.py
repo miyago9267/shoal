@@ -3,6 +3,7 @@
 來源是 temp 目錄裡的 git repo（由本 repo 的 hosts/grok/dist 與 VERSION 建立並 commit），
 grok home 一律是 temp 目錄；測試不讀寫真實的 ~/.grok。
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -21,10 +22,23 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import install_grok  # noqa: E402
 
-ROLES = ("scout", "plan-verifier", "security-reviewer", "mech-executor", "executor", "verifier", "security-executor")
-SECRETS = {"auth.json": b'{"token": "SECRET-1"}\n', "sessions/s1/messages.jsonl": b"{}\n",
-           "history.jsonl": b"hello\n", "trusted_folders.toml": b"[x]\n", ".env": b"KEY=VALUE\n",
-           "credentials/token": b"SECRET-2"}
+ROLES = (
+    "scout",
+    "plan-verifier",
+    "security-reviewer",
+    "mech-executor",
+    "executor",
+    "verifier",
+    "security-executor",
+)
+SECRETS = {
+    "auth.json": b'{"token": "SECRET-1"}\n',
+    "sessions/s1/messages.jsonl": b"{}\n",
+    "history.jsonl": b"hello\n",
+    "trusted_folders.toml": b"[x]\n",
+    ".env": b"KEY=VALUE\n",
+    "credentials/token": b"SECRET-2",
+}
 
 CONFIG = """# user config
 [models]
@@ -62,12 +76,31 @@ def sha(path: Path) -> str:
 
 
 def tree(home: Path) -> dict[str, str]:
-    return {p.relative_to(home).as_posix(): sha(p) for p in sorted(home.rglob("*")) if p.is_file()}
+    return {
+        p.relative_to(home).as_posix(): sha(p)
+        for p in sorted(home.rglob("*"))
+        if p.is_file()
+    }
 
 
 def run_git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false",
-                    "-C", str(repo), *args], check=True, capture_output=True, timeout=60)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-C",
+            str(repo),
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
 
 
 class InstallGrokCase(unittest.TestCase):
@@ -77,30 +110,48 @@ class InstallGrokCase(unittest.TestCase):
         base = Path(tmp.name)
         self.repo, self.home = base / "repo", base / "grok-home"
         (self.repo / "hosts" / "grok").mkdir(parents=True)
-        shutil.copytree(ROOT / "hosts" / "grok" / "dist", self.repo / "hosts" / "grok" / "dist")
-        shutil.copy(ROOT / "hosts" / "grok" / "VERSION", self.repo / "hosts" / "grok" / "VERSION")
+        shutil.copytree(
+            ROOT / "hosts" / "grok" / "dist", self.repo / "hosts" / "grok" / "dist"
+        )
+        shutil.copy(
+            ROOT / "hosts" / "grok" / "VERSION",
+            self.repo / "hosts" / "grok" / "VERSION",
+        )
         run_git(self.repo, "init", "-q")
         run_git(self.repo, "add", "-A")
         run_git(self.repo, "commit", "-q", "-m", "dist")
         self.home.mkdir()
         self.dist = self.repo / "hosts" / "grok" / "dist"
-        self.version = (self.repo / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip()
+        self.version = (
+            (self.repo / "hosts" / "grok" / "VERSION")
+            .read_text(encoding="utf-8")
+            .strip()
+        )
 
     def run_cli(self, *args: str) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             try:
-                code = install_grok.main(["--grok-home", str(self.home), "--repo", str(self.repo), *args])
+                code = install_grok.main(
+                    ["--grok-home", str(self.home), "--repo", str(self.repo), *args]
+                )
             except SystemExit as exc:  # argparse 的錯誤
                 code = int(exc.code)
         return code, out.getvalue(), err.getvalue()
 
     def installable(self) -> dict[str, str]:
-        return {p.relative_to(self.dist).as_posix(): sha(p) for p in sorted(self.dist.rglob("*"))
-                if p.is_file() and p.relative_to(self.dist).parts[0] in ("agents", "roles", "rules", "hooks")}
+        return {
+            p.relative_to(self.dist).as_posix(): sha(p)
+            for p in sorted(self.dist.rglob("*"))
+            if p.is_file()
+            and p.relative_to(self.dist).parts[0]
+            in ("agents", "roles", "rules", "hooks")
+        }
 
     def installed(self) -> dict[str, str]:
-        return {k: v for k, v in tree(self.home).items() if not k.startswith("backups/")}
+        return {
+            k: v for k, v in tree(self.home).items() if not k.startswith("backups/")
+        }
 
     def write_config(self, text: str = CONFIG) -> bytes:
         data = text.encode("utf-8")
@@ -116,7 +167,9 @@ class DryRunTests(InstallGrokCase):
     def test_dry_run_writes_nothing(self) -> None:  # AC-GW-030
         self.write_config()
         (self.home / "agents").mkdir()
-        (self.home / "agents" / "scout.md").write_text("old", encoding="utf-8", newline="\n")
+        (self.home / "agents" / "scout.md").write_text(
+            "old", encoding="utf-8", newline="\n"
+        )
         before = tree(self.home)
         code, out, _ = self.run_cli()
         self.assertEqual(code, 0)
@@ -138,10 +191,22 @@ class DryRunTests(InstallGrokCase):
         self.assertIn("加 --fix-toggles 才會移除", out)
         self.assertNotIn("Explore", out.split("設成 false:")[1].splitlines()[0])
 
-    def test_cli_runs_under_cp1252_stdout(self) -> None:  # 輸出中文不可在 Windows 預設編碼下失敗
-        done = subprocess.run([sys.executable, str(ROOT / "tools" / "install_grok.py"), "--grok-home", str(self.home),
-                               "--repo", str(self.repo)], capture_output=True, timeout=60,
-                              env={**os.environ, "PYTHONIOENCODING": "cp1252"})
+    def test_cli_runs_under_cp1252_stdout(
+        self,
+    ) -> None:  # 輸出中文不可在 Windows 預設編碼下失敗
+        done = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tools" / "install_grok.py"),
+                "--grok-home",
+                str(self.home),
+                "--repo",
+                str(self.repo),
+            ],
+            capture_output=True,
+            timeout=60,
+            env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+        )
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("dry-run", done.stdout.decode("utf-8"))
 
@@ -163,13 +228,21 @@ class ApplyTests(InstallGrokCase):
 
     def test_installed_hooks_are_runnable_from_the_grok_home(self) -> None:  # AC-GW-031
         self.run_cli("--apply")
-        config = json.loads((self.home / "hooks" / "pilotfish-grok.json").read_text(encoding="utf-8"))
+        config = json.loads(
+            (self.home / "hooks" / "pilotfish-grok.json").read_text(encoding="utf-8")
+        )
         command = config["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         script = self.home / "hooks" / command  # 相對於 JSON 檔
-        payload = json.dumps({"permissionMode": "plan", "toolInput": {"subagent_type": "executor"}})
+        payload = json.dumps(
+            {"permissionMode": "plan", "toolInput": {"subagent_type": "executor"}}
+        )
         # 以 sys.executable 執行：Windows 不看 shebang 與執行權限
-        done = subprocess.run([sys.executable, str(script), "--grok-home", str(self.home)], input=payload.encode(),
-                              capture_output=True, timeout=30)
+        done = subprocess.run(
+            [sys.executable, str(script), "--grok-home", str(self.home)],
+            input=payload.encode(),
+            capture_output=True,
+            timeout=30,
+        )
         self.assertEqual(json.loads(done.stdout)["decision"], "deny")
 
     def test_apply_backs_up_replaced_files_and_config(self) -> None:  # AC-GW-032
@@ -183,19 +256,29 @@ class ApplyTests(InstallGrokCase):
         (backup,) = self.backups()
         self.assertRegex(backup.name, r"^shoal-\d{8}-\d{6}$")
         self.assertEqual((backup / "files" / "config.toml").read_bytes(), config)
-        self.assertEqual((backup / "files" / "agents" / "scout.md").read_bytes(), b"old scout")
-        self.assertEqual((backup / "files" / "rules" / "pilotfish-grok.md").read_bytes(), old_rules)
-        self.assertFalse((backup / "files" / "agents" / "executor.md").exists())  # 新增的檔案沒有舊版可備份
+        self.assertEqual(
+            (backup / "files" / "agents" / "scout.md").read_bytes(), b"old scout"
+        )
+        self.assertEqual(
+            (backup / "files" / "rules" / "pilotfish-grok.md").read_bytes(), old_rules
+        )
+        self.assertFalse(
+            (backup / "files" / "agents" / "executor.md").exists()
+        )  # 新增的檔案沒有舊版可備份
         manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
         self.assertIn("agents/executor.md", manifest["created"])
         self.assertNotIn("agents/scout.md", manifest["created"])
 
-    def test_apply_without_fix_toggles_keeps_config_byte_identical(self) -> None:  # AC-GW-033
+    def test_apply_without_fix_toggles_keeps_config_byte_identical(
+        self,
+    ) -> None:  # AC-GW-033
         config = self.write_config()
         self.assertEqual(self.run_cli("--apply")[0], 0)
         self.assertEqual((self.home / "config.toml").read_bytes(), config)
 
-    def test_apply_twice_skips_everything_without_a_second_backup(self) -> None:  # AC-GW-040
+    def test_apply_twice_skips_everything_without_a_second_backup(
+        self,
+    ) -> None:  # AC-GW-040
         self.run_cli("--apply")
         self.assertEqual(len(self.backups()), 1)
         before = tree(self.home)
@@ -209,23 +292,34 @@ class ApplyTests(InstallGrokCase):
 
     def test_installs_committed_head_not_the_working_tree(self) -> None:  # AC-GW-038
         committed = self.installable()
-        (self.dist / "agents" / "scout.md").write_text("dirty working tree", encoding="utf-8", newline="\n")
-        (self.dist / "rules" / "extra.md").write_text("untracked", encoding="utf-8", newline="\n")
+        (self.dist / "agents" / "scout.md").write_text(
+            "dirty working tree", encoding="utf-8", newline="\n"
+        )
+        (self.dist / "rules" / "extra.md").write_text(
+            "untracked", encoding="utf-8", newline="\n"
+        )
         code, out, _ = self.run_cli("--apply")
         self.assertEqual(code, 0)
         self.assertIn("未 commit", out)
         self.assertEqual(self.installed(), committed)
 
-    def test_aborts_before_writing_on_unbalanced_rules_markers(self) -> None:  # AC-GW-039
+    def test_aborts_before_writing_on_unbalanced_rules_markers(
+        self,
+    ) -> None:  # AC-GW-039
         (self.home / "rules").mkdir()
         rules = self.home / "rules" / "pilotfish-grok.md"
-        for text in (f"{install_grok.BEGIN}\na\n{install_grok.END}\n{install_grok.BEGIN}\nb\n{install_grok.END}\n",
-                     f"{install_grok.BEGIN}\nno end\n"):
+        for text in (
+            f"{install_grok.BEGIN}\na\n{install_grok.END}\n{install_grok.BEGIN}\nb\n{install_grok.END}\n",
+            f"{install_grok.BEGIN}\nno end\n",
+        ):
             rules.write_text(text, encoding="utf-8", newline="\n")
             code, _, err = self.run_cli("--apply")
             self.assertEqual(code, 2)
             self.assertIn("marker", err)
-            self.assertEqual(tree(self.home), {"rules/pilotfish-grok.md": hashlib.sha256(text.encode()).hexdigest()})
+            self.assertEqual(
+                tree(self.home),
+                {"rules/pilotfish-grok.md": hashlib.sha256(text.encode()).hexdigest()},
+            )
 
     def test_aborts_on_invalid_config_toml(self) -> None:
         self.write_config("[subagents\n")
@@ -238,23 +332,34 @@ class ApplyTests(InstallGrokCase):
         self.run_cli("--apply")
         files, version, commit = install_grok.load_source(self.repo, "HEAD")
         plan = install_grok.Plan(self.home, files, version, commit, False)
-        (self.home / "agents" / "scout.md").write_text("tampered", encoding="utf-8", newline="\n")
-        (self.home / "rules" / "pilotfish-grok.md").write_text("<!-- pilotfish-grok v9.9.9 -->\n", encoding="utf-8", newline="\n")
+        (self.home / "agents" / "scout.md").write_text(
+            "tampered", encoding="utf-8", newline="\n"
+        )
+        (self.home / "rules" / "pilotfish-grok.md").write_text(
+            "<!-- pilotfish-grok v9.9.9 -->\n", encoding="utf-8", newline="\n"
+        )
         problems = install_grok.verify(plan)
         self.assertIn("hash 不符: agents/scout.md", problems)
         self.assertTrue(any("marker" in p for p in problems))
 
 
 class FixTogglesTests(InstallGrokCase):
-    EXPECTED = CONFIG.replace("security-reviewer = false\n", "").replace('"scout" = false   # old workaround\n', "") \
+    EXPECTED = (
+        CONFIG.replace("security-reviewer = false\n", "")
+        .replace('"scout" = false   # old workaround\n', "")
         .replace("plan-verifier = false\n", "")
+    )
 
     def test_removes_only_shoal_role_false_keys(self) -> None:  # AC-GW-034
         self.write_config()
         code, out, _ = self.run_cli("--apply", "--fix-toggles")
         self.assertEqual(code, 0, out)
-        self.assertEqual((self.home / "config.toml").read_text(encoding="utf-8"), self.EXPECTED)
-        self.assertIn("Explore = false", self.EXPECTED)  # 非 shoal 的 key 與 true 的 key 留著
+        self.assertEqual(
+            (self.home / "config.toml").read_text(encoding="utf-8"), self.EXPECTED
+        )
+        self.assertIn(
+            "Explore = false", self.EXPECTED
+        )  # 非 shoal 的 key 與 true 的 key 留著
         self.assertIn("executor = true", self.EXPECTED)
         self.assertIn("codex = false", self.EXPECTED)
 
@@ -262,7 +367,10 @@ class FixTogglesTests(InstallGrokCase):
         crlf = CONFIG.replace("\n", "\r\n").rstrip("\r\n")
         self.write_config(crlf)
         self.assertEqual(self.run_cli("--apply", "--fix-toggles")[0], 0)
-        self.assertEqual((self.home / "config.toml").read_bytes(), self.EXPECTED.replace("\n", "\r\n").rstrip("\r\n").encode())
+        self.assertEqual(
+            (self.home / "config.toml").read_bytes(),
+            self.EXPECTED.replace("\n", "\r\n").rstrip("\r\n").encode(),
+        )
 
     def test_dry_run_with_fix_toggles_does_not_edit(self) -> None:  # AC-GW-034
         config = self.write_config()
@@ -272,7 +380,10 @@ class FixTogglesTests(InstallGrokCase):
         self.assertEqual((self.home / "config.toml").read_bytes(), config)
 
     def test_aborts_when_minimal_edit_is_impossible(self) -> None:  # AC-GW-034
-        for text in ("[subagents]\ntoggle = { scout = false }\n", "[subagents]\ntoggle.scout = false\n"):
+        for text in (
+            "[subagents]\ntoggle = { scout = false }\n",
+            "[subagents]\ntoggle.scout = false\n",
+        ):
             with self.subTest(text):
                 data = self.write_config(text)
                 before = tree(self.home)
@@ -295,8 +406,27 @@ class FixTogglesTests(InstallGrokCase):
         self.assertEqual(self.run_cli("--uninstall", "--fix-toggles")[0], 2)
 
 
+class PermissionTests(InstallGrokCase):
+    @unittest.skipIf(os.name == "nt", "POSIX 權限位元")
+    def test_config_mode_is_preserved_and_backups_are_private(self) -> None:
+        # config.toml 可能放 api_key：安裝、改 toggle、還原都不能把 0600 放寬
+        self.write_config()
+        os.chmod(self.home / "config.toml", 0o600)
+        self.assertEqual(self.run_cli("--apply", "--fix-toggles")[0], 0)
+        self.assertEqual(os.stat(self.home / "config.toml").st_mode & 0o777, 0o600)
+        (backup,) = self.backups()
+        self.assertEqual(os.stat(backup).st_mode & 0o777, 0o700)
+        self.assertEqual(
+            os.stat(backup / "files" / "config.toml").st_mode & 0o777, 0o600
+        )
+        self.assertEqual(self.run_cli("--restore", str(backup), "--apply")[0], 0)
+        self.assertEqual(os.stat(self.home / "config.toml").st_mode & 0o777, 0o600)
+
+
 class RestoreTests(InstallGrokCase):
-    def test_restore_brings_back_config_and_files_byte_for_byte(self) -> None:  # AC-GW-035
+    def test_restore_brings_back_config_and_files_byte_for_byte(
+        self,
+    ) -> None:  # AC-GW-035
         config = self.write_config()
         (self.home / "agents").mkdir()
         (self.home / "agents" / "scout.md").write_bytes(b"old scout \xe4\xb8\xad")
@@ -307,10 +437,14 @@ class RestoreTests(InstallGrokCase):
         (backup,) = self.backups()
         code, out, _ = self.run_cli("--restore", str(backup), "--apply")
         self.assertEqual(code, 0, out)
-        after = {k: v for k, v in tree(self.home).items() if not k.startswith("backups/")}
+        after = {
+            k: v for k, v in tree(self.home).items() if not k.startswith("backups/")
+        }
         self.assertEqual(after, before)
         self.assertEqual((self.home / "config.toml").read_bytes(), config)
-        self.assertFalse((self.home / "hooks").exists() and any((self.home / "hooks").rglob("*")))
+        self.assertFalse(
+            (self.home / "hooks").exists() and any((self.home / "hooks").rglob("*"))
+        )
 
     def test_restore_is_dry_run_without_apply(self) -> None:  # AC-GW-030
         self.write_config()
@@ -323,7 +457,9 @@ class RestoreTests(InstallGrokCase):
 
     def test_restore_rejects_a_directory_that_is_not_a_backup(self) -> None:
         (self.home / "x").mkdir()
-        self.assertEqual(self.run_cli("--restore", str(self.home / "x"), "--apply")[0], 2)
+        self.assertEqual(
+            self.run_cli("--restore", str(self.home / "x"), "--apply")[0], 2
+        )
 
     def test_restore_rejects_manifest_paths_outside_shoal_files(self) -> None:  # R6
         self.run_cli("--apply")
@@ -331,34 +467,63 @@ class RestoreTests(InstallGrokCase):
         manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
         for bad in ("../outside.txt", "auth.json", "/etc/passwd", "sessions/a.jsonl"):
             manifest["created"] = [bad]
-            (backup / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8", newline="\n")
+            (backup / "manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8", newline="\n"
+            )
             with self.subTest(bad):
-                self.assertEqual(self.run_cli("--restore", str(backup), "--apply")[0], 2)
+                self.assertEqual(
+                    self.run_cli("--restore", str(backup), "--apply")[0], 2
+                )
 
 
 class UninstallTests(InstallGrokCase):
     def test_uninstall_removes_only_shoal_files(self) -> None:  # AC-GW-036
         config = self.write_config()
         self.run_cli("--apply")
-        for rel in ("agents/mine.md", "roles/mine.toml", "rules/other.md", "hooks/other.json", "hooks/pilotfish-grok/notes.txt"):
+        for rel in (
+            "agents/mine.md",
+            "roles/mine.toml",
+            "rules/other.md",
+            "hooks/other.json",
+            "hooks/pilotfish-grok/notes.txt",
+        ):
             (self.home / rel).write_bytes(b"user file")
-        user_files = {rel: sha(self.home / rel) for rel in ("agents/mine.md", "roles/mine.toml", "rules/other.md",
-                                                            "hooks/other.json", "hooks/pilotfish-grok/notes.txt")}
+        user_files = {
+            rel: sha(self.home / rel)
+            for rel in (
+                "agents/mine.md",
+                "roles/mine.toml",
+                "rules/other.md",
+                "hooks/other.json",
+                "hooks/pilotfish-grok/notes.txt",
+            )
+        }
         code, _, _ = self.run_cli("--uninstall", "--apply")
         self.assertEqual(code, 0)
-        remaining = {k: v for k, v in tree(self.home).items() if not k.startswith("backups/")}
-        self.assertEqual(remaining, {**user_files, "config.toml": hashlib.sha256(config).hexdigest()})
+        remaining = {
+            k: v for k, v in tree(self.home).items() if not k.startswith("backups/")
+        }
+        self.assertEqual(
+            remaining, {**user_files, "config.toml": hashlib.sha256(config).hexdigest()}
+        )
         self.assertEqual((self.home / "config.toml").read_bytes(), config)
 
-    def test_uninstall_removes_empty_hook_directory_and_can_be_restored(self) -> None:  # AC-GW-036
+    def test_uninstall_removes_empty_hook_directory_and_can_be_restored(
+        self,
+    ) -> None:  # AC-GW-036
         self.write_config()
         self.run_cli("--apply")
-        installed = {k: v for k, v in tree(self.home).items() if not k.startswith("backups/")}
+        installed = {
+            k: v for k, v in tree(self.home).items() if not k.startswith("backups/")
+        }
         self.run_cli("--uninstall", "--apply")
         self.assertFalse((self.home / "hooks" / "pilotfish-grok").exists())
         backup = self.backups()[-1]
         self.assertEqual(self.run_cli("--restore", str(backup), "--apply")[0], 0)
-        self.assertEqual({k: v for k, v in tree(self.home).items() if not k.startswith("backups/")}, installed)
+        self.assertEqual(
+            {k: v for k, v in tree(self.home).items() if not k.startswith("backups/")},
+            installed,
+        )
 
     def test_uninstall_is_dry_run_without_apply(self) -> None:  # AC-GW-030
         self.run_cli("--apply")
@@ -369,13 +534,21 @@ class UninstallTests(InstallGrokCase):
 
 
 class CredentialIsolationTests(InstallGrokCase):
-    def test_never_touches_credential_session_or_history_files(self) -> None:  # AC-GW-037
+    def test_never_touches_credential_session_or_history_files(
+        self,
+    ) -> None:  # AC-GW-037
         global _watching
         self.write_config()
         for rel, data in SECRETS.items():
             (self.home / rel).parent.mkdir(parents=True, exist_ok=True)
             (self.home / rel).write_bytes(data)
-        secrets = {self.home / rel: (sha(self.home / rel), (self.home / rel).stat().st_mtime_ns) for rel in SECRETS}
+        secrets = {
+            self.home / rel: (
+                sha(self.home / rel),
+                (self.home / rel).stat().st_mtime_ns,
+            )
+            for rel in SECRETS
+        }
         _opened.clear()
         _watching = True
         try:
@@ -386,12 +559,20 @@ class CredentialIsolationTests(InstallGrokCase):
             self.assertEqual(self.run_cli("--uninstall", "--apply")[0], 0)
         finally:
             _watching = False
-        opened_under_home = [p for p in _opened if p.startswith(str(self.home.resolve())) or p.startswith(str(self.home))]
+        opened_under_home = [
+            p
+            for p in _opened
+            if p.startswith(str(self.home.resolve())) or p.startswith(str(self.home))
+        ]
         self.assertTrue(opened_under_home)  # 監看機制有效：安裝本身有開啟檔案
         for rel in SECRETS:
-            self.assertFalse([p for p in opened_under_home if Path(p) == self.home / rel], rel)
+            self.assertFalse(
+                [p for p in opened_under_home if Path(p) == self.home / rel], rel
+            )
         for path, (digest, mtime) in secrets.items():
-            self.assertEqual((sha(path), path.stat().st_mtime_ns), (digest, mtime), path.name)
+            self.assertEqual(
+                (sha(path), path.stat().st_mtime_ns), (digest, mtime), path.name
+            )
         self.assertFalse([p for p in _opened if "/.claude" in p])
 
 
