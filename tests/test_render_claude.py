@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -51,6 +52,34 @@ class GoldenTests(unittest.TestCase):
         dist = ROOT / "hosts" / "claude" / "dist"
         actual = {p.relative_to(dist).as_posix(): p.read_bytes() for p in dist.rglob("*") if p.is_file()}
         self.assertEqual(actual, golden_files())
+
+
+class HostVersionTests(unittest.TestCase):
+    """Claude host 版本的正式位置是 hosts/claude/VERSION；所有 marker 與記錄都要等於它（Decision 6）。"""
+
+    VERSION = (ROOT / "hosts" / "claude" / "VERSION").read_text(encoding="utf-8").strip()
+    SKILL = "skills/pilotfish-orchestration/SKILL.md"
+
+    def test_version_file_format(self) -> None:
+        self.assertRegex(self.VERSION, r"^\d+\.\d+\.\d+-claude\.\d+$")
+
+    def test_skill_marker_equals_version_in_src_dist_and_golden(self) -> None:
+        marker = f"<!-- pilotfish-claude v{self.VERSION} -->"
+        for base in (ROOT / "hosts" / "claude" / "src", ROOT / "hosts" / "claude" / "dist", GOLDEN):
+            lines = (base / self.SKILL).read_text(encoding="utf-8").splitlines()
+            self.assertEqual([x for x in lines if x.startswith("<!-- pilotfish-claude v")], [marker], base)
+
+    def test_bootstrap_marker_equals_version_in_src_dist_and_golden(self) -> None:
+        first = f"<!-- pilotfish v{self.VERSION} -->"
+        for base in (ROOT / "hosts" / "claude" / "src", ROOT / "hosts" / "claude" / "dist", GOLDEN):
+            text = (base / "claude-md.bootstrap.md").read_text(encoding="utf-8")
+            self.assertEqual(text.splitlines()[0], first, base)
+
+    def test_upstream_lock_and_readme_record_the_version(self) -> None:
+        lock = tomllib.loads((ROOT / "upstream.lock").read_text(encoding="utf-8"))
+        self.assertEqual(lock["claude"]["marker_version"], self.VERSION)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertRegex(readme, rf"(?m)^\| claude host \| {re.escape(self.VERSION)}")
 
 
 class CheckCommandTests(unittest.TestCase):

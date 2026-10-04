@@ -248,7 +248,7 @@ rechecked after the new role bindings are installed:
 - [x] 「不得修改 Claude policy；Claude 維持 Pilotfish v1.2.1」已解除。
   2026-10-04 Miyago 決定：解除限制，Claude 不鎖版本。此條原指
   `~/dotfile/config/ai/claude/CLAUDE.md`，該檔已不存在；本 repo 的
-  `hosts/claude` 是 `1.4.2-claude.1` 並使用 core 條款。
+  `hosts/claude` 是 `1.4.2-claude.2` 並使用 core 條款。
 
 ## Known constraints
 
