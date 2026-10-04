@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """從 core/（roles、models、tiers）、hosts/<host>/binding.toml 與 hosts/<host>/src/ 產生 host 輸出。
 
-用法：python3 tools/render.py --host claude|codex|agy|grok|opencode (--check|--write|--explain) [--root DIR]
+用法：python3 tools/render.py --host <host> (--check|--write|--explain) [--root DIR]
+<host> 是 claude、codex、agy、grok、opencode，或 hosts/<name>/binding.toml 宣告
+renderer = "generic-md" 的 host（輸出格式由 binding 的 [output] 宣告，不需寫程式碼）。
 
 --explain 只印出每個 role 的選模與權限推導過程，不讀也不改 dist。
 exit code：0 成功；1 --check 發現 dist 與 render 結果不同；2 來源驗證失敗或沒有模型滿足規則。
@@ -12,6 +14,7 @@ import argparse
 import json
 import re
 import sys
+import textwrap
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +50,16 @@ FRONTMATTER_KEYS = ("name", "description", "model", "effort")
 CODEX_OPTIONAL_KEYS = ("sandbox_mode", "web_search")
 
 
+# generic-md host：輸出格式由 binding 的 [output] 宣告（見 docs/new-host.md）。
+GENERIC_RENDERER = "generic-md"
+ENCODINGS = ("scalar", "comma-list", "block-list", "folded", "nested-map")
+PERMISSION_TYPES = ("list", "scalar", "map")
+# frontmatter 欄位的內建來源；其餘來源必須是 [output.permissions] 宣告過的權限欄位。
+BUILTIN_SOURCES = ("name", "description", "model")
+_KEY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
+HOST_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
 class RenderError(Exception):
     """來源不合法（exit 2）。"""
 
@@ -69,26 +82,59 @@ class Permission:
     overridden: list[str]
 
 
-def _check_field(where: str, key: str, value: object) -> None:
-    if key in LIST_KEYS:
+@dataclass(frozen=True)
+class PermSchema:
+    """host 接受的權限欄位：欄位名 -> list / scalar / map，以及互斥的欄位組。"""
+    types: dict[str, str]
+    exclusive: tuple[str, ...] = ()
+
+
+def permission_schema(host: str, binding: dict) -> PermSchema:
+    """既有五個 host 用程式內的表；generic-md host 取自 binding 的 [output.permissions.<field>]。"""
+    if host in PERMISSION_KEYS:
+        return PermSchema({k: "list" if k in LIST_KEYS else "scalar" for k in PERMISSION_KEYS[host]},
+                          EXCLUSIVE_KEYS.get(host, ()))
+    declared = binding.get("output", {}).get("permissions", {})
+    if not isinstance(declared, dict):
+        raise RenderError("[output.permissions] 必須是 table")
+    types: dict[str, str] = {}
+    for key, table in declared.items():
+        where = f"[output.permissions.{key}]"
+        if not _KEY.match(key) or key in BUILTIN_SOURCES:
+            raise RenderError(f"{where}: 欄位名只能是英數、底線、連字號，且不可是 {', '.join(BUILTIN_SOURCES)}")
+        if not isinstance(table, dict) or set(table) != {"type"}:
+            raise RenderError(f"{where}: 只接受 type 一個欄位")
+        if table["type"] not in PERMISSION_TYPES:
+            raise RenderError(f"{where}: type 必須是 {list(PERMISSION_TYPES)}")
+        types[key] = table["type"]
+    return PermSchema(types)
+
+
+def _check_field(where: str, key: str, value: object, kind: str) -> None:
+    if kind == "list":
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             raise RenderError(f"{where}: {key} 必須是字串陣列")
+    elif kind == "map":
+        if not isinstance(value, dict) or not all(isinstance(v, str) for v in value.values()):
+            raise RenderError(f"{where}: {key} 必須是字串對字串的 table")
     elif not isinstance(value, str):
         raise RenderError(f"{where}: {key} 必須是字串")
 
 
 def validate_access_tables(host: str, binding: dict) -> None:
     """binding 的 [access.<level>]、[capabilities.<name>]：名稱在詞彙內、欄位屬於這個 host、型別正確。"""
-    keys = PERMISSION_KEYS[host]
+    types = permission_schema(host, binding).types
+    keys = tuple(types)
     for kind, vocabulary in (("access", ACCESS), ("capabilities", CAPABILITIES)):
         for level, table in binding.get(kind, {}).items():
             if level not in vocabulary:
                 raise RenderError(f"[{kind}.{level}]: 名稱必須是 {sorted(vocabulary)}")
             unknown = sorted(set(table) - set(keys))
             if unknown:
-                raise RenderError(f"[{kind}.{level}]: {host} 不接受欄位 {', '.join(unknown)}（只有 {', '.join(keys)}）")
+                only = ", ".join(keys) or "無，先在 [output.permissions.<欄位>] 宣告"
+                raise RenderError(f"[{kind}.{level}]: {host} 不接受欄位 {', '.join(unknown)}（只有 {only}）")
             for key, value in table.items():
-                _check_field(f"[{kind}.{level}]", key, value)
+                _check_field(f"[{kind}.{level}]", key, value, types[key])
 
 
 def derive_permission(host: str, name: str, access: str, capabilities: list[str],
@@ -100,10 +146,12 @@ def derive_permission(host: str, name: str, access: str, capabilities: list[str]
     """
     if access not in ACCESS:
         raise RenderError(f"{name}: access 必須是 {sorted(ACCESS)}")
+    schema = permission_schema(host, binding)
     table = binding.get("access", {}).get(access)
     if table is None:
         raise RenderError(f"{name}: access = \"{access}\"，但 binding 沒有 [access.{access}]")
-    fields = {k: list(v) if isinstance(v, list) else v for k, v in table.items()}
+    fields = {k: list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v
+              for k, v in table.items()}
     tables = [f"access.{access}"]
     for cap in capabilities:
         ctable = binding.get("capabilities", {}).get(cap)
@@ -114,15 +162,21 @@ def derive_permission(host: str, name: str, access: str, capabilities: list[str]
             if isinstance(value, list):
                 if key in fields:
                     fields[key] += [v for v in value if v not in fields[key]]
+            elif isinstance(value, dict):
+                merged = fields.setdefault(key, {})
+                for mkey, mvalue in value.items():
+                    if merged.get(mkey, mvalue) != mvalue:
+                        raise RenderError(f"{name}: [capabilities.{cap}].{key}.{mkey} 與 [access.{access}].{key}.{mkey} 衝突")
+                    merged[mkey] = mvalue
             elif key in fields and fields[key] != value:
                 raise RenderError(f"{name}: [capabilities.{cap}].{key} 與 [access.{access}].{key} 衝突")
             else:
                 fields[key] = value
-    overridden = [k for k in PERMISSION_KEYS[host] if k in spec]
+    overridden = [k for k in schema.types if k in spec]
     for key in overridden:
-        _check_field(f"{name}", key, spec[key])
+        _check_field(f"{name}", key, spec[key], schema.types[key])
         fields[key] = spec[key]
-    exclusive = EXCLUSIVE_KEYS.get(host, ())
+    exclusive = schema.exclusive
     if any(k in spec for k in exclusive):
         for key in exclusive:
             if key not in spec:
@@ -551,6 +605,216 @@ def render_opencode(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     return out
 
 
+# ---- generic-md：輸出格式由 binding 的 [output] 宣告，不需要專屬 renderer ----
+# 每個 role 一個 Markdown 檔：YAML frontmatter（依宣告順序）加 role 文字（core 條款加 frames 與 addenda）。
+ENCODING_KIND = {"scalar": "scalar", "folded": "scalar", "comma-list": "list",
+                 "block-list": "list", "nested-map": "map"}
+# 各編碼接受的選項；indent 預設 2，width 只給 folded（含縮排的行寬，省略則沿用來源的換行）。
+ENCODING_OPTIONS = {"scalar": (), "comma-list": (), "block-list": ("indent",),
+                    "folded": ("indent", "width"), "nested-map": ("indent",)}
+GENERIC_ROLE_KEYS = ("description", "model", "role_text")
+
+
+def _value_kind(value: object) -> str | None:
+    if isinstance(value, str):
+        return "scalar"
+    if isinstance(value, list):
+        return "list"
+    return "map" if isinstance(value, dict) else None
+
+
+def _generic_entries(where: str, binding: dict, schema: PermSchema) -> list[dict]:
+    """驗證 [output].frontmatter 的每個欄位宣告；where 是錯誤訊息的前綴（含 role）。"""
+    entries = binding["output"]["frontmatter"]
+    if not isinstance(entries, list) or not entries or not all(isinstance(e, dict) for e in entries):
+        raise RenderError(f"{where}: [output] 的 frontmatter 必須是至少一個 [[output.frontmatter]]")
+    seen: set[str] = set()
+    for entry in entries:
+        key = entry.get("key")
+        label = f"{where} 欄位 {key}"
+        unknown = sorted(set(entry) - {"key", "source", "value", "encoding", "indent", "width"})
+        if unknown:
+            raise RenderError(f"{label}: 未知的設定 {', '.join(unknown)}")
+        if not isinstance(key, str) or not _KEY.match(key):
+            raise RenderError(f"{label}: key 必須是英數、底線、連字號組成的字串")
+        if key in seen:
+            raise RenderError(f"{label}: key 重複")
+        seen.add(key)
+        encoding = entry.get("encoding")
+        if encoding not in ENCODINGS:
+            raise RenderError(f"{label}: 不支援的編碼 {encoding}（只有 {', '.join(ENCODINGS)}）")
+        if ("source" in entry) == ("value" in entry):
+            raise RenderError(f"{label}: source 與 value 必須恰好有一個")
+        if "source" in entry:
+            source = entry["source"]
+            if source in BUILTIN_SOURCES:
+                kind = "scalar"
+            elif source in schema.types:
+                kind = schema.types[source]
+            else:
+                allowed = [*BUILTIN_SOURCES, *schema.types]
+                raise RenderError(f"{label}: 來源 {source} 不存在（只有 {', '.join(allowed)}；"
+                                  "權限欄位要先在 [output.permissions.<欄位>] 宣告）")
+        else:
+            kind = _value_kind(entry["value"])
+            if kind is None:
+                raise RenderError(f"{label}: value 必須是字串、字串陣列或字串對字串的 table")
+            _check_field(label, "value", entry["value"], kind)
+        if ENCODING_KIND[encoding] != kind:
+            raise RenderError(f"{label}: 編碼 {encoding} 需要 {ENCODING_KIND[encoding]} 型別的來源，收到 {kind}")
+        for option in ("indent", "width"):
+            if option in entry:
+                value = entry[option]
+                if option not in ENCODING_OPTIONS[encoding]:
+                    raise RenderError(f"{label}: 編碼 {encoding} 不接受 {option}")
+                if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                    raise RenderError(f"{label}: {option} 必須是正整數")
+    return entries
+
+
+def _check_output_path(pattern: object) -> str:
+    if not isinstance(pattern, str) or pattern.count("{role}") != 1 or "{" in pattern.replace("{role}", ""):
+        raise RenderError('[output] 的 path 必須恰好有一個 {role}，且沒有其他大括號（例如 "agents/{role}.md"）')
+    parts = pattern.split("/")
+    if "\\" in pattern or pattern.startswith("/") or ".." in parts or "" in parts or not pattern.endswith(".md"):
+        raise RenderError("[output] 的 path 必須是 dist 內的相對路徑（用 /，不含 ..），且以 .md 結尾")
+    return pattern
+
+
+def validate_generic(host: str, core: dict, binding: dict) -> dict[str, Permission]:
+    """generic-md 的驗證：renderer、[models]、R4（不可有 extra_roles）、role_text 必須 core、[output] 宣告。"""
+    if binding.get("renderer") != GENERIC_RENDERER:
+        raise RenderError(f'binding 的 renderer 必須是 "{GENERIC_RENDERER}"')
+    if not binding.get("models") and binding.get("selection") != "inherit":
+        raise RenderError(f"尚未填 [models]：請在 hosts/{host}/binding.toml 填入這個 host 可用的模型"
+                          "（key 必須在 core/models.toml），或設 selection = \"inherit\"")
+    for name in binding.get("extra_roles", {}):
+        raise RenderError(f"{name}: generic-md host 不支援 host 專屬 role（[extra_roles.{name}]）；"
+                          "需要時請改寫專屬 renderer")
+    if binding.get("role_text") != "core":
+        raise RenderError('generic-md host 的 role_text 必須是 "core"')
+    output = binding.get("output")
+    if not isinstance(output, dict):
+        raise RenderError("binding 必須有 [output]（path 與 [[output.frontmatter]]）")
+    unknown = sorted(set(output) - {"path", "frontmatter", "permissions"})
+    if unknown:
+        raise RenderError(f"[output]: 未知的設定 {', '.join(unknown)}")
+    _check_output_path(output.get("path"))
+    schema = permission_schema(host, binding)
+    validate_catalog(core, binding)
+    perms = derive_permissions(host, core, binding)
+    for name in _bound_roles(core, binding):
+        spec = binding["roles"][name]
+        if spec.get("role_text", "core") != "core":
+            raise RenderError(f'{name}: generic-md host 的 role_text 必須是 "core"')
+        unknown = sorted(set(spec) - set(GENERIC_ROLE_KEYS) - set(schema.types))
+        if unknown:
+            raise RenderError(f"{name}: [roles.{name}] 不接受 {', '.join(unknown)}"
+                              f"（只有 {', '.join([*GENERIC_ROLE_KEYS, *schema.types])}）")
+        _generic_entries(f"{name}: frontmatter", binding, schema)
+    return perms
+
+
+def _no_legacy() -> bytes:
+    raise RenderError("generic-md host 只用 core 條款，沒有 legacy 原文")
+
+
+def _fold(text: str, indent: str, width: int | None) -> list[str]:
+    if width is None:
+        return [indent + line if line else "" for line in text.strip("\n").split("\n")]
+    lines: list[str] = []
+    for index, paragraph in enumerate(re.split(r"\n[ \t]*\n", text.strip())):
+        if index:
+            lines.append("")
+        lines += [indent + line for line in textwrap.wrap(" ".join(paragraph.split()), width=max(width - len(indent), 1),
+                                                          break_long_words=False, break_on_hyphens=False)]
+    return lines
+
+
+def _unsafe_plain(text: str) -> bool:
+    """YAML plain scalar 不能原樣表達的文字；scalar 類編碼不加引號，遇到就拒絕。"""
+    return (": " in text or " #" in text or text.endswith(":") or text[0] in "[]{}&*!|>'\"%@`#,?:"
+            or text.startswith("- "))
+
+
+def _encode_field(label: str, entry: dict, value: object) -> str:
+    """把一個欄位依編碼寫成 YAML；label 是錯誤訊息的前綴（含 role 與欄位）。"""
+    key, encoding = entry["key"], entry["encoding"]
+    indent = " " * entry.get("indent", 2)
+    kind = ENCODING_KIND[encoding]
+    if encoding == "folded":
+        if not value.strip() or "\r" in value:
+            raise RenderError(f"{label}: 值不可為空，也不可含 CR")
+    else:
+        items = [*value, *value.values()] if kind == "map" else value if kind == "list" else [value]
+        if kind != "scalar" and not value:
+            raise RenderError(f"{label}: 不可是空的（不輸出請移除該欄位或對應表的設定）")
+        if any(not item.strip() or "\n" in item or "\r" in item for item in items):
+            raise RenderError(f"{label}: 值不可為空，也不可含換行")
+        if encoding == "comma-list" and any("," in item for item in items):
+            raise RenderError(f"{label}: 項目不可含逗號（逗號串接會混淆）")
+        if any(_unsafe_plain(item) for item in items):
+            raise RenderError(f"{label}: 值不能原樣寫成 YAML（含 \": \"、\" #\" 或以特殊字元開頭）；"
+                              "scalar 不加引號，請改寫文字或改用 folded")
+    if encoding == "scalar":
+        return f"{key}: {value}\n"
+    if encoding == "comma-list":
+        return f"{key}: {', '.join(value)}\n"
+    if encoding == "block-list":
+        return f"{key}:\n" + "".join(f"{indent}- {item}\n" for item in value)
+    if encoding == "nested-map":
+        return f"{key}:\n" + "".join(f"{indent}{k}: {v}\n" for k, v in value.items())
+    return f"{key}: >\n" + "".join(line + "\n" for line in _fold(value, indent, entry.get("width")))
+
+
+def _generic_frontmatter(host: str, name: str, core: dict, binding: dict, perm: Permission) -> str:
+    where = f"{name}: frontmatter"
+    schema = permission_schema(host, binding)
+    sources = {"name": name, "description": binding["roles"][name].get("description"),
+               "model": resolve_model(name, core, binding)}
+    text = "---\n"
+    for entry in _generic_entries(where, binding, schema):
+        if "value" in entry:
+            value = entry["value"]
+        elif entry["source"] in BUILTIN_SOURCES:
+            value = sources[entry["source"]]
+            if not isinstance(value, str):
+                raise RenderError(f"{where} 欄位 {entry['key']}: 來源 {entry['source']} 必須是字串，"
+                                  f"收到 {_name(value) if value is not None else '未設定'}")
+        else:
+            if entry["source"] not in perm.fields:
+                continue  # 這個等級不限制此欄位（例如 write 沒有 tools allowlist），不輸出
+            value = perm.fields[entry["source"]]
+        text += _encode_field(f"{where} 欄位 {entry['key']}", entry, value)
+    return text + "---\n\n"
+
+
+def render_generic(host: str, core: dict, binding: dict, host_dir: Path) -> dict[str, bytes]:
+    """回傳 {相對於 dist 的路徑: bytes}；role 文字沿用 role_body 的 frame / addenda 機制（frames/default.md）。"""
+    perms = validate_generic(host, core, binding)
+    pattern = binding["output"]["path"]
+    out: dict[str, bytes] = {}
+    for name in _bound_roles(core, binding):
+        body = role_body(name, core, binding, host_dir / "src", _no_legacy)
+        head = _generic_frontmatter(host, name, core, binding, perms[name])
+        out[pattern.replace("{role}", name)] = head.encode("utf-8") + body
+    return out
+
+
+def discover_generic_hosts(root: Path) -> list[str]:
+    """掃描 hosts/*/binding.toml 裡 renderer = "generic-md" 的 host；既有五個 host 的名稱保留給 RENDERERS。"""
+    found = []
+    for path in sorted((root / "hosts").glob("*/binding.toml")):
+        name = path.parent.name
+        if name in RENDERERS:
+            continue
+        if load_toml(path).get("renderer") == GENERIC_RENDERER:
+            if not HOST_NAME.match(name):
+                raise RenderError(f"hosts/{name}: host 名稱必須是小寫英數加連字號")
+            found.append(name)
+    return found
+
+
 # 多 host 擴充點：每個 host 一個 renderer，簽名 (root) -> {相對路徑: bytes}。
 def _claude(root: Path) -> dict[str, bytes]:
     host = root / "hosts" / "claude"
@@ -580,6 +844,21 @@ RENDERERS: dict[str, Callable[[Path], dict[str, bytes]]] = {
 # 測試與遠端 --ref raw URL 都寫死這個路徑。
 DIST_DIRS = {"claude": "hosts/claude/dist", "codex": "templates", "agy": "hosts/agy/dist",
              "grok": "hosts/grok/dist", "opencode": "hosts/opencode/dist"}
+
+
+def render_host(root: Path, host: str) -> dict[str, bytes]:
+    """既有五個 host 用各自的 renderer；其他 host 一律是 generic-md。"""
+    if host in RENDERERS:
+        return RENDERERS[host](root)
+    host_dir = root / "hosts" / host
+    return render_generic(host, load_core(root), load_toml(host_dir / "binding.toml"), host_dir)
+
+
+def dist_dir(host: str) -> str:
+    """generic-md host 的 dist 固定在 hosts/<name>/dist。"""
+    return DIST_DIRS.get(host) or f"hosts/{host}/dist"
+
+
 # dist 之外、內容必須與 dist 某檔逐位元組相同的副本：{host: {dist 內路徑: repo 相對路徑}}。
 MIRRORS = {
     "codex": {
@@ -661,8 +940,11 @@ def _explain_permission(name: str, perm: Permission, section: str) -> list[str]:
 def explain(root: Path, host: str) -> str:
     """印出每個 role 的 tier、候選模型（含被排除的原因）、結果（resolver 選的或手動 pin 的）與權限推導。"""
     core, binding = load_core(root), load_toml(root / "hosts" / host / "binding.toml")
-    validate_catalog(core, binding)
-    perms = derive_permissions(host, core, binding)
+    if host in RENDERERS:
+        validate_catalog(core, binding)
+        perms = derive_permissions(host, core, binding)
+    else:
+        perms = validate_generic(host, core, binding)
     mode = 'selection = "inherit"' if binding.get("selection") == "inherit" else "規則（catalog + tiers）"
     out = [f"host: {host}", f"選模方式: {mode}", ""]
     for name in _bound_roles(core, binding):
@@ -686,8 +968,16 @@ def main(argv: list[str] | None = None) -> int:
     # Windows 預設 cp1252，輸出中文會拋 UnicodeEncodeError，強制 UTF-8
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+    # --host 的選項要從 --root 底下探索 generic-md host，所以先單獨解析 --root。
+    pre = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    pre.add_argument("--root", type=Path, default=REPO)
+    try:
+        generic = discover_generic_hosts(pre.parse_known_args(argv)[0].root)
+    except RenderError as exc:
+        print(f"render 失敗: {exc}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--host", required=True, choices=sorted(RENDERERS))
+    parser.add_argument("--host", required=True, choices=[*sorted(RENDERERS), *generic])
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--write", action="store_true")
@@ -704,12 +994,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        files = RENDERERS[args.host](args.root)
+        files = render_host(args.root, args.host)
     except (RenderError, OSError, KeyError) as exc:
         print(f"render 失敗: host {args.host}: {exc}", file=sys.stderr)
         return 2
 
-    dist = args.root / DIST_DIRS[args.host]
+    dist = args.root / dist_dir(args.host)
     if args.write:
         write_dist(dist, files)
         write_mirrors(args.root, args.host, files)

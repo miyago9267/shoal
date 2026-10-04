@@ -33,9 +33,15 @@ python3 tools/render.py --host claude --check
 python3 tools/render.py --host claude --write
 ```
 
-`--host` 可選 `claude`、`codex`、`agy`、`grok`、`opencode`。修改 core 或
-binding 後先 `--write`，再跑 `python3 -m unittest discover -s tests` 確認
-golden 差異是預期的。
+`--host` 可選 `claude`、`codex`、`agy`、`grok`、`opencode`，以及 binding 設
+`renderer = "generic-md"` 的 host。修改 core 或 binding 後先 `--write`，再跑
+`python3 -m unittest discover -s tests` 確認 golden 差異是預期的。
+
+## 新增 host
+
+輸出格式是「每個 role 一個 Markdown 檔加 frontmatter」的工具，不用寫程式碼：
+`python3 tools/new_host.py <name>` 產生骨架，填 `[models]` 與工具對應表後
+`--write`。步驟見 [docs/new-host.md](./docs/new-host.md)。
 
 ## 安裝入口
 

@@ -5,6 +5,20 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+不寫程式碼新增 host（`docs/specs/new-host/`，N1-N3）。
+
+- 新增 `renderer = "generic-md"`：binding 用 `[output]` 宣告輸出路徑與
+  frontmatter 欄位（來源 `name`、`description`、`model`、權限欄位或固定值；
+  編碼 `scalar`、`comma-list`、`block-list`、`folded`、`nested-map`），權限
+  欄位以 `[output.permissions.<欄位>]` 宣告型別。`tools/render.py` 從
+  `hosts/*/binding.toml` 探索這類 host，`--host <name>` 不用改 `tools/`；
+  不支援 `[extra_roles]`，`role_text` 必須是 `core`。既有五個 host 仍用各自
+  的 renderer，dist、`templates/` 與 golden 與之前逐位元組相同。
+- 新增 `tools/new_host.py <name>`（產生 binding、`frames/default.md` 與
+  `addenda/`，已存在則拒絕）、`tests/test_generic_hosts.py`（探索式檢查每個
+  generic-md host）與 `docs/new-host.md`。用 `[output]` 宣告在測試中重現
+  Claude 與 agy 的 `scout` 輸出，兩者逐位元組相同。
+
 role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
 
 - 新增 `core/contracts/<role>.toml` 的條款格式與 `tools/contracts.py`，

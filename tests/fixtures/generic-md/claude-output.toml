@@ -1,0 +1,40 @@
+# 以 generic-md 的 [output] 宣告重現 Claude 的 agents/<role>.md（只有 scout 逐位元組相同）。
+# effort 沒有 role 層級的來源，只能寫固定值，所以這份宣告只對 effort = low 的 role 完全相同。
+[output]
+path = "agents/{role}.md"
+
+[[output.frontmatter]]
+key = "name"
+source = "name"
+encoding = "scalar"
+
+[[output.frontmatter]]
+key = "description"
+source = "description"
+encoding = "scalar"
+
+[[output.frontmatter]]
+key = "model"
+source = "model"
+encoding = "scalar"
+
+[[output.frontmatter]]
+key = "effort"
+value = "low"
+encoding = "scalar"
+
+[[output.frontmatter]]
+key = "tools"
+source = "tools"
+encoding = "comma-list"
+
+[[output.frontmatter]]
+key = "disallowedTools"
+source = "disallowedTools"
+encoding = "comma-list"
+
+[output.permissions.tools]
+type = "list"
+
+[output.permissions.disallowedTools]
+type = "list"

@@ -1,0 +1,29 @@
+# 以 generic-md 的 [output] 宣告重現 agy 的 agents/<role>/agent.md（七個 role 都逐位元組相同）。
+[output]
+path = "agents/{role}/agent.md"
+
+[[output.frontmatter]]
+key = "name"
+source = "name"
+encoding = "scalar"
+
+[[output.frontmatter]]
+key = "description"
+source = "description"
+encoding = "folded"
+indent = 2
+width = 80
+
+[[output.frontmatter]]
+key = "model"
+source = "model"
+encoding = "scalar"
+
+[[output.frontmatter]]
+key = "tools"
+source = "tools"
+encoding = "block-list"
+indent = 4
+
+[output.permissions.tools]
+type = "list"

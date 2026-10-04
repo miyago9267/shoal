@@ -99,6 +99,25 @@ core（規格見
   `sol-executor` 是 Codex 專屬 role，維持 `src/agents` 的原文。其他 host 仍是
   `legacy`。
 
+## 新增 host（generic-md）
+
+輸出是「每個 role 一個 Markdown 檔加 YAML frontmatter」的 host，不需要寫
+renderer（規格見
+[docs/specs/new-host/SPEC.md](../docs/specs/new-host/SPEC.md)，步驟見
+[docs/new-host.md](../docs/new-host.md)）：
+
+- binding 設 `renderer = "generic-md"` 與 `role_text = "core"`，用 `[output]`
+  宣告輸出路徑與 frontmatter 欄位（來源、編碼）。`tools/render.py` 從
+  `hosts/*/binding.toml` 探索這類 host，`--host <name>` 不用改程式。
+- 權限欄位要在 `[output.permissions.<欄位>]` 宣告型別（`list`、`scalar`、
+  `map`），之後 `[access.*]`、`[capabilities.*]` 與 role 覆寫才能使用，
+  推導規則與上一節相同。
+- 不支援 `[extra_roles]`；既有五個 host 維持各自的 renderer，輸出不變。
+- `python3 tools/new_host.py <name>` 產生骨架；
+  `tests/test_generic_hosts.py` 自動檢查每個 generic-md host 的 `--check`
+  與條款逐字出現。這類 host 不建 golden，committed dist 加 `--check` 即為
+  回歸基準。
+
 ## 各 host 的 role 子集與 effort
 
 - host 沒有的 role 要在 binding 用 `omitted_roles = [...]` 明列
