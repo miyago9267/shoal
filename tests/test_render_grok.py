@@ -12,7 +12,7 @@ UPSTREAM_RULES = ROOT / "tests" / "fixtures" / "grok" / "rules.pilotfish-grok.up
 
 class GrokRenderTests(rh.HostRenderCase):
     HOST = "grok"
-    GOLDEN_COUNT = 16
+    GOLDEN_COUNT = 19
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.toml"
     SRC_FILE = "config.snippet.toml"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔

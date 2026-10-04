@@ -16,16 +16,18 @@
 
 ## Phase G3 — grok 原生 hooks
 
-- [ ] `hosts/grok/src/hooks/` 放設定 JSON 與兩支 Python 腳本（標準函式庫），
+- [x] `hosts/grok/src/hooks/` 放設定 JSON 與兩支 Python 腳本（標準函式庫），
       renderer 輸出到 `hosts/grok/dist/hooks/`。
-- [ ] `SubagentStop` 三個 entry（定錨 matcher），以環境變數
-      `PILOTFISH_ROLE` 區分 role（見 SPEC R10 的偏離說明）。
-- [ ] 格式規則從 `dist/agents/` 的實際文字推導；測試確認 gate 要求的 token
+- [x] `SubagentStop` 三個 entry（定錨 matcher），以 hook 的 `env` 欄位
+      `PILOTFISH_ROLE` 區分 role。偏離 SPEC R10 的「參數」：官方文件只記載
+      「相對於 JSON 的路徑」這種無參數 command，帶參數時是否仍解析相對路徑
+      未記載；腳本也接受第一個參數，優先於環境變數。
+- [x] 格式規則從 `dist/agents/` 的實際文字推導；測試確認 gate 要求的 token
       仍出現在 agent 文字。
-- [ ] `stopHookActive` 放行；任何解析錯誤 fail-open。
-- [ ] `PreToolUse` plan mode 防護（R12 的判斷順序），grok home 可由參數或
+- [x] `stopHookActive` 放行；任何解析錯誤 fail-open。
+- [x] `PreToolUse` plan mode 防護（R12 的判斷順序），grok home 可由參數或
       環境變數覆寫。
-- [ ] 以 `refresh_golden.py --host grok --from-dist` 更新 golden。
+- [x] 以 `refresh_golden.py --host grok --from-dist` 更新 golden。
 
 ## Phase G2 — tools/install_grok.py
 
