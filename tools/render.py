@@ -526,6 +526,36 @@ def _grok_role_toml(name: str, spec: dict, perm: Permission) -> bytes:
     return data.encode("utf-8")
 
 
+GROK_RULES_PATH = "rules/pilotfish-grok.md"
+GROK_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+GROK_MARKER = re.compile(rb"^<!-- pilotfish-grok v\S+ -->$", re.MULTILINE)
+
+
+def grok_version(host_dir: Path) -> str:
+    """hosts/grok/VERSION 的內容（R2）；格式是 semver，可帶 -shoal.N 之類的後綴。"""
+    path = host_dir / "VERSION"
+    try:
+        version = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {path}: {exc}") from exc
+    if not GROK_VERSION.match(version):
+        raise RenderError(f"{path}: 版本格式不合法: {version!r}")
+    return version
+
+
+def _grok_rules(src: Path) -> bytes:
+    """rules 取自 src/rules/pilotfish-grok.md（上游 v1.0.6 逐字）；只有 version marker 由 hosts/grok/VERSION 產生（R1、R2）。"""
+    path = src / GROK_RULES_PATH
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {path}: {exc}") from exc
+    if len(GROK_MARKER.findall(data)) != 1:
+        raise RenderError(f"{path} 必須恰有一行 '<!-- pilotfish-grok v<版本> -->' marker")
+    marker = f"<!-- pilotfish-grok v{grok_version(src.parent)} -->".encode("utf-8")
+    return GROK_MARKER.sub(lambda _m: marker, data, count=1)
+
+
 def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     """config.snippet.toml 等 agents/ 以外的檔案逐字取自 vendored src；agents/*.md 依 role_text 產生（core 時 frame 內含 frontmatter）；roles/*.toml 由 binding 產生。"""
     perms = validate_grok(core, binding)
@@ -538,7 +568,8 @@ def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
             raise RenderError(f"{name}: src/agents/{name}.md 的 model 必須等於 binding 解析出的 {expected}")
         out[f"agents/{name}.md"] = body
         out[f"roles/{name}.toml"] = _grok_role_toml(name, binding["roles"][name], perms[name])
-    _passthrough(src, out, {"agents"})
+    _passthrough(src, out, {"agents", "rules"})
+    out[GROK_RULES_PATH] = _grok_rules(src)
     return out
 
 
