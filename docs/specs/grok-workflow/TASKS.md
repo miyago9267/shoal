@@ -31,15 +31,17 @@
 
 ## Phase G2 — tools/install_grok.py
 
-- [ ] 從 committed HEAD（`git archive`）取 `hosts/grok/dist` 與 `VERSION`。
-- [ ] 預設 dry-run，列出新增、取代、略過；`--apply` 才寫入。
-- [ ] 寫入前備份被取代的檔案與 `config.toml` 到
+- [x] 從 committed HEAD（`git archive`）取 `hosts/grok/dist` 與 `VERSION`。
+- [x] 預設 dry-run，列出新增、取代、略過；`--apply` 才寫入。
+- [x] 寫入前備份被取代的檔案與 `config.toml` 到
       `<grok-home>/backups/shoal-<timestamp>/`。
-- [ ] 偵測 `[subagents.toggle]` 把 shoal role 設成 `false`；`--fix-toggles`
+- [x] 偵測 `[subagents.toggle]` 把 shoal role 設成 `false`；`--fix-toggles`
       以最小文字編輯只刪除那些 key。
-- [ ] `--restore <dir>` 逐位元組還原；`--uninstall` 只移除 shoal 檔案。
-- [ ] 安裝後驗證 hash 與 marker。
-- [ ] 測試全部用 temp 目錄當 `--grok-home`。
+- [x] `--restore <dir>` 逐位元組還原；`--uninstall` 只移除 shoal 檔案。
+      兩者與安裝一樣預設 dry-run，要 `--apply` 才寫入（SPEC 只對安裝
+      明說，這裡一致處理）。
+- [x] 安裝後驗證 hash 與 marker。
+- [x] 測試全部用 temp 目錄當 `--grok-home`。
 
 ## Phase G4 — 文件與版本
 

@@ -75,7 +75,8 @@
 ## installer（G2）
 
 - **AC-GW-030:** Without `--apply`, the installer shall write nothing under
-  the grok home, including no backup directory.
+  the grok home, including no backup directory; this holds for install,
+  `--restore` and `--uninstall`.
 - **AC-GW-031:** After `--apply`, every installed file shall have the same
   SHA-256 as the committed dist, and the rules marker shall equal
   `hosts/grok/VERSION`.
