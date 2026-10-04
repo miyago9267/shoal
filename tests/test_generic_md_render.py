@@ -17,7 +17,7 @@ from render_helpers import ROOT, render, run_render
 FIXTURES = ROOT / "tests" / "fixtures" / "generic-md"
 CORE_ROLES = tuple(render.load_toml(ROOT / "core" / "roles.toml")["roles"])
 
-FRONTMATTER = '''
+FRONTMATTER = """
 [[output.frontmatter]]
 key = "name"
 source = "name"
@@ -37,8 +37,8 @@ encoding = "scalar"
 key = "tools"
 source = "tools"
 encoding = "comma-list"
-'''
-PERMISSIONS = '''
+"""
+PERMISSIONS = """
 [output.permissions.tools]
 type = "list"
 
@@ -47,8 +47,8 @@ type = "scalar"
 
 [output.permissions.perm]
 type = "map"
-'''
-ACCESS = '''
+"""
+ACCESS = """
 [access.read-only]
 tools = ["read", "grep"]
 mode = "ro"
@@ -65,19 +65,35 @@ mode = "run"
 [capabilities.web]
 tools = ["web"]
 perm = { net = "allow" }
-'''
+"""
 DESCRIPTION = "Short text for {role}"
 
 
-def binding_text(*, header: str = "", frontmatter: str = FRONTMATTER, permissions: str = PERMISSIONS,
-                 access: str = ACCESS, path: str = "agents/{role}.md", roles: str | None = None,
-                 extra: str = "") -> str:
+def binding_text(
+    *,
+    header: str = "",
+    frontmatter: str = FRONTMATTER,
+    permissions: str = PERMISSIONS,
+    access: str = ACCESS,
+    path: str = "agents/{role}.md",
+    roles: str | None = None,
+    extra: str = "",
+) -> str:
     if roles is None:
-        roles = "".join(f'\n[roles.{r}]\ndescription = "{DESCRIPTION.format(role=r)}"\n' for r in CORE_ROLES)
+        roles = "".join(
+            f'\n[roles.{r}]\ndescription = "{DESCRIPTION.format(role=r)}"\n'
+            for r in CORE_ROLES
+        )
     return (
-        'renderer = "generic-md"\nrole_text = "core"\n' + header
+        'renderer = "generic-md"\nrole_text = "core"\n'
+        + header
         + '\n[models]\n"anthropic/haiku" = "haiku"\n"anthropic/sonnet" = "sonnet"\n"anthropic/opus" = "opus"\n'
-        + f'\n[output]\npath = "{path}"\n' + frontmatter + permissions + access + roles + extra
+        + f'\n[output]\npath = "{path}"\n'
+        + frontmatter
+        + permissions
+        + access
+        + roles
+        + extra
     )
 
 
@@ -121,7 +137,14 @@ class GenericRoot(unittest.TestCase):
 
 
 class EncodingTests(GenericRoot):
-    def frontmatter(self, key: str, encoding: str, source: str = "", extra: str = "", value: str = "") -> str:
+    def frontmatter(
+        self,
+        key: str,
+        encoding: str,
+        source: str = "",
+        extra: str = "",
+        value: str = "",
+    ) -> str:
         pick = f'source = "{source}"' if source else f"value = {value}"
         return f'\n[[output.frontmatter]]\nkey = "{key}"\n{pick}\nencoding = "{encoding}"\n{extra}'
 
@@ -133,49 +156,87 @@ class EncodingTests(GenericRoot):
         )
 
     def test_block_list_uses_the_indent_option(self) -> None:
-        self.binding(frontmatter=self.frontmatter("tools", "block-list", "tools", "indent = 4\n"))
+        self.binding(
+            frontmatter=self.frontmatter("tools", "block-list", "tools", "indent = 4\n")
+        )
         self.assertEqual(self.head(), "---\ntools:\n    - read\n    - grep\n---\n\n")
         self.binding(frontmatter=self.frontmatter("tools", "block-list", "tools"))
         self.assertEqual(self.head(), "---\ntools:\n  - read\n  - grep\n---\n\n")
 
     def test_nested_map_is_one_level_of_key_values(self) -> None:
-        self.binding(frontmatter=self.frontmatter("permission", "nested-map", "perm", "indent = 4\n"))
-        self.assertEqual(self.head(), "---\npermission:\n    edit: deny\n    bash: deny\n---\n\n")
+        self.binding(
+            frontmatter=self.frontmatter(
+                "permission", "nested-map", "perm", "indent = 4\n"
+            )
+        )
+        self.assertEqual(
+            self.head(), "---\npermission:\n    edit: deny\n    bash: deny\n---\n\n"
+        )
 
     def test_folded_keeps_source_lines_without_width(self) -> None:
-        roles = '\n[roles.scout]\ndescription = """\nfirst line of text\nsecond line\n"""\n' + "".join(
-            f'\n[roles.{r}]\ndescription = "x"\n' for r in CORE_ROLES if r != "scout"
+        roles = (
+            '\n[roles.scout]\ndescription = """\nfirst line of text\nsecond line\n"""\n'
+            + "".join(
+                f'\n[roles.{r}]\ndescription = "x"\n'
+                for r in CORE_ROLES
+                if r != "scout"
+            )
         )
-        self.binding(frontmatter=self.frontmatter("description", "folded", "description"), roles=roles)
-        self.assertEqual(self.head(), "---\ndescription: >\n  first line of text\n  second line\n---\n\n")
+        self.binding(
+            frontmatter=self.frontmatter("description", "folded", "description"),
+            roles=roles,
+        )
+        self.assertEqual(
+            self.head(),
+            "---\ndescription: >\n  first line of text\n  second line\n---\n\n",
+        )
 
     def test_folded_with_width_rewraps_including_the_indent(self) -> None:
         long = "alpha beta gamma delta epsilon zeta eta theta iota kappa"
         roles = "".join(f'\n[roles.{r}]\ndescription = "{long}"\n' for r in CORE_ROLES)
-        self.binding(frontmatter=self.frontmatter("description", "folded", "description", "width = 24\nindent = 4\n"),
-                     roles=roles)
+        self.binding(
+            frontmatter=self.frontmatter(
+                "description", "folded", "description", "width = 24\nindent = 4\n"
+            ),
+            roles=roles,
+        )
         lines = self.head().splitlines()[1:-2]
         self.assertEqual(lines[0], "description: >")
-        self.assertTrue(all(len(line) <= 24 and line.startswith("    ") for line in lines[1:]), lines)
+        self.assertTrue(
+            all(len(line) <= 24 and line.startswith("    ") for line in lines[1:]),
+            lines,
+        )
         self.assertEqual(" ".join(line.strip() for line in lines[1:]), long)
 
     def test_fixed_value_and_missing_permission_field_is_skipped(self) -> None:
-        fm = self.frontmatter("effort", "scalar", value='"low"') + self.frontmatter("mode", "scalar", "mode")
+        fm = self.frontmatter("effort", "scalar", value='"low"') + self.frontmatter(
+            "mode", "scalar", "mode"
+        )
         self.binding(frontmatter=fm)
         self.assertEqual(self.head("scout"), "---\neffort: low\nmode: ro\n---\n\n")
         # write 的對應表沒有 tools，但有 mode；這裡只確認缺少的欄位不輸出
-        self.binding(frontmatter=self.frontmatter("tools", "comma-list", "tools") + self.frontmatter("mode", "scalar", "mode"))
+        self.binding(
+            frontmatter=self.frontmatter("tools", "comma-list", "tools")
+            + self.frontmatter("mode", "scalar", "mode")
+        )
         self.assertEqual(self.head("executor"), "---\nmode: rw\n---\n\n")
 
     def test_capability_merges_into_access_fields(self) -> None:
-        fm = self.frontmatter("tools", "comma-list", "tools") + self.frontmatter("permission", "nested-map", "perm")
+        fm = self.frontmatter("tools", "comma-list", "tools") + self.frontmatter(
+            "permission", "nested-map", "perm"
+        )
         self.binding(frontmatter=fm)
-        self.assertEqual(self.head("security-reviewer"),
-                         "---\ntools: read, grep, web\npermission:\n  edit: deny\n  bash: deny\n  net: allow\n---\n\n")
+        self.assertEqual(
+            self.head("security-reviewer"),
+            "---\ntools: read, grep, web\npermission:\n  edit: deny\n  bash: deny\n  net: allow\n---\n\n",
+        )
 
     def test_role_override_replaces_the_whole_field(self) -> None:
-        roles = "".join(f'\n[roles.{r}]\ndescription = "x"\n' + ('tools = ["only"]\n' if r == "scout" else "")
-                        for r in CORE_ROLES)
+        roles = "".join(
+            f'\n[roles.{r}]\ndescription = "x"\n'
+            + ('tools = ["only"]\n' if r == "scout" else "")
+            for r in CORE_ROLES
+        )
         self.binding(roles=roles)
         self.assertIn("tools: only\n", self.head("scout"))
         self.assertIn("tools: read, grep\n", self.head("plan-verifier"))
@@ -189,7 +250,9 @@ class EncodingTests(GenericRoot):
 
     def test_output_path_pattern(self) -> None:
         self.binding(path="agents/{role}/agent.md")
-        self.assertEqual(sorted(self.files()), sorted(f"agents/{r}/agent.md" for r in CORE_ROLES))
+        self.assertEqual(
+            sorted(self.files()), sorted(f"agents/{r}/agent.md" for r in CORE_ROLES)
+        )
 
 
 class ValidationTests(GenericRoot):
@@ -197,26 +260,51 @@ class ValidationTests(GenericRoot):
         return "\n[[output.frontmatter]]\n" + body
 
     def test_unknown_source_names_role_and_field(self) -> None:
-        self.binding(frontmatter=self.frontmatter('key = "x"\nsource = "nope"\nencoding = "scalar"\n'))
+        self.binding(
+            frontmatter=self.frontmatter(
+                'key = "x"\nsource = "nope"\nencoding = "scalar"\n'
+            )
+        )
         self.assert_rejected("host demo", "scout", "欄位 x", "nope")
 
     def test_undeclared_permission_field_cannot_be_a_source(self) -> None:
-        self.binding(frontmatter=self.frontmatter('key = "x"\nsource = "tools"\nencoding = "comma-list"\n'),
-                     permissions="", access="\n[access.read-only]\n[access.write]\n[access.verify]\n[capabilities.web]\n")
+        self.binding(
+            frontmatter=self.frontmatter(
+                'key = "x"\nsource = "tools"\nencoding = "comma-list"\n'
+            ),
+            permissions="",
+            access="\n[access.read-only]\n[access.write]\n[access.verify]\n[capabilities.web]\n",
+        )
         self.assert_rejected("欄位 x", "tools", "[output.permissions.<欄位>]")
 
     def test_unsupported_encoding(self) -> None:
-        self.binding(frontmatter=self.frontmatter('key = "x"\nsource = "name"\nencoding = "json"\n'))
+        self.binding(
+            frontmatter=self.frontmatter(
+                'key = "x"\nsource = "name"\nencoding = "json"\n'
+            )
+        )
         self.assert_rejected("scout", "欄位 x", "json")
 
     def test_encoding_must_match_the_source_type(self) -> None:
-        self.binding(frontmatter=self.frontmatter('key = "x"\nsource = "tools"\nencoding = "scalar"\n'))
+        self.binding(
+            frontmatter=self.frontmatter(
+                'key = "x"\nsource = "tools"\nencoding = "scalar"\n'
+            )
+        )
         self.assert_rejected("欄位 x", "scalar", "list")
-        self.binding(frontmatter=self.frontmatter('key = "x"\nsource = "name"\nencoding = "block-list"\n'))
+        self.binding(
+            frontmatter=self.frontmatter(
+                'key = "x"\nsource = "name"\nencoding = "block-list"\n'
+            )
+        )
         self.assert_rejected("欄位 x", "block-list")
 
     def test_source_and_value_are_exclusive_and_one_is_required(self) -> None:
-        self.binding(frontmatter=self.frontmatter('key = "x"\nsource = "name"\nvalue = "y"\nencoding = "scalar"\n'))
+        self.binding(
+            frontmatter=self.frontmatter(
+                'key = "x"\nsource = "name"\nvalue = "y"\nencoding = "scalar"\n'
+            )
+        )
         self.assert_rejected("欄位 x", "source 與 value")
         self.binding(frontmatter=self.frontmatter('key = "x"\nencoding = "scalar"\n'))
         self.assert_rejected("欄位 x", "source 與 value")
@@ -242,11 +330,15 @@ class ValidationTests(GenericRoot):
         self.assert_rejected("frontmatter")
 
     def test_access_table_field_must_be_declared_with_a_type(self) -> None:
-        self.binding(access=ACCESS.replace('mode = "ro"', 'mode = "ro"\nsurprise = "x"'))
+        self.binding(
+            access=ACCESS.replace('mode = "ro"', 'mode = "ro"\nsurprise = "x"')
+        )
         self.assert_rejected("[access.read-only]", "surprise")
 
     def test_permission_type_is_enforced_on_values(self) -> None:
-        self.binding(access=ACCESS.replace('tools = ["read", "grep"]', 'tools = "read"', 1))
+        self.binding(
+            access=ACCESS.replace('tools = ["read", "grep"]', 'tools = "read"', 1)
+        )
         self.assert_rejected("[access.read-only]", "tools", "字串陣列")
         self.binding(access=ACCESS.replace('mode = "ro"', "mode = 3"))
         self.assert_rejected("mode", "字串")
@@ -254,25 +346,38 @@ class ValidationTests(GenericRoot):
     def test_permission_declaration_is_validated(self) -> None:
         self.binding(permissions=PERMISSIONS.replace('type = "map"', 'type = "set"'))
         self.assert_rejected("[output.permissions.perm]", "type")
-        self.binding(permissions=PERMISSIONS + '\n[output.permissions.model]\ntype = "scalar"\n')
+        self.binding(
+            permissions=PERMISSIONS + '\n[output.permissions.model]\ntype = "scalar"\n'
+        )
         self.assert_rejected("[output.permissions.model]")
 
     def test_extra_roles_are_rejected_with_the_role_name(self) -> None:
-        self.binding(extra='\n[extra_roles.Explore]\nmodel = "haiku"\naccess = "read-only"\n')
+        self.binding(
+            extra='\n[extra_roles.Explore]\nmodel = "haiku"\naccess = "read-only"\n'
+        )
         self.assert_rejected("Explore", "host 專屬 role")
 
     def test_role_text_must_be_core(self) -> None:
         self.binding(header="")
-        self.write("binding.toml", binding_text().replace('role_text = "core"', 'role_text = "legacy"', 1))
+        self.write(
+            "binding.toml",
+            binding_text().replace('role_text = "core"', 'role_text = "legacy"', 1),
+        )
         self.assert_rejected("role_text", "core")
-        roles = "".join(f'\n[roles.{r}]\ndescription = "x"\n' + ('role_text = "legacy"\n' if r == "scout" else "")
-                        for r in CORE_ROLES)
+        roles = "".join(
+            f'\n[roles.{r}]\ndescription = "x"\n'
+            + ('role_text = "legacy"\n' if r == "scout" else "")
+            for r in CORE_ROLES
+        )
         self.binding(roles=roles)
         self.assert_rejected("scout", "role_text")
 
     def test_unknown_role_key_is_rejected(self) -> None:
-        roles = "".join(f'\n[roles.{r}]\ndescription = "x"\n' + ('effort = "low"\n' if r == "scout" else "")
-                        for r in CORE_ROLES)
+        roles = "".join(
+            f'\n[roles.{r}]\ndescription = "x"\n'
+            + ('effort = "low"\n' if r == "scout" else "")
+            for r in CORE_ROLES
+        )
         self.binding(roles=roles)
         self.assert_rejected("scout", "effort")
 
@@ -280,17 +385,31 @@ class ValidationTests(GenericRoot):
         roles = "".join(f"\n[roles.{r}]\n" for r in CORE_ROLES)
         self.binding(roles=roles)
         self.assert_rejected("scout", "description")
-        self.binding(roles=roles, frontmatter=self.frontmatter('key = "name"\nsource = "name"\nencoding = "scalar"\n'))
+        self.binding(
+            roles=roles,
+            frontmatter=self.frontmatter(
+                'key = "name"\nsource = "name"\nencoding = "scalar"\n'
+            ),
+        )
         self.assertEqual(run_render(self.HOST, self.root, "--write").returncode, 0)
 
     def test_every_catalog_role_still_needs_a_binding(self) -> None:
-        roles = "".join(f'\n[roles.{r}]\ndescription = "x"\n' for r in CORE_ROLES if r != "scout")
+        roles = "".join(
+            f'\n[roles.{r}]\ndescription = "x"\n' for r in CORE_ROLES if r != "scout"
+        )
         self.binding(roles=roles)
         self.assert_rejected("scout")
 
     def test_path_pattern_is_validated(self) -> None:
-        for path in ("agents/fixed.md", "agents/{role}/{role}.md", "agents/{other}.md", "/abs/{role}.md",
-                     "../{role}.md", "agents/{role}.txt", "agents//{role}.md"):
+        for path in (
+            "agents/fixed.md",
+            "agents/{role}/{role}.md",
+            "agents/{other}.md",
+            "/abs/{role}.md",
+            "../{role}.md",
+            "agents/{role}.txt",
+            "agents//{role}.md",
+        ):
             with self.subTest(path=path):
                 self.binding(path=path)
                 self.assert_rejected("path")
@@ -298,26 +417,40 @@ class ValidationTests(GenericRoot):
     def test_empty_or_unsafe_values_are_rejected(self) -> None:
         self.binding(access=ACCESS.replace('tools = ["read", "grep"]', "tools = []", 1))
         self.assert_rejected("scout", "tools", "空")
-        roles = "".join(f'\n[roles.{r}]\ndescription = "{"a: b" if r == "scout" else "x"}"\n' for r in CORE_ROLES)
+        roles = "".join(
+            f'\n[roles.{r}]\ndescription = "{"a: b" if r == "scout" else "x"}"\n'
+            for r in CORE_ROLES
+        )
         self.binding(roles=roles)
         self.assert_rejected("scout", "description", "YAML")
-        roles = "".join(f'\n[roles.{r}]\ndescription = "{"a\\nb" if r == "scout" else "x"}"\n' for r in CORE_ROLES)
+        multiline = "a\\nb"  # Python 3.11 的 f-string 運算式不能含反斜線，先放進變數
+        roles = "".join(
+            f'\n[roles.{r}]\ndescription = "{multiline if r == "scout" else "x"}"\n'
+            for r in CORE_ROLES
+        )
         self.binding(roles=roles)
         self.assert_rejected("scout", "description")
-        self.binding(access=ACCESS.replace('"grep"]\nmode = "ro"', '"g,rep"]\nmode = "ro"', 1))
+        self.binding(
+            access=ACCESS.replace('"grep"]\nmode = "ro"', '"g,rep"]\nmode = "ro"', 1)
+        )
         self.assert_rejected("scout", "tools", "逗號")
 
     def test_missing_models_asks_to_fill_models(self) -> None:
-        text = re.sub(r'(?ms)^\[models\]\n.*?(?=^\[)', "", binding_text())
+        text = re.sub(r"(?ms)^\[models\]\n.*?(?=^\[)", "", binding_text())
         self.write("binding.toml", text)
         self.assert_rejected("[models]", "hosts/demo/binding.toml")
 
     def test_model_must_be_in_the_catalog(self) -> None:
-        self.write("binding.toml", binding_text().replace('"anthropic/opus"', '"anthropic/nope"'))
+        self.write(
+            "binding.toml",
+            binding_text().replace('"anthropic/opus"', '"anthropic/nope"'),
+        )
         self.assert_rejected("anthropic/nope")
 
     def test_renderer_value_is_required(self) -> None:
-        self.write("binding.toml", binding_text().replace('renderer = "generic-md"\n', ""))
+        self.write(
+            "binding.toml", binding_text().replace('renderer = "generic-md"\n', "")
+        )
         with self.assertRaises(render.RenderError):
             self.files()
 
@@ -325,29 +458,51 @@ class ValidationTests(GenericRoot):
 class RoleFieldTests(GenericRoot):
     """role.<key> 來源：從 [roles.<r>].<key> 讀值，key 要先在 [output] 的 role_fields 宣告。"""
 
-    def entry(self, source: str = "role.effort", encoding: str = "scalar", extra: str = "") -> str:
+    def entry(
+        self, source: str = "role.effort", encoding: str = "scalar", extra: str = ""
+    ) -> str:
         return f'\n[[output.frontmatter]]\nkey = "effort"\nsource = "{source}"\nencoding = "{encoding}"\n{extra}'
 
-    def binding_with(self, *, fields: str = '["effort"]', entry: str | None = None, roles: str | None = None) -> None:
-        text = binding_text(frontmatter=entry if entry is not None else self.entry(),
-                            roles=self.all_roles({}) if roles is None else roles)
-        self.write("binding.toml", text.replace("\n[output]\n", f"\n[output]\nrole_fields = {fields}\n", 1))
+    def binding_with(
+        self,
+        *,
+        fields: str = '["effort"]',
+        entry: str | None = None,
+        roles: str | None = None,
+    ) -> None:
+        text = binding_text(
+            frontmatter=entry if entry is not None else self.entry(),
+            roles=self.all_roles({}) if roles is None else roles,
+        )
+        self.write(
+            "binding.toml",
+            text.replace("\n[output]\n", f"\n[output]\nrole_fields = {fields}\n", 1),
+        )
 
     def all_roles(self, extra: dict[str, str]) -> str:
-        return "".join(f'\n[roles.{r}]\ndescription = "x"\n' + extra.get(r, "") for r in CORE_ROLES)
+        return "".join(
+            f'\n[roles.{r}]\ndescription = "x"\n' + extra.get(r, "") for r in CORE_ROLES
+        )
 
     def test_value_is_read_from_each_role(self) -> None:
-        effort = {r: f'effort = "{"low" if r == "scout" else "high"}"\n' for r in CORE_ROLES}
+        effort = {
+            r: f'effort = "{"low" if r == "scout" else "high"}"\n' for r in CORE_ROLES
+        }
         self.binding_with(roles=self.all_roles(effort))
         self.assertEqual(self.head("scout"), "---\neffort: low\n---\n\n")
         self.assertEqual(self.head("executor"), "---\neffort: high\n---\n\n")
 
     def test_list_and_map_values_follow_the_encoding(self) -> None:
-        roles = self.all_roles({r: 'tags = ["a", "b"]\nlimits = { cpu = "1" }\n' for r in CORE_ROLES})
-        entry = self.entry("role.tags", "comma-list").replace('"effort"', '"tags"') + \
-            self.entry("role.limits", "nested-map").replace('"effort"', '"limits"')
+        roles = self.all_roles(
+            {r: 'tags = ["a", "b"]\nlimits = { cpu = "1" }\n' for r in CORE_ROLES}
+        )
+        entry = self.entry("role.tags", "comma-list").replace(
+            '"effort"', '"tags"'
+        ) + self.entry("role.limits", "nested-map").replace('"effort"', '"limits"')
         self.binding_with(fields='["tags", "limits"]', entry=entry, roles=roles)
-        self.assertEqual(self.head("scout"), "---\ntags: a, b\nlimits:\n  cpu: 1\n---\n\n")
+        self.assertEqual(
+            self.head("scout"), "---\ntags: a, b\nlimits:\n  cpu: 1\n---\n\n"
+        )
 
     def test_key_must_be_declared_in_role_fields(self) -> None:
         self.binding_with(fields="[]", roles=self.all_roles({}))
@@ -365,7 +520,9 @@ class RoleFieldTests(GenericRoot):
 
     def test_optional_omits_the_line_for_roles_without_a_value(self) -> None:
         extra = {"scout": 'effort = "low"\n'}
-        self.binding_with(entry=self.entry(extra="optional = true\n"), roles=self.all_roles(extra))
+        self.binding_with(
+            entry=self.entry(extra="optional = true\n"), roles=self.all_roles(extra)
+        )
         self.assertEqual(self.head("scout"), "---\neffort: low\n---\n\n")
         self.assertEqual(self.text("executor").split("\n", 2)[0:2], ["---", "---"])
 
@@ -386,7 +543,14 @@ class RoleFieldTests(GenericRoot):
         self.assert_rejected("scout", "欄位 effort")
 
     def test_role_fields_declaration_is_validated(self) -> None:
-        for fields in ('"effort"', '["effort", "effort"]', '["description"]', '["tools"]', '["bad key"]', "[1]"):
+        for fields in (
+            '"effort"',
+            '["effort", "effort"]',
+            '["description"]',
+            '["tools"]',
+            '["bad key"]',
+            "[1]",
+        ):
             with self.subTest(fields=fields):
                 self.binding_with(fields=fields, roles=self.all_roles({}))
                 self.assert_rejected("role_fields")
@@ -395,7 +559,9 @@ class RoleFieldTests(GenericRoot):
         entry = '\n[[output.frontmatter]]\nkey = "n"\nsource = "name"\nencoding = "scalar"\noptional = true\n'
         self.binding_with(entry=entry, roles=self.all_roles({}))
         self.assert_rejected("欄位 n", "optional")
-        self.binding_with(entry=self.entry(extra="optional = 1\n"), roles=self.all_roles({}))
+        self.binding_with(
+            entry=self.entry(extra="optional = 1\n"), roles=self.all_roles({})
+        )
         self.assert_rejected("欄位 effort", "optional")
 
 
@@ -406,7 +572,10 @@ class DistAndExplainTests(GenericRoot):
         result = run_render(self.HOST, self.root, "--write")
         self.assertEqual(result.returncode, 0, result.stderr)
         dist = self.host_dir / "dist"
-        self.assertEqual(sorted(p.name for p in (dist / "agents").iterdir()), sorted(f"{r}.md" for r in CORE_ROLES))
+        self.assertEqual(
+            sorted(p.name for p in (dist / "agents").iterdir()),
+            sorted(f"{r}.md" for r in CORE_ROLES),
+        )
         self.assertEqual(run_render(self.HOST, self.root, "--check").returncode, 0)
         (dist / "stale.md").write_text("x", encoding="utf-8", newline="\n")
         scout = dist / "agents" / "scout.md"
@@ -426,7 +595,9 @@ class DistAndExplainTests(GenericRoot):
         self.assertIn('tools = ["read", "grep", "web"]', result.stdout)
 
     def test_explain_rejects_an_invalid_generic_binding(self) -> None:
-        self.binding(extra='\n[extra_roles.Explore]\nmodel = "haiku"\naccess = "read-only"\n')
+        self.binding(
+            extra='\n[extra_roles.Explore]\nmodel = "haiku"\naccess = "read-only"\n'
+        )
         result = run_render(self.HOST, self.root, "--explain")
         self.assertEqual(result.returncode, 2)
         self.assertIn("Explore", result.stderr)
@@ -435,7 +606,9 @@ class DistAndExplainTests(GenericRoot):
 class DiscoveryTests(GenericRoot):
     def test_generic_hosts_are_discovered_from_the_binding(self) -> None:
         self.binding()
-        self.write("../other/binding.toml", 'role_text = "core"\n')  # 沒有 renderer：不是 generic host
+        self.write(
+            "../other/binding.toml", 'role_text = "core"\n'
+        )  # 沒有 renderer：不是 generic host
         self.assertEqual(render.discover_generic_hosts(self.root), ["demo"])
 
     def test_host_choice_accepts_discovered_hosts_and_the_builtin_five(self) -> None:
@@ -448,11 +621,21 @@ class DiscoveryTests(GenericRoot):
             self.assertIn(host, result.stderr)
 
     def test_builtin_names_are_reserved_for_their_renderers(self) -> None:
-        self.assertEqual(set(render.RENDERERS), {"claude", "codex", "agy", "grok", "opencode"})
+        self.assertEqual(
+            set(render.RENDERERS), {"claude", "codex", "agy", "grok", "opencode"}
+        )
         self.assertEqual(set(render.DIST_DIRS), set(render.RENDERERS))
-        shutil.copytree(ROOT / "hosts" / "agy", self.root / "hosts" / "agy", ignore=shutil.ignore_patterns("plugin"))
+        shutil.copytree(
+            ROOT / "hosts" / "agy",
+            self.root / "hosts" / "agy",
+            ignore=shutil.ignore_patterns("plugin"),
+        )
         agy = self.root / "hosts" / "agy" / "binding.toml"
-        agy.write_text('renderer = "generic-md"\n' + agy.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+        agy.write_text(
+            'renderer = "generic-md"\n' + agy.read_text(encoding="utf-8"),
+            encoding="utf-8",
+            newline="\n",
+        )
         self.assertEqual(render.discover_generic_hosts(self.root), [])
         self.assertEqual(run_render("agy", self.root, "--check").returncode, 0)
 
@@ -465,7 +648,9 @@ class DiscoveryTests(GenericRoot):
     def test_host_directory_name_is_validated(self) -> None:
         bad = self.root / "hosts" / "Bad_Name"
         bad.mkdir()
-        (bad / "binding.toml").write_text('renderer = "generic-md"\n', encoding="utf-8", newline="\n")
+        (bad / "binding.toml").write_text(
+            'renderer = "generic-md"\n', encoding="utf-8", newline="\n"
+        )
         with self.assertRaises(render.RenderError):
             render.discover_generic_hosts(self.root)
 
@@ -481,7 +666,12 @@ def _compose(host: str, fragment: str, dest: Path) -> None:
     text = (ROOT / "hosts" / host / "binding.toml").read_text(encoding="utf-8")
     text = re.sub(r"(?m)^supports_effort = false\n", "", text)
     text = re.sub(r"(?ms)^# host 專屬 role.*", "", text)
-    text = 'renderer = "generic-md"\n' + text + "\n" + (FIXTURES / fragment).read_text(encoding="utf-8")
+    text = (
+        'renderer = "generic-md"\n'
+        + text
+        + "\n"
+        + (FIXTURES / fragment).read_text(encoding="utf-8")
+    )
     target.mkdir(parents=True, exist_ok=True)
     (target / "binding.toml").write_text(text, encoding="utf-8", newline="\n")
 
@@ -515,7 +705,10 @@ class ReproduceExistingHostsTests(unittest.TestCase):
     def test_agy_all_roles_are_byte_identical(self) -> None:
         files = self.rendered("agy", "agy-output.toml")
         dist = ROOT / "hosts" / "agy" / "dist" / "agents"
-        self.assertEqual(sorted(files), sorted(p.relative_to(dist.parent).as_posix() for p in dist.rglob("*.md")))
+        self.assertEqual(
+            sorted(files),
+            sorted(p.relative_to(dist.parent).as_posix() for p in dist.rglob("*.md")),
+        )
         for rel, data in files.items():
             self.assertEqual(data, (dist.parent / rel).read_bytes(), rel)
 
