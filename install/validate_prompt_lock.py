@@ -6,6 +6,7 @@ import argparse
 import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +14,10 @@ from typing import Any
 
 
 MANIFEST_RELATIVE = Path("docs/specs/prompt-document-lock/LOCK.json")
-VERSION_RELATIVE = Path("VERSION")
+# Each surface names the version file of the host that owns it (Decision 6 of
+# claude-eval-parity): a change to a protected surface only requires that
+# host's version to change, never the repository-root VERSION.
+HOST_VERSION_FILE = re.compile(r"hosts/[a-z0-9][a-z0-9-]*/VERSION")
 REQUIRED_SURFACE_PATHS = frozenset(
     {
         "templates/agents-md.bootstrap.md",
@@ -32,6 +36,17 @@ REQUIRED_SURFACE_PATHS = frozenset(
         "templates/agents/verifier.toml",
         "templates/hooks.json",
         "INSTALL_PROMPT.md",
+        "hosts/claude/dist/agents/executor.md",
+        "hosts/claude/dist/agents/Explore.md",
+        "hosts/claude/dist/agents/mech-executor.md",
+        "hosts/claude/dist/agents/plan-verifier.md",
+        "hosts/claude/dist/agents/scout.md",
+        "hosts/claude/dist/agents/security-executor.md",
+        "hosts/claude/dist/agents/security-reviewer.md",
+        "hosts/claude/dist/agents/verifier.md",
+        "hosts/claude/dist/skills/pilotfish-orchestration/SKILL.md",
+        "hosts/claude/dist/skills/pilotfish-orchestration/references/orchestration-policy.md",
+        "hosts/claude/dist/skills/pilotfish-orchestration/references/workflow-extensions.md",
     }
 )
 HARD_MAX_CHANGED_LINES = 32
@@ -67,6 +82,7 @@ def _validate_surface(surface: Any, index: int) -> None:
         "max_changed_characters",
         "max_change_ratio",
         "required_fragments",
+        "version_file",
     }
     missing = required - surface.keys()
     if missing:
@@ -75,6 +91,11 @@ def _validate_surface(surface: Any, index: int) -> None:
         raise PromptLockError(f"surface {index}: id must be a non-empty string")
     if not _is_relative_repo_path(surface["path"]):
         raise PromptLockError(f"surface {surface['id']}: path must stay inside the repository")
+    version_file = surface["version_file"]
+    if not isinstance(version_file, str) or not HOST_VERSION_FILE.fullmatch(version_file):
+        raise PromptLockError(
+            f"surface {surface['id']}: version_file must be hosts/<host>/VERSION"
+        )
     for field in ("max_lines", "max_bytes", "max_changed_lines", "max_changed_characters"):
         if not _is_positive_int(surface[field]):
             raise PromptLockError(f"surface {surface['id']}: {field} must be a positive integer")
@@ -99,7 +120,7 @@ def _validate_surface(surface: Any, index: int) -> None:
 def _validate_lock_shape(lock: Any) -> dict[str, Any]:
     if not isinstance(lock, dict):
         raise PromptLockError("lock manifest must be an object")
-    if lock.get("schema_version") != 1:
+    if lock.get("schema_version") != 2:
         raise PromptLockError("unsupported prompt lock schema")
     if lock.get("status") != "active":
         raise PromptLockError("prompt lock must be active")
@@ -108,7 +129,7 @@ def _validate_lock_shape(lock: Any) -> dict[str, Any]:
     if not isinstance(lock.get("update_protocol"), str) or "--allow-lock-update" not in lock["update_protocol"]:
         raise PromptLockError("prompt lock must declare its explicit update protocol")
     version_gate = lock.get("version_gate")
-    if not isinstance(version_gate, dict) or version_gate.get("path") != VERSION_RELATIVE.as_posix():
+    if not isinstance(version_gate, dict):
         raise PromptLockError("prompt lock must declare the VERSION gate")
     if version_gate.get("require_change_for_protected_surfaces") is not True:
         raise PromptLockError("prompt lock VERSION gate must be enabled")
@@ -338,11 +359,19 @@ def validate_lock(
             continue
         metrics = check_change_budget(surface, before, contents[relative_path])
         reports.append({"id": surface["id"], "path": relative_path, **metrics})
-    if any(report["changed_characters"] for report in reports):
-        current_version = _resolve_repo_file(root, VERSION_RELATIVE.as_posix()).read_text(encoding="utf-8").strip()
-        base_version = (_git_show(root, base_ref, VERSION_RELATIVE.as_posix()) or "").strip()
+    # Each changed surface requires a change of its own host's version file.
+    changed_by_version_file: dict[str, list[str]] = {}
+    for surface, report in zip(lock["surfaces"], reports):
+        if report["changed_characters"]:
+            changed_by_version_file.setdefault(surface["version_file"], []).append(surface["id"])
+    for version_file, surface_ids in sorted(changed_by_version_file.items()):
+        current_version = _resolve_repo_file(root, version_file).read_text(encoding="utf-8").strip()
+        base_version = (_git_show(root, base_ref, version_file) or "").strip()
         if not base_version or current_version == base_version:
-            raise PromptLockError("protected prompt changed without a VERSION update")
+            raise PromptLockError(
+                f"protected prompt changed without a VERSION update: {version_file} "
+                f"(changed surfaces: {', '.join(surface_ids)})"
+            )
     return {
         "status": "ok",
         "surface_count": len(contents),

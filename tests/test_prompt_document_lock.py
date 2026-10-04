@@ -35,7 +35,10 @@ class PromptDocumentLockTests(unittest.TestCase):
             manifest = root / "docs" / "specs" / "prompt-document-lock" / "LOCK.json"
             manifest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / manifest.relative_to(root), manifest)
-            shutil.copyfile(ROOT / "VERSION", root / "VERSION")
+            for version_file in {surface["version_file"] for surface in lock["surfaces"]}:
+                destination = root / version_file
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / version_file, destination)
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)
             subprocess.run(["git", "config", "user.email", "prompt-lock@test.invalid"], cwd=root, check=True)
             subprocess.run(["git", "config", "user.name", "Prompt Lock Test"], cwd=root, check=True)
@@ -111,11 +114,12 @@ class PromptDocumentLockTests(unittest.TestCase):
     def test_manifest_declares_immutable_update_protocol(self) -> None:
         lock = load_lock(ROOT)
 
-        self.assertEqual(lock["schema_version"], 1)
+        self.assertEqual(lock["schema_version"], 2)
         self.assertEqual(lock["status"], "active")
         self.assertTrue(lock["manifest_immutable"])
         self.assertIn("--allow-lock-update", lock["update_protocol"])
-        self.assertEqual(lock["version_gate"]["path"], "VERSION")
+        self.assertNotIn("path", lock["version_gate"])
+        self.assertTrue(lock["version_gate"]["require_change_for_protected_surfaces"])
 
     def test_manifest_drift_requires_explicit_update_mode(self) -> None:
         with self._git_repo_with_current_lock() as root:
@@ -161,3 +165,182 @@ class PromptDocumentLockTests(unittest.TestCase):
 
             with self.assertRaisesRegex(PromptLockError, "mirror"):
                 validate_lock(root, base_ref="HEAD")
+
+
+CLAUDE_AGENT_FILES = (
+    "executor",
+    "Explore",
+    "mech-executor",
+    "plan-verifier",
+    "scout",
+    "security-executor",
+    "security-reviewer",
+    "verifier",
+)
+CLAUDE_SKILL_DIR = "hosts/claude/dist/skills/pilotfish-orchestration"
+LOCK_RELATIVE = "docs/specs/prompt-document-lock/LOCK.json"
+
+
+def _claude_paths() -> set[str]:
+    return {f"hosts/claude/dist/agents/{name}.md" for name in CLAUDE_AGENT_FILES} | {
+        f"{CLAUDE_SKILL_DIR}/SKILL.md",
+        f"{CLAUDE_SKILL_DIR}/references/orchestration-policy.md",
+        f"{CLAUDE_SKILL_DIR}/references/workflow-extensions.md",
+    }
+
+
+class ClaudeSurfaceLockTests(unittest.TestCase):
+    """AC-CE-001/002/003/005/007: Claude surfaces and the per-host VERSION gate."""
+
+    _git_repo_with_current_lock = PromptDocumentLockTests._git_repo_with_current_lock
+
+    def _edit(self, root: Path, relative: str, old: str, new: str) -> None:
+        path = root / relative
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(old, text)
+        path.write_text(text.replace(old, new), encoding="utf-8")
+
+    def _bump(self, root: Path, version_file: str) -> None:
+        path = root / version_file
+        path.write_text(path.read_text(encoding="utf-8").strip() + ".bump\n", encoding="utf-8")
+
+    def test_lock_covers_exactly_the_eleven_claude_surfaces(self) -> None:
+        lock = load_lock(ROOT)
+        claude = {s["path"] for s in lock["surfaces"] if s["path"].startswith("hosts/claude/")}
+
+        self.assertEqual(claude, _claude_paths())
+        self.assertEqual(len(claude), 11)
+        for path in claude:
+            self.assertTrue((ROOT / path).is_file(), path)
+
+    def test_every_surface_names_its_own_host_version_file(self) -> None:
+        for surface in load_lock(ROOT)["surfaces"]:
+            expected = (
+                "hosts/claude/VERSION"
+                if surface["path"].startswith("hosts/claude/")
+                else "hosts/codex/VERSION"
+            )
+            self.assertEqual(surface["version_file"], expected, surface["id"])
+
+    def test_surface_without_a_host_version_file_is_rejected(self) -> None:
+        with self._git_repo_with_current_lock() as root:
+            manifest = root / LOCK_RELATIVE
+            for bad in (None, "VERSION", "../VERSION", "hosts/claude/README.md"):
+                lock = json.loads((ROOT / LOCK_RELATIVE).read_text(encoding="utf-8"))
+                if bad is None:
+                    del lock["surfaces"][0]["version_file"]
+                else:
+                    lock["surfaces"][0]["version_file"] = bad
+                manifest.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+                with self.assertRaisesRegex(PromptLockError, "version_file|missing fields"):
+                    load_lock(root)
+
+    def test_claude_agent_beyond_its_budget_fails_and_names_the_surface(self) -> None:
+        with self._git_repo_with_current_lock() as root:
+            executor = root / "hosts/claude/dist/agents/executor.md"
+            lines = executor.read_text(encoding="utf-8").splitlines()
+            # Five edited front-matter lines are 10 changed lines against a budget of 8.
+            lines[1:6] = [f"edited-{index}: value" for index in range(5)]
+            executor.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self._bump(root, "hosts/claude/VERSION")
+
+            with self.assertRaisesRegex(PromptLockError, "claude-executor-agent: .*budget exceeded"):
+                validate_lock(root, base_ref="HEAD")
+
+    def test_claude_surface_losing_a_required_fragment_fails(self) -> None:
+        with self._git_repo_with_current_lock() as root:
+            self._edit(
+                root,
+                "hosts/claude/dist/agents/Explore.md",
+                "Never modify anything.",
+                "Modify files when convenient.",
+            )
+            self._bump(root, "hosts/claude/VERSION")
+
+            with self.assertRaisesRegex(PromptLockError, "claude-explore-agent: required fragment"):
+                validate_lock(root, base_ref="HEAD")
+
+    def test_claude_change_without_claude_version_bump_fails(self) -> None:
+        with self._git_repo_with_current_lock() as root:
+            self._edit(
+                root,
+                "hosts/claude/dist/agents/executor.md",
+                "Work like a senior engineer",
+                "Work as a senior engineer",
+            )
+
+            with self.assertRaisesRegex(PromptLockError, "VERSION update: hosts/claude/VERSION"):
+                validate_lock(root, base_ref="HEAD")
+
+    def test_claude_change_with_only_claude_version_bump_passes_without_root_version(self) -> None:
+        with self._git_repo_with_current_lock() as root:
+            self.assertFalse((root / "VERSION").exists())
+            self._edit(
+                root,
+                "hosts/claude/dist/agents/executor.md",
+                "Work like a senior engineer",
+                "Work as a senior engineer",
+            )
+            self._bump(root, "hosts/claude/VERSION")
+
+            report = validate_lock(root, base_ref="HEAD")
+
+            self.assertEqual(report["status"], "ok")
+            self.assertFalse((root / "VERSION").exists())
+
+    def test_version_gate_is_per_host(self) -> None:
+        with self._git_repo_with_current_lock() as root:
+            self._edit(
+                root,
+                "hosts/claude/dist/agents/executor.md",
+                "Work like a senior engineer",
+                "Work as a senior engineer",
+            )
+            self._bump(root, "hosts/codex/VERSION")
+            with self.assertRaisesRegex(PromptLockError, "VERSION update: hosts/claude/VERSION"):
+                validate_lock(root, base_ref="HEAD")
+
+        with self._git_repo_with_current_lock() as root:
+            self._edit(root, "templates/agents/scout.toml", "fast, read-only", "quick, read-only")
+            self._bump(root, "hosts/claude/VERSION")
+            with self.assertRaisesRegex(PromptLockError, "VERSION update: hosts/codex/VERSION"):
+                validate_lock(root, base_ref="HEAD")
+
+        with self._git_repo_with_current_lock() as root:
+            self._edit(root, "templates/agents/scout.toml", "fast, read-only", "quick, read-only")
+            self._bump(root, "hosts/codex/VERSION")
+            self.assertEqual(validate_lock(root, base_ref="HEAD")["status"], "ok")
+
+    def test_claude_renewal_needs_the_flag_offline(self) -> None:
+        """AC-CE-007 offline: the CLI in a temp git repo, without and with --allow-lock-update."""
+
+        with self._git_repo_with_current_lock() as root:
+            manifest = root / LOCK_RELATIVE
+            previous = json.loads(manifest.read_text(encoding="utf-8"))
+            previous["surfaces"] = [
+                s for s in previous["surfaces"] if not s["path"].startswith("hosts/claude/")
+            ]
+            manifest.write_text(json.dumps(previous, indent=2) + "\n", encoding="utf-8")
+            subprocess.run(["git", "rm", "-rq", "hosts/claude/dist"], cwd=root, check=True)
+            subprocess.run(["git", "add", "--", LOCK_RELATIVE], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "test: previous lock"], cwd=root, check=True)
+
+            shutil.copyfile(ROOT / LOCK_RELATIVE, manifest)
+            for path in _claude_paths():
+                destination = root / path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / path, destination)
+
+            script = str(ROOT / "install" / "validate_prompt_lock.py")
+            base = [sys.executable, script, "--root", str(root), "--base-ref", "HEAD"]
+            denied = subprocess.run(base, capture_output=True, text=True, check=False)
+            allowed = subprocess.run(
+                [*base, "--allow-lock-update", "--json"], capture_output=True, text=True, check=False
+            )
+
+            self.assertEqual(denied.returncode, 1)
+            self.assertIn("LOCK.json changed", denied.stderr)
+            self.assertEqual(allowed.returncode, 0, allowed.stderr)
+            report = json.loads(allowed.stdout)
+            added = {item["path"] for item in report["surfaces"] if item.get("added")}
+            self.assertEqual(added, _claude_paths())

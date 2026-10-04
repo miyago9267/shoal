@@ -1,17 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "active",
   "manifest_immutable": true,
   "update_protocol": "Run validate_prompt_lock.py --allow-lock-update only for an explicitly approved policy renewal; normal changes must leave LOCK.json unchanged.",
   "base_diff": "Compare protected surfaces with the Git base revision after this manifest exists in the base.",
   "version_gate": {
-    "path": "VERSION",
     "require_change_for_protected_surfaces": true
   },
   "surfaces": [
     {
       "id": "bootstrap-policy",
       "path": "templates/agents-md.bootstrap.md",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 48,
       "max_bytes": 3000,
       "max_changed_lines": 12,
@@ -27,6 +27,7 @@
     {
       "id": "orchestration-template",
       "path": "templates/agents-md.orchestration.md",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 700,
       "max_bytes": 43000,
       "max_changed_lines": 32,
@@ -43,6 +44,7 @@
     {
       "id": "packaged-orchestration-policy",
       "path": "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/orchestration-policy.md",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 700,
       "max_bytes": 43000,
       "max_changed_lines": 32,
@@ -59,6 +61,7 @@
     {
       "id": "orchestration-skill",
       "path": "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/SKILL.md",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 100,
       "max_bytes": 4700,
       "max_changed_lines": 14,
@@ -75,6 +78,7 @@
     {
       "id": "plugin-agent-prompt",
       "path": "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/agents/openai.yaml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 14,
       "max_bytes": 900,
       "max_changed_lines": 4,
@@ -89,6 +93,7 @@
     {
       "id": "plugin-manifest-description",
       "path": "plugin/plugins/pilotfish-codex/.codex-plugin/plugin.json",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 35,
       "max_bytes": 2200,
       "max_changed_lines": 6,
@@ -104,6 +109,7 @@
     {
       "id": "executor-agent",
       "path": "templates/agents/executor.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 30,
       "max_bytes": 3000,
       "max_changed_lines": 8,
@@ -118,6 +124,7 @@
     {
       "id": "mechanical-executor-agent",
       "path": "templates/agents/mech-executor.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 35,
       "max_bytes": 3000,
       "max_changed_lines": 8,
@@ -132,6 +139,7 @@
     {
       "id": "sol-executor-agent",
       "path": "templates/agents/sol-executor.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 40,
       "max_bytes": 3500,
       "max_changed_lines": 12,
@@ -147,6 +155,7 @@
     {
       "id": "plan-verifier-agent",
       "path": "templates/agents/plan-verifier.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 60,
       "max_bytes": 3100,
       "max_changed_lines": 12,
@@ -162,6 +171,7 @@
     {
       "id": "scout-agent",
       "path": "templates/agents/scout.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 25,
       "max_bytes": 1300,
       "max_changed_lines": 8,
@@ -176,6 +186,7 @@
     {
       "id": "security-executor-agent",
       "path": "templates/agents/security-executor.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 35,
       "max_bytes": 2500,
       "max_changed_lines": 8,
@@ -190,6 +201,7 @@
     {
       "id": "security-reviewer-agent",
       "path": "templates/agents/security-reviewer.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 35,
       "max_bytes": 1800,
       "max_changed_lines": 10,
@@ -204,6 +216,7 @@
     {
       "id": "verifier-agent",
       "path": "templates/agents/verifier.toml",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 95,
       "max_bytes": 6000,
       "max_changed_lines": 16,
@@ -220,6 +233,7 @@
     {
       "id": "hook-description",
       "path": "templates/hooks.json",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 36,
       "max_bytes": 1500,
       "max_changed_lines": 4,
@@ -232,6 +246,7 @@
     {
       "id": "install-prompt",
       "path": "INSTALL_PROMPT.md",
+      "version_file": "hosts/codex/VERSION",
       "max_lines": 30,
       "max_bytes": 1500,
       "max_changed_lines": 8,
@@ -242,6 +257,187 @@
         "Stop for my explicit approval before writing the home",
         "Do not assume `main`",
         "Keep the installed default Luna/Sol policy unchanged"
+      ]
+    },
+    {
+      "id": "claude-executor-agent",
+      "path": "hosts/claude/dist/agents/executor.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 27,
+      "max_bytes": 2900,
+      "max_changed_lines": 8,
+      "max_changed_characters": 2100,
+      "max_change_ratio": 0.35,
+      "required_fragments": [
+        "You are a leaf implementation executor and cannot delegate",
+        "Escalate instead of guessing when you hit a genuine architecture fork",
+        "Your final message: outcome first (what now works, verified how)",
+        "You are a subagent. Never spawn further subagents"
+      ]
+    },
+    {
+      "id": "claude-explore-agent",
+      "path": "hosts/claude/dist/agents/Explore.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 16,
+      "max_bytes": 1700,
+      "max_changed_lines": 8,
+      "max_changed_characters": 800,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "Read-only exploration.",
+        "Never modify anything.",
+        "This definition intentionally overrides built-in Explore agent"
+      ]
+    },
+    {
+      "id": "claude-mech-executor-agent",
+      "path": "hosts/claude/dist/agents/mech-executor.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 28,
+      "max_bytes": 3100,
+      "max_changed_lines": 8,
+      "max_changed_characters": 2100,
+      "max_change_ratio": 0.35,
+      "required_fragments": [
+        "You are a leaf mechanical executor and cannot delegate",
+        "stop and report the boundary so the orchestrator can route it to `executor` or `verifier`",
+        "A precise \"blocked because X\" is a successful outcome",
+        "You are a subagent. Never spawn further subagents"
+      ]
+    },
+    {
+      "id": "claude-plan-verifier-agent",
+      "path": "hosts/claude/dist/agents/plan-verifier.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 58,
+      "max_bytes": 3200,
+      "max_changed_lines": 10,
+      "max_changed_characters": 1400,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "You are a read-only leaf Plan verifier and cannot delegate",
+        "`READY` and no other text when no blocking defect remains",
+        "`REVISE`, followed by one or more blocks containing all four fields",
+        "`Blocker:`, `Evidence:`, `Minimum revision:`, and `Acceptance check:`",
+        "You are a subagent. Never spawn further subagents"
+      ]
+    },
+    {
+      "id": "claude-scout-agent",
+      "path": "hosts/claude/dist/agents/scout.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 21,
+      "max_bytes": 1700,
+      "max_changed_lines": 8,
+      "max_changed_characters": 800,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "You are a fast, read-only scout and a leaf role that cannot delegate",
+        "Never edit, design, or guess",
+        "put the complete answer in one self-contained final message",
+        "You are a subagent. Never spawn further subagents"
+      ]
+    },
+    {
+      "id": "claude-security-executor-agent",
+      "path": "hosts/claude/dist/agents/security-executor.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 28,
+      "max_bytes": 2900,
+      "max_changed_lines": 8,
+      "max_changed_characters": 2100,
+      "max_change_ratio": 0.35,
+      "required_fragments": [
+        "You are a leaf security executor and cannot delegate",
+        "Accept only an approved, stable implementation contract",
+        "never weaken an existing control to make a test pass",
+        "You are a subagent. Never spawn further subagents"
+      ]
+    },
+    {
+      "id": "claude-security-reviewer-agent",
+      "path": "hosts/claude/dist/agents/security-reviewer.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 34,
+      "max_bytes": 2200,
+      "max_changed_lines": 8,
+      "max_changed_characters": 1000,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "You are a read-only leaf security reviewer and cannot delegate",
+        "the pre-approval boundary is enforced by capability, not by prompt text",
+        "approved implementation belongs to security-executor",
+        "You are a subagent. Never spawn further subagents"
+      ]
+    },
+    {
+      "id": "claude-verifier-agent",
+      "path": "hosts/claude/dist/agents/verifier.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 104,
+      "max_bytes": 7700,
+      "max_changed_lines": 18,
+      "max_changed_characters": 3200,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "You are an independent leaf verifier and cannot delegate",
+        "Return one calibrated verdict",
+        "CONFIRMED — evidence independently produced or inspected in this session",
+        "REFUTED — at least one reproducible P0-P2 finding blocks the exact claim",
+        "INCONCLUSIVE — evidence, environment, or contract is insufficient or unsafe",
+        "`CONTINUE` when the evidence supports the intent and the next slice",
+        "`PIVOT` when the outcome remains valid",
+        "`ROLLBACK` when an invariant or acceptance condition is broken",
+        "You are a subagent. Never spawn further subagents"
+      ]
+    },
+    {
+      "id": "claude-orchestration-skill",
+      "path": "hosts/claude/dist/skills/pilotfish-orchestration/SKILL.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 44,
+      "max_bytes": 2100,
+      "max_changed_lines": 8,
+      "max_changed_characters": 900,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "name: pilotfish-orchestration",
+        "Apply risk triggers before size, then the phase gate and dispatch brake",
+        "Read only the part needed for the current decision",
+        "do not claim full Pilotfish verification"
+      ]
+    },
+    {
+      "id": "claude-orchestration-policy",
+      "path": "hosts/claude/dist/skills/pilotfish-orchestration/references/orchestration-policy.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 293,
+      "max_bytes": 19600,
+      "max_changed_lines": 32,
+      "max_changed_characters": 4000,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "Named roles (`scout`, `Explore`, `plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`, `security-executor`): ignore this section",
+        "Main session owns framing, architecture, ambiguity, Plan synthesis, approval, integration, final judgment",
+        "`explore_then_plan` boundary",
+        "**CONFIRMED**, **REFUTED**, or **INCONCLUSIVE**"
+      ]
+    },
+    {
+      "id": "claude-workflow-extensions",
+      "path": "hosts/claude/dist/skills/pilotfish-orchestration/references/workflow-extensions.md",
+      "version_file": "hosts/claude/VERSION",
+      "max_lines": 180,
+      "max_bytes": 9600,
+      "max_changed_lines": 30,
+      "max_changed_characters": 4000,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "The execution unit is the requested user-visible outcome",
+        "Reporting a phase boundary is progress reporting, not a request for approval",
+        "None of these rules expands approval, security, destructive, external, release, or spending authority",
+        "When a rule here conflicts with that policy, the policy wins"
       ]
     }
   ],
