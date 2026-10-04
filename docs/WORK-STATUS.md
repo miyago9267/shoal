@@ -210,7 +210,7 @@ rechecked after the new role bindings are installed:
   security-reviewer 補隱私檢查；A3 列為 non-goal）。待實作 A1-A3。
 - [x] `docs/specs/claude-eval-parity/SPEC.md`、`TASKS.md`、`TESTS.md`
   （Claude prompt surface 加入 lock、role-fitness host adapter、content 層
-  失敗分類）。Open questions 3、4 仍待決定；付費 run 需另行核准。
+  失敗分類）。Open questions 全部已決定；付費 run 需另行核准。
 
 ### In progress — P0 policy installation safety
 

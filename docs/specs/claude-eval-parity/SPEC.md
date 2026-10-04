@@ -248,8 +248,8 @@ inconclusive 路徑（`run_role_fitness_content.py:379`）歸入 `unclassified`�
   - 先跑 smoke：每個 cohort 1 個 case，用來實測單次成本與時間。process
     上限 = 每 arm 的 process 數 × arm 數（plan review 1、mechanical 2、
     split 3），不是固定 6：每個 case 只跑 1 個 arm 時為 6，每個 case 2 個
-    arm（例如 plan review 的兩個 candidate）時為 12。Open question 3 定案
-    後，B4 核准單要列出每 stage 上限與依 arm 數算出的 process 總數。
+    arm 時為 12。依 Open question 3，只有 plan review 跑 2 個 arm，smoke
+    上限為 2 + 2 + 3 = 7；B4 核准單列出每 stage 上限與這個 process 總數。
   - smoke 後以實測值外推完整 run 的成本，回報 Miyago，核准後才跑 R1。
   - 每次 run 沿用既有停止點：API 等值 $30 或 8,000,000 weighted tokens，
     先到者停止；遇到用量上限（HTTP 429）立即停止並保留已完成 stage。
@@ -275,11 +275,11 @@ inconclusive 路徑（`run_role_fitness_content.py:379`）歸入 `unclassified`�
    spec 核准、進入 B0 時執行。
 2. **（已決定，2026-10-04）WORK-STATUS 的 Claude 限制**：Miyago 決定解除
    限制，Claude 不鎖版本（`docs/WORK-STATUS.md:247-251`）。
-3. **Claude 的 arm 怎麼配**：Codex 的 plan_review 用 2 個 candidate（例如
-   Luna 對 Sol）。Claude 要比較哪兩個 binding（例如 plan-verifier 用
-   frontier 對 strong tier）？這會決定 cohort 定義與成本。
-4. **B5 的頻率**：是只在 role 文字改動時重跑，還是固定週期？前者符合
-   「每次改 prompt 都重跑」，但每次都要付費。
+3. **（已決定，2026-10-04）Claude 的 arm 怎麼配**：plan_review 比較
+   plan-verifier 的現行 binding（frontier）對 strong tier，用來回答
+   frontier 值不值得。mechanical 與 split 各跑現行 binding 一個 arm。
+4. **（已決定，2026-10-04）B5 的頻率**：只在 role 文字改動時重跑，不做
+   固定週期；每次重跑仍逐次核准。
 5. **（已決定，2026-10-04）隔離下怎麼登入（R6）**：Miyago 決定保留訂閱
    登入，不走 API key。`claude --bare` 因此不能用（它不讀 OAuth 與
    keychain）。候選做法：全新的 `CLAUDE_CONFIG_DIR`（沒有 user 層的 hook、

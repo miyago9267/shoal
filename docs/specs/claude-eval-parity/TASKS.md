@@ -12,8 +12,8 @@
 - [x] Open questions 6、7 已決定：`missed_risk` 以 per-case
       `risk_coverage < 1.0` 推導；沒有結論的 verifier 新增
       `verifier_inconclusive`。
-- [ ] 回覆 Open questions 3、4（Claude arm 配置、重跑頻率）；Q3 決定
-      smoke 的 arm 數與 process 上限，B4 前必須定案。
+- [x] Open questions 3、4 已決定：plan_review 比較 frontier 對 strong
+      tier（smoke 上限 7 processes）；B5 只在 role 文字改動時重跑。
 
 ## Phase B0 — Claude prompt surface 加入 lock
 
