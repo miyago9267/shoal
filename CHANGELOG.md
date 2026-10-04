@@ -3,6 +3,32 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## Unreleased
+
+### Features
+
+OpenCode 全域安裝（`docs/specs/opencode-global/`，O1-O2）。
+
+- `hosts/opencode/plugin/install/install.sh` 新增
+  `--global [--config-dir DIR] (--enable|--disable|--rollback)`：從 committed
+  `HEAD` 把五個 role、plugin 與 `catalog.json`、`routing.json` 安裝到 OpenCode 的
+  config dir（`--config-dir`，其次 `OPENCODE_CONFIG_DIR`，預設
+  `~/.config/opencode`）。manifest 與備份放在
+  `${XDG_STATE_HOME:-$HOME/.local/state}/shoal/opencode-global`。遇到使用者自己的
+  同名檔案時中止且不寫入；安裝後對 `routing.json` 中未在 `opencode.json`
+  （`provider` keys 與 `enabled_providers`）宣告的 provider 與已有專案 plugin 的目錄
+  輸出警告。`--target` 的行為與輸出不變。
+- plugin 查找設定改為兩層：專案 `.opencode/pilotfish/catalog.json` 存在就只用專案層，
+  否則用全域 `<config-dir>/pilotfish/`，全域路徑同樣做穿越檢查。同一個 instance
+  載入多份 plugin 時只註冊一次 `pilotfish_route`。
+
+### 已知限制
+
+- 專案 plugin 的共存警告只檢查目前目錄與其 git root；`--target` 沒有集中記錄，
+  無法偵測其他專案。
+- 去重以 plugin 的 `input.directory` 為單位。OpenCode 在同一個 process 內重新初始化
+  同一個目錄時（例如設定重新載入），是否會重新載入 plugin 尚未驗證。
+
 ## v1.1.0
 
 role-only 路線的四步（模型目錄、權限推導、role 契約、新增 host）完成，並補齊

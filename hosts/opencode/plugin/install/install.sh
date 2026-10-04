@@ -4,8 +4,17 @@ set -eu
 
 usage() {
   printf '%s\n' "usage: $0 --target DIRECTORY (--enable|--disable|--rollback)" >&2
+  printf '%s\n' "       $0 --global [--config-dir DIRECTORY] (--enable|--disable|--rollback)" >&2
   exit 2
 }
+
+# --global 另有一份安裝腳本（全域 config dir，docs/specs/opencode-global）；
+# 下面的 --target 流程完全不動。
+for arg in "$@"; do
+  if [ "$arg" = "--global" ]; then
+    exec sh "$(dirname -- "$0")/install_global.sh" "$@"
+  fi
+done
 
 repo_root=$(CDPATH=; cd -P -- "$(dirname -- "$0")/.." && pwd)
 # role md 由 render 產生，放在 hosts/opencode/dist/roles（plugin/ 的上一層）。

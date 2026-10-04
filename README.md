@@ -52,7 +52,7 @@ python3 tools/render.py --host claude --write
 | Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝 |
 | Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結 |
 | Grok Build | `python3 tools/install_grok.py`（預設 dry-run，`--apply` 才寫入），見 [INSTALL.md](./INSTALL.md#grok-build) |
-| OpenCode | `hosts/opencode/plugin/install/install.sh --target DIR --enable` |
+| OpenCode | 專案：`hosts/opencode/plugin/install/install.sh --target DIR --enable`；全域：`install.sh --global --enable`，見 [INSTALL.md](./INSTALL.md#opencode) |
 
 Claude Code、Gemini/agy 的安裝步驟仍依賴 dotfile 的腳本；Grok Build 由
 `tools/install_grok.py` 安裝 agents、roles、rules 與原生 hooks，不再手動複製。
@@ -92,8 +92,8 @@ v1.0.0 之前的 pinned ref 仍在
 ## 已知限制
 
 - 各 host 的 policy 文字尚未合併成一份，目前只有 role 與 binding 共用（規劃中）。
-- 只有 Codex 與 grok 有 shoal 自己的 installer；Claude Code、agy、OpenCode 的
-  安裝仍在 dotfile 或 host 的 plugin。
+- Codex、grok 與 OpenCode 有 shoal 自己的 installer；Claude Code、agy 的安裝
+  仍在 dotfile。
 
 Codex host 的完整說明與歷史紀錄在 [hosts/codex/README.md](./hosts/codex/README.md)
 與 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
