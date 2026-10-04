@@ -93,11 +93,10 @@ core（規格見
 - `frames/` 與 `addenda/` 刻意放在 `src/` 之外，不會被 passthrough 帶進 dist。
 - 切到 `core` 的 host，每個 role 必須逐字包含每個未被 `replace` 的條款，
   每個 host 的 replace 清單由測試鎖定（新增 replace 要同時改測試）。
-- 目前只有 Codex 是 `core`：七個共同 role 的條款由 Codex 1.8.1 的原文切出，
-  Codex 專屬的句子（模型綁定、reasoning effort、`semantic_adjudication`）在
-  `hosts/codex/addenda/`，所以 `templates/agents/*.toml` 與切換前逐位元組相同。
-  `sol-executor` 是 Codex 專屬 role，維持 `src/agents` 的原文。其他 host 仍是
-  `legacy`。
+- 五個 host 都已經是 `core`：條款由 Codex 1.8.1 的原文切出，所以 Codex 的
+  輸出與切換前逐位元組相同。各 host 專屬的句子放在各自的 `addenda/`；
+  host 專屬 role（`Explore`、`sol-executor`）維持 `src/agents` 的原文。
+  對照表在 `docs/specs/role-contracts/MAPPING-*.md`。
 
 ## 新增 host（generic-md）
 

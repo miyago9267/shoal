@@ -20,7 +20,8 @@ adapter, change shell startup files, manage credentials, or use `sudo`.
 Before any run, confirm all of the following:
 
 - Codex CLI is `>=0.147.0` (one bare version token; a suffix or an ambiguous
-  `--version` result is not accepted).
+  `--version` result is not accepted; the installer enforces this floor, newer
+  releases are expected to work).
 - Python is `3.11` or newer.
 - A local POSIX checkout has Bash and Python; a native Windows checkout has
   PowerShell and Python. No network tools are needed for the local path.
@@ -40,10 +41,12 @@ inspecting the home.
 The installer keeps the default root Luna/Plan and Sol review policy. The
 automatic route may use the installed strong `executor`/`verifier` bindings.
 To opt into Astra for the root session itself, start Codex with launch-time
-overrides instead of editing `config.toml`:
+overrides instead of editing `config.toml`. `<strong-model>` is the model your
+Codex binding resolves for the strong tier; see
+`python3 tools/render.py --host codex --explain`.
 
 ```bash
-codex --model gpt-6-astra \
+codex --model <strong-model> \
   -c model_reasoning_effort="high" \
   -c plan_mode_reasoning_effort="high" \
   -c agents.max_concurrent_threads_per_session=1

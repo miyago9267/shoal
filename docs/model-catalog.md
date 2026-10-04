@@ -8,8 +8,8 @@ binding。規則細節見 [core/README.md](../core/README.md)。
 1. 在 `core/models.toml` 加一筆，key 用 `vendor/name`：
 
    ```toml
-   [models."openai/gpt-7-sol"]
-   vendor = "openai"
+   [models."examplevendor/example-model"]
+   vendor = "examplevendor"
    capability = 5
    cost = 4
    ```
