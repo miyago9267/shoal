@@ -255,9 +255,9 @@ class PlanModeGuardTests(unittest.TestCase):
         self.assertIn("plan mode", reason.lower())
 
     def test_fails_open_when_it_cannot_decide(self) -> None:  # AC-GW-024
-        (self.home / "roles" / "broken.toml").write_text("default_capability_mode = [", encoding="utf-8")
-        (self.home / "roles" / "weird.toml").write_text('default_capability_mode = "sudo"\n', encoding="utf-8")
-        (self.home / "roles" / "empty.toml").write_text('description = "x"\n', encoding="utf-8")
+        (self.home / "roles" / "broken.toml").write_text("default_capability_mode = [", encoding="utf-8", newline="\n")
+        (self.home / "roles" / "weird.toml").write_text('default_capability_mode = "sudo"\n', encoding="utf-8", newline="\n")
+        (self.home / "roles" / "empty.toml").write_text('description = "x"\n', encoding="utf-8", newline="\n")
         cases = {
             "invalid json": "{nope",
             "empty stdin": "",
@@ -286,7 +286,7 @@ class PlanModeGuardTests(unittest.TestCase):
         other = tempfile.TemporaryDirectory()
         self.addCleanup(other.cleanup)
         (Path(other.name) / "roles").mkdir()
-        (Path(other.name) / "roles" / "executor.toml").write_text('default_capability_mode = "read-only"\n', encoding="utf-8")
+        (Path(other.name) / "roles" / "executor.toml").write_text('default_capability_mode = "read-only"\n', encoding="utf-8", newline="\n")
         stdin = spawn(None, "executor")
         # 沒有參數時用環境變數；PILOTFISH_GROK_HOME 優先於 GROK_HOME
         self.assertEqual(run(GUARD, stdin, env={"GROK_HOME": other.name}), (0, ""))
@@ -303,7 +303,7 @@ class PlanModeGuardTests(unittest.TestCase):
         self.addCleanup(fake_home.cleanup)
         roles = Path(fake_home.name) / ".grok" / "roles"
         roles.mkdir(parents=True)
-        (roles / "executor.toml").write_text('default_capability_mode = "read-only"\n', encoding="utf-8")
+        (roles / "executor.toml").write_text('default_capability_mode = "read-only"\n', encoding="utf-8", newline="\n")
         self.assertEqual(run(GUARD, spawn(None, "executor"), env={"HOME": fake_home.name}), (0, ""))
 
 

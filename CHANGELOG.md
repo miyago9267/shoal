@@ -138,6 +138,16 @@ role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
 - role 文字審查後的調整：grok 補上 slice 沿用 envelope 的 addendum、agy 補回
   do-not-start 子句，並修正 grok、agy、OpenCode 的對照表。
 
+### Known limitations
+
+- grok hook 的 `command` 直接指向 `.py` 腳本，依賴 shebang 與執行權限；在
+  Windows 上的 Grok Build 是否能直接執行未經驗證。
+- `tools/install_grok.py` 不處理上游 AGENT-INSTALL 的 Claude 相容隔離
+  （`[compat.claude]`、`[plugins] disabled`）與 Grok 版本下限檢查；既有設定
+  原樣保留。
+- hooks 只在 stdin／stdout 層級測試過，尚未在 Grok Build 的實際 session 中
+  觀察到觸發。
+
 ## v1.0.0
 
 shoal 首次發布：把 pilotfish-codex 擴成 host 中立的 role catalog。

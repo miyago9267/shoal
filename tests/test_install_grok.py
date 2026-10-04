@@ -116,7 +116,7 @@ class DryRunTests(InstallGrokCase):
     def test_dry_run_writes_nothing(self) -> None:  # AC-GW-030
         self.write_config()
         (self.home / "agents").mkdir()
-        (self.home / "agents" / "scout.md").write_text("old", encoding="utf-8")
+        (self.home / "agents" / "scout.md").write_text("old", encoding="utf-8", newline="\n")
         before = tree(self.home)
         code, out, _ = self.run_cli()
         self.assertEqual(code, 0)
@@ -167,7 +167,8 @@ class ApplyTests(InstallGrokCase):
         command = config["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         script = self.home / "hooks" / command  # 相對於 JSON 檔
         payload = json.dumps({"permissionMode": "plan", "toolInput": {"subagent_type": "executor"}})
-        done = subprocess.run([str(script), "--grok-home", str(self.home)], input=payload.encode(),
+        # 以 sys.executable 執行：Windows 不看 shebang 與執行權限
+        done = subprocess.run([sys.executable, str(script), "--grok-home", str(self.home)], input=payload.encode(),
                               capture_output=True, timeout=30)
         self.assertEqual(json.loads(done.stdout)["decision"], "deny")
 
@@ -208,8 +209,8 @@ class ApplyTests(InstallGrokCase):
 
     def test_installs_committed_head_not_the_working_tree(self) -> None:  # AC-GW-038
         committed = self.installable()
-        (self.dist / "agents" / "scout.md").write_text("dirty working tree", encoding="utf-8")
-        (self.dist / "rules" / "extra.md").write_text("untracked", encoding="utf-8")
+        (self.dist / "agents" / "scout.md").write_text("dirty working tree", encoding="utf-8", newline="\n")
+        (self.dist / "rules" / "extra.md").write_text("untracked", encoding="utf-8", newline="\n")
         code, out, _ = self.run_cli("--apply")
         self.assertEqual(code, 0)
         self.assertIn("未 commit", out)
@@ -220,7 +221,7 @@ class ApplyTests(InstallGrokCase):
         rules = self.home / "rules" / "pilotfish-grok.md"
         for text in (f"{install_grok.BEGIN}\na\n{install_grok.END}\n{install_grok.BEGIN}\nb\n{install_grok.END}\n",
                      f"{install_grok.BEGIN}\nno end\n"):
-            rules.write_text(text, encoding="utf-8")
+            rules.write_text(text, encoding="utf-8", newline="\n")
             code, _, err = self.run_cli("--apply")
             self.assertEqual(code, 2)
             self.assertIn("marker", err)
@@ -237,8 +238,8 @@ class ApplyTests(InstallGrokCase):
         self.run_cli("--apply")
         files, version, commit = install_grok.load_source(self.repo, "HEAD")
         plan = install_grok.Plan(self.home, files, version, commit, False)
-        (self.home / "agents" / "scout.md").write_text("tampered", encoding="utf-8")
-        (self.home / "rules" / "pilotfish-grok.md").write_text("<!-- pilotfish-grok v9.9.9 -->\n", encoding="utf-8")
+        (self.home / "agents" / "scout.md").write_text("tampered", encoding="utf-8", newline="\n")
+        (self.home / "rules" / "pilotfish-grok.md").write_text("<!-- pilotfish-grok v9.9.9 -->\n", encoding="utf-8", newline="\n")
         problems = install_grok.verify(plan)
         self.assertIn("hash 不符: agents/scout.md", problems)
         self.assertTrue(any("marker" in p for p in problems))
@@ -330,7 +331,7 @@ class RestoreTests(InstallGrokCase):
         manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
         for bad in ("../outside.txt", "auth.json", "/etc/passwd", "sessions/a.jsonl"):
             manifest["created"] = [bad]
-            (backup / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (backup / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8", newline="\n")
             with self.subTest(bad):
                 self.assertEqual(self.run_cli("--restore", str(backup), "--apply")[0], 2)
 
