@@ -1,7 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { createPilotfishRouteTool, PilotfishOpenCodePlugin } from "../src/plugin/pilotfish-opencode.ts";
+import {
+  createPilotfishRouteTool,
+  PILOTFISH_REGISTRATION_KEY,
+  PilotfishOpenCodePlugin,
+} from "../src/plugin/pilotfish-opencode.ts";
 
 const catalog = {
   agents: { scout: { mode: "subagent", available: true } },
@@ -30,6 +34,11 @@ const routing = {
 };
 
 describe("OpenCode plugin seam", () => {
+  // 去重登記表在整個 bun test process 共用；每個 test 前清掉，避免互相影響。
+  beforeEach(() => {
+    Reflect.deleteProperty(globalThis, PILOTFISH_REGISTRATION_KEY);
+  });
+
   test("only exposes an explicit route tool and does not mutate model hooks", async () => {
     const hooks = await PilotfishOpenCodePlugin({} as never);
 

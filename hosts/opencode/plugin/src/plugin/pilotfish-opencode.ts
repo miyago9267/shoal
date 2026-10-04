@@ -1,5 +1,7 @@
 import { tool, type Plugin } from "@opencode-ai/plugin";
-import { isAbsolute, relative, resolve } from "node:path";
+import { realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   resolveRoute,
   RouteResolutionError,
@@ -17,6 +19,13 @@ export type PilotfishPluginOptions = {
 
 const DEFAULT_CATALOG_PATH = ".opencode/pilotfish/catalog.json";
 const DEFAULT_ROUTING_PATH = ".opencode/pilotfish/routing.json";
+// 全域層固定放在 <config-dir>/pilotfish/，不受 catalogPath / routingPath 選項影響。
+const GLOBAL_CATALOG_PATH = "pilotfish/catalog.json";
+const GLOBAL_ROUTING_PATH = "pilotfish/routing.json";
+
+// 同一個 OpenCode instance 可能同時載入全域與專案兩份 plugin（各自是獨立的 module），
+// 所以用 Symbol.for 放在 globalThis，讓兩份 bundle 看到同一個登記表。
+export const PILOTFISH_REGISTRATION_KEY = Symbol.for("shoal.pilotfish-opencode.route-registered");
 
 function optionPath(
   options: PilotfishPluginOptions,
@@ -47,6 +56,80 @@ function safeProjectPath(directory: string, configuredPath: string): string {
     throw new RouteResolutionError("invalid_config", { field: "plugin.path" });
   }
   return path;
+}
+
+// 全域設定目錄：OPENCODE_CONFIG_DIR，未設定（或空字串）時為 ~/.config/opencode。
+// 每次解析路由時才讀環境變數，測試與使用者都能在 process 內改指向。
+function globalConfigDir(): string {
+  const fromEnv = process.env.OPENCODE_CONFIG_DIR;
+  return resolve(fromEnv !== undefined && fromEnv.trim().length > 0
+    ? fromEnv
+    : join(process.env.HOME || homedir(), ".config", "opencode"));
+}
+
+function isInside(root: string, path: string): boolean {
+  const relativePath = relative(root, path);
+  return !(
+    isAbsolute(relativePath) ||
+    relativePath === ".." ||
+    relativePath.startsWith("../")
+  );
+}
+
+// 全域層的穿越檢查：檔案存在時，realpath 必須落在 realpath(<config-dir>) 內，
+// 防止 pilotfish/ 或檔案本身是指向 config dir 外部的 symlink。
+async function globalLayerPath(configDir: string, relativePath: string): Promise<string> {
+  const path = resolve(configDir, relativePath);
+  if (!isInside(configDir, path)) {
+    throw new RouteResolutionError("invalid_config", { field: "plugin.path" });
+  }
+  if (!(await Bun.file(path).exists())) return path;
+  let realRoot: string;
+  let realPath: string;
+  try {
+    realRoot = await realpath(configDir);
+    realPath = await realpath(path);
+  } catch {
+    throw new RouteResolutionError("invalid_config", { field: "plugin.path" });
+  }
+  if (!isInside(realRoot, realPath)) {
+    throw new RouteResolutionError("invalid_config", { field: "plugin.path" });
+  }
+  return path;
+}
+
+// R1：以 catalog.json 是否存在決定使用哪一層。專案層存在就只用專案層，
+// 否則用全域層；同一層內 routing.json 維持 optional，不跨層混用。
+async function resolveLayerPaths(
+  directory: string,
+  options: PilotfishPluginOptions,
+): Promise<{ catalogPath: string; routingPath: string }> {
+  const projectCatalog = safeProjectPath(
+    directory,
+    optionPath(options, "catalogPath", DEFAULT_CATALOG_PATH),
+  );
+  if (await Bun.file(projectCatalog).exists()) {
+    return {
+      catalogPath: projectCatalog,
+      routingPath: safeProjectPath(
+        directory,
+        optionPath(options, "routingPath", DEFAULT_ROUTING_PATH),
+      ),
+    };
+  }
+  const configDir = globalConfigDir();
+  const globalCatalog = await globalLayerPath(configDir, GLOBAL_CATALOG_PATH);
+  if (!(await Bun.file(globalCatalog).exists())) {
+    // 兩層都沒有 catalog：維持原本的專案層錯誤（catalog.missing）。
+    return {
+      catalogPath: projectCatalog,
+      routingPath: projectCatalog,
+    };
+  }
+  return {
+    catalogPath: globalCatalog,
+    routingPath: await globalLayerPath(configDir, GLOBAL_ROUTING_PATH),
+  };
 }
 
 async function readJson<T>(path: string, label: string): Promise<T> {
@@ -125,21 +208,11 @@ export function createPilotfishRouteTool(options: PilotfishPluginOptions = {}) {
       }
 
       try {
-        const catalog = await readJson<ResolvedOpenCodeCatalog>(
-          safeProjectPath(
-            context.directory,
-            optionPath(options, "catalogPath", DEFAULT_CATALOG_PATH),
-          ),
-          "catalog",
-        );
+        const layer = await resolveLayerPaths(context.directory, options);
+        const catalog = await readJson<ResolvedOpenCodeCatalog>(layer.catalogPath, "catalog");
         const config =
-          (await readOptionalJson<RoutingConfig>(
-          safeProjectPath(
-            context.directory,
-            optionPath(options, "routingPath", DEFAULT_ROUTING_PATH),
-          ),
-          "routing",
-          )) ?? nativeRouting();
+          (await readOptionalJson<RoutingConfig>(layer.routingPath, "routing")) ??
+          nativeRouting();
         const result = resolveRoute({
           role: args.role,
           config,
@@ -187,10 +260,20 @@ export function createPilotfishRouteTool(options: PilotfishPluginOptions = {}) {
   });
 }
 
-export const PilotfishOpenCodePlugin: Plugin = async (_input, options) => ({
-  tool: {
-    pilotfish_route: createPilotfishRouteTool(pluginOptions(options)),
-  },
-});
+// R2a：同一個 instance（以 input.directory 區分）只註冊一次 pilotfish_route。
+// 用 directory 當 key 而不是整個 process 一個旗標，是因為 OpenCode 的 plugin 以
+// instance（目錄）為單位初始化；同一個 server 開多個專案目錄時，每個目錄都要有這個 tool。
+export const PilotfishOpenCodePlugin: Plugin = async (input, options) => {
+  const slot = globalThis as unknown as Record<symbol, Set<string> | undefined>;
+  const registered = (slot[PILOTFISH_REGISTRATION_KEY] ??= new Set<string>());
+  const key = resolve(input?.directory ?? "");
+  if (registered.has(key)) return {};
+  registered.add(key);
+  return {
+    tool: {
+      pilotfish_route: createPilotfishRouteTool(pluginOptions(options)),
+    },
+  };
+};
 
 export default PilotfishOpenCodePlugin;
