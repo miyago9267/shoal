@@ -77,8 +77,11 @@ decision，不是通用的 intelligence ranking。历史 benchmark 与 bar chart
 如果用户明确选择 Astra 作为 root session，可以用 launch-time override 启动
 一个 zero-write、只限该 session 的模式：
 
+`<strong-model>` 是 Codex binding 为 strong tier 解析出的模型，
+可用 `python3 tools/render.py --host codex --explain` 查看。
+
 ```bash
-codex --model gpt-6-astra \
+codex --model <strong-model> \
   -c model_reasoning_effort="high" \
   -c plan_mode_reasoning_effort="high" \
   -c agents.max_concurrent_threads_per_session=1
