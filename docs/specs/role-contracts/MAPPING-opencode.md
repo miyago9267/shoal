@@ -59,7 +59,7 @@ timeout 參數，不需要 replace。
 | L6 標題 `# Executor` | 外框 | 保留（D6） |
 | L8 在被指派的檔案與模組內實作已核准的 contract | addendum `assigned-scope` | 保留（無 Decision 可引用） |
 | L8-9 沿用既有的專案慣例 | `work-like-senior`（read context to match conventions） | 保留 |
-| L9-10 執行必要且有範圍的檢查 | `work-like-senior`（verify by exercising the change） | 保留 |
+| L9-10 執行必要且有範圍的檢查 | addendum `assigned-scope`（「run the bounded checks the contract requires」）；`work-like-senior`（verify by exercising the change） | 保留 |
 | L10 在擴大 scope 前先回報含糊之處 | addendum `assigned-scope`（同一則）；`escalate-fork` | 保留 |
 | L12-18 固定五項回報：Changed paths、Behavior changed、Verification run、Remaining risk、Follow-up needed | `final-message` | 移除（D3，回報格式採 Codex） |
 | L20 parent session 擁有 scope、整合與最終判斷 | addendum `parent-session-owns` | 保留（無 Decision 可引用） |
@@ -76,7 +76,7 @@ core 新增、legacy 沒有：`identity`、`own-local-design`、`no-extras`、
 | L1-4 frontmatter | 外框 | 保留（D6） |
 | L6 標題 `# Security Executor` | 外框 | 保留（D6） |
 | L8 只套用已核准的 security 變更 | `approved-contract-only` | 保留 |
-| L8-9 既有控制至少一樣強 | `work-defensively`（never weaken an existing control） | 保留 |
+| L8-9 既有控制至少一樣強（無條件） | addendum `credentials-and-blockers`（開頭「Keep the existing controls at least as strong」）；`work-defensively`（never weaken an existing control to make a test pass，只涵蓋為過測試而削弱的情形） | 保留（core 條款較窄，無條件的部分由 addendum 補回） |
 | L9 不暴露或輪替 credentials | addendum `credentials-and-blockers` | 保留（無 Decision 可引用） |
 | L9-10 執行指定的 security 檢查 | addendum `credentials-and-blockers`；`regression-checks` | 保留（無 Decision 可引用） |
 | L10 遇到阻礙時回報確切的 blocker，不擴大存取或 scope | addendum `credentials-and-blockers`；`regression-checks`（不超出核准範圍） | 保留（無 Decision 可引用） |
@@ -119,7 +119,8 @@ session 的 Plan）。
 core 新增：見文末「core 新增的義務」。
 本 repo 沒有 OpenCode 的 orchestration policy 可對照 brief 格式（plugin 只做
 route 驗證），legacy 的 verifier 也沒有 contract 概念，因此加 addendum
-`default-contract`：未點名時視為 `outcome_verification`。
+`default-contract`：未點名但帶有 completed-work claim 時視為
+`outcome_verification`，缺少的 acceptance 列為未驗證項目回報。
 
 ## core 新增的義務
 
@@ -143,16 +144,19 @@ OpenCode 的 legacy 文字最短，core 新增的義務最多（括號內是對�
   實作 brief、不修 finding、核准後的實作屬 `security-executor`」。
 - verifier：`identity`；`name-one-contract` 與 `no-inferred-checkpoint`（以
   `default-contract` 調和）；`direction_checkpoint` 的全部條款；
-  `falsify-claim`；`recheck`；INCONCLUSIVE 與 P0 到 P4（D2）；`finding-fields`；
+  `falsify-claim`；`primary-flow-first`；`report-relevant-issues`；`recheck`；
+  INCONCLUSIVE 與 P0 到 P4（D2）：`priority-is-impact`、
+  `bounded-failure-is-p2`、`refuted-takes-precedence`；`finding-fields`；
   `security-verification`；foreground 全部條款（D4）與 `inspect-bindings`；
   `no-false-rollback`。
 
 ## 風險與備註
 
 - `hosts/opencode/plugin/src/role-contract.ts` 的 `DEFAULT_ROLE_DEFINITIONS`
-  仍描述 security-reviewer 輸出 `REVISE or READY`、verifier 輸出
-  `CONFIRMED or REFUTED`。那是 plugin 內部的資料，不經 render，也沒有 TS
-  測試把它和 role md 對照；本次沒有改，之後要不要同步需另行決定。
+  的 `output` 只是描述性資料（plugin 只用 `id`，測試只檢查長度大於 0），不經
+  render。verifier 已改成 `CONFIRMED, REFUTED, or INCONCLUSIVE`、
+  security-reviewer 已改成 `minimum remediation and acceptance check`，與新契約
+  一致；其他 TS 沒有動。
 - 標示「收窄」的是措辭或條件收緊，不是刪除；其餘移除都有 D1 到 D3 的依據。
 - plugin 的 TS 測試沒有斷言 role md 的內容，沒有為此修改任何 TS 測試。
 - `parent-session` 的 replace 讓 OpenCode 的條款與 core 有 7 處不同，

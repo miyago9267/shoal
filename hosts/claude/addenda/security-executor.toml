@@ -1,4 +1,4 @@
-# Claude 專屬：Agent / Workflow 工具停用、Opus 路由說明、contract 內容（legacy 有、core 沒有）、
+# Claude 專屬：Agent / Workflow 工具停用、獨立路由說明、contract 內容（legacy 有、core 沒有）、
 # Bash timeout 參數（毫秒）與 run_in_background。
 
 [[addendum]]
@@ -9,11 +9,11 @@ text = '''
 The Agent and Workflow tools are disabled for this role by design.'''
 
 [[addendum]]
-id = "opus-routing"
+id = "separate-routing"
 at = "after:identity"
 sep = "space"
 text = '''
-This is a separate role routed to the Opus model; review carries the extra rigor.'''
+This is a separate role with its own model routing; review carries the extra rigor.'''
 
 [[addendum]]
 id = "contract-contents"

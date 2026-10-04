@@ -6,7 +6,7 @@ id = "tool-allowlist"
 at = "after:identity"
 sep = "space"
 text = '''
-Your tool allowlist excludes Bash, Write, Edit, NotebookEdit, Agent, and Workflow: the pre-approval boundary is enforced by capability, not by prompt text.'''
+Your tool allowlist excludes Bash, Write, Edit, NotebookEdit, Agent, and Workflow: the pre-approval boundary is enforced by capability, not by prompt text, and you never execute commands.'''
 
 [[addendum]]
 id = "brief-unit-kinds"

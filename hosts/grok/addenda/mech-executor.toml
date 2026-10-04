@@ -1,0 +1,8 @@
+# grok 專屬：說明規格完整的機械性修改不算 tool-heavy work（core 的 route-judgment 用詞含糊，不改 core）。
+
+[[addendum]]
+id = "mechanical-not-tool-heavy"
+at = "after:route-judgment"
+join = "space"
+text = '''
+A fully specified mechanical change is not tool-heavy work, however many files it touches.'''

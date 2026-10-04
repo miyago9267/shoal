@@ -86,7 +86,8 @@ Miyago 已授權這條路線由 agent 決定並直接推進。
    `direction_checkpoint` 兩種 contract。
 3. scout、executor、security 類 role 的回報格式與「停下回報」的措辭
    都採 Codex 的寫法；Claude 的 `mis-routed` 用語、OpenCode 的六欄
-   回報與 READY/REVISE 格式刻意移除。
+   回報與 READY/REVISE 格式刻意移除。所有 host 的 scout「約 20 行、不貼檔案」
+   這類最終訊息長度上限，依本條移除。
 4. 寫入與驗證類 role 的「前景執行、每個指令最多 10 分鐘、不可 detach」
    採 Codex 的句子；Codex 某個 role 沒有這句的，其他 host 也不補。
 5. Codex 專屬內容（`semantic_adjudication`、`ESCALATE_TO_EXECUTOR`、
@@ -110,13 +111,15 @@ Miyago 已授權這條路線由 agent 決定並直接推進。
     放回原句（目前唯一的 replace）。
 12. 實作紀錄（2b-2）：`review-slice` 要求 slice 有 slice-local budget 與
     stop conditions。若 host 的 orchestration policy 把這兩項放在 program
-    envelope、slice 不寫（agy、grok；上游 pilotfish-grok v1.0.6 的 policy 與
-    agy 的 SKILL 皆然），該 host 以 `after:review-slice` 的 addendum
-    `slice-inherits-envelope` 說明：envelope 已載明 budget 與 stop
-    conditions 時 slice 沿用，slice 層缺少不算 blocker，避免 plan-verifier 多出
-    一輪 REVISE 而耗掉「同一 unit 兩次 REVISE 即停下詢問」的額度。Claude 的
-    policy 要求 slice 自帶 budget 與 stops，不加；OpenCode 沒有 plan-verifier。
-    不修改 core 條款。
+    envelope、slice 不寫（grok：上游 pilotfish-grok v1.0.6 的 policy），或 Plan
+    根本不要求 slice 層的 budget 與 stops（agy），該 host 以 `after:review-slice`
+    的 addendum `slice-inherits-envelope` 說明 slice 層缺少不算 blocker，避免
+    plan-verifier 多出一輪 REVISE 而耗掉「同一 unit 兩次 REVISE 即停下詢問」的
+    額度。grok 的 addendum 有前提：envelope 已載明 budget 與 stop conditions 時
+    slice 沿用。agy 的 addendum 無條件：agy 的 SKILL 沒有要求 envelope 載明
+    budget 與 stops，agy 的依據是舊 plan-verifier 文字（envelope 清單有 budgets
+    與 stop conditions，slice 清單沒有），不是 SKILL。Claude 的 policy 要求 slice
+    自帶 budget 與 stops，不加；OpenCode 沒有 plan-verifier。不修改 core 條款。
 13. 實作紀錄（2b-2）：host 原有的義務只要 Decisions 沒有明文移除，就以 addendum
     或 `replace` 保留；Decision 4 不代表可以刪掉 host 原本就有的子句（例如 agy
     與 Claude 的 verifier、security-executor 的「跑不完就不要啟動」，core 的

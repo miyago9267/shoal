@@ -5,3 +5,10 @@ id = "foreground-limit"
 at = "replace:foreground-timeout"
 text = '''
 Run commands in the foreground and keep each under 10 minutes.'''
+
+[[addendum]]
+id = "mechanical-not-tool-heavy"
+at = "after:route-judgment"
+join = "space"
+text = '''
+A fully specified mechanical change is not tool-heavy work, however many files it touches.'''

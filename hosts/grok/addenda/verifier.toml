@@ -12,4 +12,4 @@ id = "default-contract"
 at = "after:no-inferred-checkpoint"
 sep = "space"
 text = '''
-When the brief names no contract but carries a completed-work claim with its acceptance, treat it as `outcome_verification` and do not refuse the work for that reason; only an explicit `direction_checkpoint` request selects that contract.'''
+When the brief names no contract but carries a completed-work claim, treat it as `outcome_verification` and do not refuse the work for that reason; report any missing acceptance as an unverified item, and only an explicit `direction_checkpoint` request selects that contract.'''

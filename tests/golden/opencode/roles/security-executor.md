@@ -15,7 +15,7 @@ Retain each confirmed exploit or failure scenario as a regression check, test
 abuse cases as well as normal behavior, and do not expand beyond the approved
 security scope.
 
-Never expose or rotate credentials, and run the specified security checks. Report an exact blocker instead of expanding access or scope.
+Keep the existing controls at least as strong, never expose or rotate credentials, and run the specified security checks. Report an exact blocker instead of expanding access or scope.
 
 Run commands in the foreground with an explicit timeout of at most 10 minutes. Never detach with nohup, setsid, a trailing ampersand, or a background shell. If a command cannot finish within 10 minutes, return the exact command, absolute working directory or isolated worktree, required environment variables, input paths, and completion criterion so the orchestrator can run it and re-task you with the captured result.
 

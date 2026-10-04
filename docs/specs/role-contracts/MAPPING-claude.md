@@ -24,9 +24,18 @@ reviewer 比對。
   `identity` 與 `no-spawn`。
 - 「Agent/Workflow tools disabled by design」：addendum `tools-disabled`
   （D6）。
-- 「Task seems to need sub-agents → mis-routed; stop/report」：移除（D3，
-  `mis-routed` 用語與停下回報的措辭採 Codex）。不 delegate 與在無法完成時
-  回報由 `identity`、`no-spawn`、`stop-on-bad-spec` 或 `escalate-fork` 承接。
+- 「Task seems to need sub-agents → mis-routed; stop/report」：legacy 只有
+  mech-executor、executor、verifier、security-executor 有這句
+  （plan-verifier、scout、security-reviewer 的 legacy 沒有，不算移除）。
+  `mis-routed` 用語移除（D3）。mech-executor、executor、security-executor 的
+  停下回報由 `stop-on-bad-spec`、`escalate-fork`、`approved-contract-only` 與
+  addendum `contract-contents` 承接。verifier 與 plan-verifier 的 core 條款沒有
+  `stop-on-bad-spec` 或 `escalate-fork`，因此 verifier 的這句實際上是移除，
+  不是承接。依據：Decisions 前言（條款以 Codex 原句為準，Codex 的 verifier 沒有
+  對應句子）加上 D3「停下回報的措辭採 Codex」的類推；D3 沒有明文點名
+  verifier。無法完成時的出口改由 verdict 承接：verifier 回 `INCONCLUSIVE`
+  （evidence、environment 或 contract 不足或不安全），plan-verifier 回 `REVISE`
+  （只有 plan-verifier 的 core 有這個出口，沒有逐字的「停下回報」）。
 - 「Long work: foreground; explicit `timeout` (max 600000ms/10min)」：
   `foreground-timeout`（D4）與 addendum `timeout-param`（毫秒）。
 - 「Never detach — no `nohup`, `setsid`, trailing `&`, `run_in_background`」與
@@ -94,7 +103,7 @@ reviewer 比對。
 | L3 只接收一個穩定的 readiness-unit ID | `one-unit` | 保留 |
 | L3 附上相關的 Plan 與證據路徑；只讀該單元需要的證據 | addendum `read-needed-evidence` | 保留（無 Decision 可引用） |
 | L3 program envelope 挑戰 shared outcome、architecture、security、dependencies、integration、budgets、stops | `review-envelope`；brief 的 `program envelope` 由 addendum `brief-unit-kinds` 對照為 `readiness_review` envelope | 保留 |
-| L3 execution slice 的要求，含 slice-local budget 與 stop conditions | `review-slice`；`execution slice` 由 `brief-unit-kinds` 對照為 slice | 保留 |
+| L3 execution slice 的要求，含 slice-local budget 與 explicit stop conditions | `review-slice`；`execution slice` 由 `brief-unit-kinds` 對照為 slice | 保留；stop conditions 從 explicit 改成 slice-local，見「core 新增的義務」 |
 | L3 拒絕表面切分與未解的共同 blocker | `reject-splits` | 保留 |
 | L5 security 單元需先有 `security-reviewer` findings 與 dispositions | `security-prerequisite` | 保留 |
 | L7 只有具體的 P0 到 P2 缺陷才是 blocker | `blocker-definition` | 保留 |
@@ -104,7 +113,7 @@ reviewer 比對。
 | L9 P0 到 P4 的定義 | `priority-scale` | 保留 |
 | L11 不寫取代用的 Plan | `no-mutation` | 保留 |
 | L11-21 回傳恰好一種形式、`READY`、`REVISE` 與四欄位 | `verdict-form`、`verdict-ready`、`verdict-revise`；各欄位內容說明為 addendum `revise-shape` | 保留（欄位說明無 Decision 可引用） |
-| L23 不執行指令、不修改 repository 或外部狀態、不替使用者規劃實作、不修任何東西 | `no-mutation`；「不執行指令」另由 `tool-allowlist` | 保留 |
+| L23 不執行指令、不修改 repository 或外部狀態、不替使用者規劃實作、不修任何東西 | `no-mutation`（core 是「Never execute mutating commands」） | 收窄（依 Decisions 前言：以 Codex 原句為準；「不執行指令」收窄成「不執行會改動的指令」）；原義務由 addendum `tool-allowlist` 補上的「and you never execute commands」保住（寫法同 security-reviewer） |
 | L23 main-session orchestrator 擁有整合、核准與所有寫入 | addendum `orchestrator-owns-writes` | 保留（無 Decision 可引用） |
 
 ## security-reviewer
@@ -120,7 +129,7 @@ reviewer 比對。
 | L5 回報 severity、`file:line` 證據、假設、精簡的驗證方式 | `report-fields`（含 unit ID、證據缺口、最小補救、acceptance check） | 保留（D3：回報格式採 Codex） |
 | L5 不產出實作 brief、不修改 repository 或外部狀態、不修任何東西 | `no-modify` | 保留 |
 | L5 不執行指令 | addendum `tool-allowlist` | 保留 |
-| L5 main-session orchestrator 擁有 Plan 的整合與核准；核准後的實作交給 `security-executor` | `main-session-carries`、`no-modify`（`approved implementation belongs to security-executor`） | 保留 |
+| L5 main-session orchestrator 擁有 Plan 的整合與核准；核准後的實作交給 `security-executor` | `main-session-carries`（只有「carries findings into the Plan」）、`no-modify`（`approved implementation belongs to security-executor`） | 收窄（依 Decisions 前言：以 Codex 原句為準；「擁有整合與核准」不再逐字承接，核准後的實作歸屬保留） |
 
 ## security-executor
 
@@ -128,7 +137,7 @@ reviewer 比對。
 |---|---|---|
 | L1 共同句子 | 見上 | 保留或 D3 |
 | L3 核准後的 security executor | `identity` | 保留 |
-| L3 獨立的 role，路由到 Opus；review 帶有額外的嚴謹度 | addendum `opus-routing` | 保留（模型綁定說明，D5 的精神：host addendum） |
+| L3 獨立的 role，路由到 Opus；review 帶有額外的嚴謹度 | addendum `separate-routing`（「separate role with its own model routing」） | 收窄（不再點名模型，避免 resolver 改選時文字過時；獨立 role 與額外嚴謹度保留） |
 | L3 brief 缺少已核准、穩定的 contract（scope、constraints、done criteria）時停下回報；核准前的分析屬 `security-reviewer` | `approved-contract-only`；contract 的內容與停下回報由 addendum `contract-contents` | 保留；`mis-routed` 字樣移除（D3） |
 | L5 防禦且精確：在 trust boundary 驗證、沿用既有 pattern、用久經檢驗的 primitive、不為測試削弱控制 | `work-defensively` | 保留 |
 | L5 碰 authn、authz、crypto 時在最終報告明確寫出假設，供檢查 | `state-assumptions` | 保留 |
@@ -140,7 +149,7 @@ reviewer 比對。
 
 | legacy 義務 | 去處 | 移除理由 |
 |---|---|---|
-| L1 共同句子 | 見上 | 保留或 D3 |
+| L1 共同句子 | 見上 | 保留或 D3；mis-routed 停下回報在 verifier 是移除（見共同句子，依據前言與 D3 類推） |
 | L3 fresh-context outcome verifier，接收確切 claim、acceptance、diff 或路徑 | `identity`、`outcome-input` | 保留 |
 | L3 先試 primary acceptance flow | `primary-flow-first` | 保留（D2） |
 | L3 檢查最小的 claim 相關邊界與 diff 涵蓋 | `edge-set-after-evidence` | 保留 |
@@ -163,8 +172,9 @@ reviewer 比對。
 
 Claude 的 orchestrator 只在要做 direction checkpoint 時才明確點名
 `direction_checkpoint`；一般的 outcome 驗證 brief 是「確切 claim 加 acceptance
-加 diff 或路徑」，不點名 contract。因此 `default-contract` 讓未點名的 brief
-視為 `outcome_verification`，避免 verifier 因 brief 格式而拒絕工作。
+加 diff 或路徑」，不點名 contract。因此 `default-contract` 讓未點名、但帶有
+completed-work claim 的 brief 視為 `outcome_verification`，缺少的 acceptance
+列為未驗證項目回報，避免 verifier 因 brief 格式而拒絕工作。
 同樣地，plan-verifier 的 brief 使用 `program envelope` 與 `execution slice`，
 由 `brief-unit-kinds` 對照到 core 的 `readiness_review` envelope 與 slice。
 
@@ -175,33 +185,44 @@ Claude 的 orchestrator 只在要做 direction checkpoint 時才明確點名
 - scout：`identity` 的「leaf role，不可 delegate」與 `no-delegate`（legacy
   只靠 allowlist 排除 Agent）。
 - mech-executor：`route-judgment`（需要判斷或跨系統、重工具的工作時停下，
-  回報邊界供 orchestrator 轉給 `executor` 或 `verifier`）。
-- executor：無。
+  回報邊界供 orchestrator 轉給 `executor` 或 `verifier`；「tool-heavy」含糊，
+  以 addendum `mechanical-not-tool-heavy` 釐清：規格完整的機械性修改不算）；
+  `report-long-command` 的「completion criterion」（legacy 的回報只有指令、
+  目錄、環境變數、輸入路徑）。
+- executor：`report-long-command` 的「completion criterion」。
 - plan-verifier：`no-revise-for-minor` 明列「future-slice completeness」不算
-  REVISE 理由（D1，取代 legacy 的「remains blocking」）。其餘 core 條款在
-  legacy 都有對應。
+  REVISE 理由（D1，取代 legacy 的「remains blocking」）；`review-slice` 的
+  「slice-local stop conditions」（legacy 是 explicit stop conditions，core 限定
+  在 slice 層）。`no-mutation` 把「不執行指令」收窄成「不執行會改動的指令」，
+  原義務由 `tool-allowlist` 的「you never execute commands」保住。其餘 core
+  條款在 legacy 都有對應。
 - verifier：`name-one-contract` 與 `no-inferred-checkpoint`（brief 必須點名
   一種 contract，不從含糊的措辭推斷 checkpoint；以 `default-contract` 調和）；
   `falsify-claim` 的「calibrated to reproducible evidence rather than
   suspicion or finding volume」；`no-false-rollback`（目標不可用或外部動作不可逆時，
   不宣稱 rollback，回報限制與所需的 containment 或使用者決定）；
-  `edge-set-after-evidence` 的先後順序（以 `blocked-primary-flow` 調和）。
-- security-reviewer：`report-fields` 的 affected unit ID 與 minimum
-  remediation；`main-session-carries` 的 dispositions 與「在該單元第一次
-  plan-verifier review 之前」。
+  `edge-set-after-evidence` 的先後順序（以 `blocked-primary-flow` 調和）；
+  `handoff-long-command` 的「completion criterion」；`disposition-rollback` 的
+  「stop new writes」；`disposition-pivot` 的「require a bounded re-plan」。
+- security-reviewer：`report-fields` 的 affected unit ID、minimum
+  remediation、「acceptance check」與「explicit evidence gap」（legacy 是
+  `file:line` evidence where applicable 與 concise verification approach）；
+  `main-session-carries` 的 dispositions 與「在該單元第一次 plan-verifier
+  review 之前」。
 - security-executor：`regression-checks` 的「test abuse cases as well as
-  normal behavior」。
+  normal behavior」；`handoff-long-command` 的「completion criterion」。
 
 ## 風險與備註
 
 - 被刪除而有 Decision 依據的義務：plan-verifier 的「後續 slice 缺 metadata
   仍是 blocker」（D1）；`mis-routed` 用語（D3）；scout 的最終訊息格式（D3）。
+  verifier 的「mis-routed 停下回報」依前言與 D3 類推移除，D3 沒有明文點名
+  verifier，reviewer 請特別確認。
 - 沒有 Decision 依據而保留成 addendum 的有 Claude 專屬機制（工具停用、allowlist、
-  timeout 毫秒、`run_in_background`、scout 的最終訊息通道、Opus 路由），以及
+  timeout 毫秒、`run_in_background`、scout 的最終訊息通道、獨立路由說明），以及
   `read-needed-evidence`、`orchestrator-owns-writes`、`follow-codebase-evidence`、
   `contract-contents`、`blocked-primary-flow`、`default-contract`、
   `do-not-start`、`checkpoint-details`。
 - `blocked-primary-flow` 與 core 的 `edge-set-after-evidence` 並存，語意是
   例外，不是矛盾；reviewer 請特別確認。
-- `opus-routing` 寫死 Opus；目前 `security-executor` 解析到 `opus`，
-  日後 resolver 改選別的模型時需要同步更新這則 addendum。
+- `separate-routing` 不點名模型，resolver 改選別的模型時不需要同步更新。

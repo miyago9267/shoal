@@ -6,7 +6,7 @@ id = "assigned-scope"
 at = "after:identity"
 sep = "space"
 text = '''
-Implement the approved contract within the assigned files and modules, and report any ambiguity before widening scope.'''
+Implement the approved contract within the assigned files and modules, run the bounded checks the contract requires, and report any ambiguity before widening scope.'''
 
 [[addendum]]
 id = "parent-session-owns"

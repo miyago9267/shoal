@@ -81,7 +81,7 @@ cannot finish within that limit」，因為這兩個 role 的 core 條款
 | L6-7 envelope 挑戰 shared outcome、architecture、security、dependencies、integration、budgets、stops | `review-envelope` | 保留 |
 | L6-7 envelope 另外挑戰 scope 與 non-goals | addendum `envelope-scope-nongoals` | 保留（core 的 envelope 清單沒有這兩項，無 Decision 可引用） |
 | L7-10 slice 需要 ready envelope、outcome、scope 與 non-goals、prerequisites、ownership、acceptance、rollback | `review-slice` | 保留 |
-| 無（agy 的 SKILL L17、L19 把 budget 與 stops 放在 program envelope，slice 不寫） | addendum `slice-inherits-envelope`：envelope 已載明時 slice 沿用，slice 層缺少不算 blocker | 調和 core 新增的 slice-local budget 與 stops（D12） |
+| 無（舊 plan-verifier L6-10：envelope 清單有 budgets 與 stop conditions，slice 清單沒有；agy 的 SKILL 沒有要求 envelope 載明這兩項） | addendum `slice-inherits-envelope`（無條件）：這個 host 的 Plan 不要求 slice 層的 budget 與 stop conditions，缺少不算 blocker | 調和 core 新增的 slice-local budget 與 stops（D12） |
 | L10 拒絕表面切分與未解的共同 blocker | `reject-splits` | 保留 |
 | L12-13 security 單元需先有 `security-reviewer` findings 與 dispositions | `security-prerequisite` | 保留 |
 | L13-14 security 判斷要成比例：缺基本控制與鄰近影響才算，不要求任務不需要的 hardening | addendum `security-proportionate` | 保留（無 Decision 可引用） |
@@ -104,7 +104,7 @@ REVISE 理由（D1）。
 | L4-6 指令只用來檢查與測試、不用 shell 改 tracked 檔案、清掉自己產生的暫存輸出 | addendum `tool-limits`（同一則） | 保留（無 Decision 可引用；`read-and-run-only` 只涵蓋不編輯） |
 | L8-10 接收確切 claim 與 acceptance 加 diff 或路徑 | `outcome-input` | 保留 |
 | L9-10 獨立重現檢查、驅動受影響流程、檢查 claim 相關的邊界與 diff 涵蓋 | `falsify-claim`、`primary-flow-first`、`edge-set-after-evidence` | 收窄（依 Decisions 前言：以 Codex 原句為準；邊界檢查改為主流程取得證據之後才做）；D2 |
-| L10-12 只回報與 claim 相關且可重現的問題；實作造成的回歸算相關 | `report-relevant-issues` | 保留 |
+| L10-12 只回報與 claim 相關且可重現的問題；實作造成的回歸算相關 | `report-relevant-issues`（core 另加「proximity in the same repository or path is not relevance」） | 收窄（依 Decisions 前言：以 Codex 原句為準；路徑相近不再算相關）；D2 |
 | L14-22 CONFIRMED、REFUTED、INCONCLUSIVE 三種 verdict | `verdict-form`、`verdict-confirmed`、`verdict-refuted`、`verdict-inconclusive` | 保留（D2） |
 | L24-26 REFUTED 優先；未評估的條件使結果為 INCONCLUSIVE | `refuted-takes-precedence`、`unevaluated-is-inconclusive` | 保留 |
 | L28-29 每個 finding 的欄位 | `finding-fields` | 保留 |
@@ -119,8 +119,9 @@ REVISE 理由（D1）。
 
 core 新增、legacy 沒有：見文末「core 新增的義務」。
 agy 的 orchestrator 不會在 brief 點名 contract，因此加 addendum
-`default-contract`：未點名 contract 但有完成工作的 claim 與 acceptance 時視為
-`outcome_verification`，避免 verifier 因 brief 格式拒絕工作。
+`default-contract`：未點名 contract 但有完成工作的 claim 時視為
+`outcome_verification`，缺少的 acceptance 列為未驗證項目回報，避免 verifier 因
+brief 格式拒絕工作。
 
 ## security-reviewer
 
@@ -161,9 +162,10 @@ agy 的 orchestrator 不會在 brief 點名 contract，因此加 addendum
 
 新文字有、舊文字沒有的要求（括號內是對應條款）：
 
-- scout：無。
+- scout：`search-breadth` 的「with file and text searches」。
 - mech-executor：`route-judgment`（需要判斷或跨系統、重工具的工作時停下，
-  回報邊界供 orchestrator 轉給 `executor` 或 `verifier`）；`stop-on-bad-spec`
+  回報邊界供 orchestrator 轉給 `executor` 或 `verifier`；「tool-heavy」含糊，
+  以 addendum `mechanical-not-tool-heavy` 釐清：規格完整的機械性修改不算）；`stop-on-bad-spec`
   的「orchestrator will re-spec」；`no-detach` 的「detached work escapes task
   tracking and may be orphaned」；`report-long-command` 的「or isolated
   worktree」。
@@ -179,17 +181,21 @@ agy 的 orchestrator 不會在 brief 點名 contract，因此加 addendum
   `default-contract` 調和）；`direction_checkpoint` 的全部條款（D2）；
   `recheck`；`falsify-claim` 的「calibrated to reproducible evidence rather
   than suspicion or finding volume」；`primary-flow-first` 與
-  `edge-set-after-evidence` 的先後順序；`priority-is-impact`、
+  `edge-set-after-evidence` 的先後順序；`report-relevant-issues` 的「proximity in
+  the same repository or path is not relevance」（收窄，見對照表）；
+  `finding-fields` 的「or advisory under any verdict」；`priority-is-impact`、
   `bounded-failure-is-p2` 與更細的 `priority-scale`（P0 含 credential 或
   secret 外洩、P1 含 security、performance、resource-cost 回歸）；
   INCONCLUSIVE 的「missing evidence is neither false CONFIRMED nor
   speculative REFUTED」；`security-verification`；`handoff-long-command` 的
-  captured output 與 artifact bindings 及 `inspect-bindings`；
+  「or isolated worktree」、captured output 與 artifact bindings 及
+  `inspect-bindings`；
   `no-false-rollback`。
 - security-reviewer：`main-session-carries` 的 dispositions 與「在該單元第一次
   plan-verifier review 之前」；`no-modify` 的「produce an implementation
   brief」。
-- security-executor：`state-assumptions` 的「so they can be checked」。
+- security-executor：`state-assumptions` 的「so they can be checked」；
+  `handoff-long-command` 的「or isolated worktree」。
 
 ## 風險與備註
 

@@ -48,7 +48,7 @@ Decision 7：切換後 `agents/*.md` 不再逐位元組等於上游 v1.0.6，
 | L24-25 精確的 blocked 是成功結果 | `blocked-is-success` | 保留 |
 | L27 前景執行、explicit timeout 最多 10 分鐘 | `foreground-timeout` | 保留（D4） |
 | L28-29 不 detach，detached 的工作脫離 task tracking | `no-detach` | 保留（D4） |
-| L29-34 跑不完就不啟動，回報完整指令、目錄、環境、輸入、完成條件 | `no-start-long-command`、`report-long-command` | 保留（D4） |
+| L29-32 跑不完就不啟動，回報完整指令、目錄、環境、輸入、完成條件 | `no-start-long-command`、`report-long-command` | 保留（D4） |
 | L34-35 最終訊息：改了什麼、驗了什麼、延後什麼 | `final-message` | 保留 |
 | L37 不可再 spawn subagent | `no-spawn` | 保留 |
 
@@ -127,7 +127,7 @@ core 新增、legacy 沒有：見文末「core 新增的義務」。
 |---|---|---|
 | L1-13 frontmatter | 外框 | 保留（D6） |
 | L15 獨立 leaf outcome verifier、不可 delegate | `identity` | 保留 |
-| L15-16 capability 由 grok 強制為 execute：可讀與 shell，不可編輯 | addendum `capability-note` | 保留（D6） |
+| L15-16 capability 由 grok 強制為 execute：可讀與 shell，不可編輯 | addendum `capability-note`；`read-and-run-only`（Read and run only; never plan, edit, fix, or delegate） | 保留（D6） |
 | L16-17 接收確切 claim 與 acceptance 加 diff 或路徑 | `outcome-input` | 保留 |
 | L19-20 獨立重現檢查、驅動受影響流程、檢查 claim 相關邊界與 diff 涵蓋 | `falsify-claim`、`primary-flow-first`、`edge-set-after-evidence` | 收窄（依 Decisions 前言：以 Codex 原句為準；邊界檢查改為主流程取得證據之後才做）；D2 |
 | L20-22 只回報與 claim 相關且可重現的問題；實作造成的回歸算相關 | `report-relevant-issues` | 保留 |
@@ -135,7 +135,7 @@ core 新增、legacy 沒有：見文末「core 新增的義務」。
 | L35-37 REFUTED 優先；未評估的條件使結果為 INCONCLUSIVE | `refuted-takes-precedence`、`unevaluated-is-inconclusive` | 保留 |
 | L39-40 每個 finding 的欄位 | `finding-fields` | 保留 |
 | L42-50 P0 到 P4 的定義、受限或可復原的失敗是 P2 | `priority-is-impact`、`priority-scale`、`bounded-failure-is-p2` | 保留（D2） |
-| L52-53 不規劃、不編輯、不修復、不 delegate；main-session orchestrator 擁有 Plan、修復與最終處置 | `no-plan-edit-fix`、`orchestrator-owns` | 保留 |
+| L52-53 不規劃、不編輯、不修復、不 delegate；main-session orchestrator 擁有 Plan、修復與最終處置 | `read-and-run-only`、`no-plan-edit-fix`、`orchestrator-owns` | 保留 |
 | L55-57 security 敏感驗證要徹底：測 abuse case、遮蔽 secret、無法安全驗證就回 INCONCLUSIVE | `security-verification`（abuse case、secret、INCONCLUSIVE 都在；「remains thorough」一句沒有逐字承接） | 收窄（依 Decisions 前言：以 Codex 原句為準） |
 | L59-65 前景、不 detach、跑不完回報完整指令與條件、重新檢查 artifact binding | `foreground-timeout`、`no-detach`、`handoff-long-command`、`inspect-bindings` | 保留（D4） |
 | L67 不可再 spawn subagent | `no-spawn` | 保留 |
@@ -144,8 +144,8 @@ core 新增、legacy 沒有：見文末「core 新增的義務」。
 shoal 沒有 vendor 上游 v1.0.6 的 policy 檔（`rules.pilotfish-grok.md`），repo
 內看不到 grok 的 orchestrator 如何寫 brief；legacy 的 verifier 只說「接收確切
 claim 與 acceptance 加 diff 或路徑」，沒有點名 contract。因此加 addendum
-`default-contract`：未點名 contract 但有完成工作的 claim 與 acceptance 時視為
-`outcome_verification`。
+`default-contract`：未點名 contract 但有完成工作的 claim 時視為
+`outcome_verification`，缺少的 acceptance 列為未驗證項目回報。
 
 ## core 新增的義務
 
@@ -153,7 +153,8 @@ claim 與 acceptance 加 diff 或路徑」，沒有點名 contract。因此加 a
 
 - scout：無。
 - mech-executor：`route-judgment`（需要判斷或跨系統、重工具的工作時停下，
-  回報邊界供 orchestrator 轉給 `executor` 或 `verifier`）。
+  回報邊界供 orchestrator 轉給 `executor` 或 `verifier`；「tool-heavy」含糊，
+  以 addendum `mechanical-not-tool-heavy` 釐清：規格完整的機械性修改不算）。
 - executor：無。
 - plan-verifier：`review-slice` 的 slice-local budget 與 slice-local stop
   conditions（以 `slice-inherits-envelope` 調和）；`blocker-definition`、

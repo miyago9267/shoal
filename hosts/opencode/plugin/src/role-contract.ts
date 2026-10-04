@@ -123,7 +123,7 @@ export const DEFAULT_ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     scope: ["read the relevant diff or paths", "run targeted checks", "probe important edge cases"],
     nonGoals: ["edit or repair the implementation", "replace the main session's final judgment"],
     input: ["claimed outcome", "relevant paths", "acceptance checks"],
-    output: ["CONFIRMED or REFUTED", "evidence", "unverified claims", "next action"],
+    output: ["CONFIRMED, REFUTED, or INCONCLUSIVE", "evidence", "unverified claims", "next action"],
   },
   {
     id: "security-reviewer",
@@ -131,7 +131,7 @@ export const DEFAULT_ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     scope: ["inspect auth, secrets, validation, permissions, and dependency surfaces"],
     nonGoals: ["write a fix", "grant permissions", "treat unknown capability as safe"],
     input: ["security question", "threat boundary", "relevant paths"],
-    output: ["findings", "attack or misuse paths", "evidence", "severity", "REVISE or READY"],
+    output: ["findings", "attack or misuse paths", "evidence", "severity", "minimum remediation and acceptance check"],
   },
   {
     id: "security-executor",

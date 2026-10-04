@@ -65,7 +65,7 @@ EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
 EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
     "agy": {
         "scout": ["tool-limits"],
-        "mech-executor": ["foreground-limit"],
+        "mech-executor": ["foreground-limit", "mechanical-not-tool-heavy"],
         "executor": ["foreground-limit"],
         "plan-verifier": [
             "tool-limits",
@@ -81,6 +81,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
     },
     "grok": {
         "scout": ["tool-templates"],
+        "mech-executor": ["mechanical-not-tool-heavy"],
         "plan-verifier": [
             "capability-note",
             "envelope-scope-nongoals",
@@ -94,7 +95,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
     },
     "claude": {
         "scout": ["final-message-channel"],
-        "mech-executor": ["tools-disabled", "timeout-param", "background-note"],
+        "mech-executor": ["tools-disabled", "timeout-param", "background-note", "mechanical-not-tool-heavy"],
         "executor": ["tools-disabled", "timeout-param", "background-note"],
         "plan-verifier": [
             "tool-allowlist",
@@ -115,7 +116,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
         "security-reviewer": ["tool-allowlist", "follow-codebase-evidence"],
         "security-executor": [
             "tools-disabled",
-            "opus-routing",
+            "separate-routing",
             "contract-contents",
             "timeout-param",
             "background-note",

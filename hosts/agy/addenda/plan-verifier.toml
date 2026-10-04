@@ -1,4 +1,4 @@
-# agy 專屬：工具限制、envelope 的 scope 與 non-goals（legacy 有、core 沒有）、slice 沿用 envelope 的 budget 與 stops、
+# agy 專屬：工具限制、envelope 的 scope 與 non-goals（legacy 有、core 沒有）、slice 不要求自帶 budget 與 stops、
 # agy orchestrator 的 brief 用語對照、REVISE 欄位的格式與 security 的比例原則。
 
 [[addendum]]
@@ -47,4 +47,4 @@ id = "slice-inherits-envelope"
 at = "after:review-slice"
 sep = "space"
 text = '''
-When the program envelope already states the budget and stop conditions, a slice may inherit them, and a missing slice-local budget or slice-local stop condition is not a blocker.'''
+In this host's Plan a slice does not carry its own budget or stop conditions, so a missing slice-local budget or slice-local stop condition is not a blocker.'''

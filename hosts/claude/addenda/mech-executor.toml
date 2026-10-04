@@ -20,3 +20,10 @@ at = "after:no-detach"
 sep = "space"
 text = '''
 In Claude Code this includes the Bash `run_in_background` option: a detached command has no task id, no captured output, and no completion notification, so its result is orphaned and nobody collects it.'''
+
+[[addendum]]
+id = "mechanical-not-tool-heavy"
+at = "after:route-judgment"
+join = "space"
+text = '''
+A fully specified mechanical change is not tool-heavy work, however many files it touches.'''
