@@ -3,9 +3,21 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
-## Unreleased
+## v1.2.0
 
 ### Features
+
+審查列出隱含權衡與隱私檢查（`docs/specs/review-tradeoff-privacy/`，A1-A3）。
+兩條 core 條款，五個 host 的 role 文字都會跟著變。
+
+- verifier 新增 `implicit-tradeoffs`：`outcome_verification` 回報 `CONFIRMED` 或
+  `REFUTED` 時，另列最多三項實作的隱含權衡（取捨了什麼、換到什麼），沒有就寫
+  `none identified`。權衡不是 finding 或 advisory，不影響 verdict 與 priority。
+- security-reviewer 新增 `privacy-check`：範圍涉及個人資料、識別資訊、記錄或保存的
+  資料時，檢查收集與保存的最小化、資料流向、存取與刪除；不涉及時寫
+  `privacy: not in scope`，且不取代 no-findings 聲明。
+- Codex host 同步 bump 到 1.8.2（`hosts/codex/VERSION`、marker、`plugin.json`、
+  `install/install.py`），安裝後的 marker 與 agent prompt 內容一致。
 
 OpenCode 全域安裝（`docs/specs/opencode-global/`，O1-O2）。
 

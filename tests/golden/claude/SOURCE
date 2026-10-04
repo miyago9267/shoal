@@ -1,5 +1,5 @@
 repo: shoal
-ref: shoal@23014a4
-commit: 23014a4112720994c76fd803302c68f44702606b
+ref: shoal@c83af2b
+commit: c83af2b70345a7459f8c94a8860c283c3b067d41
 path: hosts/claude/dist
 dirty: true

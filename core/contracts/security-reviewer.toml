@@ -26,6 +26,15 @@ confirmed findings from hypotheses and external advisories from locally
 verified exposure.'''
 
 [[clause]]
+id = "privacy-check"
+kind = "procedure"
+text = '''
+If the scope touches personal data, identifiers, logs, or stored data, check
+minimization of what is collected and kept, data flow (logs, telemetry, errors,
+third parties), and access and deletion, within the report fields. Otherwise
+write `privacy: not in scope`, which does not replace a no-findings statement.'''
+
+[[clause]]
 id = "report-fields"
 kind = "final-message"
 sep = "space"

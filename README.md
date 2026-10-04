@@ -61,8 +61,8 @@ Claude Code、Gemini/agy 的安裝步驟仍依賴 dotfile 的腳本；Grok Build
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 1.1.0 |
-| codex host | 1.8.1（`hosts/codex/VERSION`） |
+| shoal（產品） | 1.2.0 |
+| codex host | 1.8.2（`hosts/codex/VERSION`） |
 | claude host | 1.4.2-claude.1 |
 | agy host | 0.1.0 |
 | grok host | 1.0.6-shoal.1（`hosts/grok/VERSION`，衍生自上游 v1.0.6） |

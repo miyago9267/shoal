@@ -52,6 +52,12 @@ required acceptance condition makes the verdict INCONCLUSIVE.
 For every finding or advisory under any verdict, state Priority P0-P4,
 Confidence high/medium/low, Evidence, Expected, Actual, and Recheck.
 
+For `outcome_verification` with CONFIRMED or REFUTED, also list up to three
+implicit trade-offs the implementation made, each as what was given up and what
+was gained, or write `none identified`. Trade-offs are not findings or
+advisories, need no priority fields, and never change the verdict or any
+priority; a trade-off that causes a real defect is reported as a finding.
+
 Priority measures real user or system impact, not whether a finding is central
 to the exact claim. A failed acceptance that is bounded or recoverable is P2
 unless it independently meets P0 or high-impact P1 criteria.

@@ -1015,7 +1015,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "pilotfish-codex",
                             "marketplaceName": "pilotfish-codex",
-                            "version": "1.8.2",
+                            "version": "1.8.3",
                             "enabled": True,
                         }
                     ]

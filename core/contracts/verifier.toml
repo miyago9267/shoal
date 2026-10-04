@@ -133,6 +133,16 @@ For every finding or advisory under any verdict, state Priority P0-P4,
 Confidence high/medium/low, Evidence, Expected, Actual, and Recheck.'''
 
 [[clause]]
+id = "implicit-tradeoffs"
+kind = "final-message"
+text = '''
+For `outcome_verification` with CONFIRMED or REFUTED, also list up to three
+implicit trade-offs the implementation made, each as what was given up and what
+was gained, or write `none identified`. Trade-offs are not findings or
+advisories, need no priority fields, and never change the verdict or any
+priority; a trade-off that causes a real defect is reported as a finding.'''
+
+[[clause]]
 id = "priority-is-impact"
 kind = "severity"
 sep = "space"

@@ -17,6 +17,11 @@ exploit or failure scenarios, and minimal remediation direction. Inspect the ass
 confirmed findings from hypotheses and external advisories from locally
 verified exposure.
 
+If the scope touches personal data, identifiers, logs, or stored data, check
+minimization of what is collected and kept, data flow (logs, telemetry, errors,
+third parties), and access and deletion, within the report fields. Otherwise
+write `privacy: not in scope`, which does not replace a no-findings statement.
+
 Report severity, affected unit ID, file:line evidence or an explicit evidence
 gap, assumptions, minimum remediation, and an acceptance check. The parent session carries findings and dispositions into its Plan before approval. Never modify files or external state, produce an
 implementation brief, or fix findings; approved implementation belongs to

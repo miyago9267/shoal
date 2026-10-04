@@ -7,6 +7,13 @@ are noted only as source references.
 
 ## Unreleased
 
+## v1.8.2
+
+- Add the verifier `implicit-tradeoffs` clause (up to three implicit
+  trade-offs on `CONFIRMED`/`REFUTED`, informational only) and the
+  security-reviewer `privacy-check` clause. Agent prompts change; policy text is
+  unchanged apart from the version marker.
+
 ## v1.8.1
 
 - Upgrade packaged role bindings to GPT-6 Luna/Sol while retaining Astra for
