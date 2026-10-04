@@ -35,6 +35,10 @@ type = "list"                    # list、scalar 或 map
 ```
 
 - `source` 與 `value` 擇一：`value` 是固定值（例如 `value = "low"`）。
+- `source = "role.<key>"` 讀 `[roles.<role>].<key>`（例如 effort 每個 role
+  不同）。`<key>` 要先列入 `[output]` 的 `role_fields = ["effort"]`，沒列的
+  key 寫進 `[roles.*]` 會 exit 2。role 缺值時 exit 2，欄位設
+  `optional = true` 則省略那一行。不支援 effort 的 host 刪掉這些宣告即可。
 - 權限欄位來自 `[access.*]`、`[capabilities.*]` 與 role 層級的覆寫，沒有
   這個欄位的 role 就不輸出該行。未宣告型別的欄位寫進對應表會 exit 2。
 - 編碼要和來源型別相符：`scalar`、`folded` 接字串，`comma-list`、
@@ -47,8 +51,6 @@ type = "list"                    # list、scalar 或 map
 ## 限制
 
 - 不支援 `[extra_roles]`（host 專屬 role）與 `role_text = "legacy"`。
-- frontmatter 沒有 role 層級的來源，所以 effort 這類每個 role 不同的欄位只能
-  寫固定值。
 - role 的外框是 `frames/default.md`（要恰好一個 `{{role_body}}`），host
   專屬的句子寫在 `addenda/<role>.toml`，見 [core/README.md](../core/README.md)。
 - 不建 golden：committed dist 加 `--check` 就是回歸基準。

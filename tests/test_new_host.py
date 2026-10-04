@@ -76,6 +76,9 @@ class ScaffoldTests(TempRepo):
         self.assertEqual(list(binding["roles"]), list(CORE_ROLES))
         self.assertTrue(all(spec["description"] for spec in binding["roles"].values()))
         self.assertEqual(binding["output"]["permissions"], {"tools": {"type": "list"}})
+        self.assertEqual(binding["output"]["role_fields"], ["effort"])
+        self.assertIn("role.effort", [f.get("source") for f in binding["output"]["frontmatter"]])
+        self.assertTrue(all(spec["effort"] for spec in binding["roles"].values()))
         self.assertIn("# [models]", (self.host / "binding.toml").read_text(encoding="utf-8"))
 
     def test_existing_host_is_never_overwritten(self) -> None:
@@ -111,6 +114,11 @@ class EndToEndTests(TempRepo):
         self.fill('[models]\n"anthropic/haiku" = "haiku"\n"anthropic/sonnet" = "sonnet"\n"anthropic/opus" = "opus"\n',
                   {'tools = ["read", "grep", "glob"]': 'tools = ["view", "search"]',
                    'tools = ["read", "grep", "glob", "bash"]': 'tools = ["view", "search", "shell"]'})
+        binding = self.host / "binding.toml"
+        text = binding.read_text(encoding="utf-8")
+        text, count = re.subn(r'(\[roles\.scout\]\n[^\[]*?)effort = "medium"', r'\1effort = "low"', text)
+        self.assertEqual(count, 1)
+        binding.write_text(text, encoding="utf-8", newline="\n")
         result = self.render("--write")
         self.assertEqual(result.returncode, 0, result.stderr)
         result = self.render("--check")
@@ -121,10 +129,22 @@ class EndToEndTests(TempRepo):
         self.assertEqual(sorted(p.name for p in dist.iterdir()), sorted(f"{r}.md" for r in CORE_ROLES))
         scout = (dist / "scout.md").read_text(encoding="utf-8")
         self.assertTrue(scout.startswith("---\nname: scout\ndescription: TODO"), scout)
-        self.assertIn("\nmodel: sonnet\ntools: view, search\n---\n\nYou are a fast, read-only scout", scout)
+        self.assertIn("\nmodel: sonnet\neffort: low\ntools: view, search\n---\n\nYou are a fast, read-only scout", scout)
         self.assertIn("\ntools: view, search, shell\n", (dist / "verifier.md").read_text(encoding="utf-8"))
         self.assertNotIn("tools:", (dist / "executor.md").read_text(encoding="utf-8"))
+        for role in CORE_ROLES:
+            expected = "low" if role == "scout" else "medium"
+            self.assertIn(f"\neffort: {expected}\n", (dist / f"{role}.md").read_text(encoding="utf-8"))
         self.assertEqual(tree_digest(self.root / "tools"), before)
+
+    def test_host_without_effort_deletes_the_declarations(self) -> None:
+        self.new_host()
+        self.fill('selection = "inherit"\n', {'role_fields = ["effort"]\n': "", 'effort = "medium"\n': ""})
+        binding = self.host / "binding.toml"
+        text = re.sub(r'\[\[output\.frontmatter\]\]\nkey = "effort"\n[^\[]*', "", binding.read_text(encoding="utf-8"))
+        binding.write_text(text, encoding="utf-8", newline="\n")
+        self.assertEqual(self.render("--write").returncode, 0)
+        self.assertNotIn("effort", (self.host / "dist" / "agents" / "scout.md").read_text(encoding="utf-8").split("---")[1])
 
     def test_inherit_selection_also_renders(self) -> None:
         self.new_host()

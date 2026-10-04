@@ -18,6 +18,10 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `addenda/`，已存在則拒絕）、`tests/test_generic_hosts.py`（探索式檢查每個
   generic-md host）與 `docs/new-host.md`。用 `[output]` 宣告在測試中重現
   Claude 與 agy 的 `scout` 輸出，兩者逐位元組相同。
+- generic-md 新增 frontmatter 來源 `role.<key>`（讀 `[roles.<r>].<key>`，例如
+  `role.effort`）：key 要列在 `[output].role_fields`，role 缺值時 exit 2，
+  欄位設 `optional = true` 則省略。Claude 的七個 role 因此全部逐位元組重現；
+  `new_host.py` 的骨架含 effort 欄位。
 
 role 條款統一到 core（`docs/specs/role-contracts/`，Phase 2a）。
 

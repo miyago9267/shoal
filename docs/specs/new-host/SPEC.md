@@ -32,7 +32,11 @@ Miyago 已授權這條路線由 agent 決定。
   - `path`：每個 role 的輸出路徑樣式（例如 `agents/{role}.md` 或
     `agents/{role}/agent.md`），dist 固定在 `hosts/<name>/dist/`。
   - `frontmatter`：有序的欄位清單，每個欄位宣告名稱、來源（`name`、
-    `description`、`model`、某個權限欄位、或固定值）與編碼。
+    `description`、`model`、某個權限欄位、`role.<key>`、或固定值）與編碼。
+  - `role_fields`：`[roles.<r>]` 除了 `description`、`model`、`role_text` 與
+    權限欄位之外允許的 key（例如 `["effort"]`）。來源 `role.<key>` 讀
+    `[roles.<r>].<key>`，`<key>` 必須列在 `role_fields`；role 缺值時 exit 2，
+    欄位設 `optional = true` 則省略該行。
   - 支援的編碼：`scalar`、`comma-list`（逗號串接成單行）、`block-list`
     （每項一行，可設縮排）、`folded`（`>` 多行，可設寬度與縮排）、
     `nested-map`（一層巢狀的 key: value）。
@@ -84,3 +88,7 @@ Miyago 已授權這條路線由 agent 決定。
    OpenCode 的 permission 以 `nested-map` 表達。
 2. host 專屬 role 不支援（R4），需要時該 host 改寫專屬 renderer。
 3. generic-md host 不建 golden（R7）。
+4. 每個 role 不同的欄位（例如 effort）用 `role.<key>` 來源表達，key 由
+   `[output].role_fields` 明確宣告，不開放任意 key；缺值預設失敗，
+   `optional = true` 才省略。理由：固定值無法重現 Claude 七個 role 各自的
+   effort（N2 要求逐位元組相同）；明確宣告讓拼錯的 key 仍會被拒絕。

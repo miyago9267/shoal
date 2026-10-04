@@ -109,6 +109,8 @@ renderer（規格見
 - binding 設 `renderer = "generic-md"` 與 `role_text = "core"`，用 `[output]`
   宣告輸出路徑與 frontmatter 欄位（來源、編碼）。`tools/render.py` 從
   `hosts/*/binding.toml` 探索這類 host，`--host <name>` 不用改程式。
+- role 層級的欄位（例如 effort）用來源 `role.<key>` 讀
+  `[roles.<name>].<key>`，key 要列在 `[output].role_fields`。
 - 權限欄位要在 `[output.permissions.<欄位>]` 宣告型別（`list`、`scalar`、
   `map`），之後 `[access.*]`、`[capabilities.*]` 與 role 覆寫才能使用，
   推導規則與上一節相同。

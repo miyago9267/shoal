@@ -34,8 +34,12 @@ role_text = "core"
 # encoding 可選 scalar、comma-list、block-list、folded、nested-map。
 # 權限欄位（這裡是 tools）要先用 [output.permissions.<欄位>] 宣告型別
 # （list、scalar、map），frontmatter 才能用它當 source。
+# role_fields 列出 [roles.<role>] 除了 description 之外還允許的 key，frontmatter 用
+# source = "role.<key>" 讀取。不支援 effort 的 host：刪掉 role_fields、effort 的
+# frontmatter 欄位，以及每個 [roles.<role>] 的 effort 即可。
 [output]
 path = "agents/{{role}}.md"
+role_fields = ["effort"]
 
 [[output.frontmatter]]
 key = "name"
@@ -50,6 +54,11 @@ encoding = "scalar"
 [[output.frontmatter]]
 key = "model"
 source = "model"
+encoding = "scalar"
+
+[[output.frontmatter]]
+key = "effort"
+source = "role.effort"
 encoding = "scalar"
 
 [[output.frontmatter]]
@@ -78,6 +87,7 @@ tools = ["read", "grep", "glob", "bash"]
 ROLE = '''
 [roles.{role}]
 description = "TODO 填寫 {role} 的一句話說明，什麼時候該派它"
+effort = "medium"
 '''
 
 

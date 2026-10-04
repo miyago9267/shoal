@@ -623,8 +623,22 @@ def _value_kind(value: object) -> str | None:
     return "map" if isinstance(value, dict) else None
 
 
+def _role_fields(binding: dict, schema: PermSchema) -> list[str]:
+    """[output].role_fields：除了 description、model、role_text 與權限欄位之外，[roles.<r>] 還允許的 key。"""
+    fields = binding["output"].get("role_fields", [])
+    if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+        raise RenderError("[output] 的 role_fields 必須是字串陣列")
+    for field in fields:
+        if not _KEY.match(field) or field in GENERIC_ROLE_KEYS or field in schema.types:
+            raise RenderError(f"[output] 的 role_fields 不可含 {field}（key 格式不合，或已是內建的 role key 或權限欄位）")
+    if len(set(fields)) != len(fields):
+        raise RenderError("[output] 的 role_fields 有重複")
+    return fields
+
+
 def _generic_entries(where: str, binding: dict, schema: PermSchema) -> list[dict]:
     """驗證 [output].frontmatter 的每個欄位宣告；where 是錯誤訊息的前綴（含 role）。"""
+    role_fields = _role_fields(binding, schema)
     entries = binding["output"]["frontmatter"]
     if not isinstance(entries, list) or not entries or not all(isinstance(e, dict) for e in entries):
         raise RenderError(f"{where}: [output] 的 frontmatter 必須是至少一個 [[output.frontmatter]]")
@@ -632,7 +646,7 @@ def _generic_entries(where: str, binding: dict, schema: PermSchema) -> list[dict
     for entry in entries:
         key = entry.get("key")
         label = f"{where} 欄位 {key}"
-        unknown = sorted(set(entry) - {"key", "source", "value", "encoding", "indent", "width"})
+        unknown = sorted(set(entry) - {"key", "source", "value", "encoding", "indent", "width", "optional"})
         if unknown:
             raise RenderError(f"{label}: 未知的設定 {', '.join(unknown)}")
         if not isinstance(key, str) or not _KEY.match(key):
@@ -649,18 +663,25 @@ def _generic_entries(where: str, binding: dict, schema: PermSchema) -> list[dict
             source = entry["source"]
             if source in BUILTIN_SOURCES:
                 kind = "scalar"
+            elif isinstance(source, str) and source.startswith("role."):
+                kind = None  # 型別由每個 role 的值決定，render 時再對編碼檢查
+                if source[len("role."):] not in role_fields:
+                    raise RenderError(f"{label}: 來源 {source} 沒有在 [output] 的 role_fields 宣告")
             elif source in schema.types:
                 kind = schema.types[source]
             else:
-                allowed = [*BUILTIN_SOURCES, *schema.types]
+                allowed = [*BUILTIN_SOURCES, *schema.types, *(f"role.{f}" for f in role_fields)]
                 raise RenderError(f"{label}: 來源 {source} 不存在（只有 {', '.join(allowed)}；"
-                                  "權限欄位要先在 [output.permissions.<欄位>] 宣告）")
+                                  "權限欄位要先在 [output.permissions.<欄位>] 宣告，role 欄位要先列入 role_fields）")
         else:
             kind = _value_kind(entry["value"])
             if kind is None:
                 raise RenderError(f"{label}: value 必須是字串、字串陣列或字串對字串的 table")
             _check_field(label, "value", entry["value"], kind)
-        if ENCODING_KIND[encoding] != kind:
+        if "optional" in entry:
+            if not str(entry.get("source", "")).startswith("role.") or not isinstance(entry["optional"], bool):
+                raise RenderError(f"{label}: optional 只能用在 role.<key> 來源，值必須是 true 或 false")
+        if kind is not None and ENCODING_KIND[encoding] != kind:
             raise RenderError(f"{label}: 編碼 {encoding} 需要 {ENCODING_KIND[encoding]} 型別的來源，收到 {kind}")
         for option in ("indent", "width"):
             if option in entry:
@@ -696,7 +717,7 @@ def validate_generic(host: str, core: dict, binding: dict) -> dict[str, Permissi
     output = binding.get("output")
     if not isinstance(output, dict):
         raise RenderError("binding 必須有 [output]（path 與 [[output.frontmatter]]）")
-    unknown = sorted(set(output) - {"path", "frontmatter", "permissions"})
+    unknown = sorted(set(output) - {"path", "frontmatter", "permissions", "role_fields"})
     if unknown:
         raise RenderError(f"[output]: 未知的設定 {', '.join(unknown)}")
     _check_output_path(output.get("path"))
@@ -707,10 +728,11 @@ def validate_generic(host: str, core: dict, binding: dict) -> dict[str, Permissi
         spec = binding["roles"][name]
         if spec.get("role_text", "core") != "core":
             raise RenderError(f'{name}: generic-md host 的 role_text 必須是 "core"')
-        unknown = sorted(set(spec) - set(GENERIC_ROLE_KEYS) - set(schema.types))
+        allowed = [*GENERIC_ROLE_KEYS, *schema.types, *_role_fields(binding, schema)]
+        unknown = sorted(set(spec) - set(allowed))
         if unknown:
             raise RenderError(f"{name}: [roles.{name}] 不接受 {', '.join(unknown)}"
-                              f"（只有 {', '.join([*GENERIC_ROLE_KEYS, *schema.types])}）")
+                              f"（只有 {', '.join(allowed)}；其他 key 要先列入 [output] 的 role_fields）")
         _generic_entries(f"{name}: frontmatter", binding, schema)
     return perms
 
@@ -781,6 +803,22 @@ def _generic_frontmatter(host: str, name: str, core: dict, binding: dict, perm: 
             if not isinstance(value, str):
                 raise RenderError(f"{where} 欄位 {entry['key']}: 來源 {entry['source']} 必須是字串，"
                                   f"收到 {_name(value) if value is not None else '未設定'}")
+        elif entry["source"].startswith("role."):
+            field = entry["source"][len("role."):]
+            label = f"{where} 欄位 {entry['key']}"
+            if field not in binding["roles"][name]:
+                if entry.get("optional"):
+                    continue
+                raise RenderError(f"{label}: [roles.{name}] 沒有 {field}（來源 {entry['source']}；"
+                                  "不是每個 role 都有的欄位請設 optional = true）")
+            value = binding["roles"][name][field]
+            kind = _value_kind(value)
+            if kind is None:
+                raise RenderError(f"{label}: [roles.{name}].{field} 必須是字串、字串陣列或字串對字串的 table")
+            _check_field(label, field, value, kind)
+            if ENCODING_KIND[entry["encoding"]] != kind:
+                raise RenderError(f"{label}: 編碼 {entry['encoding']} 需要 {ENCODING_KIND[entry['encoding']]} "
+                                  f"型別的來源，[roles.{name}].{field} 是 {kind}")
         else:
             if entry["source"] not in perm.fields:
                 continue  # 這個等級不限制此欄位（例如 write 沒有 tools allowlist），不輸出

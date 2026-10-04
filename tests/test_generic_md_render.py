@@ -322,6 +322,83 @@ class ValidationTests(GenericRoot):
             self.files()
 
 
+class RoleFieldTests(GenericRoot):
+    """role.<key> 來源：從 [roles.<r>].<key> 讀值，key 要先在 [output] 的 role_fields 宣告。"""
+
+    def entry(self, source: str = "role.effort", encoding: str = "scalar", extra: str = "") -> str:
+        return f'\n[[output.frontmatter]]\nkey = "effort"\nsource = "{source}"\nencoding = "{encoding}"\n{extra}'
+
+    def binding_with(self, *, fields: str = '["effort"]', entry: str | None = None, roles: str | None = None) -> None:
+        text = binding_text(frontmatter=entry if entry is not None else self.entry(),
+                            roles=self.all_roles({}) if roles is None else roles)
+        self.write("binding.toml", text.replace("\n[output]\n", f"\n[output]\nrole_fields = {fields}\n", 1))
+
+    def all_roles(self, extra: dict[str, str]) -> str:
+        return "".join(f'\n[roles.{r}]\ndescription = "x"\n' + extra.get(r, "") for r in CORE_ROLES)
+
+    def test_value_is_read_from_each_role(self) -> None:
+        effort = {r: f'effort = "{"low" if r == "scout" else "high"}"\n' for r in CORE_ROLES}
+        self.binding_with(roles=self.all_roles(effort))
+        self.assertEqual(self.head("scout"), "---\neffort: low\n---\n\n")
+        self.assertEqual(self.head("executor"), "---\neffort: high\n---\n\n")
+
+    def test_list_and_map_values_follow_the_encoding(self) -> None:
+        roles = self.all_roles({r: 'tags = ["a", "b"]\nlimits = { cpu = "1" }\n' for r in CORE_ROLES})
+        entry = self.entry("role.tags", "comma-list").replace('"effort"', '"tags"') + \
+            self.entry("role.limits", "nested-map").replace('"effort"', '"limits"')
+        self.binding_with(fields='["tags", "limits"]', entry=entry, roles=roles)
+        self.assertEqual(self.head("scout"), "---\ntags: a, b\nlimits:\n  cpu: 1\n---\n\n")
+
+    def test_key_must_be_declared_in_role_fields(self) -> None:
+        self.binding_with(fields="[]", roles=self.all_roles({}))
+        self.assert_rejected("scout", "欄位 effort", "role.effort", "role_fields")
+
+    def test_undeclared_role_key_is_still_rejected(self) -> None:
+        extra = {r: 'effort = "low"\nsurprise = "x"\n' for r in CORE_ROLES}
+        self.binding_with(roles=self.all_roles(extra))
+        self.assert_rejected("scout", "surprise", "role_fields")
+
+    def test_missing_value_names_host_role_and_field(self) -> None:
+        extra = {r: 'effort = "low"\n' for r in CORE_ROLES if r != "verifier"}
+        self.binding_with(roles=self.all_roles(extra))
+        self.assert_rejected("host demo", "verifier", "欄位 effort", "optional")
+
+    def test_optional_omits_the_line_for_roles_without_a_value(self) -> None:
+        extra = {"scout": 'effort = "low"\n'}
+        self.binding_with(entry=self.entry(extra="optional = true\n"), roles=self.all_roles(extra))
+        self.assertEqual(self.head("scout"), "---\neffort: low\n---\n\n")
+        self.assertEqual(self.text("executor").split("\n", 2)[0:2], ["---", "---"])
+
+    def test_values_pass_the_yaml_safety_check(self) -> None:
+        extra = {r: 'effort = "a: b"\n' for r in CORE_ROLES}
+        self.binding_with(roles=self.all_roles(extra))
+        self.assert_rejected("scout", "欄位 effort", "YAML")
+        extra = {r: 'effort = ""\n' for r in CORE_ROLES}
+        self.binding_with(roles=self.all_roles(extra))
+        self.assert_rejected("scout", "欄位 effort")
+
+    def test_encoding_must_match_the_role_value_type(self) -> None:
+        extra = {r: 'effort = ["a"]\n' for r in CORE_ROLES}
+        self.binding_with(roles=self.all_roles(extra))
+        self.assert_rejected("scout", "欄位 effort", "scalar", "list")
+        extra = {r: "effort = 3\n" for r in CORE_ROLES}
+        self.binding_with(roles=self.all_roles(extra))
+        self.assert_rejected("scout", "欄位 effort")
+
+    def test_role_fields_declaration_is_validated(self) -> None:
+        for fields in ('"effort"', '["effort", "effort"]', '["description"]', '["tools"]', '["bad key"]', "[1]"):
+            with self.subTest(fields=fields):
+                self.binding_with(fields=fields, roles=self.all_roles({}))
+                self.assert_rejected("role_fields")
+
+    def test_optional_is_only_for_role_sources(self) -> None:
+        entry = '\n[[output.frontmatter]]\nkey = "n"\nsource = "name"\nencoding = "scalar"\noptional = true\n'
+        self.binding_with(entry=entry, roles=self.all_roles({}))
+        self.assert_rejected("欄位 n", "optional")
+        self.binding_with(entry=self.entry(extra="optional = 1\n"), roles=self.all_roles({}))
+        self.assert_rejected("欄位 effort", "optional")
+
+
 class DistAndExplainTests(GenericRoot):
     def test_write_then_check_and_drift(self) -> None:
         self.binding()
@@ -394,7 +471,7 @@ class DiscoveryTests(GenericRoot):
 
 
 def _compose(host: str, fragment: str, dest: Path) -> None:
-    """把既有 host 的 binding 改寫成 generic-md：換 renderer、拿掉 generic 不支援的設定（effort、
+    """把既有 host 的 binding 改寫成 generic-md：換 renderer、拿掉 generic 不支援的設定（supports_effort、
     host 專屬 role），接上 [output] 宣告；models、access、addenda、frames 都沿用該 host 現有的資料。"""
     shutil.copytree(ROOT / "core", dest / "core")
     target = dest / "hosts" / "x"
@@ -403,7 +480,6 @@ def _compose(host: str, fragment: str, dest: Path) -> None:
             shutil.copytree(ROOT / "hosts" / host / sub, target / sub)
     text = (ROOT / "hosts" / host / "binding.toml").read_text(encoding="utf-8")
     text = re.sub(r"(?m)^supports_effort = false\n", "", text)
-    text = re.sub(r"(?m)^effort = .*\n", "", text)
     text = re.sub(r"(?ms)^# host 專屬 role.*", "", text)
     text = 'renderer = "generic-md"\n' + text + "\n" + (FIXTURES / fragment).read_text(encoding="utf-8")
     target.mkdir(parents=True, exist_ok=True)
@@ -424,14 +500,12 @@ class ReproduceExistingHostsTests(unittest.TestCase):
         real = (ROOT / "hosts/claude/dist/agents/scout.md").read_bytes()
         self.assertEqual(files["agents/scout.md"], real)
 
-    def test_claude_other_roles_differ_only_in_effort(self) -> None:
-        # effort 沒有 role 層級的來源，宣告只能寫固定值 low；其餘（tools、disallowedTools、body）要完全相同。
+    def test_claude_all_core_roles_are_byte_identical(self) -> None:
+        # effort 由 role.effort 讀 [roles.<r>].effort；Explore 是 host 專屬 role，不在 generic 範圍。
         files = self.rendered("claude", "claude-output.toml")
-        for role in CORE_ROLES:
-            with self.subTest(role=role):
-                real = (ROOT / f"hosts/claude/dist/agents/{role}.md").read_bytes()
-                normalized = re.sub(rb"(?m)^effort: .*$", b"effort: low", real, count=1)
-                self.assertEqual(files[f"agents/{role}.md"], normalized)
+        self.assertEqual(sorted(files), sorted(f"agents/{r}.md" for r in CORE_ROLES))
+        for rel, data in files.items():
+            self.assertEqual(data, (ROOT / "hosts/claude/dist" / rel).read_bytes(), rel)
 
     def test_agy_scout_is_byte_identical(self) -> None:
         files = self.rendered("agy", "agy-output.toml")

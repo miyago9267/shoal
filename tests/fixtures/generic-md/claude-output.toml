@@ -1,7 +1,8 @@
-# 以 generic-md 的 [output] 宣告重現 Claude 的 agents/<role>.md（只有 scout 逐位元組相同）。
-# effort 沒有 role 層級的來源，只能寫固定值，所以這份宣告只對 effort = low 的 role 完全相同。
+# 以 generic-md 的 [output] 宣告重現 Claude 的 agents/<role>.md（七個 role 都逐位元組相同）。
+# effort 是 role 層級的欄位：role_fields 宣告後，用 role.effort 讀 [roles.<r>].effort。
 [output]
 path = "agents/{role}.md"
+role_fields = ["effort"]
 
 [[output.frontmatter]]
 key = "name"
@@ -20,7 +21,7 @@ encoding = "scalar"
 
 [[output.frontmatter]]
 key = "effort"
-value = "low"
+source = "role.effort"
 encoding = "scalar"
 
 [[output.frontmatter]]
