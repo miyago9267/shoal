@@ -238,7 +238,7 @@ class DispatchEvidenceTests(ClaudeStageCase):
             outcome.event_counts,
             {
                 "system": 1,
-                "assistant": 3,
+                "assistant": 4,
                 "user": 2,
                 "rate_limit_event": 1,
                 "result": 1,
@@ -336,8 +336,11 @@ class DispatchEvidenceTests(ClaudeStageCase):
         def result_not_last(events: list[dict[str, Any]]) -> None:
             events.append(events[0])
 
-        def two_results(events: list[dict[str, Any]]) -> None:
-            events.insert(2, events[-1])
+        def too_many_results(events: list[dict[str, Any]]) -> None:
+            # A dispatching stream really holds two results (live, 2026-10-05);
+            # only more than MAX_STAGE_ROUNDS is refused.
+            for _ in range(claude.MAX_STAGE_ROUNDS):
+                events.insert(2, events[-1])
 
         def no_result(events: list[dict[str, Any]]) -> None:
             del events[-1]
@@ -378,7 +381,7 @@ class DispatchEvidenceTests(ClaudeStageCase):
         mutations = [
             missing_parent_marker,
             result_not_last,
-            two_results,
+            too_many_results,
             no_result,
             usage_missing,
             usage_negative,
@@ -617,7 +620,8 @@ class DispatchEvidenceTests(ClaudeStageCase):
             },
         )
         # Without usable per-model totals the per-round sum stands alone.
-        del events[23]["modelUsage"]["synthetic-model"]["inputTokens"]
+        for index in (17, 23):
+            del events[index]["modelUsage"]["synthetic-model"]["inputTokens"]
         outcome, _, _ = self.run_stage(_Host(stdout=_stream(events)), name="no-model")
         self.assertEqual(
             outcome.usage,
@@ -662,12 +666,13 @@ class DispatchEvidenceTests(ClaudeStageCase):
             return events[:21] + [again] + events[21:]
 
         cases = {
-            "three_rounds_ok": (base + second, None),
-            "four_rounds": (base + second + second, "too_many_rounds"),
-            "no_init_after_result": (base[:18] + base[19:], "unrecognized_stream_event"),
-            "result_twice": (base[:18] + [base[17]] + base[18:], "unrecognized_stream_event"),
+            "three_rounds_ok": (base[:18] + [base[17]] + base[18:], None),
+            "four_rounds": (base[:18] + [base[17]] * 2 + base[18:], "too_many_rounds"),
+            "second_wake_without_notification": (
+                base + second,
+                "wake_result_without_task_notification",
+            ),
             "ends_inside_a_round": (base[:-1], "no_result_event"),
-            "cost_goes_down": (cheaper(), "inconsistent_round_costs"),
             "bad_first_result": (bad_first_result(), "unrecognized_result_event"),
         }
         self.assertEqual(claude.MAX_STAGE_ROUNDS, 3)
@@ -684,6 +689,14 @@ class DispatchEvidenceTests(ClaudeStageCase):
                     )
                     self.assertEqual(error.detail, detail)
                     self.assertEqual(_tree(request.scratch), ["clean-cwd"])
+        # Position carries no meaning: a larger total in an earlier result is
+        # still the stage cost.
+        outcome, _, _ = self.run_stage(_Host(stdout=_stream(cheaper())), name="max")
+        self.assertEqual((outcome.cost_usd, outcome.evidence.ok), (0.05, True))
+        outcome, _, _ = self.run_stage(
+            _Host(stdout=_stream(base[:18] + base[19:])), name="no-second-init"
+        )
+        self.assertTrue(outcome.evidence.ok)
         outcome, _, _ = self.run_stage(
             _Host(stdout=_stream(second_agent_call())), name="second-call"
         )
@@ -691,6 +704,199 @@ class DispatchEvidenceTests(ClaudeStageCase):
             (outcome.evidence.ok, outcome.evidence.reason_code),
             (False, "multiple_agent_calls"),
         )
+
+    def _dispatch_outcome(self, events: list[dict[str, Any]], name: str) -> Any:
+        outcome, _, _ = self.run_stage(_Host(stdout=_stream(events)), name=name)
+        return (
+            outcome.evidence,
+            outcome.messages,
+            outcome.usage,
+            outcome.cost_usd,
+            outcome.returncode,
+            outcome.event_counts,
+        )
+
+    def test_both_observed_orders_give_the_same_stage(self) -> None:
+        """Reports 4 and 5 (2026-10-05): same stage, different event order."""
+        first = _events("dispatch-two-rounds")
+        second = _events("dispatch-results-last")
+        self.assertEqual(
+            [index for index, event in enumerate(second) if event["type"] == "result"],
+            [20, 21],
+        )
+        self.assertEqual((second[17]["type"], second[17]["subtype"]), ("system", "init"))
+        expected = self._dispatch_outcome(first, "order-4")
+        self.assertEqual((expected[0].ok, expected[1], expected[3]), (True, ["READY"], 0.0421))
+        got = self._dispatch_outcome(second, "order-5")
+        # Only the number of thinking_tokens events differs between the runs.
+        self.assertEqual(got[:5], expected[:5])
+        self.assertEqual((got[5]["result"], expected[5]["result"]), (2, 2))
+
+    def test_event_order_does_not_matter(self) -> None:
+        import random
+
+        for sample in ("dispatch-two-rounds", "dispatch-results-last"):
+            base = _events(sample)
+            expected = self._dispatch_outcome(base, f"{sample}-base")
+            results = [index for index, event in enumerate(base) if event["type"] == "result"]
+            moved = base[: results[0]] + base[results[0] + 1 :]
+            # The first result anywhere before the end, the child's message included.
+            for position in range(1, len(moved)):
+                events = moved[:position] + [base[results[0]]] + moved[position:]
+                with self.subTest(sample=sample, position=position):
+                    self.assertEqual(
+                        self._dispatch_outcome(events, f"{sample}-move-{position}"),
+                        expected,
+                    )
+            for seed in range(8):
+                events = base[:-1]
+                random.Random(seed).shuffle(events)
+                with self.subTest(sample=sample, seed=seed):
+                    self.assertEqual(
+                        self._dispatch_outcome(events + base[-1:], f"{sample}-mix-{seed}"),
+                        expected,
+                    )
+            # The last event must still be a result, whatever the order.
+            error, _, _ = self.run_failing(
+                StageEvidenceError,
+                _Host(
+                    stdout=_stream(
+                        [event for event in base if event["type"] == "result"]
+                        + [event for event in base if event["type"] != "result"]
+                    )
+                ),
+                name=f"{sample}-result-first",
+            )
+            self.assertEqual(error.detail, "no_result_event")
+
+    def test_negative_samples_are_still_refused(self) -> None:
+        error, _, _ = self.run_failing(
+            StageEvidenceError,
+            _Host(stdout=_sample("dispatch-two-rounds-ends-without-result")),
+            name="neg-order",
+        )
+        self.assertEqual(error.detail, "no_result_event")
+        outcome, _, _ = self.run_stage(
+            _Host(stdout=_sample("dispatch-results-last-no-child-message")), name="neg-child"
+        )
+        self.assertEqual(
+            (outcome.evidence.ok, outcome.evidence.reason_code, outcome.messages),
+            (False, "agent_call_without_child_message", []),
+        )
+        self.assertIsNone(outcome.evidence.model)
+
+    def test_child_message_is_the_answer_not_the_tool_result(self) -> None:
+        receipt = "LAUNCH RECEIPT " * 80
+        for sample in ("dispatch-ok", "dispatch-two-rounds", "dispatch-results-last"):
+            events = _events(sample)
+            call = next(
+                block["id"]
+                for event in events
+                for block in event.get("message", {}).get("content", [])
+                if block.get("type") == "tool_use" and block.get("name") == "Agent"
+            )
+            children = [
+                event
+                for event in events
+                if event["type"] == "assistant" and event.get("parent_tool_use_id") == call
+            ]
+            for event in events:
+                for block in event.get("message", {}).get("content", []):
+                    if block.get("tool_use_id") == call:
+                        block["content"] = [{"type": "text", "text": receipt}]
+            children[-1]["message"]["content"] = [
+                {"type": "thinking", "thinking": "hidden", "signature": "s"},
+                {"type": "text", "text": "first part"},
+                {"type": "text", "text": "   "},
+                {"type": "text", "text": "FINAL ANSWER"},
+            ]
+            with self.subTest(sample):
+                outcome, _, _ = self.run_stage(
+                    _Host(stdout=_stream(events)), name=f"answer-{sample}"
+                )
+                self.assertEqual(outcome.messages, ["first part", "FINAL ANSWER"])
+                self.assertNotIn("LAUNCH RECEIPT", "".join(outcome.messages))
+                self.assertTrue(outcome.evidence.ok)
+
+    def test_missing_or_foreign_child_message_fails_closed(self) -> None:
+        def drop_child_text(events: list[dict[str, Any]]) -> None:
+            events[:] = [
+                event
+                for event in events
+                if event.get("parent_tool_use_id") is None or event["type"] != "assistant"
+            ]
+
+        def blank_child_text(events: list[dict[str, Any]]) -> None:
+            events[10]["message"]["content"] = [{"type": "text", "text": " \n"}]
+
+        def other_parent(events: list[dict[str, Any]]) -> None:
+            events[10]["parent_tool_use_id"] = "toolu_someone_else"
+
+        def parent_level_text_only(events: list[dict[str, Any]]) -> None:
+            events[10]["parent_tool_use_id"] = None
+
+        def task_failed(events: list[dict[str, Any]]) -> None:
+            events[13]["status"] = "failed"
+
+        def task_never_notified(events: list[dict[str, Any]]) -> None:
+            # The wake result goes too: nothing was notified.
+            del events[23]["origin"]
+            del events[13]
+
+        expected = {
+            drop_child_text: "agent_call_without_child_message",
+            blank_child_text: "agent_call_without_child_message",
+            other_parent: "agent_call_without_child_message",
+            parent_level_text_only: "agent_call_without_child_message",
+            task_failed: "agent_task_not_completed",
+            task_never_notified: "agent_task_without_notification",
+        }
+        for index, (mutate, reason) in enumerate(expected.items()):
+            events = _events("dispatch-two-rounds")
+            self.assertEqual(events[10]["parent_tool_use_id"], "toolu_synthetic_01")
+            mutate(events)
+            with self.subTest(mutate.__name__):
+                outcome, _, _ = self.run_stage(
+                    _Host(stdout=_stream(events)), name=f"child-{index}"
+                )
+                self.assertEqual(
+                    (outcome.evidence.ok, outcome.evidence.reason_code, outcome.messages),
+                    (False, reason, []),
+                )
+        for index, change in enumerate(
+            (
+                lambda events: events[13].pop("tool_use_id"),
+                lambda events: events[13].update(status=None),
+                lambda events: events[6].update(tool_use_id=7),
+                lambda events: events[10]["message"]["content"][0].update(text=None),
+            )
+        ):
+            events = _events("dispatch-two-rounds")
+            change(events)
+            with self.subTest(index):
+                error, _, _ = self.run_failing(
+                    StageEvidenceError,
+                    _Host(stdout=_stream(events)),
+                    name=f"task-shape-{index}",
+                )
+                self.assertEqual(error.detail, "unrecognized_stream_event")
+
+    def test_wake_origin_is_a_hint_not_a_requirement(self) -> None:
+        """Report 4 did not record ``origin``; a stream without it still parses."""
+        expected = self._dispatch_outcome(_events("dispatch-results-last"), "origin-base")
+        for origin in ("absent", {}, {"kind": "something-else"}, None, "text"):
+            events = _events("dispatch-results-last")
+            for event in events:
+                if event["type"] == "result":
+                    if origin == "absent":
+                        event.pop("origin", None)
+                    else:
+                        event["origin"] = origin
+            with self.subTest(repr(origin)):
+                self.assertEqual(
+                    self._dispatch_outcome(events, f"origin-{origin!r:.8}".replace("'", "").replace("{", "x").replace("}", "x").replace(" ", "").replace(":", "")),
+                    expected,
+                )
 
     def test_rate_limit_event_cannot_stand_in_for_the_result(self) -> None:
         error, _, _ = self.run_failing(

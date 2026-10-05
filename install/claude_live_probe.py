@@ -50,7 +50,7 @@ SAMPLES = claude.ROOT / "tests" / "fixtures" / "claude_stream"
 # Synthetic sample each stage's real shape is compared with.
 BASELINES = {
     "auth": "no-agent-call",
-    "dispatch": "dispatch-two-rounds",
+    "dispatch": "dispatch-results-last",
     "budget": "no-agent-call",
 }
 
@@ -1245,6 +1245,15 @@ def run_stage(
             checks["agent_tool_call"] = _check(FAIL, "unexpected_subagent_type")
         else:
             checks["agent_tool_call"] = _check(PASS, "one_scout_dispatch")
+        # The child's own assistant message is the answer; the Agent tool
+        # result is only a launch receipt.
+        trace = shape["dispatch_trace"] if shape else {}
+        if shape is None:
+            checks["child_message"] = _check(UNDETERMINED, failure or "no_observation")
+        elif trace.get("last_child_text_chars"):
+            checks["child_message"] = _check(PASS, "child_text_present")
+        else:
+            checks["child_message"] = _check(FAIL, "no_child_message")
         evidence = outcome.evidence if outcome is not None else None
         if evidence is None:
             checks["adapter_evidence"] = _check(FAIL, failure or "no_evidence")

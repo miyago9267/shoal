@@ -501,6 +501,7 @@ class ReportContentTests(ProbeCase):
                 "user",
                 "assistant",
                 "rate_limit_event",
+                "assistant",
                 "result/success",
             ],
         )
@@ -851,6 +852,7 @@ class DispatchStageTests(ProbeCase):
                 "adapter_evidence",
                 "adapter_parse",
                 "agent_tool_call",
+                "child_message",
                 "cli_result",
                 "staged_agent_loaded",
             ],
@@ -860,7 +862,7 @@ class DispatchStageTests(ProbeCase):
             (evidence["reason"], evidence["dispatch_status"], evidence["model"]),
             ("ok", "NATIVE_OK", "synthetic-model"),
         )
-        self.assertEqual(stage["synthetic_diff"]["sample"], "dispatch-two-rounds")
+        self.assertEqual(stage["synthetic_diff"]["sample"], "dispatch-results-last")
         self.assertEqual(code, 0)
 
     def test_no_agent_call_fails(self) -> None:
@@ -1277,7 +1279,7 @@ class DispatchRoundsTests(ProbeCase):
             {
                 "tool_use_index": 4,
                 "tool_result_index": 7,
-                "tool_result_text_chars": 5,
+                "tool_result_text_chars": 89,
                 "child_assistant_events": 1,
                 "first_child_assistant_index": 10,
                 "last_child_assistant_index": 10,
@@ -1288,7 +1290,7 @@ class DispatchRoundsTests(ProbeCase):
         self.assertEqual(
             shape["task_events"],
             [
-                {"kind": "system/task_started", "index": 6, "task_type": "local_agent", "is_backgrounded": False, "spawn_depth": 1},
+                {"kind": "system/task_started", "index": 6, "task_type": "local_agent", "is_backgrounded": True, "spawn_depth": 1},
                 {"kind": "system/task_updated", "index": 12, "patch_status": "completed"},
                 {"kind": "system/task_notification", "index": 13, "status": "completed"},
             ],
@@ -1296,13 +1298,65 @@ class DispatchRoundsTests(ProbeCase):
         for path in ("system/task_started", "system/task_updated", "system/task_notification", "system/background_tasks_changed", "system/thinking_tokens", "result.origin"):
             self.assertIn(path, shape["keys"])
         diff = stage["synthetic_diff"]
-        self.assertEqual((diff["sample"], diff["keys"], diff["kinds_only_live"], diff["paths_only_live"]), ("dispatch-two-rounds", {}, [], []))
+        self.assertEqual((diff["sample"], diff["keys"], diff["kinds_only_live"], diff["paths_only_live"]), ("dispatch-results-last", {}, [], []))
         # Cost is the cumulative value of the last round, not the first one.
         self.assertEqual(stage["cost_usd"], 0.0421)
         self.assertEqual(report["charged_usd"], "0.1263")
         self.assertEqual(stage["adapter"]["event_counts"]["result"], 2)
         self.assertEqual([call["stage"] for call in host.calls], ["auth", "dispatch", "budget"])
         self.assertNotIn("SENTINEL", out)
+
+    def test_results_last_order_passes_like_the_other_order(self) -> None:
+        """Report 5: second init before either result, both results at the end."""
+        events = stage_events("dispatch", sample="dispatch-results-last")
+        for event in events:
+            event.pop("hooks", None)
+        self.assertEqual([event["type"] for event in events[-2:]], ["result", "result"])
+        code, stage, report, out, host = self.dispatch(events)
+        self.assertEqual(
+            {name: entry["status"] for name, entry in stage["checks"].items()},
+            dict.fromkeys(stage["checks"], "pass"),
+        )
+        self.assertEqual(stage["checks"]["child_message"]["reason"], "child_text_present")
+        self.assertEqual(stage["checks"]["adapter_evidence"]["reason"], "ok")
+        shape = stage["shape"]
+        self.assertEqual([entry["index"] for entry in shape["rounds"]], [20, 21])
+        self.assertEqual(
+            [entry["origin"] for entry in shape["rounds"]], [{}, {"kind": "task-notification"}]
+        )
+        trace = shape["dispatch_trace"]
+        self.assertEqual(
+            (trace["tool_use_index"], trace["tool_result_index"], trace["first_child_assistant_index"], trace["task_notification_index"]),
+            (4, 7, 13, 16),
+        )
+        self.assertGreater(trace["tool_result_text_chars"], trace["last_child_text_chars"])
+        diff = stage["synthetic_diff"]
+        self.assertEqual(
+            (diff["sample"], diff["keys"], diff["kinds_only_live"], diff["paths_only_live"], diff["paths_only_synthetic"]),
+            ("dispatch-results-last", {}, [], [], []),
+        )
+        self.assertEqual(stage["cost_usd"], 0.0421)
+        self.assertEqual([call["stage"] for call in host.calls], ["auth", "dispatch", "budget"])
+        self.assertNotIn("SENTINEL", out)
+
+    def test_missing_child_message_fails_the_stage_and_stops_the_run(self) -> None:
+        events = stage_events("dispatch", sample="dispatch-results-last-no-child-message")
+        code, stage, report, _, host = self.dispatch(events)
+        self.assertEqual(stage["checks"]["child_message"], {"status": "fail", "reason": "no_child_message"})
+        evidence = stage["checks"]["adapter_evidence"]
+        self.assertEqual((evidence["status"], evidence["reason"]), ("fail", "agent_call_without_child_message"))
+        self.assertEqual(stage["checks"]["agent_tool_call"]["status"], "pass")
+        self.assertNotIn("last_child_text_chars", stage["shape"]["dispatch_trace"])
+        self.assertEqual(report["stopped"], "dispatch_stage_did_not_pass")
+        self.assertEqual([call["stage"] for call in host.calls], ["auth", "dispatch"])
+        self.assertEqual(code, 1)
+
+    def test_stream_not_ending_in_a_result_fails(self) -> None:
+        events = stage_events("dispatch", sample="dispatch-two-rounds-ends-without-result")
+        code, stage, report, _, host = self.dispatch(events)
+        self.assertEqual(stage["checks"]["cli_result"], {"status": "fail", "reason": "events_after_last_result"})
+        self.assertEqual(stage["adapter"]["reason"], "evidence_no_result_event")
+        self.assertEqual(len(host.calls), 2)
 
     def test_a_failed_round_fails_the_stage_and_stops_the_run(self) -> None:
         for index in (17, 23):
@@ -1333,8 +1387,8 @@ class DispatchRoundsTests(ProbeCase):
         events = self.events()
         events[17]["total_cost_usd"] = 0.2
         code, stage, report, _, host = self.dispatch(events)
-        # The adapter refuses a total that goes down; the probe charges the larger.
-        self.assertEqual(stage["adapter"]["reason"], "evidence_inconsistent_round_costs")
+        # Position carries no meaning: the largest total is the stage cost.
+        self.assertIsNone(stage["adapter"]["reason"])
         self.assertEqual(stage["cost_usd"], 0.2)
         events = self.events()
         events[17]["total_cost_usd"] = -1

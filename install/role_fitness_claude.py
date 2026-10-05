@@ -67,11 +67,16 @@ DISPATCH_FAILED = "NATIVE_DISPATCH_FAILED"
 RATE_LIMIT_EVENT = "rate_limit_event"
 RATE_LIMIT_ALLOWED_PREFIX = "allowed"
 
-# A stream is one or more rounds, each closed by a `result` event.  Live
-# dispatch runs showed two: the Agent task is tracked as a background task and,
-# after the first result, the parent is woken once more (a second `system/init`
-# ... `result`).  One dispatch explains two rounds; one more is slack.
+# A dispatching stream holds more than one `result` event: the Agent task runs
+# in the background and the parent is woken once more when it completes (that
+# result carries `origin.kind == "task-notification"`).  Two live runs of the
+# same stage (CLI 2.1.289, 2026-10-05) put the results and the second
+# `system/init` in different positions, so nothing here depends on where they
+# sit; only the last event must be a result.  One dispatch explains two
+# results; one more is slack.
 MAX_STAGE_ROUNDS = 3
+WAKE_ORIGIN = "task-notification"
+TASK_COMPLETED = "completed"
 _MODEL_USAGE_KEYS = {
     "input_tokens": "inputTokens",
     "cache_creation_input_tokens": "cacheCreationInputTokens",
@@ -398,37 +403,37 @@ def _result_round(result: dict[str, Any]) -> dict[str, Any]:
         "models": models,
         "failed": result["is_error"] or result["subtype"] != "success",
         "text": result.get("result"),
+        "wake": isinstance(result.get("origin"), dict)
+        and result["origin"].get("kind") == WAKE_ORIGIN,
     }
 
 
 def _stage_totals(rounds: list[dict[str, Any]]) -> tuple[dict[str, int], float]:
-    """Raw usage and cost of a whole stage from its rounds; never undercounts.
+    """Raw usage and cost of a whole stage from its results; never undercounts.
 
-    Cost: ``total_cost_usd`` is cumulative over the session (in the live
-    two-round run the last value equalled the sum of ``modelUsage`` costs,
-    which included the subagent's model that only ran in the first round), so
-    the last round's value is the stage cost.  A later value below an earlier
-    one contradicts that reading and fails closed.
+    Cost: ``total_cost_usd`` is cumulative over the session.  In a live run
+    both results reported the same total, and it equalled the sum of the
+    ``modelUsage`` costs including the subagent's model.  The stage cost is the
+    largest total of any result, wherever it sits.
 
-    Usage: ``usage`` is per round and ``modelUsage`` is cumulative per model.
-    Each field is the larger of the per-round sum and the last round's
-    per-model sum, so neither a second round nor a subagent is left out.
+    Usage: ``usage`` is per result and covers the parent only (live: the two
+    results' fields added up to the parent model's ``modelUsage``);
+    ``modelUsage`` is cumulative per model and includes the subagent.  Each
+    field is the larger of the per-result sum and the largest per-model sum.
     """
-    costs = [entry["cost"] for entry in rounds]
-    if any(later < earlier for earlier, later in zip(costs, costs[1:])):
-        raise _bad_stream("inconsistent_round_costs")
     totals = {
         key: sum(entry["usage"][key] for entry in rounds) for key in _RESULT_USAGE_KEYS
     }
-    per_model = list(rounds[-1]["models"].values())
-    if per_model and all(
-        _count(entry.get(name))
-        for entry in per_model
-        for name in _MODEL_USAGE_KEYS.values()
-    ):
-        for key, name in _MODEL_USAGE_KEYS.items():
-            totals[key] = max(totals[key], sum(entry[name] for entry in per_model))
-    return totals, costs[-1]
+    for entry in rounds:
+        per_model = list(entry["models"].values())
+        if per_model and all(
+            _count(model.get(name))
+            for model in per_model
+            for name in _MODEL_USAGE_KEYS.values()
+        ):
+            for key, name in _MODEL_USAGE_KEYS.items():
+                totals[key] = max(totals[key], sum(model[name] for model in per_model))
+    return totals, max(entry["cost"] for entry in rounds)
 
 
 def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
@@ -441,12 +446,18 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
     With ``role`` None (a single-agent stage) there is no dispatch evidence and
     the message is the last result event's final text.
 
-    The stream may hold up to ``MAX_STAGE_ROUNDS`` rounds, each ending in a
-    ``result`` event and each later one opening with ``system/init``.  The
-    stage has failed when any round failed.  ``system`` events (task and
-    thinking bookkeeping among them) and ``rate_limit_event`` are informational
-    and never count as dispatch evidence: that comes only from the parent's
-    ``Agent`` tool call and its tool result, wherever in the rounds they are.
+    Events are judged by their own fields, not by position.  The only
+    positional rule is that the stream ends with a ``result``.  There must be
+    one to ``MAX_STAGE_ROUNDS`` results and the stage has failed when any of
+    them failed.  ``system`` events and ``rate_limit_event`` are informational.
+
+    Dispatch evidence is the parent's single ``Agent`` tool call
+    (``parent_tool_use_id`` null) with a tool result that is not an error.
+    That tool result is only a launch receipt, so the child's messages are the
+    text blocks of the assistant events whose ``parent_tool_use_id`` is the
+    call's id, in stream order; without one the dispatch is not accepted.  A
+    task event naming the call (``tool_use_id``) must not contradict it: a
+    started task needs a notification, and a notification must say completed.
     """
     events: list[dict[str, Any]] = []
     for line in stdout.splitlines():
@@ -467,23 +478,32 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
     results: dict[str, tuple[bool, list[str]]] = {}
     seen_tool_ids: set[str] = set()
     rounds: list[dict[str, Any]] = []
-    round_closed = False
+    child_texts: dict[str, list[str]] = {}
+    started: set[str] = set()
+    notified: dict[str, list[str]] = {}
     for event in events:
         kind = event["type"]
         event_counts[kind] = event_counts.get(kind, 0) + 1
-        # Nothing but the start of a new round may follow a result.
-        if round_closed and (kind != "system" or event.get("subtype") != "init"):
-            raise _bad_stream("unrecognized_stream_event")
-        round_closed = False
         if kind == "result":
             rounds.append(_result_round(event))
             if len(rounds) > MAX_STAGE_ROUNDS:
                 raise _bad_stream("too_many_rounds")
-            round_closed = True
             continue
         if kind == "system":
-            if not isinstance(event.get("subtype"), str):
+            subtype = event.get("subtype")
+            if not isinstance(subtype, str):
                 raise _bad_stream("unrecognized_stream_event")
+            if subtype in {"task_started", "task_notification"}:
+                # The two task events that name the tool call they belong to.
+                tool_id = event.get("tool_use_id")
+                if not isinstance(tool_id, str) or not tool_id:
+                    raise _bad_stream("unrecognized_stream_event")
+                if subtype == "task_started":
+                    started.add(tool_id)
+                elif not isinstance(event.get("status"), str):
+                    raise _bad_stream("unrecognized_stream_event")
+                else:
+                    notified.setdefault(tool_id, []).append(event["status"])
             continue
         if kind == RATE_LIMIT_EVENT:
             _require_rate_limit_allowed(event)
@@ -507,6 +527,16 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
         ):
             raise _bad_stream("unrecognized_stream_event")
         if event["parent_tool_use_id"] is not None:
+            if kind == "assistant":
+                for block in content:
+                    if block["type"] != "text":
+                        continue
+                    if not isinstance(block.get("text"), str):
+                        raise _bad_stream("unrecognized_stream_event")
+                    if block["text"].strip():
+                        child_texts.setdefault(event["parent_tool_use_id"], []).append(
+                            block["text"]
+                        )
             continue
         for block in content:
             if kind == "assistant" and block["type"] == "tool_use":
@@ -539,6 +569,10 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
                     raise _bad_stream("unrecognized_tool_result")
                 results[tool_id] = (is_error, _result_texts(block.get("content")))
 
+    # A result that says it was woken by a task needs a task that notified.
+    wakes = sum(1 for entry in rounds if entry["wake"])
+    if wakes > sum(len(statuses) for statuses in notified.values()):
+        raise _bad_stream("wake_result_without_task_notification")
     usage, cost = _stage_totals(rounds)
     host_failed = any(entry["failed"] for entry in rounds)
     # Anthropic usage reports cache tokens outside input_tokens; the runner's
@@ -568,6 +602,7 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
             "host_failed": host_failed,
             "evidence": None,
         }
+    messages: list[str] = []
     if not calls:
         reason = "no_agent_call"
     elif len(calls) > 1:
@@ -578,11 +613,19 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
         reason = "agent_call_without_result"
     elif results[calls[0][0]][0]:
         reason = "agent_call_failed"
+    elif any(status != TASK_COMPLETED for status in notified.get(calls[0][0], [])):
+        reason = "agent_task_not_completed"
+    elif calls[0][0] in started and calls[0][0] not in notified:
+        reason = "agent_task_without_notification"
+    elif not child_texts.get(calls[0][0]):
+        # Never fall back to the tool result: it is a receipt, not an answer.
+        reason = "agent_call_without_child_message"
     else:
         reason = "ok"
+        messages = child_texts[calls[0][0]]
     ok = reason == "ok"
     return {
-        "messages": results[calls[0][0]][1] if ok else [],
+        "messages": messages,
         "event_counts": event_counts,
         "usage": normalized,
         "cost_usd": cost,
