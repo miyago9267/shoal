@@ -45,6 +45,8 @@ FORCED_SHADOW_HOSTS = frozenset({"agy"})
 ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 COMPOSED_TURN_HOSTS = frozenset({"agy"})
+# Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId); use state turn.
+STATE_TURN_HOSTS = frozenset({"agy", "grok"})
 
 # role -> access level.  Must match core/roles.toml and every [extra_roles.*] in
 # hosts/*/binding.toml; tests/test_shoal_guard.py asserts it.
@@ -415,7 +417,7 @@ class _Guard:
             return self.result("skip", skip="missing_id")
         if not valid_id(sid):
             return self.result("skip", skip="invalid_id")
-        turn_optional = kind == "tool" and self.host in COMPOSED_TURN_HOSTS
+        turn_optional = kind == "tool" and self.host in STATE_TURN_HOSTS
         if tid is None and not turn_optional:
             return self.result("skip", skip="missing_id")
         if tid is not None and not valid_id(tid, composed=self.host in COMPOSED_TURN_HOSTS):

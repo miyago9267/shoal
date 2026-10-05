@@ -326,11 +326,28 @@ def validate_owned_projection(document: dict[str, Any], projection_id: str) -> N
 
 
 def _contains_any_trusted_group(document: dict[str, Any]) -> bool:
+    # The guard projection is excluded: tools/install_hooks.py --host codex writes
+    # it without install state, and merge_registration adopts it when exact.
     return any(
         _locations(document, group)
-        for projection in TRUSTED_PROJECTIONS.values()
+        for projection_id, projection in TRUSTED_PROJECTIONS.items()
+        if projection_id != GUARD_PROJECTION_ID
         for group in projection.values()
     )
+
+
+def _guard_already_registered(document: dict[str, Any]) -> bool:
+    """True when every canonical guard group is already present exactly once.
+
+    Such a registration is byte-identical to what this installer would write, so it
+    is adopted instead of appended again (no duplicates).  Any other partial or
+    cross-event shape still falls through to the collision check.
+    """
+    try:
+        validate_owned_projection(document, GUARD_PROJECTION_ID)
+    except HookRegistrationError:
+        return False
+    return True
 
 
 def validate_source_registration(payload: bytes) -> dict[str, Any]:
@@ -415,7 +432,9 @@ def merge_registration(
     else:
         _upgrade_autoroute(merged, owned_projection_id, desired_id)
 
-    if owned_guard_projection_id is None:
+    if owned_guard_projection_id is None and _guard_already_registered(merged):
+        pass  # adopted: placed by tools/install_hooks.py --host codex
+    elif owned_guard_projection_id is None:
         if any(_locations(document, group) for group in guard_groups.values()):
             raise HookRegistrationError(
                 "unowned hooks.json contains a canonical guard group"

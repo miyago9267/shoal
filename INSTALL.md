@@ -284,6 +284,32 @@ nothing):
 echo '{}' | /usr/bin/env python3 "$PILOTFISH_TARGET_HOME/hooks/shoal_guard.py" --host codex
 ```
 
+#### Guard only, without running the installer
+
+When `install/install.py` cannot be reconciled with the Codex home (for
+example a locally modified `pilotfish_autoroute_gate.py` that the installer
+would replace), `tools/install_hooks.py --host codex` manages only the guard.
+It writes the same `shoal-guard-v1` groups (including `commandWindows`) into
+`<codex-home>/hooks.json` and the committed-`HEAD` script to
+`<codex-home>/hooks/shoal_guard.py` (0600). The codex home is `--home`, then
+`CODEX_HOME`, then `~/.codex`. Dry-run is the default:
+
+```bash
+python3 tools/install_hooks.py --host codex           # dry-run
+python3 tools/install_hooks.py --host codex --apply   # back up, then install
+python3 tools/install_hooks.py --host codex --uninstall --apply
+```
+
+Only handlers whose command references `shoal_guard.py` are owned. The
+autoroute gate, other hooks, `config.toml`, `AGENTS.md` and hook trust
+(`hooks.state`) are never touched. Writes are idempotent and backed up under
+`${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/`.
+`--uninstall` removes only the owned entries and the script. Approve the new
+hooks once with `/hooks` in an interactive Codex session. A later
+`install/install.py` run adopts these exact entries instead of duplicating
+them; once its state records the guard, `--uninstall` here refuses and the
+installer must be used.
+
 ### Prove the hook can launch
 
 Registration and trust do not prove that the registered command runs. A hook

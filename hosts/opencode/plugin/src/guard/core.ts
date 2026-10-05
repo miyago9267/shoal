@@ -69,7 +69,7 @@ const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
 // agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 const COMPOSED_TURN_HOSTS = new Set(["agy"]);
 // Hosts whose tool hooks carry no turn id: the turn recorded at the prompt boundary is used.
-const TOOL_TURN_OPTIONAL_HOSTS = new Set(["agy", "opencode"]);
+const STATE_TURN_HOSTS = new Set(["agy", "grok", "opencode"]);
 
 // role -> access level.  Keep in sync with ROLE_ACCESS in hooks/shoal_guard.py
 // (tests/guard-vectors.test.ts compares the two tables).
@@ -467,7 +467,7 @@ class Guard {
     if (sid == null) return this.result("skip", { skip: "missing_id" });
     if (!validId(sid)) return this.result("skip", { skip: "invalid_id" });
     const composed = COMPOSED_TURN_HOSTS.has(this.host);
-    const turnOptional = event.kind === "tool" && TOOL_TURN_OPTIONAL_HOSTS.has(this.host);
+    const turnOptional = event.kind === "tool" && STATE_TURN_HOSTS.has(this.host);
     if (tid == null && !turnOptional) return this.result("skip", { skip: "missing_id" });
     if (tid != null && !validId(tid, composed)) return this.result("skip", { skip: "invalid_id" });
     const dir = this.guardDirectory;

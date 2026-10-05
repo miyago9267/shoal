@@ -103,6 +103,25 @@ steps compared: 208  identical: 191  different: 17  unmapped: 0
 - Claude、agy：新增 `tools/install_hooks.py`；腳本取自 committed HEAD，entry 以
   `shoal_guard.py --host` 為擁有標記，備份在 `${XDG_STATE_HOME}/shoal/install-hooks/backups/`。
   `--uninstall` 不刪腳本（兩個 host 共用）。`hosts/claude/dist` 不放 settings snippet。
+- Codex 窄路徑（2026-10-05，未 commit）：`install.py` 在使用者本機不能跑
+  （committed state 過時，且有本機修改的 `pilotfish_autoroute_gate.py` 與
+  dotfile 產生的 `AGENTS.md`），所以 `tools/install_hooks.py --host codex`
+  只管 shoal-guard。寫入與 `shoal-guard-v1` 逐位元組相同的群組（含
+  `commandWindows`，直接取自 `install/hook_registration.py`）到
+  `<codex-home>/hooks.json`，腳本（committed HEAD）裝到
+  `<codex-home>/hooks/shoal_guard.py`（0600，同 install.py）。擁有標記同其他
+  host，不碰 autoroute gate；`--uninstall` 移除 entry 與腳本（先備份）；
+  不寫 `hooks.state`，只印 `/hooks` 核准提醒。
+- 與 `install.py` 的相容：`merge_registration` 在 guard 未被 state 擁有時，
+  若 canonical guard 群組已各出現一次就收編（不再 append，也不報 canonical
+  guard collision；無 state 的 `_contains_any_trusted_group` 不再把 guard
+  群組算進去）；其他部分或跨 event 的形狀仍 abort。state 已記錄 guard 時，
+  `install_hooks --uninstall` 拒絕（請用 `install.py`）。
+- 驗證：`tests/test_install_hooks.py` 的 `CodexTests` 與
+  `CodexInstallPyInteropTests`（install_hooks 後 install.py、install.py 後
+  install_hooks、pre-guard 已安裝 home）；temp-home e2e：三檔 `apply_patch`，
+  `SHOAL_GUARD=enforce` 得 deny JSON，不設則 `would_deny` log，uninstall
+  還原 `hooks.json` 位元組。
 
 未決：grok host 的 VERSION 未 bump（Decision 5 要求受影響 host 各自 bump；會牽動 rules
 marker、golden、`upstream.lock`、README 與數個固定版本字串的測試，建議 commit 前一次處理）。

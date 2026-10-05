@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""為 Claude Code 與 Gemini/agy 安裝 shoal dispatch guard（docs/specs/dispatch-enforcement，R7）。
+"""為 Claude Code、Gemini/agy 與 Codex 安裝 shoal dispatch guard（docs/specs/dispatch-enforcement，R7）。
 
 用法：
   python3 tools/install_hooks.py --host claude [--home DIR]               dry-run（預設），不寫入
   python3 tools/install_hooks.py --host agy --apply                       備份後安裝
   python3 tools/install_hooks.py --host claude --uninstall --apply        只移除 shoal 的 entry
+  python3 tools/install_hooks.py --host codex --apply                     只管 shoal-guard 的 entry
 
 來源是 repo committed HEAD 的 hooks/shoal_guard.py（git show，不是工作樹；HEAD 沒有就中止）。
 腳本裝到 ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py（0755），entry 寫進：
@@ -12,10 +13,18 @@
           UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow 的 PreToolUse
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
           PreToolUse（matcher "*"）與 PreInvocation
+  codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
+          shoal-guard-v1 projection 逐位元組相同的群組（UserPromptSubmit，以及 matcher
+          ^(apply_patch|spawn_agent|collaborationspawn_agent)$ 的 PreToolUse，含 commandWindows），
+          腳本裝到 <home>/hooks/shoal_guard.py（0600）。這是不能跑 install.py 時的窄路徑：
+          不碰 pilotfish_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
+          裝完要在互動式 Codex 用 /hooks 核准一次。install.py 之後會收編這些 entry。
 設定檔若是 symlink 就寫進它指向的檔案。只有 command 含 "shoal_guard.py --host" 的 handler
 算 shoal 的；其他 hook、其他 key、key 順序與 2 空格縮排的 JSON 都原樣保留。重複執行不會改變
 結果；寫入前把原檔備份到 ${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/
-（目錄 0700、檔案 0600）。--uninstall 只移除 entry，不刪腳本（claude 與 agy 共用同一份）。
+（目錄 0700、檔案 0600）。--uninstall 只移除 entry，不刪腳本（claude 與 agy 共用同一份）；
+codex 的 --uninstall 另外刪掉 <home>/hooks/shoal_guard.py（先備份），而且 install.py 的 state
+已記錄 guard 時會中止（請改用 install.py，否則 state 驗證會失敗）。
 
 exit code：0 成功；1 寫入後驗證失敗；2 中止（來源或設定檔不符預期，沒有寫入）。
 """
@@ -37,6 +46,8 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "install"))
+from hook_registration import GUARD_PROJECTION_ID, TRUSTED_PROJECTIONS  # noqa: E402
 GUARD_SOURCE = "hooks/shoal_guard.py"
 CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
 AGY_GROUP = "shoal-guard"
@@ -65,7 +76,13 @@ def backup_root(env: Mapping[str, str]) -> Path:
     return base / "shoal" / "install-hooks" / "backups"
 
 
+def codex_home_dir(home: Optional[Path], env: Mapping[str, str]) -> Path:
+    return (home or Path(env.get("CODEX_HOME") or Path.home() / ".codex")).expanduser()
+
+
 def config_path(host: str, home: Optional[Path], env: Mapping[str, str]) -> Path:
+    if host == "codex":
+        return codex_home_dir(home, env) / "hooks.json"
     if host == "claude":
         base = home or Path(env.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
         return base.expanduser() / "settings.json"
@@ -189,6 +206,31 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
     return out
 
 
+def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
+    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v1 群組（command 為 None 時移除）。
+
+    command 只當安裝／移除的開關；寫入的是 canonical 群組本身，install.py 才認得它。
+    """
+    out = copy.deepcopy(hooks_json)
+    if command is None and "hooks" not in out:
+        return out
+    hooks = out.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise InstallError("hooks.json 的 hooks 不是物件，不處理")
+    for event, group in TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID].items():
+        groups = set_groups(
+            hooks.get(event),
+            None if command is None else copy.deepcopy(group),
+            f"hooks.{event}",
+        )
+        if groups:
+            hooks[event] = groups
+        elif event in hooks:
+            del hooks[event]
+    out["hooks"] = hooks  # install.py 要求 hooks 是物件，所以空了也保留
+    return out
+
+
 def apply_agy(config: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
     out = copy.deepcopy(config)
     group = out.get(AGY_GROUP)
@@ -279,7 +321,7 @@ def make_backup(root: Path, host: str, items: dict[str, bytes]) -> Path:
 def owned_entries(host: str, data: dict[str, Any]) -> int:
     """設定檔裡 shoal handler 的數量（驗證用）。"""
     count = 0
-    if host == "claude":
+    if host in ("claude", "codex"):
         for groups in (data.get("hooks") or {}).values():
             for group in groups if isinstance(groups, list) else []:
                 count += sum(is_owned(h) for h in _group_handlers(group))
@@ -293,6 +335,15 @@ def owned_entries(host: str, data: dict[str, Any]) -> int:
     return count
 
 
+def install_state_owns_guard(codex_home: Path) -> bool:
+    """install.py 的 state 是否已記錄 guard（有就不能繞過它移除 entry）。"""
+    state = codex_home.with_name(f"{codex_home.name}.pilotfish-install-state.json")
+    try:
+        return "guard_registration" in json.loads(state.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+
+
 # ---- 主流程 ----
 def run(
     host: str,
@@ -304,17 +355,29 @@ def run(
     ref: str,
     env: Mapping[str, str],
 ) -> int:
+    codex = host == "codex"
+    apply_fn = {"claude": apply_claude, "agy": apply_agy, "codex": apply_codex}[host]
     target = config_path(host, home, env)
     real = Path(os.path.realpath(target))  # symlink 就寫進它指向的檔案
-    script = data_script_path(env)
+    script = target.parent / "hooks" / "shoal_guard.py" if codex else data_script_path(env)
+    if codex and uninstall and install_state_owns_guard(target.parent):
+        raise InstallError(
+            "install.py 的 state 已記錄 guard；移除請用 install.py，直接移除會讓 state 驗證失敗"
+        )
     original, current = read_json(real)
 
     guard: Optional[bytes] = None
     commit = ""
     if not uninstall:
         guard, commit = load_guard(repo, ref)
-    command = None if uninstall else command_for(script, host)
-    desired = (apply_claude if host == "claude" else apply_agy)(current, command)
+    command = (
+        None
+        if uninstall
+        else TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["UserPromptSubmit"]["hooks"][0]["command"]
+        if codex
+        else command_for(script, host)
+    )
+    desired = apply_fn(current, command)
     new_bytes = render_json(desired, original)
     config_changes = (
         original is None
@@ -323,6 +386,9 @@ def run(
     )
     script_state = "略過（不處理腳本）"
     script_changes = False
+    if codex and uninstall:
+        script_changes = script.is_file()
+        script_state = "移除" if script_changes else "略過（不存在）"
     if guard is not None:
         existing = script.read_bytes() if script.is_file() else None
         script_changes = existing != guard
@@ -333,6 +399,8 @@ def run(
         )
 
     print(f"host: {host}  設定檔: {target}" + (f" -> {real}" if real != target else ""))
+    if codex and uninstall:
+        print(f"  [{script_state}] {script}")
     if guard is not None:
         print(f"來源: committed {commit[:7]} 的 {GUARD_SOURCE}")
         print(f"  [{script_state}] {script}")
@@ -359,7 +427,9 @@ def run(
         if saved:
             print(f"備份: {make_backup(backup_root(env), host, saved)}")
         if script_changes and guard is not None:
-            atomic_write(script, guard, 0o755)
+            atomic_write(script, guard, 0o600 if codex else 0o755)
+        elif script_changes and codex:
+            script.unlink()
         if config_changes:
             mode = stat.S_IMODE(real.stat().st_mode) if real.exists() else 0o644
             atomic_write(real, new_bytes, mode)
@@ -377,8 +447,11 @@ def run(
     # 驗證：重新讀檔，shoal handler 數量與其餘內容都符合預期
     _, after = read_json(real)
     expected_owned = 0 if uninstall else owned_entries(host, desired)
-    stripped = (apply_claude if host == "claude" else apply_agy)(after, None)
-    base = (apply_claude if host == "claude" else apply_agy)(current, None)
+    stripped = apply_fn(after, None)
+    base = apply_fn(current, None)
+    if codex:  # 安裝會建立空的 hooks 物件；不算動到非 shoal 的內容
+        stripped.setdefault("hooks", {})
+        base.setdefault("hooks", {})
     problems = []
     if after != desired:
         problems.append("設定檔內容與預期不符")
@@ -389,13 +462,26 @@ def run(
     if guard is not None and (
         not script.is_file()
         or script.read_bytes() != guard
-        or not os.access(script, os.X_OK)
+        or (not codex and not os.access(script, os.X_OK))
     ):
         problems.append("腳本與 HEAD 不符或不可執行")
+    if codex and uninstall and script.exists():
+        problems.append("腳本沒有被移除")
     if problems:
         print("驗證失敗：\n" + "\n".join(f"  {p}" for p in problems), file=sys.stderr)
         return 1
     print("驗證通過")
+    if codex and not uninstall and (config_changes or script_changes):
+        print(
+            "提醒：新 hook 需要在互動式 Codex session 用 /hooks 核准一次才會執行"
+            "（這個工具不寫 hook trust）"
+        )
+        resolved = Path(os.path.realpath(codex_home_dir(None, env)))
+        if Path(os.path.realpath(target.parent)) != resolved:
+            print(
+                f"注意：hook command 在執行時讀 CODEX_HOME（預設 ~/.codex）；"
+                f"請確認它指向 {target.parent}"
+            )
     return 0
 
 
@@ -405,7 +491,7 @@ def main(
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0], allow_abbrev=False
     )
-    parser.add_argument("--host", required=True, choices=("claude", "agy"))
+    parser.add_argument("--host", required=True, choices=("claude", "agy", "codex"))
     parser.add_argument(
         "--apply", action="store_true", help="實際寫入；沒有這個旗標一律 dry-run"
     )
@@ -415,7 +501,7 @@ def main(
     parser.add_argument(
         "--home",
         type=Path,
-        help="claude 預設 $CLAUDE_CONFIG_DIR 或 ~/.claude；agy 預設 ~/.gemini",
+        help="claude 預設 $CLAUDE_CONFIG_DIR 或 ~/.claude；agy 預設 ~/.gemini；codex 預設 $CODEX_HOME 或 ~/.codex",
     )
     parser.add_argument("--repo", type=Path, default=REPO, help="shoal repo（測試用）")
     parser.add_argument("--ref", default="HEAD", help="要安裝的 ref，預設 HEAD")

@@ -338,6 +338,19 @@ class GrokAdapterTests(CliCase):
         self.assertEqual(self.run_guard("grok", self.tool("search_replace", {"file_path": "a.py"}, cwd=self.work)), "")
         self.assertEqual(self.log_records()[-1]["decision"], "would_deny")
 
+    def test_tool_without_prompt_id_uses_state_turn(self) -> None:
+        def e0(name):
+            payload = self.tool("search_replace", {"file_path": "src/" + name + ".py"}, cwd=self.work)
+            del payload["promptId"]
+            return payload
+        self.run_guard("grok", self.prompt(cwd=self.work))
+        self.assertEqual(self.run_guard("grok", e0("a")), "")
+        self.assertEqual(self.run_guard("grok", e0("b")), "")
+        self.assertEqual(self.run_guard("grok", e0("c")), "")
+        self.assertEqual(self.log_records()[-1]["decision"], "would_deny")
+        out = json.loads(self.run_guard("grok", e0("d"), SHOAL_GUARD="enforce"))
+        self.assertEqual(out["decision"], "deny")
+
     def test_subagent_leaf_denied(self) -> None:
         payload = self.tool("spawn_subagent", {"subagent_type": "scout"}, subagentType="executor")
         out = json.loads(self.run_guard("grok", payload, SHOAL_GUARD="enforce"))

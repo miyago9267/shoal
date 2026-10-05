@@ -939,6 +939,26 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
    ]
+  },
+  {
+   "name": "grok_tool_without_turn_id_uses_current_state",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "p1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "grok_subagent_tool_without_turn_id_evaluated",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "p1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
+   ]
   }
  ]
 }
