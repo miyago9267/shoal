@@ -16,9 +16,16 @@ import re
 import sys
 import tomllib
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
-from role_fitness_scorecard import append_repeat_record, score_architecture
+from role_fitness_scorecard import (
+    CONTENT_FAILURE_CLASSES,
+    append_repeat_record,
+    classify_content_stages,
+    content_failure_taxonomy,
+    score_architecture,
+    stage_key,
+)
 from validate_agents import ROLES, validate_agent
 from verify_dispatch import validate_receipt
 
@@ -111,6 +118,7 @@ FAILURE_CLASSES = frozenset({
 STAGE_KEYS = frozenset(
     {"stage_id", "status", "phase", "reason_code", "admitted", "passed", "failure_class"}
 )
+CONTENT_STAGE_KEYS = frozenset({"stage_id", "content_failure_class"})
 
 
 def fixture_commitment(
@@ -256,8 +264,13 @@ def build_live_run_summary(
     scorecard_hash: str,
     receipt_paths: Sequence[Path],
     stability_passed: bool = False,
+    content_stages: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a sanitized repeat summary from validated dispatch receipts.
+
+    `content_stages` are runner-format content stages.  Only each stage's id and
+    derived `content_failure_class` enter the summary; its counts join the
+    dispatch counts in `failure_taxonomy` under `content.<class>` keys.
 
     A receipt is admitted only after it crossed the execution boundary.  A
     preflight skip therefore cannot inflate availability, while an admitted
@@ -301,7 +314,7 @@ def build_live_run_summary(
         if not stage["passed"]:
             key = stage["failure_class"]
             failures[key] = failures.get(key, 0) + 1
-    return {
+    summary: dict[str, Any] = {
         "run_id": run_id,
         "manifest_hash": manifest_hash,
         "scorecard_hash": scorecard_hash,
@@ -312,6 +325,15 @@ def build_live_run_summary(
         "stages": stages,
         "evidence": {"receipts_validated": len(stages), "raw_sessions_published": 0},
     }
+    if content_stages is not None:
+        rows = list(content_stages)
+        classes = classify_content_stages(rows)
+        summary["content_stages"] = [
+            {"stage_id": stage_key(row), "content_failure_class": name}
+            for row, name in zip(rows, classes)
+        ]
+        summary["failure_taxonomy"] = {**failures, **content_failure_taxonomy(classes)}
+    return summary
 
 
 def validate_live_run_summary(summary: Mapping[str, Any]) -> None:
@@ -348,6 +370,22 @@ def validate_live_run_summary(summary: Mapping[str, Any]) -> None:
     availability = summary.get("availability")
     if availability != {"passed": passed, "total": admitted}:
         raise BenchmarkContractError("availability does not reconcile with stages")
+    content_stages = summary.get("content_stages")
+    if content_stages is not None:
+        if not isinstance(content_stages, list):
+            raise BenchmarkContractError("content stage accounting is invalid")
+        content_classes: list[str | None] = []
+        for row in content_stages:
+            if (
+                not isinstance(row, dict)
+                or set(row) != CONTENT_STAGE_KEYS
+                or not isinstance(row["stage_id"], str)
+                or not row["stage_id"]
+                or (row["content_failure_class"] is not None and row["content_failure_class"] not in CONTENT_FAILURE_CLASSES)
+            ):
+                raise BenchmarkContractError("content stage accounting is invalid")
+            content_classes.append(row["content_failure_class"])
+        failure_counts.update(content_failure_taxonomy(content_classes))
     if summary.get("failure_taxonomy") != failure_counts:
         raise BenchmarkContractError("failure taxonomy does not reconcile with stages")
 

@@ -126,6 +126,89 @@ def score_split_workflow(*, confirmed: int, total: int) -> dict[str, Any]:
     return score_rate(confirmed, total)
 
 
+CONTENT_FAILURE_CLASSES = (
+    "false_escalation",
+    "missed_risk",
+    "unparseable_output",
+    "executor_no_artifact",
+    "verifier_retry",
+    "verifier_inconclusive",
+    "unclassified",
+)
+CONTENT_TAXONOMY_PREFIX = "content."
+
+
+def stage_key(stage: Mapping[str, Any]) -> str:
+    """Return the `<case_id>#<attempt>` identity that a rerun's `rerun_of` names."""
+    return f"{stage.get('case_id')}#{stage.get('attempt', 1)}"
+
+
+def classify_content_failure(
+    stage: Mapping[str, Any], *, superseded: bool = False
+) -> str | None:
+    """Classify one runner-format content stage; None means it needs no class.
+
+    Rules run in order and the first match wins (claude-eval-parity Decision 4).
+    They read only recorded runner fields, never benchmark summaries or model
+    judgments.  `superseded` marks an initial stage that a later stage names in
+    `rerun_of`; the rerun stage is counted instead, so it is not counted twice.
+    """
+    status = stage.get("status")
+    if status == "accepted":
+        if stage.get("false_escalation") is True:
+            return "false_escalation"
+        score = stage.get("score")
+        score = score if isinstance(score, Mapping) else {}
+        coverage = stage.get("risk_coverage")
+        if (
+            score.get("expected_decision") == "REVISE"
+            and isinstance(coverage, (int, float))
+            and not isinstance(coverage, bool)
+            and coverage < 1.0
+        ):
+            return "missed_risk"
+        if stage.get("native_role") == "verifier" and stage.get("rerun_of"):
+            return "verifier_retry"
+        # An accepted review that still failed its own pass check must not go unlabelled.
+        return "unclassified" if score.get("passed") is False else None
+    if superseded:
+        return None
+    reason = stage.get("reason")
+    dispatch = stage.get("dispatch_status")
+    if status == "inconclusive":
+        # The direct review path records no dispatch_status, so absence is allowed there only.
+        if reason in {"invalid_native_review_output", "invalid_review_output"} and dispatch in (None, "NATIVE_OK"):
+            return "unparseable_output"
+        if reason in {"invalid_split_executor_acceptance", "invalid_native_mechanical_acceptance"} and dispatch == "NATIVE_OK":
+            return "executor_no_artifact"
+        if reason == "verifier_did_not_confirm":
+            return "verifier_inconclusive"
+    return "unclassified"
+
+
+def classify_content_stages(stages: Iterable[Mapping[str, Any]]) -> list[str | None]:
+    """Classify a run's content stages, resolving which initial stages were rerun."""
+    rows = list(stages)
+    rerun_targets = {row["rerun_of"] for row in rows if isinstance(row.get("rerun_of"), str)}
+    return [
+        classify_content_failure(row, superseded=stage_key(row) in rerun_targets)
+        for row in rows
+    ]
+
+
+def content_failure_taxonomy(classes: Iterable[str | None]) -> dict[str, int]:
+    """Count content classes under `content.<class>` keys; unclassed stages are skipped."""
+    counts: dict[str, int] = {}
+    for name in classes:
+        if name is None:
+            continue
+        if name not in CONTENT_FAILURE_CLASSES:
+            raise ValueError("content failure class is invalid")
+        key = CONTENT_TAXONOMY_PREFIX + name
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def aggregate_repeats(runs: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Pool compatible repeat summaries without replacing earlier runs."""
     rows = list(runs)
