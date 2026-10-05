@@ -265,6 +265,7 @@ class ApplyTests(InstallGrokCase):
         self.assertEqual(self.run_cli("--apply")[0], 0)  # re-install restores it
         self.assertEqual(sha(script), sha(self.dist / rel))
 
+    @unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
     def test_installed_dispatch_guard_runs_from_the_grok_home(self) -> None:  # dispatch-enforcement R7
         self.run_cli("--apply")
         config = json.loads(

@@ -114,6 +114,7 @@ class HookConfigTests(unittest.TestCase):
             self.assertLessEqual(names, set(sys.stdlib_module_names), script.name)
 
 
+@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class DispatchGuardRunsFromDistTests(unittest.TestCase):
     """dist 內的 shoal_guard.py 以 grok 的方式執行：路徑直接 exec，host 由 hook 的 env 提供。"""
 
