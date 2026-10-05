@@ -70,16 +70,53 @@
 
 ## Phase B2 — Claude adapter（offline）
 
-- [ ] 實作 Claude adapter：暫存專案目錄、`.claude/agents/` 由 committed
+- [x] 實作 Claude adapter：暫存專案目錄、`.claude/agents/` 由 committed
       dist 複製、`claude -p --output-format stream-json --verbose
       --setting-sources project`，`CLAUDE_CONFIG_DIR` 指向每 stage 全新的
       暫存目錄，加 `--max-budget-usd <amount>`。
-- [ ] 以 `Agent` 工具呼叫的 `subagent_type` 作為 dispatch evidence。
-- [ ] Claude 版 prompt 不使用 `spawn_agent`、`wait_agent`。
-- [ ] 實作 runner 的累計停止：admission 預留 per-stage 上限，累計成本
+  - `install/role_fitness_claude.py` 的 `ClaudeStageAdapter`。只做離線驗證；
+    以下都**未以 live 驗證**，留給下方的最小 live 呼叫：
+    - token 的環境變數名稱暫定 `CLAUDE_CODE_OAUTH_TOKEN`
+      （常數 `SUBSCRIPTION_TOKEN_ENV`）；沒有 token 時不啟動，也不退回
+      `~/.claude` 或 keychain。
+    - spec 之外另加的旗標與環境：`--permission-mode`（`read-only` 對
+      `manual`、`workspace-write` 對 `acceptEdits`）、
+      `--permission-prompts none`、`--strict-mcp-config`；prompt 由 stdin
+      傳入；子行程環境是 allowlist，`HOME`、`TMPDIR` 指向 stage 的暫存目錄。
+    - `--max-budget-usd` 超額時是否中止、`--setting-sources project` 與
+      `CLAUDE_CONFIG_DIR` 的隔離效果。
+- [x] 以 `Agent` 工具呼叫的 `subagent_type` 作為 dispatch evidence。
+  - stream 樣本是 synthetic（`tests/fixtures/claude_stream/`），**尚未與真實
+    輸出比對**；解析器遇到不認得的事件形狀就讓 stage 失敗。結果事件不指出
+    subagent 用哪個 model，所以只有整個 run 用單一 model 時才回報 model；
+    `child_usage` 等於整個 stage 的 usage。
+- [x] Claude 版 prompt 不使用 `spawn_agent`、`wait_agent`。
+  - `claude_dispatch_prompt` 與 `claude_native_review_prompt`。四個 native
+    case 函式仍只接 Codex，Claude 的接線留到 B4。
+- [x] 實作 runner 的累計停止：admission 預留 per-stage 上限，累計成本
       加預留值超過 $30 就不放行下一個 stage。
-- [ ] 以錄製的 stream 樣本做 offline 測試，不呼叫模型；測試斷言 adapter
+  - `CostAdmission` 與 `AdmittedStageAdapter`；成本不明的 stage 以預留值
+    計，回報成本高於預留值就停止放行。8,000,000 weighted tokens 與 HTTP 429
+    的停止（AC-CE-031、032）不在這一項。
+- [x] 以錄製的 stream 樣本做 offline 測試，不呼叫模型；測試斷言 adapter
       組出的 argv 與 env，不只檢查複製的 agents。
+  - `tests/test_role_fitness_claude.py`（AC-CE-011 到 017）；樣本是
+    synthetic，不是錄製檔。
+
+已知限制（B2 離線部分，B4 接線前需留意）：
+
+- stream 樣本是 synthetic，尚未與真實輸出比對。
+- `StageOutcome.events` 在 Claude adapter 一律回空清單，raw stream 不保留，
+  runner 的 `event_shapes` 診斷因此是空的。
+- frozen manifest 的檢查只在 `open_claude_run`；直接建立
+  `ClaudeStageAdapter` 不會檢查，B4 接線必須走 `open_claude_run`。
+- 四個 native case 函式尚未接上 Claude adapter。
+- `workdir`、`scratch` 必須是絕對路徑且不含 `..`，否則啟動前就拒絕。
+- stage 結束後會掃描 workdir 的檔案內容找 token（上限 1000 個檔案、
+  單檔 1 MiB、合計 32 MiB）；找到 token 或超出上限，stage 失敗並清空
+  workdir。
+- 保護清單同時涵蓋帳號資料庫的 home 與 `HOME`／`USERPROFILE` 推得的
+  `.claude`，以及繼承到的 `CLAUDE_CONFIG_DIR`。
 - [ ] 實測 repo 外部事實（一次最小 live 呼叫，消耗訂閱用量，執行前要
       Miyago 核准；token 經 credential broker 注入）：
   - 注入 token 用的環境變數名稱，以及全新 `CLAUDE_CONFIG_DIR` 下 token

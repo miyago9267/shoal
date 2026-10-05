@@ -1,0 +1,671 @@
+#!/usr/bin/env python3
+"""Claude host stage adapter for the role-fitness content runner.
+
+Implements claude-eval-parity R4-R6 behind ``StageAdapter``: one ``claude -p``
+process per stage in a private root that is deleted before the stage returns,
+dispatch evidence read from the stream, a frozen-manifest guard and the
+cumulative cost admission.
+
+Nothing here has been checked against a live ``claude`` run yet.  The stream
+shapes, the token variable name, and the effect of the isolation and budget
+flags are repo-external facts that AC-CE-018 still has to confirm; every parser
+path therefore fails closed on a shape it does not recognise.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import time
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+
+from role_fitness_fixtures import BenchmarkContractError, validate_bundle
+from role_fitness_stage import (
+    DispatchEvidence,
+    StageAdapter,
+    StageEvidenceError,
+    StageOutcome,
+    StageRequest,
+    StageSetupError,
+    StageTimeout,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DIST_AGENTS = ROOT / "hosts" / "claude" / "dist" / "agents"
+
+# UNVERIFIED: the name of the variable `claude` reads a `claude setup-token`
+# subscription token from has not been confirmed by a live call (SPEC Open
+# question 5, AC-CE-018).  This constant is the only place that names it.
+SUBSCRIPTION_TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
+
+# `manifest_hash` of docs/benchmarks/role-fitness-v1-fixtures-manifest-v2.json.
+FROZEN_MANIFEST_V2_HASH = (
+    "7ef0ac3299c5be0a016cf240cc428f95339d9adadedaad8e23d311deb309b3e2"
+)
+
+# Settled stop point of one run (SPEC "Live run 與成本").
+RUN_COST_CAP_USD = Decimal("30")
+
+DISPATCH_TOOL = "Agent"
+DISPATCH_OK = "NATIVE_OK"
+DISPATCH_FAILED = "NATIVE_DISPATCH_FAILED"
+
+# StageRequest.sandbox -> permission mode.  Prompts are never answered
+# (`--permission-prompts none`), so anything the mode does not allow is denied.
+_PERMISSION_MODES = {"read-only": "manual", "workspace-write": "acceptEdits"}
+
+# The child gets an allowlisted environment, not the caller's: an inherited API
+# key or provider switch would silently replace the subscription login, and
+# unrelated secrets have no business in a model-driven process.
+_PASSTHROUGH_ENV = (
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+    "SYSTEMROOT",
+    "COMSPEC",
+    "PATHEXT",
+)
+
+# Bounds of the post-stage workdir scan; a tree beyond them fails the stage.
+WORKDIR_SCAN_MAX_FILES = 1000
+WORKDIR_SCAN_MAX_FILE_BYTES = 1024 * 1024
+WORKDIR_SCAN_MAX_BYTES = 32 * 1024 * 1024
+
+_ROLE_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]*")
+_RESULT_USAGE_KEYS = (
+    "input_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+    "output_tokens",
+)
+
+
+class StageCleanupError(Exception):
+    """Stage-private data could not be deleted; the stage has failed."""
+
+
+class StageNotAdmitted(StageSetupError):
+    """The cumulative cost admission refused to start the stage."""
+
+
+def _usd(value: Any, what: str) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
+        raise BenchmarkContractError(f"{what} must be a dollar amount")
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise BenchmarkContractError(f"{what} must be a dollar amount") from exc
+    if not amount.is_finite() or amount <= 0 or amount > RUN_COST_CAP_USD:
+        raise BenchmarkContractError(f"{what} must be positive and at most the run cap")
+    return amount
+
+
+def require_frozen_manifest(private_root: Path) -> dict[str, Any]:
+    """Validate the private bundle and reject anything but the frozen manifest v2."""
+    projection = validate_bundle(private_root)
+    if projection.get("manifest_hash") != FROZEN_MANIFEST_V2_HASH:
+        raise BenchmarkContractError("fixture manifest is not the frozen v2 manifest")
+    return projection
+
+
+def claude_dispatch_prompt(*, role: str, task_name: str, message: str) -> str:
+    """Ask the parent session to hand ``message`` to one named subagent."""
+    return (
+        f"Call the {DISPATCH_TOOL} tool exactly once with subagent_type='{role}' and "
+        f"description='{task_name}', passing the following message unchanged as its prompt:\n\n"
+        + message
+        + f"\n\nWhen the {DISPATCH_TOOL} tool returns, stop. Do not do the work yourself, do not "
+        f"call the {DISPATCH_TOOL} tool a second time, and do not use any other subagent_type."
+    )
+
+
+def claude_native_review_prompt(plan: str) -> str:
+    """Claude form of the native plan-verifier review; the inner message matches Codex."""
+    from run_role_fitness_content import _review_prompt
+
+    message = _review_prompt(plan).replace(
+        "Do not call tools, modify files, or delegate. ",
+        "Do not call tools or modify files. ",
+    )
+    return claude_dispatch_prompt(
+        role="plan-verifier", task_name="role_fitness_plan_review", message=message
+    )
+
+
+def _subscription_token() -> str:
+    """Read the token from the environment only; never fall back to stored logins."""
+    token = os.environ.get(SUBSCRIPTION_TOKEN_ENV)
+    if (
+        not token
+        or token != token.strip()
+        or any(character.isspace() for character in token)
+    ):
+        raise StageSetupError(
+            f"subscription token is not available in {SUBSCRIPTION_TOKEN_ENV}"
+        )
+    return token
+
+
+def _account_home() -> Path:
+    """The user's home from the OS account record, not from the environment."""
+    home: str | None = None
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            buffer = ctypes.create_unicode_buffer(1024)
+            # CSIDL_PROFILE: the profile directory of the calling account.
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 40, None, 0, buffer) == 0:
+                home = buffer.value
+        else:
+            import pwd
+
+            home = pwd.getpwuid(os.getuid()).pw_dir
+    except (OSError, KeyError, AttributeError, ImportError):
+        home = None
+    if not home or not os.path.isabs(home):
+        raise StageSetupError("user home cannot be determined")
+    return Path(home)
+
+
+def _protected_config_dirs() -> list[str]:
+    """The user's own Claude config locations a stage must stay out of.
+
+    ``HOME`` can be pointed anywhere, so the account's real home is protected
+    as well as whatever the environment currently names.
+    """
+    protected = [_account_home() / ".claude"]
+    try:
+        protected.append(Path.home() / ".claude")
+    except RuntimeError:
+        pass
+    inherited = os.environ.get("CLAUDE_CONFIG_DIR")
+    if inherited:
+        protected.append(Path(inherited))
+    return [os.path.realpath(path) for path in protected]
+
+
+def _require_outside_user_config(path: Path) -> None:
+    real = Path(os.path.realpath(path))
+    for protected in _protected_config_dirs():
+        if real == Path(protected) or Path(protected) in real.parents:
+            raise StageSetupError("stage directory is inside the user's Claude config")
+
+
+def _committed_agents() -> list[Path]:
+    try:
+        entries = sorted(DIST_AGENTS.iterdir())
+    except OSError:
+        raise StageSetupError("committed Claude agents are unreadable") from None
+    if not entries or any(
+        entry.is_symlink() or not entry.is_file() or entry.suffix != ".md"
+        for entry in entries
+    ):
+        raise StageSetupError(
+            "committed Claude agents directory has an unexpected entry"
+        )
+    return entries
+
+
+def _remove_private(*paths: Path) -> None:
+    """Delete stage-private trees; anything left behind fails the stage."""
+    failed = False
+    for path in paths:
+        try:
+            # A symlink here was not created by the adapter: do not follow it.
+            if not path.is_symlink() and path.exists():
+                shutil.rmtree(path)
+        except OSError:
+            failed = True
+        if path.is_symlink() or path.exists():
+            failed = True
+    if failed:
+        raise StageCleanupError("claude stage cleanup failed") from None
+
+
+def _workdir_problem(workdir: Path, token: str) -> str | None:
+    """Look for the token in what the stage left in the caller's workdir.
+
+    Returns None when the bounded scan finds nothing.  When the token is found,
+    or the tree cannot be scanned completely within the bounds, the workdir is
+    emptied (the stage has failed, so its artifacts are void) and a short reason
+    code is returned; ``workdir_cleanup_failed`` means it could not be emptied.
+    The staged ``.claude`` is skipped here because it is deleted separately.
+    """
+    needle = token.encode("utf-8")
+    problem: str | None = None
+    try:
+        pending = [entry for entry in os.scandir(workdir) if entry.name != ".claude"]
+        files = scanned = 0
+        while pending and problem is None:
+            entry = pending.pop()
+            if entry.is_symlink():
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                pending.extend(os.scandir(entry.path))
+                continue
+            size = entry.stat(follow_symlinks=False).st_size
+            files += 1
+            scanned += size
+            if files > WORKDIR_SCAN_MAX_FILES or size > WORKDIR_SCAN_MAX_FILE_BYTES or scanned > WORKDIR_SCAN_MAX_BYTES:
+                problem = "workdir_scan_limit"
+            elif needle in Path(entry.path).read_bytes():
+                problem = "credential_in_workdir"
+    except OSError:
+        problem = "workdir_scan_failed"
+    if problem is None:
+        return None
+    try:
+        for entry in list(os.scandir(workdir)):
+            if entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path)
+            else:
+                os.unlink(entry.path)
+        if os.listdir(workdir):
+            return "workdir_cleanup_failed"
+    except OSError:
+        return "workdir_cleanup_failed"
+    return problem
+
+
+def _bad_stream(detail: str) -> StageEvidenceError:
+    return StageEvidenceError(detail)
+
+
+def _count(value: Any) -> bool:
+    return type(value) is int and value >= 0
+
+
+def _result_texts(content: Any) -> list[str]:
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        raise _bad_stream("unrecognized_tool_result")
+    texts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict) or not isinstance(block.get("type"), str):
+            raise _bad_stream("unrecognized_tool_result")
+        if block["type"] == "text":
+            if not isinstance(block.get("text"), str):
+                raise _bad_stream("unrecognized_tool_result")
+            texts.append(block["text"])
+    return texts
+
+
+def parse_stream(stdout: str, role: str) -> dict[str, Any]:
+    """Read one ``--output-format stream-json`` run.
+
+    Returns the dispatched child's messages, event counts, usage normalised to
+    the runner's keys, cost, model, dispatch evidence and whether the host
+    reported the run as failed.  Raises ``StageEvidenceError`` with a short
+    code (never stream content) for any event shape it does not recognise.
+    """
+    events: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, RecursionError):
+            event = None
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+            raise _bad_stream("unrecognized_stream_event")
+        events.append(event)
+    if not events or events[-1]["type"] != "result":
+        raise _bad_stream("no_result_event")
+
+    event_counts: dict[str, int] = {}
+    calls: list[tuple[str, Any]] = []
+    results: dict[str, tuple[bool, list[str]]] = {}
+    seen_tool_ids: set[str] = set()
+    for event in events[:-1]:
+        kind = event["type"]
+        event_counts[kind] = event_counts.get(kind, 0) + 1
+        if kind == "system":
+            if not isinstance(event.get("subtype"), str):
+                raise _bad_stream("unrecognized_stream_event")
+            continue
+        if kind not in {"assistant", "user"}:
+            raise _bad_stream("unrecognized_stream_event")
+        # Without an explicit parent marker a subagent's own tool call could be
+        # mistaken for the parent's dispatch.
+        if "parent_tool_use_id" not in event or not (
+            event["parent_tool_use_id"] is None
+            or isinstance(event["parent_tool_use_id"], str)
+        ):
+            raise _bad_stream("unrecognized_stream_event")
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if kind == "user" and isinstance(content, str):
+            continue
+        if not isinstance(content, list) or any(
+            not isinstance(block, dict) or not isinstance(block.get("type"), str)
+            for block in content
+        ):
+            raise _bad_stream("unrecognized_stream_event")
+        if event["parent_tool_use_id"] is not None:
+            continue
+        for block in content:
+            if kind == "assistant" and block["type"] == "tool_use":
+                tool_id, name, tool_input = (
+                    block.get("id"),
+                    block.get("name"),
+                    block.get("input"),
+                )
+                if (
+                    not isinstance(tool_id, str)
+                    or not tool_id
+                    or not isinstance(name, str)
+                    or not isinstance(tool_input, dict)
+                    or tool_id in seen_tool_ids
+                ):
+                    raise _bad_stream("unrecognized_tool_use")
+                seen_tool_ids.add(tool_id)
+                if name == DISPATCH_TOOL:
+                    calls.append((tool_id, tool_input.get("subagent_type")))
+            elif kind == "user" and block["type"] == "tool_result":
+                tool_id, is_error = (
+                    block.get("tool_use_id"),
+                    block.get("is_error", False),
+                )
+                if (
+                    not isinstance(tool_id, str)
+                    or tool_id in results
+                    or not isinstance(is_error, bool)
+                ):
+                    raise _bad_stream("unrecognized_tool_result")
+                results[tool_id] = (is_error, _result_texts(block.get("content")))
+
+    result = events[-1]
+    event_counts["result"] = 1
+    usage, cost, models = (
+        result.get("usage"),
+        result.get("total_cost_usd"),
+        result.get("modelUsage"),
+    )
+    if (
+        not isinstance(result.get("subtype"), str)
+        or not isinstance(result.get("is_error"), bool)
+        or not isinstance(usage, dict)
+        or not all(_count(usage.get(key)) for key in _RESULT_USAGE_KEYS)
+        or isinstance(cost, bool)
+        or not isinstance(cost, (int, float))
+        or not math.isfinite(cost)
+        or cost < 0
+        or not isinstance(models, dict)
+        or any(
+            not isinstance(name, str) or not name or not isinstance(entry, dict)
+            for name, entry in models.items()
+        )
+    ):
+        raise _bad_stream("unrecognized_result_event")
+
+    # Anthropic usage reports cache tokens outside input_tokens; the runner's
+    # keys (and its weighted-token formula) expect them included.
+    cache_read, cache_write = (
+        usage["cache_read_input_tokens"],
+        usage["cache_creation_input_tokens"],
+    )
+    normalized = {
+        "input_tokens": usage["input_tokens"] + cache_read + cache_write,
+        "cached_input_tokens": cache_read,
+        "cache_write_input_tokens": cache_write,
+        "output_tokens": usage["output_tokens"],
+    }
+    # The result event does not say which model served the subagent, so a model
+    # is only reported when the run used exactly one.
+    model = next(iter(models)) if len(models) == 1 else None
+
+    if not calls:
+        reason = "no_agent_call"
+    elif len(calls) > 1:
+        reason = "multiple_agent_calls"
+    elif calls[0][1] != role:
+        reason = "unexpected_subagent_type"
+    elif calls[0][0] not in results:
+        reason = "agent_call_without_result"
+    elif results[calls[0][0]][0]:
+        reason = "agent_call_failed"
+    else:
+        reason = "ok"
+    ok = reason == "ok"
+    return {
+        "messages": results[calls[0][0]][1] if ok else [],
+        "event_counts": event_counts,
+        "usage": normalized,
+        "cost_usd": float(cost),
+        "host_failed": result["is_error"] or result["subtype"] != "success",
+        "evidence": DispatchEvidence(
+            ok,
+            DISPATCH_OK if ok else DISPATCH_FAILED,
+            reason,
+            model if ok else None,
+            None,
+        ),
+    }
+
+
+class ClaudeStageAdapter:
+    """Run one dispatching stage through ``claude -p`` in a private root.
+
+    Every stage gets a fresh private tree under ``request.scratch`` holding the
+    config dir (``CLAUDE_CONFIG_DIR``), a throwaway home and a temp dir, and
+    ``.claude/agents/`` staged into ``request.workdir`` from the committed
+    dist.  All of it is deleted before ``run_stage`` returns or raises; the raw
+    stream is only ever held in memory.
+    """
+
+    def __init__(self, *, claude_bin: str, max_budget_usd: Any) -> None:
+        self.claude_bin = claude_bin
+        self.max_budget_usd = _usd(max_budget_usd, "per-stage budget")
+
+    def _command(self, request: StageRequest) -> list[str]:
+        if request.sandbox not in _PERMISSION_MODES:
+            raise StageSetupError("sandbox has no Claude permission mapping")
+        # The prompt goes to stdin, so no variadic option can swallow it.
+        return [
+            self.claude_bin,
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--setting-sources",
+            "project",
+            "--max-budget-usd",
+            format(self.max_budget_usd, "f"),
+            "--permission-mode",
+            _PERMISSION_MODES[request.sandbox],
+            "--permission-prompts",
+            "none",
+            "--strict-mcp-config",
+        ]
+
+    def _environment(self, token: str, private: Path) -> dict[str, str]:
+        home, temp = str(private / "home"), str(private / "tmp")
+        return {
+            **{key: os.environ[key] for key in _PASSTHROUGH_ENV if key in os.environ},
+            "HOME": home,
+            "USERPROFILE": home,
+            "TMPDIR": temp,
+            "TEMP": temp,
+            "TMP": temp,
+            "CLAUDE_CONFIG_DIR": str(private / "config"),
+            SUBSCRIPTION_TOKEN_ENV: token,
+        }
+
+    def run_stage(self, request: StageRequest) -> StageOutcome:
+        token = _subscription_token()
+        agents = _committed_agents()
+        role = request.role
+        if (
+            role is None
+            or not _ROLE_RE.fullmatch(role)
+            or f"{role}.md" not in {entry.name for entry in agents}
+        ):
+            raise StageSetupError("stage role is not a committed Claude agent")
+        command = self._command(request)
+        if token in request.prompt or any(token in part for part in command):
+            raise StageSetupError("subscription token would be exposed to the stage")
+        # Relative or `..` paths would hand the child relative isolation paths
+        # and make deletion depend on the working directory.
+        for path in (request.workdir, request.scratch):
+            if not path.is_absolute() or ".." in path.parts:
+                raise StageSetupError("stage directories must be absolute paths")
+        _require_outside_user_config(request.workdir)
+        _require_outside_user_config(request.scratch)
+        staged = request.workdir / ".claude"
+        if (
+            not request.workdir.is_dir()
+            or request.workdir.is_symlink()
+            or staged.is_symlink()
+            or staged.exists()
+        ):
+            raise StageSetupError("stage workdir is not a clean project directory")
+        try:
+            private = Path(
+                tempfile.mkdtemp(prefix="claude-stage-", dir=request.scratch)
+            )
+        except OSError:
+            raise StageSetupError("stage private root could not be created") from None
+        try:
+            try:
+                for name in ("config", "home", "tmp"):
+                    (private / name).mkdir(mode=0o700)
+                (staged / "agents").mkdir(parents=True)
+                for entry in agents:
+                    shutil.copyfile(entry, staged / "agents" / entry.name)
+            except OSError:
+                raise StageSetupError(
+                    "stage directories could not be prepared"
+                ) from None
+            started = time.monotonic()
+            # A host failure is raised after its handler has ended, so the new
+            # exception has no cause or context: the original carries the
+            # child's output.
+            failure: Exception | None = None
+            try:
+                completed = subprocess.run(
+                    command,
+                    input=request.prompt,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=self._environment(token, private),
+                    cwd=str(request.workdir),
+                    timeout=request.timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                failure = StageTimeout()
+            except OSError:
+                failure = StageSetupError("claude could not be started")
+            if failure is not None:
+                raise failure
+            elapsed = time.monotonic() - started
+            if token in completed.stdout or token in completed.stderr:
+                raise StageEvidenceError("credential_in_stream")
+            parsed = parse_stream(completed.stdout, role)
+        finally:
+            problem = _workdir_problem(request.workdir, token)
+            _remove_private(private, staged)
+            if problem == "workdir_cleanup_failed":
+                raise StageCleanupError("claude stage cleanup failed")
+            if problem is not None:
+                raise StageEvidenceError(problem)
+        # A run the host itself reports as failed must not read as a clean exit.
+        returncode = completed.returncode or (1 if parsed["host_failed"] else 0)
+        return StageOutcome(
+            returncode,
+            parsed["messages"],
+            parsed["event_counts"],
+            parsed["usage"],
+            parsed["usage"],
+            [],
+            elapsed,
+            parsed["evidence"],
+            parsed["cost_usd"],
+        )
+
+
+class CostAdmission:
+    """Cumulative stop: reserve the per-stage cap before each stage starts.
+
+    A stage is admitted only while spent cost plus the reservation stays within
+    ``RUN_COST_CAP_USD``.  A stage whose cost is unknown is charged its full
+    reservation, and a stage that reports more than its reservation proves the
+    per-stage cap is not enforced, which closes admission for the rest of the run.
+    """
+
+    def __init__(self, *, per_stage_cap_usd: Any) -> None:
+        self.per_stage_cap_usd = _usd(per_stage_cap_usd, "per-stage cap")
+        self.spent_usd = Decimal("0")
+        self._reserved = False
+        self._closed: str | None = None
+
+    def admit(self) -> None:
+        if self._closed is not None:
+            raise StageNotAdmitted(self._closed)
+        if self._reserved:
+            raise StageNotAdmitted("previous stage is not settled")
+        if self.spent_usd + self.per_stage_cap_usd > RUN_COST_CAP_USD:
+            raise StageNotAdmitted("cumulative cost cap reached")
+        self._reserved = True
+
+    def settle(self, cost_usd: float | None) -> None:
+        if not self._reserved:
+            raise BenchmarkContractError("no admitted stage to settle")
+        self._reserved = False
+        known = (
+            not isinstance(cost_usd, bool)
+            and isinstance(cost_usd, (int, float))
+            and math.isfinite(cost_usd)
+            and cost_usd >= 0
+        )
+        cost = Decimal(str(cost_usd)) if known else self.per_stage_cap_usd
+        self.spent_usd += cost
+        if cost > self.per_stage_cap_usd:
+            self._closed = "per-stage cap was exceeded"
+
+
+class AdmittedStageAdapter:
+    """A ``StageAdapter`` that runs its inner adapter only after cost admission."""
+
+    def __init__(self, inner: StageAdapter, admission: CostAdmission) -> None:
+        self.inner = inner
+        self.admission = admission
+
+    def run_stage(self, request: StageRequest) -> StageOutcome:
+        self.admission.admit()
+        try:
+            outcome = self.inner.run_stage(request)
+        except StageSetupError:
+            # Raised before the host starts: nothing was spent.
+            self.admission.settle(0.0)
+            raise
+        except BaseException:
+            self.admission.settle(None)
+            raise
+        self.admission.settle(outcome.cost_usd)
+        return outcome
+
+
+def open_claude_run(
+    *, private_root: Path, claude_bin: str, per_stage_cap_usd: Any
+) -> AdmittedStageAdapter:
+    """Stage adapter for one Claude run: frozen manifest checked, one cap for flag and reservation."""
+    require_frozen_manifest(private_root)
+    return AdmittedStageAdapter(
+        ClaudeStageAdapter(claude_bin=claude_bin, max_budget_usd=per_stage_cap_usd),
+        CostAdmission(per_stage_cap_usd=per_stage_cap_usd),
+    )

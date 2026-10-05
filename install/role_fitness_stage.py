@@ -70,6 +70,8 @@ class StageOutcome:
     ``child_usage`` is the dispatched child alone and equals ``usage`` when
     nothing was dispatched.  ``events`` are host-native events kept only for
     bounded shape diagnostics.  ``wall_seconds`` is the unrounded host run time.
+    ``cost_usd`` is the host-reported API-equivalent cost of the stage, or None
+    when the host reports none.
     """
 
     returncode: int
@@ -80,6 +82,7 @@ class StageOutcome:
     events: list[dict[str, Any]]
     wall_seconds: float
     evidence: DispatchEvidence | None
+    cost_usd: float | None = None
 
 
 class StageAdapter(Protocol):
