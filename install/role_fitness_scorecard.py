@@ -150,8 +150,10 @@ def classify_content_failure(
 
     Rules run in order and the first match wins (claude-eval-parity Decision 4).
     They read only recorded runner fields, never benchmark summaries or model
-    judgments.  `superseded` marks an initial stage that a later stage names in
-    `rerun_of`; the rerun stage is counted instead, so it is not counted twice.
+    judgments.  `superseded` applies to one case only: a verifier `INCONCLUSIVE`
+    stage that a verifier rerun names in `rerun_of`.  The rerun stage stands for
+    it, so it is not counted twice.  Every other failure keeps its own class even
+    when a later stage reruns it.
     """
     status = stage.get("status")
     if status == "accepted":
@@ -171,28 +173,46 @@ def classify_content_failure(
             return "verifier_retry"
         # An accepted review that still failed its own pass check must not go unlabelled.
         return "unclassified" if score.get("passed") is False else None
-    if superseded:
-        return None
     reason = stage.get("reason")
     dispatch = stage.get("dispatch_status")
-    if status == "inconclusive":
+    if status == "inconclusive" and isinstance(reason, str):
         # The direct review path records no dispatch_status, so absence is allowed there only.
         if reason in {"invalid_native_review_output", "invalid_review_output"} and dispatch in (None, "NATIVE_OK"):
             return "unparseable_output"
         if reason in {"invalid_split_executor_acceptance", "invalid_native_mechanical_acceptance"} and dispatch == "NATIVE_OK":
             return "executor_no_artifact"
         if reason == "verifier_did_not_confirm":
-            return "verifier_inconclusive"
+            return None if superseded else "verifier_inconclusive"
     return "unclassified"
 
 
-def classify_content_stages(stages: Iterable[Mapping[str, Any]]) -> list[str | None]:
-    """Classify a run's content stages, resolving which initial stages were rerun."""
+def _is_verifier_inconclusive(stage: Mapping[str, Any]) -> bool:
+    return stage.get("status") == "inconclusive" and stage.get("reason") == "verifier_did_not_confirm"
+
+
+def superseded_flags(stages: Iterable[Mapping[str, Any]]) -> list[bool]:
+    """Mark verifier INCONCLUSIVE stages that a verifier rerun's `rerun_of` names.
+
+    `<case_id>#<attempt>` alone also matches the same case's executor or review
+    stage, so a stage is only superseded when it is itself a verifier
+    inconclusive and the stage naming it is a verifier stage.
+    """
     rows = list(stages)
-    rerun_targets = {row["rerun_of"] for row in rows if isinstance(row.get("rerun_of"), str)}
-    return [
-        classify_content_failure(row, superseded=stage_key(row) in rerun_targets)
+    targets = {
+        row["rerun_of"]
         for row in rows
+        if isinstance(row.get("rerun_of"), str)
+        and (row.get("native_role") == "verifier" or _is_verifier_inconclusive(row))
+    }
+    return [_is_verifier_inconclusive(row) and stage_key(row) in targets for row in rows]
+
+
+def classify_content_stages(stages: Iterable[Mapping[str, Any]]) -> list[str | None]:
+    """Classify a run's content stages, resolving which verifier stages were rerun."""
+    rows = list(stages)
+    return [
+        classify_content_failure(row, superseded=flag)
+        for row, flag in zip(rows, superseded_flags(rows))
     ]
 
 
@@ -207,6 +227,79 @@ def content_failure_taxonomy(classes: Iterable[str | None]) -> dict[str, int]:
         key = CONTENT_TAXONOMY_PREFIX + name
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def _failure_block(entries: list[tuple[str | None, float | None]]) -> dict[str, Any]:
+    """Summarise counted stages as (class, quality) pairs: counts, shares, mean score."""
+    total = len(entries)
+    classes = {
+        name: {"count": count, "share": count / total}
+        for name in CONTENT_FAILURE_CLASSES
+        for count in [sum(1 for found, _ in entries if found == name)]
+    }
+    qualities = [quality for _, quality in entries if quality is not None]
+    return {
+        "stages": total,
+        "passed": sum(1 for found, _ in entries if found is None),
+        "mean_quality_score": sum(qualities) / len(qualities) if qualities else None,
+        "classes": classes,
+    }
+
+
+def content_failure_report(
+    arms: Mapping[str, Mapping[str, Iterable[Mapping[str, Any]]]],
+) -> dict[str, Any]:
+    """Per-arm failure counts and shares beside the mean quality score (R9).
+
+    `arms` maps arm -> repeat label (`R1`..`R3`) -> runner-format content stages.
+    Each repeat gets its own block; `pooled` is added for comparison and never
+    replaces them.  Every stage counts once, except a verifier INCONCLUSIVE stage that a
+    verifier rerun's `rerun_of` names (the rerun counts instead), so shares are
+    over the stages that stand.  Shares and counts cover every class in
+    the fixed enum, including zeros, so arms and repeats line up column for column.
+    """
+    report: dict[str, Any] = {"arms": {}}
+    for arm, repeats in arms.items():
+        per_repeat: dict[str, list[tuple[str | None, float | None]]] = {}
+        for label, stages in repeats.items():
+            rows = list(stages)
+            entries: list[tuple[str | None, float | None]] = []
+            for row, found, superseded in zip(rows, classify_content_stages(rows), superseded_flags(rows)):
+                if superseded:
+                    continue
+                quality = row.get("quality_score")
+                numeric = isinstance(quality, (int, float)) and not isinstance(quality, bool)
+                entries.append((found, float(quality) if row.get("status") == "accepted" and numeric else None))
+            if not entries:
+                raise ValueError("a repeat needs at least one content stage")
+            per_repeat[label] = entries
+        if not per_repeat:
+            raise ValueError("an arm needs at least one repeat")
+        report["arms"][arm] = {
+            "repeats": {label: _failure_block(entries) for label, entries in per_repeat.items()},
+            "pooled": _failure_block([item for entries in per_repeat.values() for item in entries]),
+        }
+    return report
+
+
+def render_content_failure_report(report: Mapping[str, Any]) -> str:
+    """One line per arm and repeat: score, then each non-zero class as count and share."""
+
+    def line(arm: str, label: str, block: Mapping[str, Any]) -> str:
+        mean = block["mean_quality_score"]
+        found = [
+            f"{name} {block['classes'][name]['count']}/{block['stages']} ({block['classes'][name]['share']:.1%})"
+            for name in CONTENT_FAILURE_CLASSES
+            if block["classes"][name]["count"]
+        ]
+        score = "n/a" if mean is None else f"{mean:.1f}"
+        return f"{arm} {label} n={block['stages']} mean_quality={score} | " + (", ".join(found) or "no failures")
+
+    lines: list[str] = []
+    for arm, data in report["arms"].items():
+        lines.extend(line(arm, label, data["repeats"][label]) for label in sorted(data["repeats"]))
+        lines.append(line(arm, "pooled", data["pooled"]))
+    return "\n".join(lines)
 
 
 def aggregate_repeats(runs: Iterable[Mapping[str, Any]]) -> dict[str, Any]:

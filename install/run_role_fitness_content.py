@@ -9,6 +9,7 @@ mechanical stages, and the full frozen cohort.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import math
 import os
@@ -22,7 +23,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from role_fitness_fixtures import BenchmarkContractError, score_plan_review, validate_bundle
-from role_fitness_scorecard import score_switch_cohort
+from role_fitness_scorecard import content_failure_report, render_content_failure_report, score_switch_cohort
 from role_fitness_stage import (
     DispatchEvidence,
     StageEvidenceError,
@@ -41,6 +42,44 @@ CANDIDATES = {
     "sol_high": ("gpt-5.6-sol", "high"),
 }
 CHECKPOINT_VERSION = "role-fitness-content-probe-v1"
+
+
+RERUN_OF_RE = re.compile(r"^(?P<case_id>.+)#(?P<attempt>[1-9][0-9]*)$")
+
+
+def _with_attempt(run_case: Any) -> Any:
+    """Stamp a stage dict with `attempt` and, only on an operator rerun, `rerun_of`.
+
+    The operator names a rerun by passing `attempt` (>= 2) and `rerun_of`
+    (`<case_id>#<attempt>` of the INCONCLUSIVE stage being rerun) to the case
+    function.  A first run passes neither, so it records `attempt: 1` and no
+    `rerun_of`.  Nothing here, or anywhere in this module, calls a case function
+    again by itself: every rerun is a separate, explicitly approved invocation
+    (role-fitness SPEC no automatic retries; claude-eval-parity R11).
+    """
+
+    @functools.wraps(run_case)
+    def wrapper(*args: Any, attempt: int = 1, rerun_of: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        if type(attempt) is not int or attempt < 1:
+            raise BenchmarkContractError("stage attempt must be a positive integer")
+        if rerun_of is None:
+            if attempt != 1:
+                raise BenchmarkContractError("a rerun attempt must name the stage it reruns")
+        else:
+            match = RERUN_OF_RE.fullmatch(rerun_of) if isinstance(rerun_of, str) else None
+            if (
+                match is None
+                or match["case_id"] != kwargs.get("case_id")
+                or int(match["attempt"]) >= attempt
+            ):
+                raise BenchmarkContractError("rerun_of must name an earlier attempt of the same case")
+        stage = run_case(*args, **kwargs)
+        stage["attempt"] = attempt
+        if rerun_of is not None:
+            stage["rerun_of"] = rerun_of
+        return stage
+
+    return wrapper
 
 
 def build_matched_cohort(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -422,6 +461,7 @@ def _run_stage(adapter: Any, request: StageRequest, setup_failure: str) -> Stage
         raise BenchmarkContractError(f"{setup_failure}: {exc}") from exc
 
 
+@_with_attempt
 def run_native_review_case(
     *,
     private_root: Path,
@@ -503,6 +543,7 @@ def run_native_review_case(
         _remove(directory)
 
 
+@_with_attempt
 def run_native_mechanical_case(
     *,
     private_root: Path,
@@ -578,6 +619,7 @@ def run_native_mechanical_case(
         _remove(directory)
 
 
+@_with_attempt
 def run_native_verifier_case(
     *,
     private_root: Path,
@@ -658,6 +700,7 @@ def run_native_verifier_case(
         _remove(directory)
 
 
+@_with_attempt
 def run_native_split_executor_case(
     *,
     active_home: Path,
@@ -721,6 +764,7 @@ def _remove(path: Path) -> None:
         raise BenchmarkContractError("content probe cleanup incomplete")
 
 
+@_with_attempt
 def run_review_case(
     *,
     private_root: Path,
@@ -791,6 +835,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--timeout", type=int, default=360)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--repeat-label", default="R1", help="repeat this run belongs to (R1..R3) in the failure report")
     args = parser.parse_args(argv)
     if not args.live or not args.yes:
         parser.error("content probe requires both --live and --yes")
@@ -798,6 +843,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
         parser.error("--resume requires --checkpoint")
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
+    if not re.fullmatch(r"R[1-9][0-9]*", args.repeat_label):
+        parser.error("--repeat-label must look like R1")
     validate_bundle(args.private_root)
     rows: list[dict[str, Any]] = _load_checkpoint(args.checkpoint, set(args.case_id)) if args.resume and args.checkpoint else []
     completed = {(row["case_id"], row["candidate"]) for row in rows}
@@ -816,6 +863,9 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
             rows.append(row)
             if args.checkpoint:
                 _write_report(args.checkpoint, {"version": CHECKPOINT_VERSION, "formal_claim": False, "rows": rows})
+    by_arm: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for row in rows:
+        by_arm.setdefault(row["candidate"], {args.repeat_label: []})[args.repeat_label].append(row)
     matched = build_matched_cohort(rows)
     switch_score = score_switch_cohort(matched) if len(matched) == len(args.case_id) else None
     report = {
@@ -824,6 +874,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
         "rows": rows,
         "matched_cohort": matched,
         "switch_score": switch_score,
+        "failure_report": content_failure_report(by_arm),
     }
     if args.output:
         _write_report(args.output, report)
@@ -832,8 +883,10 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
 
 if __name__ == "__main__":
     try:
-        json.dump(main(), sys.stdout, sort_keys=True, separators=(",", ":"))
+        result = main()
+        json.dump(result, sys.stdout, sort_keys=True, separators=(",", ":"))
         sys.stdout.write("\n")
+        print(render_content_failure_report(result["failure_report"]), file=sys.stderr)
     except BenchmarkContractError as exc:
         print(f"content_probe_failed: {exc}", file=sys.stderr)
         raise SystemExit(1)

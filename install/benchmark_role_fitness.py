@@ -96,8 +96,12 @@ PUBLIC_KEYS = frozenset(
         "limits",
         "commitment_hashes",
         "metric_versions",
+        "content_failure_counts",
     }
 )
+CONTENT_STAGE_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*#[1-9][0-9]*")
+CONTENT_COUNT_LABEL_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
+CONTENT_COUNT_REPEAT_RE = re.compile(r"R[1-9][0-9]{0,2}|pooled")
 SECRET_OR_PATH_RE = re.compile(
     r"(?:[/\\])|(?:auth|token|password|secret|credential|api[_-]?key)",
     re.IGNORECASE,
@@ -205,10 +209,39 @@ def build_split_handoff(
     return handoff
 
 
+def public_content_failure_counts(report: Mapping[str, Any]) -> dict[str, dict[str, dict[str, int]]]:
+    """Project a `content_failure_report` to arm -> repeat -> class enum -> count only."""
+    return {
+        arm: {
+            label: {name: block["classes"][name]["count"] for name in CONTENT_FAILURE_CLASSES}
+            for label, block in {**data["repeats"], "pooled": data["pooled"]}.items()
+        }
+        for arm, data in report["arms"].items()
+    }
+
+
+def _validate_content_failure_counts(value: Any) -> None:
+    """Accept only arm -> repeat -> known class -> non-negative integer."""
+    invalid = BenchmarkContractError("public content failure counts are invalid")
+    if not isinstance(value, dict) or not value:
+        raise invalid
+    for arm, repeats in value.items():
+        if not isinstance(arm, str) or not CONTENT_COUNT_LABEL_RE.fullmatch(arm) or not isinstance(repeats, dict) or not repeats:
+            raise invalid
+        for label, counts in repeats.items():
+            if not isinstance(label, str) or not CONTENT_COUNT_REPEAT_RE.fullmatch(label) or not isinstance(counts, dict):
+                raise invalid
+            for name, count in counts.items():
+                if name not in CONTENT_FAILURE_CLASSES or type(count) is not int or count < 0:
+                    raise invalid
+
+
 def validate_public_projection(value: dict[str, Any]) -> dict[str, Any]:
     """Reject non-allowlisted public report fields and secret/path-like data."""
     if not isinstance(value, dict) or not set(value).issubset(PUBLIC_KEYS):
         raise BenchmarkContractError("public projection contains unknown fields")
+    if "content_failure_counts" in value:
+        _validate_content_failure_counts(value["content_failure_counts"])
 
     def walk(item: Any) -> None:
         if isinstance(item, str) and SECRET_OR_PATH_RE.search(item):
@@ -255,6 +288,11 @@ def _failure_class(status: str, reason_code: str, phase: str) -> str:
     if "receipt" in reason_code:
         return "receipt"
     return "metric_correlation" if "correlation" in reason_code else "execution"
+
+
+def _valid_content_stage_id(value: Any) -> bool:
+    """A stage id is `<case_id>#<attempt>` over the frozen case-id alphabet, nothing else."""
+    return isinstance(value, str) and len(value) <= 64 and CONTENT_STAGE_ID_RE.fullmatch(value) is not None
 
 
 def build_live_run_summary(
@@ -332,6 +370,8 @@ def build_live_run_summary(
             {"stage_id": stage_key(row), "content_failure_class": name}
             for row, name in zip(rows, classes)
         ]
+        if any(not _valid_content_stage_id(row["stage_id"]) for row in summary["content_stages"]):
+            raise BenchmarkContractError("content stage id is invalid")
         summary["failure_taxonomy"] = {**failures, **content_failure_taxonomy(classes)}
     return summary
 
@@ -379,8 +419,7 @@ def validate_live_run_summary(summary: Mapping[str, Any]) -> None:
             if (
                 not isinstance(row, dict)
                 or set(row) != CONTENT_STAGE_KEYS
-                or not isinstance(row["stage_id"], str)
-                or not row["stage_id"]
+                or not _valid_content_stage_id(row["stage_id"])
                 or (row["content_failure_class"] is not None and row["content_failure_class"] not in CONTENT_FAILURE_CLASSES)
             ):
                 raise BenchmarkContractError("content stage accounting is invalid")

@@ -93,18 +93,44 @@
 
 ## Phase B3 — 失敗分類
 
-- [ ] runner 新增並輸出 `attempt` 與 `rerun_of`（R11）：只由操作者指定
+- [x] runner 新增並輸出 `attempt` 與 `rerun_of`（R11）：只由操作者指定
       重跑時填入，不自動重試；測試涵蓋「首次不輸出」「指定重跑才輸出」。
-- [ ] 實作 `content_failure_class` 推導（Decision 4，輸入為 runner stage
+  - 操作者以 case 函式的 `attempt`（>= 2）與 `rerun_of`
+    （`<case_id>#<attempt>`）參數指定；沒有 CLI 入口，runner 自己不會重跑。
+    測試：`tests/test_run_role_fitness_rerun.py`（AC-CE-029）。
+- [x] 實作 `content_failure_class` 推導（Decision 4，輸入為 runner stage
       dict）：六個類別加 `unclassified`。
 - [ ] 把 `docs/benchmarks/` 的既有結果檔依 `TESTS.md` 的對應表手動轉成
       recorded runner-format stage 當 fixture，餵給分類器，確認每個類別都
       能重現 spec 表中的案例；`missed_risk` 的 per-case `risk_coverage`
       以 private root ledger 重新計分確認。
-- [ ] `failure_taxonomy` 同時彙總 dispatch 與 content 層。
-- [ ] 報表在分數旁列出各類別次數與佔比，R1–R3 分開列。
-- [ ] 新 key 加入 `role-fitness-public-v1` allowlist；public projection
+  - 已完成：fixture 回放與每個類別的案例重現（`tests/test_role_fitness_content_failure.py`）。
+  - **未完成**：`missed_risk` 的 per-case `risk_coverage` 尚未以 private
+    root ledger 重新計分確認。目前 plan-review 風險 case 的值是由檔內
+    aggregate `risk_coverage` 推論，不是重新計分的結果；此項在確認前維持未勾。
+- [x] `failure_taxonomy` 同時彙總 dispatch 與 content 層。
+- [x] 報表在分數旁列出各類別次數與佔比，R1–R3 分開列。
+  - `role_fitness_scorecard.content_failure_report` 與
+    `render_content_failure_report`；content probe 的報表以 `failure_report`
+    輸出，`--repeat-label` 指定該次 run 屬於哪個 R。測試：
+    `tests/test_role_fitness_content_report.py`（AC-CE-026）。
+- [x] 新 key 加入 `role-fitness-public-v1` allowlist；public projection
       測試仍拒絕 free text。
+  - key 為 `content_failure_counts`（arm -> repeat -> 類別 enum -> 計數）。
+    測試：同上檔案（AC-CE-027）。
+
+已知限制（B3b 獨立驗證，暫不修，B4 之前需留意）：
+
+- public projection 的 arm 名稱接受任意 32 字內的小寫詞
+  （`[a-z][a-z0-9_]{0,31}`），計數沒有上限。
+- `public_content_failure_counts` 與 summary 的 `content_stages` 目前沒有
+  production 呼叫端，重跑也沒有 CLI 入口；R9、R10 只在函式層成立，要等 B4
+  接上後驗一次端到端輸出。
+- runner 不檢查 `rerun_of` 指向的 stage 是否真的是 INCONCLUSIVE，只檢查格式
+  與 attempt 順序。
+- 取代關係只作用於 verifier INCONCLUSIVE（reason 為
+  `verifier_did_not_confirm`）：其他失敗（含 verifier timeout）被重跑後，
+  初次 stage 仍照自己的類別計一次。
 
 ## Phase B4 — Claude smoke（付費，需核准）
 

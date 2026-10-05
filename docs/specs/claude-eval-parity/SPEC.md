@@ -39,10 +39,10 @@ updated: 2026-10-05
   同時移動最多 7 個 agent 的文字（dist 共 8 個 agent 檔）。
 - **content 評分 runner 綁 Codex。** 真正做內容評分的是
   `install/run_role_fitness_content.py`：
-  - `_native_review_command`（:321-339）組出 `codex exec ...`。
+  - `_native_review_command`（:368-386）組出 `codex exec ...`。
   - 從 `~/.codex` 複製 staged home、讀 `home/agents/<role>.toml`
-    （:365-366、:389 等）。
-  - prompt 寫死 `spawn_agent`、`wait_agent`（:309-318）。
+    （:417-419、:439 等）。
+  - prompt 寫死 `spawn_agent`、`wait_agent`（:356-365）。
   - 以 Codex rollout JSONL 證明 dispatch（`dispatch.inspect_dispatch`）。
   - `install/run_role_fitness_live.py` 只驗 dispatch 可用性，不評內容
     （自身 docstring :5-8）。
@@ -56,7 +56,7 @@ updated: 2026-10-05
   host 專屬字串。
 - **失敗分類欄位存在但是空的。** run summary 與 stage 已有
   `failure_taxonomy`、`failure_class`（`install/benchmark_role_fitness.py`
-  :112、:234-249、:474），但只涵蓋 dispatch 層（auth、preflight、
+  :123、:275-290、:551），但只涵蓋 dispatch 層（auth、preflight、
   `codex_exec_failed` 等），所有結果檔裡都是 `{}`。內容層的失敗只散落在
   `status`、`reason`、`false_escalation` 等欄位。
 
@@ -148,7 +148,7 @@ updated: 2026-10-05
 
 以上檔案皆在 `docs/benchmarks/` 下，檔名省略前綴 `role-fitness-v1-`。
 資料中沒有出現過的類型（越權、拒絕工作、timeout）不列為類別；timeout 的
-inconclusive 路徑（`run_role_fitness_content.py:379`）歸入 `unclassified`，
+inconclusive 路徑（`run_role_fitness_content.py:491`）歸入 `unclassified`，
 若日後出現，再依資料新增類別。
 `content-paired-v8.json:7` 的品質退步（`quality_delta -7.1`）是 arm 之間的
 比較結果，不是單一 stage 的失敗，放在報表的比較段，不列為類別。
@@ -186,8 +186,8 @@ inconclusive 路徑（`run_role_fitness_content.py:379`）歸入 `unclassified`�
    Claude adapter，避免兩件事混在同一個 diff。
 4. **失敗分類以 runner stage dict 推導**：分類器的輸入是
    `install/run_role_fitness_content.py` 的 stage 回傳 dict
-   （inconclusive 見 `:379`、`:394`、`:401-404`、`:524`、`:628`、`:711`；
-   accepted 見 `:428-442`），不是 `docs/benchmarks/` 的 JSON。那五份是手工
+   （inconclusive 見 `:491`、`:493`、`:498-501`、`:598`、`:677`、`:743`；
+   accepted 見 `:525-539`），不是 `docs/benchmarks/` 的 JSON。那五份是手工
    整理的摘要，schema 各不相同（`native-split-v2.json:9` 用
    `executor.accepted_artifact`，`native-split-v5.json:11-12` 用字串
    `"INCONCLUSIVE"`，`native-content-probe.json:11` 用
@@ -200,7 +200,7 @@ inconclusive 路徑（`run_role_fitness_content.py:379`）歸入 `unclassified`�
    - `false_escalation`：accepted 且 `false_escalation` 為 true。
    - `missed_risk`：accepted、risk case（`score.expected_decision` 為
      `REVISE`）且 per-case `risk_coverage < 1.0`。runner 已輸出
-     `risk_coverage`（`:442`）。不看 `supported_findings`。
+     `risk_coverage`（`:539`）。不看 `supported_findings`。
    - `unparseable_output`：`reason` 為 `invalid_native_review_output`
      或 `invalid_review_output`，且 `dispatch_status` 為 `NATIVE_OK`
      （direct 路徑沒有該欄位時也成立）。

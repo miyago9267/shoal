@@ -246,6 +246,10 @@ class StageCharacterizationTests(unittest.TestCase):
         self.assertFalse(
             host.directory_seen.exists(), "stage directory must be removed"
         )
+        # R11: a first run records attempt 1 and no rerun_of.  The pinned stage
+        # dicts below predate `attempt`, so it is checked here and then dropped.
+        self.assertEqual(row.pop("attempt"), 1)
+        self.assertNotIn("rerun_of", row)
         return row
 
     def _assert_native_run(
