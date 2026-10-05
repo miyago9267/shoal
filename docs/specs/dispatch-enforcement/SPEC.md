@@ -175,6 +175,7 @@ E0 需要少量 live 呼叫（每個 host 一個小 prompt），執行前取得�
 
 ## 已知限制
 
+- guard 在 Windows 為 no-op（依賴 POSIX 語意），不支援 Windows。
 - guard 不防同 uid 的 model 經 shell 竄改 state、設定或環境變數。
 - main 與 subagent 經 shell 寫檔都不擋。
 - Codex verifier 的 `apply_patch` deny 只擋編輯工具，不擋 shell 寫檔。

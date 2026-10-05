@@ -40,6 +40,7 @@ Dispatch 強制與權限補強（`docs/specs/dispatch-enforcement/`，E0-E5）�
 
 ### 已知限制
 
+- guard 在 Windows 為 no-op。
 - guard 擋不住經 shell 寫檔，也擋不住同 uid 的 model 關掉 guard。
 - Codex 0.160.0 的 subagent 繼承 main 的 sandbox 與網路，role 檔的
   `sandbox_mode`、`network_access` 不生效。

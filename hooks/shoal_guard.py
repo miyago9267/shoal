@@ -786,6 +786,8 @@ def _skip_log(host: str, env: Dict[str, str], home: Path, reason: str) -> None:
 
 def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
     """Process one stdin payload; returns the stdout text, if any."""
+    if os.name == "nt":  # POSIX-only semantics (O_NOFOLLOW, uid ownership); fail-open no-op
+        return None
     home = Path(env.get("HOME") or os.path.expanduser("~"))
     try:
         if not raw:

@@ -24,6 +24,7 @@ import shoal_guard as guard  # noqa: E402
 GUARD = ROOT / "hooks" / "shoal_guard.py"
 
 
+@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class VectorTests(unittest.TestCase):
     def test_shared_vectors(self) -> None:
         data = helper.load_vectors()
@@ -43,6 +44,15 @@ class VectorTests(unittest.TestCase):
 
     def test_log_whitelist_constant_matches_vectors(self) -> None:
         self.assertEqual(list(guard.LOG_FIELDS), helper.load_vectors()["log_whitelist"])
+
+
+class WindowsNoOpTests(unittest.TestCase):
+    def test_run_is_a_silent_no_op_when_os_name_is_nt(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            with mock.patch.object(guard.os, "name", "nt"):
+                out = guard.run("claude", b"x" * (guard.MAX_INPUT_BYTES + 1), {"HOME": home})
+            self.assertIsNone(out)
+            self.assertEqual(list(Path(home).iterdir()), [])
 
 
 class RoleTableTests(unittest.TestCase):
@@ -74,6 +84,7 @@ class SyntaxTests(unittest.TestCase):
         self.assertFalse(guard.valid_id("conv/1:2", composed=True))
 
 
+@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class CliCase(unittest.TestCase):
     """Runs the real script with a temp HOME and XDG_STATE_HOME."""
 
