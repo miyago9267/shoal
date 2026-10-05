@@ -22,9 +22,10 @@ import shutil
 import subprocess
 import tempfile
 import time
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from role_fitness_fixtures import BenchmarkContractError, validate_bundle
 from role_fitness_stage import (
@@ -82,6 +83,8 @@ WORKDIR_SCAN_MAX_FILE_BYTES = 1024 * 1024
 WORKDIR_SCAN_MAX_BYTES = 32 * 1024 * 1024
 
 _ROLE_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]*")
+# A model alias or full name; it is passed as one argv element.
+_MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,79}")
 _RESULT_USAGE_KEYS = (
     "input_tokens",
     "cache_creation_input_tokens",
@@ -96,6 +99,24 @@ class StageCleanupError(Exception):
 
 class StageNotAdmitted(StageSetupError):
     """The cumulative cost admission refused to start the stage."""
+
+
+@dataclass(frozen=True)
+class StageObservation:
+    """What a finished child left behind, shown to an observer before deletion.
+
+    ``stdout`` and ``stderr`` are the raw in-memory output: an observer must
+    reduce them to shapes and must not store or write them.  ``private`` holds
+    the stage's ``config``, ``home`` and ``tmp`` directories; they and the
+    staged ``.claude`` under ``workdir`` are deleted right after the observer
+    returns.  An observer is never called when the output carries the token.
+    """
+
+    returncode: int
+    stdout: str
+    stderr: str
+    private: Path
+    workdir: Path
 
 
 def _usd(value: Any, what: str) -> Decimal:
@@ -302,13 +323,15 @@ def _result_texts(content: Any) -> list[str]:
     return texts
 
 
-def parse_stream(stdout: str, role: str) -> dict[str, Any]:
+def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
     """Read one ``--output-format stream-json`` run.
 
     Returns the dispatched child's messages, event counts, usage normalised to
     the runner's keys, cost, model, dispatch evidence and whether the host
     reported the run as failed.  Raises ``StageEvidenceError`` with a short
     code (never stream content) for any event shape it does not recognise.
+    With ``role`` None (a single-agent stage) there is no dispatch evidence and
+    the message is the result event's final text.
     """
     events: list[dict[str, Any]] = []
     for line in stdout.splitlines():
@@ -426,6 +449,16 @@ def parse_stream(stdout: str, role: str) -> dict[str, Any]:
     # is only reported when the run used exactly one.
     model = next(iter(models)) if len(models) == 1 else None
 
+    if role is None:
+        final = result.get("result")
+        return {
+            "messages": [final] if isinstance(final, str) else [],
+            "event_counts": event_counts,
+            "usage": normalized,
+            "cost_usd": float(cost),
+            "host_failed": result["is_error"] or result["subtype"] != "success",
+            "evidence": None,
+        }
     if not calls:
         reason = "no_agent_call"
     elif len(calls) > 1:
@@ -463,17 +496,37 @@ class ClaudeStageAdapter:
     ``.claude/agents/`` staged into ``request.workdir`` from the committed
     dist.  All of it is deleted before ``run_stage`` returns or raises; the raw
     stream is only ever held in memory.
+
+    Optional, all off by default: ``model`` adds ``--model`` for the parent
+    session; ``allow_single_agent`` accepts ``StageRequest.role`` None (no
+    dispatch evidence); ``observer`` is shown a ``StageObservation`` after the
+    child exits and before the private tree is deleted.
     """
 
-    def __init__(self, *, claude_bin: str, max_budget_usd: Any) -> None:
+    def __init__(
+        self,
+        *,
+        claude_bin: str,
+        max_budget_usd: Any,
+        model: str | None = None,
+        allow_single_agent: bool = False,
+        observer: Callable[[StageObservation], None] | None = None,
+    ) -> None:
+        if model is not None and (
+            not isinstance(model, str) or not _MODEL_RE.fullmatch(model)
+        ):
+            raise BenchmarkContractError("model must be a model alias or name")
         self.claude_bin = claude_bin
         self.max_budget_usd = _usd(max_budget_usd, "per-stage budget")
+        self.model = model
+        self.allow_single_agent = allow_single_agent
+        self.observer = observer
 
     def _command(self, request: StageRequest) -> list[str]:
         if request.sandbox not in _PERMISSION_MODES:
             raise StageSetupError("sandbox has no Claude permission mapping")
         # The prompt goes to stdin, so no variadic option can swallow it.
-        return [
+        command = [
             self.claude_bin,
             "-p",
             "--output-format",
@@ -489,6 +542,9 @@ class ClaudeStageAdapter:
             "none",
             "--strict-mcp-config",
         ]
+        if self.model is not None:
+            command += ["--model", self.model]
+        return command
 
     def _environment(self, token: str, private: Path) -> dict[str, str]:
         home, temp = str(private / "home"), str(private / "tmp")
@@ -507,11 +563,12 @@ class ClaudeStageAdapter:
         token = _subscription_token()
         agents = _committed_agents()
         role = request.role
-        if (
-            role is None
-            or not _ROLE_RE.fullmatch(role)
-            or f"{role}.md" not in {entry.name for entry in agents}
-        ):
+        if role is None:
+            if not self.allow_single_agent:
+                raise StageSetupError("stage role is not a committed Claude agent")
+        elif not _ROLE_RE.fullmatch(role) or f"{role}.md" not in {
+            entry.name for entry in agents
+        }:
             raise StageSetupError("stage role is not a committed Claude agent")
         command = self._command(request)
         if token in request.prompt or any(token in part for part in command):
@@ -575,6 +632,16 @@ class ClaudeStageAdapter:
             elapsed = time.monotonic() - started
             if token in completed.stdout or token in completed.stderr:
                 raise StageEvidenceError("credential_in_stream")
+            if self.observer is not None:
+                self.observer(
+                    StageObservation(
+                        completed.returncode,
+                        completed.stdout,
+                        completed.stderr,
+                        private,
+                        request.workdir,
+                    )
+                )
             parsed = parse_stream(completed.stdout, role)
         finally:
             problem = _workdir_problem(request.workdir, token)
