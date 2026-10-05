@@ -69,23 +69,27 @@ python3 tools/render.py --host claude --write
 | Host | 目前的安裝方式 |
 | --- | --- |
 | Codex CLI | [INSTALL.md](./INSTALL.md)，腳本在 `install/install.sh` |
-| Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝 |
-| Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結 |
+| Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [INSTALL.md](./INSTALL.md#claude-code-與-geminiagy-的-dispatch-guard) |
+| Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結；dispatch guard：`python3 tools/install_hooks.py --host agy`，見 [INSTALL.md](./INSTALL.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Grok Build | `python3 tools/install_grok.py`（預設 dry-run，`--apply` 才寫入），見 [INSTALL.md](./INSTALL.md#grok-build) |
 | OpenCode | 專案：`hosts/opencode/plugin/install/install.sh --target DIR --enable`；全域：`install.sh --global --enable`，見 [INSTALL.md](./INSTALL.md#opencode) |
 
-Claude Code、Gemini/agy 的安裝步驟仍依賴 dotfile 的腳本；Grok Build 由
+Claude Code、Gemini/agy 的 role 檔案安裝步驟仍依賴 dotfile 的腳本；Grok Build 由
 `tools/install_grok.py` 安裝 agents、roles、rules 與原生 hooks，不再手動複製。
+dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex 由
+`install/install.py` 一併註冊（需在 Codex 內用 `/hooks` 核准一次），Grok 隨
+`install_grok.py` 安裝，Claude Code 與 agy 由 `tools/install_hooks.py` 安裝，OpenCode
+的 guard 在 plugin 內。除 Claude 之外的 host 預設 shadow，`SHOAL_GUARD=off` 關閉。
 
 ## 版本
 
 | 項目 | 版本 |
 | --- | --- |
 | shoal（產品） | 1.2.0 |
-| codex host | 1.8.2（`hosts/codex/VERSION`） |
-| claude host | 1.4.2-claude.2（`hosts/claude/VERSION`） |
+| codex host | 1.8.3（`hosts/codex/VERSION`） |
+| claude host | 1.4.2-claude.3（`hosts/claude/VERSION`） |
 | agy host | 0.1.0 |
-| grok host | 1.0.6-shoal.1（`hosts/grok/VERSION`，衍生自上游 v1.0.6） |
+| grok host | 1.0.6-shoal.2（`hosts/grok/VERSION`，衍生自上游 v1.0.6） |
 | opencode host | 以 `hosts/opencode/plugin/package.json` 為準 |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。
@@ -112,8 +116,11 @@ v1.0.0 之前的 pinned ref 仍在
 ## 已知限制
 
 - 各 host 的 policy 文字尚未合併成一份，目前只有 role 與 binding 共用（規劃中）。
-- Codex、grok 與 OpenCode 有 shoal 自己的 installer；Claude Code、agy 的安裝
-  仍在 dotfile。
+- Codex、grok 與 OpenCode 有 shoal 自己的 installer；Claude Code、agy 的 role 檔案安裝
+  仍在 dotfile，只有 dispatch guard 由 `tools/install_hooks.py` 安裝。
+- dispatch guard 不防同 uid 的 model 經 shell 竄改 state、設定或環境變數，也不擋 shell
+  寫檔；無法分辨 main 與 subagent 的 host（agy）固定 shadow。完整列表見
+  [docs/specs/dispatch-enforcement](./docs/specs/dispatch-enforcement/SPEC.md)。
 
 Codex host 的完整說明與歷史紀錄在 [hosts/codex/README.md](./hosts/codex/README.md)
 與 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。

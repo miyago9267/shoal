@@ -35,6 +35,18 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pilotfish-grok/shoal_guard.py",
+            "timeout": 10,
+            "env": { "SHOAL_GUARD_HOST": "grok" }
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "^spawn_subagent$",
@@ -43,6 +55,17 @@
             "type": "command",
             "command": "pilotfish-grok/plan_mode_guard.py",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^(search_replace|spawn_subagent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pilotfish-grok/shoal_guard.py",
+            "timeout": 10,
+            "env": { "SHOAL_GUARD_HOST": "grok" }
           }
         ]
       }

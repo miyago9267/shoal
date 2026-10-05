@@ -5,7 +5,7 @@ import {
   createPilotfishRouteTool,
   PILOTFISH_REGISTRATION_KEY,
   PilotfishOpenCodePlugin,
-} from "../src/plugin/pilotfish-opencode.ts";
+} from "../src/plugin/pilotfish-plugin.ts";
 
 const catalog = {
   agents: { scout: { mode: "subagent", available: true } },
@@ -39,10 +39,10 @@ describe("OpenCode plugin seam", () => {
     Reflect.deleteProperty(globalThis, PILOTFISH_REGISTRATION_KEY);
   });
 
-  test("only exposes an explicit route tool and does not mutate model hooks", async () => {
+  test("exposes the route tool and the guard hooks, and does not mutate model hooks", async () => {
     const hooks = await PilotfishOpenCodePlugin({} as never);
 
-    expect(Object.keys(hooks)).toEqual(["tool"]);
+    expect(Object.keys(hooks).sort()).toEqual(["chat.message", "tool", "tool.execute.before"]);
     expect(hooks.tool?.pilotfish_route).toBeDefined();
   });
 

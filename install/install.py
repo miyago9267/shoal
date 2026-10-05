@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hook_registration import (
     CURRENT_PROJECTION_ID,
+    GUARD_PROJECTION_ID,
     HookRegistrationError,
     legacy_projection_id,
     load_registration,
@@ -104,9 +105,10 @@ class PolicyTargetIdentity:
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
 PILOTFISH_PLUGIN_NAME = "pilotfish-codex"
-PILOTFISH_PLUGIN_VERSION = "1.8.2"
+PILOTFISH_PLUGIN_VERSION = "1.8.3"
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
+GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
 
 
 def codex_version_token(output: str) -> str | None:
@@ -740,7 +742,9 @@ def _required_state_targets(
         policy_relative,
     }
     if include_hooks:
-        targets.update({"hooks.json", "hooks/pilotfish_autoroute_gate.py"})
+        targets.update(
+            {"hooks.json", "hooks/pilotfish_autoroute_gate.py", GUARD_SCRIPT_RELATIVE}
+        )
     return frozenset(targets)
 
 
@@ -818,6 +822,12 @@ def _validate_committed_state(
     """Validate sidecar provenance, including event-bound hook ownership."""
     if not isinstance(state, dict) or state.get("status") != "committed":
         raise InstallAbort("install state is not a committed transaction")
+    # guard_registration is optional (homes installed before the dispatch guard lack
+    # it) and only valid together with state_version; it is checked further below.
+    guard_present = "guard_registration" in state
+    if guard_present and "state_version" not in state:
+        raise InstallAbort("install state has missing or unknown fields")
+    state_keys = set(state) - {"guard_registration"}
     legacy_allowed = {
         "status", "target_fingerprints", "original_targets", "owned_legacy",
         "policy_ownership",
@@ -841,14 +851,14 @@ def _validate_committed_state(
         accepted_shapes.append(legacy_with_plugin)
     if is_v2 and state.get("state_version") == 2:
         accepted_shapes.append(v2_pre_policy_ownership)
-    if set(state) not in accepted_shapes:
+    if state_keys not in accepted_shapes:
         raise InstallAbort("install state has missing or unknown fields")
     if is_v2 and (
         type(state["state_version"]) is not int or state["state_version"] not in (2, 3, 4)
     ):
         raise InstallAbort("install state version is malformed")
     if is_v2 and state["state_version"] == 4:
-        if set(state) != v4_allowed | {"plugin", "runtime_status", "rollback_backups"}:
+        if state_keys != v4_allowed | {"plugin", "runtime_status", "rollback_backups"}:
             raise InstallAbort("install state v4 fields are malformed")
         plugin = state.get("plugin")
         if not isinstance(plugin, dict) or set(plugin) != {
@@ -875,7 +885,7 @@ def _validate_committed_state(
         ):
             raise InstallAbort("install state rollback backup manifest is malformed")
     elif is_v2 and state["state_version"] == 3:
-        if set(state) != v2_allowed | {"plugin", "runtime_status", "rollback_backups"}:
+        if state_keys != v2_allowed | {"plugin", "runtime_status", "rollback_backups"}:
             raise InstallAbort("install state v3 fields are malformed")
         plugin = state.get("plugin")
         if not isinstance(plugin, dict) or set(plugin) != {
@@ -951,10 +961,13 @@ def _validate_committed_state(
         f"agents/{role}.toml" for role in ROLES
     }
     missing_targets = required - recorded
+    # A guard script is recorded if and only if the guard projection is recorded.
+    if (GUARD_SCRIPT_RELATIVE in recorded) != guard_present:
+        raise InstallAbort("install state target manifest is stale or incomplete")
     if (
         recorded - required
         or set(originals) != recorded
-        or not missing_targets <= newly_managed_role_targets
+        or not missing_targets <= newly_managed_role_targets | {GUARD_SCRIPT_RELATIVE}
     ):
         raise InstallAbort("install state target manifest is stale or incomplete")
     try:
@@ -972,6 +985,10 @@ def _validate_committed_state(
             hooks_path.read_bytes(), source="existing hooks.json"
         )
         validate_owned_projection(registration, hook_projection_id)
+        if guard_present:
+            if validate_projection_state(state["guard_registration"]) != GUARD_PROJECTION_ID:
+                raise HookRegistrationError("guard projection state is malformed")
+            validate_owned_projection(registration, GUARD_PROJECTION_ID)
     except (OSError, HookRegistrationError) as exc:
         raise InstallAbort(f"committed hook registration is invalid: {exc}") from exc
     config_path = home / "config.toml"
@@ -1357,6 +1374,7 @@ def _assert_hook_targets(codex_home: Path) -> None:
     for path in (
         codex_home / "hooks.json",
         hooks_root / "pilotfish_autoroute_gate.py",
+        hooks_root / "shoal_guard.py",
     ):
         if not path.exists() and not path.is_symlink():
             continue
@@ -1939,8 +1957,10 @@ def install(
     owned = frozenset()
     migration_proven = False
     owned_hook_projection: str | None = None
+    owned_guard_projection: str | None = None
     legacy_state = False
     proven_hook_script_fingerprint: str | None = None
+    proven_guard_script_fingerprint: str | None = None
     accepted_drift: frozenset[str] = frozenset()
     features = parsed_config.get("features", {}) if isinstance(parsed_config, dict) else {}
     legacy_v2 = isinstance(features, dict) and "multi_agent_v2" in features
@@ -1961,6 +1981,13 @@ def install(
             config_snapshot=config_snapshot,
             allow_policy_drift=reconcile_current,
         )
+        if "guard_registration" in state:
+            # Validated by _validate_committed_state; its script fingerprint is
+            # proven against disk in the same pass.
+            owned_guard_projection = GUARD_PROJECTION_ID
+            proven_guard_script_fingerprint = state["target_fingerprints"][
+                GUARD_SCRIPT_RELATIVE
+            ]
     elif legacy_v2:
         # Let the config validator classify malformed/disabled/extra legacy
         # forms before reporting the missing provenance gate.
@@ -2031,10 +2058,13 @@ def install(
     )
     try:
         validate_source_registration(source_registration)
-        merged_registration, desired_hook_projection = merge_registration(
-            current_registration,
-            source_registration,
-            owned_projection_id=owned_hook_projection,
+        merged_registration, desired_hook_projection, desired_guard_projection = (
+            merge_registration(
+                current_registration,
+                source_registration,
+                owned_projection_id=owned_hook_projection,
+                owned_guard_projection_id=owned_guard_projection,
+            )
         )
     except HookRegistrationError as exc:
         raise InstallAbort(f"hook registration rejected: {exc}") from exc
@@ -2069,6 +2099,24 @@ def install(
         notes.append("upgraded state-proven hook script")
     elif current_hook_script is None:
         writes.append((hook_script, hook_script_payload, 0o600, None))
+    guard_script = hooks_root / "shoal_guard.py"
+    guard_script_payload = (source_root / "hooks" / "shoal_guard.py").read_bytes()
+    current_guard_script = guard_script.read_bytes() if guard_script.is_file() else None
+    if current_guard_script is not None and current_guard_script != guard_script_payload:
+        if (
+            proven_guard_script_fingerprint is None
+            or _sha256_bytes(current_guard_script) != proven_guard_script_fingerprint
+        ):
+            raise InstallAbort(
+                "installed_hook_drift: guard script requires explicit replacement approval"
+            )
+        writes.append((guard_script, guard_script_payload, 0o600, current_guard_script))
+        notes.append("upgraded state-proven guard script")
+    elif current_guard_script is None:
+        writes.append((guard_script, guard_script_payload, 0o600, None))
+        notes.append(
+            "dispatch guard installed; approve the new hook once with /hooks in Codex"
+        )
     if legacy_v2:
         allowed_migration = {
             "config.toml",
@@ -2077,6 +2125,7 @@ def install(
             "agents/verifier.toml",
             "hooks.json",
             "hooks/pilotfish_autoroute_gate.py",
+            GUARD_SCRIPT_RELATIVE,
             policy_path.relative_to(codex_home).as_posix(),
         }
         changed_migration = {path.relative_to(codex_home).as_posix() for path, _, _, _ in writes}
@@ -2091,6 +2140,7 @@ def install(
         *(agents / f"{role}.toml" for role in sorted(ROLES)),
         hooks_registration,
         hook_script,
+        guard_script,
     ]
     state_inventory = [path for path in inventory if path != hooks_registration]
     pre_targets: dict[str, dict[str, object]] = {}
@@ -2182,6 +2232,7 @@ def install(
     )
     state_needs_publication = state is None or legacy_state or (
         owned_hook_projection != desired_hook_projection
+        or owned_guard_projection != desired_guard_projection
     ) or state is None or state.get("plugin") != plugin or state.get("runtime_status") != runtime_status or plugin_install_needed or (
         state is not None and state.get("state_version", 3) != state_version
     ) or (
@@ -2437,6 +2488,7 @@ def install(
                 "rollback_backups": rollback_backups,
                 "owned_legacy": ownership,
                 "hook_registration": projection_state(desired_hook_projection),
+                "guard_registration": projection_state(desired_guard_projection),
             }
             if state_version == RECONCILIATION_STATE_VERSION:
                 record["reconciliation"] = {

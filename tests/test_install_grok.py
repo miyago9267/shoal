@@ -245,6 +245,69 @@ class ApplyTests(InstallGrokCase):
         )
         self.assertEqual(json.loads(done.stdout)["decision"], "deny")
 
+    def test_installs_the_dispatch_guard_with_hash_and_exec_bit(self) -> None:  # dispatch-enforcement R7
+        self.assertEqual(self.run_cli("--apply")[0], 0)
+        rel = "hooks/pilotfish-grok/shoal_guard.py"
+        script = self.home / rel
+        self.assertEqual(sha(script), sha(self.dist / rel))
+        self.assertTrue(os.access(script, os.X_OK))
+        config = json.loads(
+            (self.home / "hooks" / "pilotfish-grok.json").read_text(encoding="utf-8")
+        )["hooks"]
+        # the existing plan-mode guard stays first; the dispatch guard is added next to it
+        self.assertEqual(
+            config["PreToolUse"][0]["hooks"][0]["command"], "pilotfish-grok/plan_mode_guard.py"
+        )
+        self.assertEqual(config["PreToolUse"][1]["matcher"], "^(search_replace|spawn_subagent)$")
+        self.assertEqual(len(config["UserPromptSubmit"]), 1)
+        # tampering after install is caught by the same hash verification as any other file
+        script.write_bytes(script.read_bytes() + b"# tampered\n")
+        self.assertEqual(self.run_cli("--apply")[0], 0)  # re-install restores it
+        self.assertEqual(sha(script), sha(self.dist / rel))
+
+    def test_installed_dispatch_guard_runs_from_the_grok_home(self) -> None:  # dispatch-enforcement R7
+        self.run_cli("--apply")
+        config = json.loads(
+            (self.home / "hooks" / "pilotfish-grok.json").read_text(encoding="utf-8")
+        )["hooks"]["PreToolUse"][1]["hooks"][0]
+        script = self.home / "hooks" / config["command"]  # relative to the JSON file
+        payload = {
+            "hookEventName": "pre_tool_use", "sessionId": "gs-1", "promptId": "gp-1",
+            "cwd": str(self.home), "toolName": "spawn_subagent",
+            "toolInput": {"subagent_type": "scout"}, "subagentType": "executor",
+        }
+        done = subprocess.run(
+            [sys.executable, str(script)],
+            input=json.dumps(payload).encode(),
+            capture_output=True,
+            timeout=30,
+            env={**os.environ, **config["env"], "SHOAL_GUARD": "enforce",
+                 "HOME": str(self.home), "XDG_STATE_HOME": str(self.home / "state")},
+        )
+        self.assertEqual(json.loads(done.stdout)["decision"], "deny")
+
+    def test_uninstall_removes_the_dispatch_guard_too(self) -> None:  # dispatch-enforcement R7
+        self.run_cli("--apply")
+        self.assertEqual(self.run_cli("--uninstall", "--apply")[0], 0)
+        self.assertFalse((self.home / "hooks" / "pilotfish-grok" / "shoal_guard.py").exists())
+        self.assertFalse((self.home / "hooks" / "pilotfish-grok.json").exists())
+
+    def test_aborts_when_dist_guard_differs_from_committed_source(self) -> None:  # R1 single source
+        (self.repo / "hooks").mkdir()
+        shutil.copy(ROOT / "hooks" / "shoal_guard.py", self.repo / "hooks" / "shoal_guard.py")
+        run_git(self.repo, "add", "-A")
+        run_git(self.repo, "commit", "-q", "-m", "guard source")
+        self.assertEqual(self.run_cli("--apply")[0], 0)  # identical copy: fine
+        (self.repo / "hooks" / "shoal_guard.py").write_bytes(
+            (self.repo / "hooks" / "shoal_guard.py").read_bytes() + b"# newer\n"
+        )
+        run_git(self.repo, "commit", "-q", "-am", "guard source changed, dist not rendered")
+        before = tree(self.home)
+        code, _, err = self.run_cli("--apply")
+        self.assertEqual(code, 2)
+        self.assertIn("render.py --host grok --write", err)
+        self.assertEqual(tree(self.home), before)
+
     def test_apply_backs_up_replaced_files_and_config(self) -> None:  # AC-GW-032
         config = self.write_config()
         (self.home / "agents").mkdir()

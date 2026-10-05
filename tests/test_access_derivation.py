@@ -41,6 +41,9 @@ class TempRoot(unittest.TestCase):
             self.root / "hosts",
             ignore=shutil.ignore_patterns("plugin", "dist"),
         )
+        # grok 的 render 需要 hooks/shoal_guard.py（dist 內 guard 副本的唯一來源）
+        (self.root / "hooks").mkdir()
+        shutil.copy(ROOT / "hooks" / "shoal_guard.py", self.root / "hooks" / "shoal_guard.py")
 
     def path(self, host: str) -> Path:
         return self.root / "hosts" / host / "binding.toml"
@@ -257,7 +260,7 @@ class ShippedBindingTests(unittest.TestCase):
         self.assertEqual(perms["security-executor"], perms["mech-executor"])
         self.assertEqual(
             perms["verifier"],
-            {"disallowedTools": ["Write", "Edit", "NotebookEdit", "Agent", "Workflow"]},
+            {"disallowedTools": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]},
         )
 
     def test_codex_derivation(self) -> None:
@@ -640,7 +643,7 @@ class ExplainPermissionTests(TempRoot):
             "access=verify  capabilities=無  對應表=[access.verify]  覆寫=無", ver
         )
         self.assertIn(
-            'disallowedTools = ["Write", "Edit", "NotebookEdit", "Agent", "Workflow"]',
+            'disallowedTools = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]',
             ver,
         )
 

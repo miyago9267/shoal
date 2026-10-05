@@ -1,0 +1,944 @@
+{
+ "_doc": [
+  "Shared guard test vectors at the normalized-event level (replayed by tests/test_shoal_guard.py; a",
+  "TypeScript port replays the same file).  Placeholders: $HOME (temp home), $WORK ($HOME/work, default cwd),",
+  "$TMPDIR ($HOME/tmpdir, exported as TMPDIR), $STATE (state base).  Event defaults: host = vector host",
+  "(claude), session_id s1, turn_id t1, cwd $WORK, is_subagent false, role null, tool_name derived from",
+  "tool_kind (edit=Edit, dispatch=Agent, other=Read), paths [], dispatched_role null.  An explicit null",
+  "overrides a default.  Env defaults: XDG_STATE_HOME=$HOME/xdg-state, TMPDIR=$TMPDIR; null deletes a key.",
+  "Setup: dirs, symlinks {link: target}, chmod, write {file: text}, turn {session, turn_id, role} (classifier",
+  "file), turn_legacy_prompt_id, state_file/turn_file {session, content}, log_prefill_bytes.  Checks:",
+  "files_exist/files_absent, modes, file_contents, log_contains/log_lacks, log_size_max, foreign_owner",
+  "(paths relative to the guard dir whose owner is simulated as another uid).  The log is always checked",
+  "against log_whitelist.  parity=false excludes a vector from tools/guard_parity.py."
+ ],
+ "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode"],
+ "vectors": [
+  {
+   "name": "r2_third_new_file_denied",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/d"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_new_turn_resets_count",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/d"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "r2_tool_event_with_new_turn_id_resets",
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t9", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_scout_does_not_unlock",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_readonly_roles_do_not_unlock",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "Explore"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "plan-verifier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "verifier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "security-reviewer"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": null}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "unknown-role"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_workflow_without_role_does_not_unlock",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": null, "tool_name": "Workflow"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_executor_unlocks",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/d"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_mech_executor_unlocks",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "mech-executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/d"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_security_executor_unlocks",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "security-executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/d"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_sol_executor_unlocks",
+   "host": "codex",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "sol-executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "r2_dispatch_unlock_ends_with_turn",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_limit_env_one",
+   "env": {"SHOAL_GUARD_MAX_FILES": "1"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_limit_env_zero",
+   "env": {"SHOAL_GUARD_MAX_FILES": "0"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_limit_env_junk_fails_open",
+   "env": {"SHOAL_GUARD_MAX_FILES": "junk"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "skip", "skip_reason": "invalid_config"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "skip", "skip_reason": "invalid_config"}}
+   ]
+  },
+  {
+   "name": "r2_limit_env_legacy_alias",
+   "env": {"PILOTFISH_GUARD_MAX_FILES": "1"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_multi_path_patch_denied_atomically",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a", "$WORK/src/b", "$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r2_other_tools_ignored",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "other", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "other", "turn_id": "t1", "tool_name": "Read"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "r2_edit_without_path_is_skipped",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": []}, "expect": {"decision": "skip", "skip_reason": "no_path"}}
+   ]
+  },
+  {
+   "name": "r1_judgment_denies_first_edit",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "r1_mechanical_denies_first_edit",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "mechanical"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "r1_other_roles_fall_back_to_r2",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "exploration"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "r1_parent_local_falls_back_to_r2",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "r1_stale_turn_id_ignored",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "r1_dispatch_executor_unlocks",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "r1_dispatch_scout_does_not_unlock",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "mechanical"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "r1_exempt_path_not_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["/tmp/guard-vector/x"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "r1_legacy_prompt_id_key_accepted",
+   "setup": {"turn_legacy_prompt_id": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "r1_direct_env_allows",
+   "env": {"SHOAL_GUARD_DIRECT": "1"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}
+   ]
+  },
+  {
+   "name": "direct_env_allows_unlimited",
+   "env": {"SHOAL_GUARD_DIRECT": "1"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/f0"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/f1"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/f2"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/f3"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/f4"]}, "expect": {"decision": "allow", "rule": "direct"}}
+   ]
+  },
+  {
+   "name": "direct_env_other_values_do_not_apply",
+   "env": {"SHOAL_GUARD_DIRECT": "true"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "direct_env_applies_per_host_codex",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_DIRECT": "1"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}
+   ]
+  },
+  {
+   "name": "exempt_roots_do_not_count",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["/tmp/x/y"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["/private/tmp/x"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/x"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/.ai/notes.md"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/deep/.ai/sub/notes.md"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/projects/p/s.jsonl"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "exempt_claude_projects_is_claude_only",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/projects/p/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/projects/p/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/projects/p/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "exempt_claude_config_dir_projects",
+   "env": {"CLAUDE_CONFIG_DIR": "$WORK/cfg"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/cfg/projects/p/a"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "exempt_prefix_lookalike_is_not_exempt",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["/tmpfoo/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["/tmpfoo/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["/tmpfoo/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "exempt_ai_file_named_like_dir_is_not_exempt",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/x.ai"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/y.ai"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/z.ai"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "path_dotdot_out_of_tmp_is_not_exempt",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/../work/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/../work/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/../work/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "path_dotdot_into_tmp_is_exempt",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/../tmpdir/x"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "path_dotdot_dedupes_with_plain_path",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/../src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "path_relative_uses_cwd",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["../work/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["src/c"]}, "expect": {"decision": "deny", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["../tmpdir/x"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "path_symlink_into_tmp_is_not_exempt",
+   "setup": {"dirs": ["$WORK/src"], "symlinks": {"$TMPDIR/lnk": "$WORK/src"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/lnk/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/lnk/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/lnk/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "path_symlink_out_of_repo_into_tmp_is_exempt",
+   "setup": {"symlinks": {"$WORK/out": "$TMPDIR/real"}, "dirs": ["$TMPDIR/real"]},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/out/a"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "path_symlinked_ai_dir_is_not_exempt",
+   "setup": {"dirs": ["$WORK/real"], "symlinks": {"$WORK/.ai": "$WORK/real"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/.ai/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/.ai/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/.ai/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "path_symlink_alias_counts_once",
+   "setup": {"dirs": ["$WORK/src"], "symlinks": {"$WORK/alias": "$WORK/src"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/alias/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/alias/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "path_dangling_symlink_resolves_without_error",
+   "setup": {"symlinks": {"$WORK/dangling": "$WORK/missing-target"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/dangling"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "skip_missing_session_id",
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "session_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}}
+   ]
+  },
+  {
+   "name": "skip_missing_turn_id",
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
+    {"event": {"kind": "prompt", "turn_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}}
+   ]
+  },
+  {
+   "name": "skip_invalid_session_id",
+   "files_absent": ["$STATE/shoal/guard/state/evil.json"],
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "session_id": "../evil"}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "session_id": "a/b"}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "session_id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}},
+    {"event": {"kind": "prompt", "turn_id": "t1", "session_id": "has space"}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}}
+   ]
+  },
+  {
+   "name": "skip_invalid_turn_id",
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t 1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "a:b", "paths": ["$WORK/src/a"]}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}}
+   ]
+  },
+  {
+   "name": "ids_allow_underscore_and_128_chars",
+   "files_exist": ["$STATE/shoal/guard/state/ses_abc_DEF-1.json"],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1", "session_id": "ses_abc_DEF-1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "prompt", "turn_id": "t1", "session_id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}, "expect": {"decision": "state"}}
+   ]
+  },
+  {
+   "name": "mode_claude_default_enforce",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_shadow_logs_would_deny",
+   "env": {"SHOAL_GUARD": "shadow"},
+   "log_contains": ["\"decision\":\"would_deny\"", "\"mode\":\"shadow\""],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "would_deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_off_is_silent",
+   "env": {"SHOAL_GUARD": "off"},
+   "files_absent": ["$STATE/shoal/guard"],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "mode_legacy_alias",
+   "env": {"PILOTFISH_GUARD": "shadow"},
+   "log_contains": ["\"mode\":\"shadow\""],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "mode_new_name_wins_over_alias",
+   "env": {"SHOAL_GUARD": "enforce", "PILOTFISH_GUARD": "off"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_invalid_value_is_shadow",
+   "env": {"SHOAL_GUARD": "bogus"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "would_deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_empty_value_uses_host_default",
+   "env": {"SHOAL_GUARD": ""},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_codex_default_shadow",
+   "host": "codex",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "would_deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_codex_enforce_denies",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_grok_default_shadow",
+   "host": "grok",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "would_deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_grok_enforce_denies",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "agy_forced_shadow_even_when_enforce",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "would_deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "agy_default_shadow",
+   "host": "agy",
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "would_deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "agy_tool_without_turn_id_uses_current_state",
+   "host": "agy",
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/c"]}, "expect": {"decision": "would_deny", "rule": "R2"}},
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:3"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "agy_new_turn_resets",
+   "host": "agy",
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:2", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "agy_dispatch_executor_unlocks",
+   "host": "agy",
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "c1:1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "agy_off_stays_off",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "off"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_subagent_flag_is_ignored",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "c1:1", "dispatched_role": "executor", "is_subagent": true}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_composed_turn_id_stored",
+   "host": "agy",
+   "files_exist": ["$STATE/shoal/guard/state/s1.json"],
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "c1:7"}, "expect": {"decision": "state"}}
+   ]
+  },
+  {
+   "name": "leaf_subagent_dispatch_denied_claude",
+   "host": "claude",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": null, "dispatched_role": "scout", "is_subagent": true, "role": "executor", "session_id": null}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": null, "is_subagent": true, "role": "mech-executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor", "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "LEAF"}}
+   ]
+  },
+  {
+   "name": "leaf_subagent_dispatch_denied_codex",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": null, "dispatched_role": "scout", "is_subagent": true, "role": "executor", "session_id": null}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": null, "is_subagent": true, "role": "mech-executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor", "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "LEAF"}}
+   ]
+  },
+  {
+   "name": "leaf_subagent_dispatch_denied_grok",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": null, "dispatched_role": "scout", "is_subagent": true, "role": "executor", "session_id": null}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": null, "is_subagent": true, "role": "mech-executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor", "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "LEAF"}}
+   ]
+  },
+  {
+   "name": "verify_edit_denied",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["/tmp/x"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "scout"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "not-a-known-role"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": null}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "other", "turn_id": "t1", "is_subagent": true, "role": "verifier"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "prompt", "turn_id": "t1", "is_subagent": true, "role": "verifier"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "subagent_rules_shadow",
+   "host": "codex",
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor", "is_subagent": true, "role": "executor"}, "expect": {"decision": "would_deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "would_deny", "rule": "VERIFY_EDIT"}}
+   ]
+  },
+  {
+   "name": "subagent_does_not_touch_main_state",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/x"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/y"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "subagent_rules_off",
+   "host": "claude",
+   "env": {"SHOAL_GUARD": "off"},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor", "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "xdg_unset_uses_home_local_state",
+   "env": {"XDG_STATE_HOME": null},
+   "files_exist": ["$HOME/.local/state/shoal/guard/state/s1.json", "$HOME/.local/state/shoal/guard/guard.jsonl"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
+   ]
+  },
+  {
+   "name": "xdg_relative_ignored",
+   "env": {"XDG_STATE_HOME": "relative/state"},
+   "files_exist": ["$HOME/.local/state/shoal/guard/state/s1.json"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
+   ]
+  },
+  {
+   "name": "xdg_empty_ignored",
+   "env": {"XDG_STATE_HOME": ""},
+   "files_exist": ["$HOME/.local/state/shoal/guard/state/s1.json"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
+   ]
+  },
+  {
+   "name": "xdg_absolute_used",
+   "files_exist": ["$HOME/xdg-state/shoal/guard/state/s1.json"],
+   "files_absent": ["$HOME/.local/state/shoal"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
+   ]
+  },
+  {
+   "name": "state_dir_symlinked_shoal_rejected",
+   "setup": {"dirs": ["$HOME/xdg-state", "$WORK/evil"], "symlinks": {"$HOME/xdg-state/shoal": "$WORK/evil"}},
+   "files_absent": ["$WORK/evil/guard"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "state_unavailable"}}
+   ]
+  },
+  {
+   "name": "state_dir_symlinked_guard_rejected",
+   "setup": {"dirs": ["$HOME/xdg-state/shoal", "$WORK/evil"], "symlinks": {"$HOME/xdg-state/shoal/guard": "$WORK/evil"}},
+   "files_absent": ["$WORK/evil/state"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "state_unavailable"}}
+   ]
+  },
+  {
+   "name": "state_dir_symlinked_subdir_rejected",
+   "setup": {"dirs": ["$HOME/xdg-state/shoal/guard", "$WORK/evil"], "symlinks": {"$HOME/xdg-state/shoal/guard/state": "$WORK/evil"}},
+   "files_absent": ["$WORK/evil/s1.json"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "state_unavailable"}}
+   ]
+  },
+  {
+   "name": "state_dir_symlinked_ancestor_below_home_rejected",
+   "env": {"XDG_STATE_HOME": null},
+   "setup": {"dirs": ["$WORK/dot"], "symlinks": {"$HOME/.local": "$WORK/dot"}},
+   "files_absent": ["$WORK/dot/state"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "state_unavailable"}}
+   ]
+  },
+  {
+   "name": "state_dir_group_readable_rejected",
+   "setup": {"dirs": ["$HOME/xdg-state/shoal/guard"], "chmod": {"$HOME/xdg-state/shoal/guard": "0755"}},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "state_unavailable"}}
+   ]
+  },
+  {
+   "name": "state_dirs_are_private",
+   "modes": {"$STATE/shoal/guard": "0700", "$STATE/shoal/guard/state": "0700", "$STATE/shoal/guard/turns": "0700", "$STATE/shoal/guard/state/s1.json": "0600", "$STATE/shoal/guard/guard.jsonl": "0600"},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
+   ]
+  },
+  {
+   "name": "state_file_symlink_not_followed",
+   "setup": {"dirs": ["$HOME/xdg-state/shoal/guard/state"], "symlinks": {"$HOME/xdg-state/shoal/guard/state/s1.json": "$WORK/victim"}, "write": {"$WORK/victim": "keep"}},
+   "file_contents": {"$WORK/victim": "keep"},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "state_write_failed"}}
+   ]
+  },
+  {
+   "name": "state_file_foreign_owner_is_ignored",
+   "foreign_owner": ["state/s1.json"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "state_write_failed"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "turn_file_foreign_owner_is_ignored",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "foreign_owner": ["turns/s1.json"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "turn_file_symlink_not_followed",
+   "setup": {"dirs": ["$HOME/xdg-state/shoal/guard/turns"], "symlinks": {"$HOME/xdg-state/shoal/guard/turns/s1.json": "$WORK/role.json"}, "write": {"$WORK/role.json": "{\"turn_id\":\"t1\",\"role\":\"judgment\"}"}},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "state_file_corrupt_is_reset",
+   "setup": {"state_file": {"session": "s1", "content": "{not json"}},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "state_file_wrong_shape_is_reset",
+   "setup": {"state_file": {"session": "s1", "content": "{\"turn_id\":\"t1\",\"edited\":\"oops\",\"dispatched\":\"yes\"}"}},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "turn_file_corrupt_is_ignored",
+   "setup": {"turn_file": {"session": "s1", "content": "[1,2"}},
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "log_whitelist_and_basename_only",
+   "log_contains": ["\"file\":\"name.py\"", "\"skip_reason\":\"missing_id\"", "\"rule\":\"VERIFY_EDIT\"", "\"host\":\"claude\""],
+   "log_lacks": ["$WORK", "secret-dir"],
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/secret-dir/name.py"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "session_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
+   ]
+  },
+  {
+   "name": "log_cap_stops_growth",
+   "setup": {"log_prefill_bytes": 1048577},
+   "log_size_max": 1048600,
+   "parity": false,
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
+   ]
+  }
+ ]
+}

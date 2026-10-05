@@ -7,6 +7,16 @@ are noted only as source references.
 
 ## Unreleased
 
+## v1.8.3
+
+- Install the dispatch guard (`hooks/shoal_guard.py --host codex`) as its own hook
+  script and projection ID (`shoal-guard-v1`) next to the autoroute gate:
+  `UserPromptSubmit` records the turn, `PreToolUse` (matcher `apply_patch`,
+  `spawn_agent`, `collaborationspawn_agent`) applies the dispatch rules. Shadow
+  mode
+  by default; no prompt text changes. The new hook must be approved once with
+  `/hooks`; the installer never writes hook trust.
+
 ## v1.8.2
 
 - Add the verifier `implicit-tradeoffs` clause (up to three implicit

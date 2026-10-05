@@ -12,7 +12,7 @@ UPSTREAM_RULES = ROOT / "tests" / "fixtures" / "grok" / "rules.pilotfish-grok.up
 
 class GrokRenderTests(rh.HostRenderCase):
     HOST = "grok"
-    GOLDEN_COUNT = 19
+    GOLDEN_COUNT = 20
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.toml"
     SRC_FILE = "config.snippet.toml"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
@@ -26,28 +26,55 @@ class GrokRenderTests(rh.HostRenderCase):
             if path.is_file() and rel.parts[0] not in ("agents", "rules"):
                 self.assertEqual(rendered[rel.as_posix()], path.read_bytes())
 
+    def test_guard_copy_is_generated_from_the_single_source(self) -> None:
+        # dispatch-enforcement R1：判斷邏輯只有 hooks/shoal_guard.py 一份，dist 副本逐位元組相同。
+        rel = "hooks/pilotfish-grok/shoal_guard.py"
+        source = (ROOT / "hooks" / "shoal_guard.py").read_bytes()
+        self.assertEqual(render.RENDERERS["grok"](ROOT)[rel], source)
+        self.assertEqual((ROOT / "hosts" / "grok" / "dist" / rel).read_bytes(), source)
+        self.assertFalse((ROOT / "hosts" / "grok" / "src" / rel).exists(), "src 不可放手抄副本")
+
+    def test_hand_edited_guard_copy_fails_check(self) -> None:
+        rel = "hooks/pilotfish-grok/shoal_guard.py"
+        target = self.dist / rel
+        target.write_bytes(target.read_bytes() + b"# drift\n")
+        result = self.check()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn(f"內容不同: {rel}", result.stderr)
+
+    def test_changing_the_guard_source_requires_rewriting_dist(self) -> None:
+        guard = self.root / "hooks" / "shoal_guard.py"
+        guard.write_bytes(guard.read_bytes() + b"# changed\n")
+        self.assertEqual(self.check().returncode, 1)
+        self.assertEqual(run_render("grok", self.root, "--write").returncode, 0)
+        self.assertEqual(self.check().returncode, 0)
+
+    def test_missing_guard_source_is_rejected(self) -> None:
+        (self.root / "hooks" / "shoal_guard.py").unlink()
+        self.assert_rejected("shoal_guard.py")
+
     # --- G1：orchestration rules 與 grok host 版本（AC-GW-001 至 AC-GW-005）---
     def test_rules_marker_comes_from_host_version(self) -> None:  # AC-GW-001、AC-GW-002
         version = (ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip()
         rules = render.RENDERERS["grok"](ROOT)["rules/pilotfish-grok.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- pilotfish-grok v.+ -->$", rules),
                          [f"<!-- pilotfish-grok v{version} -->"])
-        self.assertEqual(version, "1.0.6-shoal.1")
+        self.assertEqual(version, "1.0.6-shoal.2")
 
     def test_rules_equal_upstream_except_marker(self) -> None:  # AC-GW-003
         upstream = UPSTREAM_RULES.read_text(encoding="utf-8").splitlines(keepends=True)
         rules = render.RENDERERS["grok"](ROOT)["rules/pilotfish-grok.md"].decode("utf-8").splitlines(keepends=True)
         self.assertEqual(len(rules), len(upstream))
         differing = [(a, b) for a, b in zip(upstream, rules) if a != b]
-        self.assertEqual(differing, [("<!-- pilotfish-grok v1.0.6 -->\n", "<!-- pilotfish-grok v1.0.6-shoal.1 -->\n")])
+        self.assertEqual(differing, [("<!-- pilotfish-grok v1.0.6 -->\n", "<!-- pilotfish-grok v1.0.6-shoal.2 -->\n")])
 
     def test_changing_version_requires_rewriting_dist(self) -> None:  # AC-GW-002
-        (self.root / "hosts" / "grok" / "VERSION").write_text("1.0.6-shoal.2\n", encoding="utf-8", newline="\n")
+        (self.root / "hosts" / "grok" / "VERSION").write_text("1.0.6-shoal.3\n", encoding="utf-8", newline="\n")
         result = self.check()
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("內容不同: rules/pilotfish-grok.md", result.stderr)
         self.assertEqual(run_render("grok", self.root, "--write").returncode, 0)
-        self.assertIn(b"<!-- pilotfish-grok v1.0.6-shoal.2 -->", (self.dist / "rules" / "pilotfish-grok.md").read_bytes())
+        self.assertIn(b"<!-- pilotfish-grok v1.0.6-shoal.3 -->", (self.dist / "rules" / "pilotfish-grok.md").read_bytes())
         self.assertEqual(self.check().returncode, 0)
 
     def test_version_must_be_semver_like(self) -> None:  # AC-GW-005
@@ -61,7 +88,7 @@ class GrokRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:  # AC-GW-005
         src = self.root / "hosts" / "grok" / "src" / "rules" / "pilotfish-grok.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- pilotfish-grok v1.0.6-shoal.1 -->\n"
+        marker = "<!-- pilotfish-grok v1.0.6-shoal.2 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
@@ -128,7 +155,7 @@ class GrokDocsTests(unittest.TestCase):
         readme, install = self.read("README.md"), self.read("INSTALL.md")
         self.assertIn("https://github.com/Nanako0129/pilotfish-grok", readme)
         self.assertIn("tools/install_grok.py", readme)
-        self.assertIn("1.0.6-shoal.1", readme)
+        self.assertIn("1.0.6-shoal.2", readme)
         self.assertIn("## Grok Build", install)
         for flag in ("--apply", "--fix-toggles", "--restore", "--uninstall"):
             self.assertIn(flag, install)

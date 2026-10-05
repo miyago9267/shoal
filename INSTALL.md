@@ -255,8 +255,33 @@ Also confirm that these managed hook files exist, without printing secrets:
 ```bash
 test -f "$PILOTFISH_TARGET_HOME/hooks.json"
 test -f "$PILOTFISH_TARGET_HOME/hooks/pilotfish_autoroute_gate.py"
+test -f "$PILOTFISH_TARGET_HOME/hooks/shoal_guard.py"
 grep -F 'Pilotfish automatic typed Plan-review gate.' \
   "$PILOTFISH_TARGET_HOME/hooks.json"
+```
+
+### Dispatch guard
+
+Since host 1.8.3 the installer also registers the dispatch guard
+(`hooks/shoal_guard.py --host codex`, [`docs/specs/dispatch-enforcement`](./docs/specs/dispatch-enforcement/SPEC.md))
+next to the autoroute gate. It is a separate script with its own projection ID
+(`shoal-guard-v1`) and its own state entry (`guard_registration`), so the gate is
+unchanged. It adds a `UserPromptSubmit` group that only records the turn, and a
+`PreToolUse` group with matcher `^(apply_patch|spawn_agent|collaborationspawn_agent)$`.
+It runs in shadow mode (`would_deny` log records under
+`${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`) until the enforce switch in
+the spec
+(E6); `SHOAL_GUARD=off` disables it for a session. An existing home that
+predates the
+guard gains the script and both groups on the next install; other hook groups are
+preserved. The installer does not write hook trust: after installing, approve
+the new
+hook once in an interactive Codex session with `/hooks`, as for the autoroute gate.
+Without that approval Codex does not run it. A launch probe (must exit 0, prints
+nothing):
+
+```bash
+echo '{}' | /usr/bin/env python3 "$PILOTFISH_TARGET_HOME/hooks/shoal_guard.py" --host codex
 ```
 
 ### Prove the hook can launch
@@ -287,7 +312,8 @@ not enforcing anything on this machine. Fix the interpreter or record the gate
 as unenforced; do not report the install as gated.
 
 Trust the Pilotfish registration once in an interactive Codex session. Inspect
-the group that runs `hooks/pilotfish_autoroute_gate.py`, start Codex, and use
+the groups that run `hooks/pilotfish_autoroute_gate.py` and `hooks/shoal_guard.py`,
+start Codex, and use
 `/hooks` to review and trust it. A pre-existing user-level `hooks.json` can
 have its own top-level description, so do not rely on one global description as
 the registration identity. Codex records trust against the hook definition
@@ -398,8 +424,54 @@ installer; merge them by hand.
 
 The hooks add a `SubagentStop` format gate for `verifier`, `plan-verifier` and
 `security-reviewer`, and a `PreToolUse` guard that denies write-capable
-`spawn_subagent` calls while Grok is in plan mode. Start a new Grok session
-after installing: agents, rules and hooks are read at session start.
+`spawn_subagent` calls while Grok is in plan mode. They also install the shoal
+dispatch guard (`hooks/pilotfish-grok/shoal_guard.py`) with a `UserPromptSubmit`
+entry and a `PreToolUse` entry (matcher `^(search_replace|spawn_subagent)$`), shadow
+mode by default; the existing plan-mode guard entry is kept. The copy in
+`hosts/grok/dist` is generated from `hooks/shoal_guard.py` by
+`python3 tools/render.py --host grok --write`, and the installer aborts if the
+dist copy
+differs from the same commit's `hooks/shoal_guard.py`. Grok runs the hook path directly,
+so the host comes from the hook's `env` (`SHOAL_GUARD_HOST=grok`) instead of `--host`.
+Start a new Grok session after installing: agents, rules and hooks are read at session
+start.
+
+## Claude Code 與 Gemini/agy 的 dispatch guard
+
+Claude Code 與 Gemini/agy 沒有自己的 shoal installer，dispatch guard 由
+`tools/install_hooks.py` 安裝（Python 3.9 以上，需要 `git`）。和 `install_grok.py`
+一樣，沒有 `--apply` 一律是 dry-run。
+
+```bash
+# 1. Dry-run：列出腳本與 settings 的變更，不寫入。
+python3 tools/install_hooks.py --host claude
+
+# 2. 使用者核准 dry-run 後安裝。
+python3 tools/install_hooks.py --host claude --apply
+python3 tools/install_hooks.py --host agy --apply
+
+# 只移除 shoal 的 entry（腳本留著，claude 與 agy 共用）。
+python3 tools/install_hooks.py --host claude --uninstall --apply
+```
+
+- 腳本取自 committed `HEAD` 的 `hooks/shoal_guard.py`（`git show`，不吃工作樹；HEAD
+  沒有就中止），安裝到 `${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py`
+  （0755）。
+- `--host claude` 改 `settings.json`（`--home`，其次 `CLAUDE_CONFIG_DIR`，預設
+  `~/.claude`）：`UserPromptSubmit`，以及 matcher 為
+  `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow` 的 `PreToolUse`。`settings.json`
+  若是 symlink（dotfile 管理）就寫進它指向的檔案，權限不變。Claude 預設 enforce。
+- `--host agy` 改 `~/.gemini/config/hooks.json`（`--home` 指 `~/.gemini`）：新增具名
+  群組 `shoal-guard`，含 `PreToolUse`（matcher `*`）與 `PreInvocation`。agy 無法分辨
+  main 與 subagent，guard 固定 shadow。
+- 只有 command 含 `shoal_guard.py --host` 的 handler 算 shoal 的；其他 hook、其他 key、
+  key 順序與 2 空格縮排都原樣保留。重複執行不會改變結果，也不會產生新備份。
+- 寫入前把原檔備份到 `${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/`
+  （目錄 0700、檔案 0600），寫入後重新讀檔驗證：shoal handler 數量、其餘內容未被改動、
+  腳本與 `HEAD` 相同；不符 exit 1。設定檔不是合法 JSON 或結構不符預期時 exit 2，不寫入。
+- `~/.grok` 會讀 `~/.claude/settings.json` 的 hooks（Claude 相容掃描），所以 Claude 的
+  entry 也會在 grok session 觸發；guard 的 Claude adapter 看到 grok 的 camelCase payload
+  就放行，由 grok 自己的註冊處理。
 
 ## OpenCode
 

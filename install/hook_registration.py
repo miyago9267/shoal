@@ -15,6 +15,10 @@ class HookRegistrationError(ValueError):
 
 _LEGACY_PROJECTION_ID = "pilotfish-autoroute-v1"
 CURRENT_PROJECTION_ID = "pilotfish-autoroute-v2"
+# Dispatch guard (docs/specs/dispatch-enforcement Decision 6): its own script and
+# projection ID, registered next to the autoroute gate.  The groups live here, not in
+# templates/hooks.json, which is a prompt-lock surface with a fixed change budget.
+GUARD_PROJECTION_ID = "shoal-guard-v1"
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
@@ -53,6 +57,31 @@ _CURRENT_GROUP: dict[str, Any] = {
     ]
 }
 
+_GUARD_COMMAND = (
+    '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
+    'shoal_guard.py" --host codex'
+)
+_GUARD_WINDOWS_COMMAND = (
+    "uv run --no-project python -c \"import os,runpy; from pathlib import Path; "
+    "runpy.run_path(str(Path(os.environ.get('CODEX_HOME', "
+    "Path.home()/'.codex'))/'hooks'/'shoal_guard.py'), "
+    "run_name='__main__')\" --host codex"
+)
+_GUARD_HANDLER: dict[str, Any] = {
+    "type": "command",
+    "command": _GUARD_COMMAND,
+    "commandWindows": _GUARD_WINDOWS_COMMAND,
+    "timeout": 10,
+}
+# apply_patch is the Codex edit tool; collaborationspawn_agent is the dispatch tool
+# (E0-RESULTS.md).  Codex matches the tool name as a regular expression.
+GUARD_TOOL_MATCHER = "^(apply_patch|spawn_agent|collaborationspawn_agent)$"
+_GUARD_PROMPT_GROUP: dict[str, Any] = {"hooks": [copy.deepcopy(_GUARD_HANDLER)]}
+_GUARD_TOOL_GROUP: dict[str, Any] = {
+    "matcher": GUARD_TOOL_MATCHER,
+    "hooks": [copy.deepcopy(_GUARD_HANDLER)],
+}
+
 # Registry entries are immutable trust anchors.  Future releases add a new
 # current entry and retain old entries here for migration/collision detection.
 TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
@@ -63,6 +92,10 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
     CURRENT_PROJECTION_ID: {
         "UserPromptSubmit": _CURRENT_GROUP,
         "Stop": _CURRENT_GROUP,
+    },
+    GUARD_PROJECTION_ID: {
+        "UserPromptSubmit": _GUARD_PROMPT_GROUP,
+        "PreToolUse": _GUARD_TOOL_GROUP,
     },
 }
 
@@ -313,57 +346,96 @@ def validate_source_registration(payload: bytes) -> dict[str, Any]:
     return document
 
 
+def _upgrade_autoroute(
+    merged: dict[str, Any], owned_projection_id: str, desired_id: str
+) -> None:
+    if owned_projection_id not in TRUSTED_PROJECTIONS or owned_projection_id == GUARD_PROJECTION_ID:
+        raise HookRegistrationError("hook projection identifier is not allowlisted")
+    validate_owned_projection(merged, owned_projection_id)
+    if owned_projection_id == desired_id:
+        return
+    desired = TRUSTED_PROJECTIONS[desired_id]
+    for group in desired.values():
+        if _locations(merged, group):
+            raise HookRegistrationError(
+                "desired hook group collides with an unowned canonical group"
+            )
+    prior = TRUSTED_PROJECTIONS[owned_projection_id]
+    for event, group in prior.items():
+        index = next(
+            index
+            for index, candidate in enumerate(merged["hooks"][event])
+            if _type_strict_equal(candidate, group)
+        )
+        merged["hooks"][event][index] = copy.deepcopy(desired[event])
+
+
 def merge_registration(
     current_payload: bytes | None,
     source_payload: bytes,
     *,
     owned_projection_id: str | None,
-) -> tuple[bytes, str]:
-    """Merge or upgrade only the exact event-bound Pilotfish matcher groups."""
+    owned_guard_projection_id: str | None = None,
+) -> tuple[bytes, str, str]:
+    """Merge or upgrade only the exact event-bound Pilotfish matcher groups.
+
+    Returns (payload, autoroute projection id, guard projection id).  The guard
+    groups are always added next to the autoroute groups; an already-installed home
+    that predates the guard has owned_guard_projection_id=None and gains them here.
+    """
     validate_source_registration(source_payload)
     desired_id = CURRENT_PROJECTION_ID
-    desired = TRUSTED_PROJECTIONS[desired_id]
+    desired_guard = GUARD_PROJECTION_ID
+    guard_groups = TRUSTED_PROJECTIONS[desired_guard]
+
     if current_payload is None:
-        if owned_projection_id is not None:
+        if owned_projection_id is not None or owned_guard_projection_id is not None:
             raise HookRegistrationError("owned hooks.json is missing")
-        return source_payload, desired_id
+        document = strict_json_loads(source_payload, source="source hooks.json")
+        for event, group in guard_groups.items():
+            document["hooks"].setdefault(event, []).append(copy.deepcopy(group))
+        return (
+            json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8")
+            + b"\n",
+            desired_id,
+            desired_guard,
+        )
 
     document = load_registration(current_payload, source="existing hooks.json")
+    merged = copy.deepcopy(document)
     if owned_projection_id is None:
+        if owned_guard_projection_id is not None:
+            raise HookRegistrationError("guard is owned but the autoroute gate is not")
         if _contains_any_trusted_group(document):
             raise HookRegistrationError(
                 "unowned hooks.json contains a canonical Pilotfish group"
             )
-        merged = copy.deepcopy(document)
-        for event, group in desired.items():
+        for event, group in TRUSTED_PROJECTIONS[desired_id].items():
             merged["hooks"].setdefault(event, []).append(copy.deepcopy(group))
     else:
-        if owned_projection_id not in TRUSTED_PROJECTIONS:
-            raise HookRegistrationError("hook projection identifier is not allowlisted")
-        validate_owned_projection(document, owned_projection_id)
-        merged = copy.deepcopy(document)
-        if owned_projection_id != desired_id:
-            for group in desired.values():
-                if _locations(merged, group):
-                    raise HookRegistrationError(
-                        "desired hook group collides with an unowned canonical group"
-                    )
-            prior = TRUSTED_PROJECTIONS[owned_projection_id]
-            for event, group in prior.items():
-                index = next(
-                    index
-                    for index, candidate in enumerate(merged["hooks"][event])
-                    if _type_strict_equal(candidate, group)
-                )
-                merged["hooks"][event][index] = copy.deepcopy(desired[event])
+        _upgrade_autoroute(merged, owned_projection_id, desired_id)
+
+    if owned_guard_projection_id is None:
+        if any(_locations(document, group) for group in guard_groups.values()):
+            raise HookRegistrationError(
+                "unowned hooks.json contains a canonical guard group"
+            )
+        for event, group in guard_groups.items():
+            merged["hooks"].setdefault(event, []).append(copy.deepcopy(group))
+    elif owned_guard_projection_id != desired_guard:
+        raise HookRegistrationError("guard projection identifier is not allowlisted")
+    else:
+        validate_owned_projection(merged, desired_guard)
 
     validate_owned_projection(merged, desired_id)
-    if owned_projection_id == desired_id:
-        return current_payload, desired_id
+    validate_owned_projection(merged, desired_guard)
+    if merged == document:
+        return current_payload, desired_id, desired_guard
     return (
         json.dumps(merged, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8")
         + b"\n",
         desired_id,
+        desired_guard,
     )
 
 

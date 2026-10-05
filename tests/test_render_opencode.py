@@ -28,6 +28,14 @@ class OpencodeRenderTests(rh.HostRenderCase):
         self.assertNotIn("roles/mech-executor.md", rendered)
         self.assertNotIn("roles/plan-verifier.md", rendered)
 
+    def test_every_role_denies_task_so_none_can_dispatch_subagents(self) -> None:
+        # dispatch-enforcement R6：write 等級（executor、security-executor）也是 leaf，不可再派 subagent。
+        rendered = render.RENDERERS["opencode"](ROOT)
+        for name in ("scout", "executor", "verifier", "security-reviewer", "security-executor"):
+            front = rendered[f"roles/{name}.md"].decode().split("---\n")[1]
+            self.assertIn("permission:\n", front, name)
+            self.assertIn("  task: deny\n", front, name)
+
     def test_pi_routing_is_not_owned_here(self) -> None:
         self.assertNotIn("pi-routing.json", render.RENDERERS["opencode"](ROOT))
 

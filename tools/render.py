@@ -527,6 +527,7 @@ def _grok_role_toml(name: str, spec: dict, perm: Permission) -> bytes:
 
 
 GROK_RULES_PATH = "rules/pilotfish-grok.md"
+GROK_GUARD_PATH = "hooks/pilotfish-grok/shoal_guard.py"
 GROK_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
 GROK_MARKER = re.compile(rb"^<!-- pilotfish-grok v\S+ -->$", re.MULTILINE)
 
@@ -556,6 +557,15 @@ def _grok_rules(src: Path) -> bytes:
     return GROK_MARKER.sub(lambda _m: marker, data, count=1)
 
 
+def _guard_script(root: Path) -> bytes:
+    """dispatch guard 只有一份來源（hooks/shoal_guard.py）；host dist 內的副本由 render 產生，--check 擋住手改。"""
+    path = root / "hooks" / "shoal_guard.py"
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {path}: {exc}") from exc
+
+
 def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     """config.snippet.toml 等 agents/ 以外的檔案逐字取自 vendored src；agents/*.md 依 role_text 產生（core 時 frame 內含 frontmatter）；roles/*.toml 由 binding 產生。"""
     perms = validate_grok(core, binding)
@@ -570,6 +580,7 @@ def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         out[f"roles/{name}.toml"] = _grok_role_toml(name, binding["roles"][name], perms[name])
     _passthrough(src, out, {"agents", "rules"})
     out[GROK_RULES_PATH] = _grok_rules(src)
+    out[GROK_GUARD_PATH] = _guard_script(src.parents[2])
     return out
 
 

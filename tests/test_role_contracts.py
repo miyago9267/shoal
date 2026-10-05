@@ -378,6 +378,9 @@ class TempHost(unittest.TestCase):
             self.root / "hosts",
             ignore=shutil.ignore_patterns("plugin", "dist"),
         )
+        # grok 的 render 需要 hooks/shoal_guard.py（dist 內 guard 副本的唯一來源）
+        (self.root / "hooks").mkdir()
+        shutil.copy(ROOT / "hooks" / "shoal_guard.py", self.root / "hooks" / "shoal_guard.py")
         shutil.rmtree(self.root / "core" / "contracts", ignore_errors=True)
         for host in HOSTS:
             shutil.rmtree(self.root / "hosts" / host / "addenda", ignore_errors=True)

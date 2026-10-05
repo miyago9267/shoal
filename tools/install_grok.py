@@ -9,7 +9,8 @@
 
 來源是 repo 的 committed HEAD（git archive hosts/grok/dist 與 hosts/grok/VERSION），
 不是工作樹。安裝 agents/、roles/、rules/pilotfish-grok.md、hooks/pilotfish-grok.json 與
-hooks/pilotfish-grok/；config.snippet.toml 只是 config 合併的參考，不安裝。
+hooks/pilotfish-grok/（含 dispatch guard 的 shoal_guard.py，由 render 從 hooks/shoal_guard.py 產生；
+dist 副本與同一 commit 的來源不同時中止）；config.snippet.toml 只是 config 合併的參考，不安裝。
 所有會寫入的動作（安裝、--restore、--uninstall）都要 --apply；寫入前把要被取代或移除的
 檔案與 config.toml 備份到 <grok-home>/backups/shoal-<timestamp>/。
 只開啟明確列出的路徑，不掃描 grok home，不讀 credential、session、history 檔案。
@@ -42,6 +43,8 @@ VERSION_PATH = "hosts/grok/VERSION"
 INSTALL_TOPS = ("agents", "roles", "rules", "hooks")
 RULES = "rules/pilotfish-grok.md"
 HOOK_DIR = "hooks/pilotfish-grok"
+GUARD_DIST = "hooks/pilotfish-grok/shoal_guard.py"
+GUARD_SOURCE = "hooks/shoal_guard.py"
 BEGIN = "<!-- pilotfish-grok:begin -->"
 END = "<!-- pilotfish-grok:end -->"
 CONFIG = "config.toml"
@@ -91,7 +94,32 @@ def load_source(repo: Path, ref: str) -> tuple[dict[str, bytes], str, str]:
                     files[rel] = data
     if not version or RULES not in files:
         raise InstallError(f"{commit[:7]} 的 {DIST} 或 {VERSION_PATH} 不完整")
+    check_guard_single_source(repo, commit, files)
     return files, version, commit
+
+
+def check_guard_single_source(repo: Path, commit: str, files: dict[str, bytes]) -> None:
+    """dist 內的 shoal_guard.py 必須逐位元組等於同一個 commit 的 hooks/shoal_guard.py（render 產生，不可手抄）。
+
+    該 commit 沒有 hooks/shoal_guard.py（舊版）時略過。
+    """
+    copy = files.get(GUARD_DIST)
+    if copy is None:
+        return
+    try:
+        source = subprocess.run(
+            ["git", "-c", "core.autocrlf=false", "-C", str(repo), "show", f"{commit}:{GUARD_SOURCE}"],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        ).stdout
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return
+    if source != copy:
+        raise InstallError(
+            f"{commit[:7]} 的 {DIST}/{GUARD_DIST} 與 {GUARD_SOURCE} 不同，"
+            "先執行 python3 tools/render.py --host grok --write 再 commit"
+        )
 
 
 def shoal_roles(files: dict[str, bytes]) -> list[str]:

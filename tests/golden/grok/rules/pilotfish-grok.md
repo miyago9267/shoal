@@ -1,5 +1,5 @@
 <!-- pilotfish-grok:begin -->
-<!-- pilotfish-grok v1.0.6-shoal.1 -->
+<!-- pilotfish-grok v1.0.6-shoal.2 -->
 ## Orchestration
 
 ### Non-negotiable native Plan gate

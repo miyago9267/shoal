@@ -19,6 +19,7 @@ DIST = ROOT / "hosts" / "grok" / "dist"
 HOOKS = DIST / "hooks"
 GATE = HOOKS / "pilotfish-grok" / "subagent_stop_gate.py"
 GUARD = HOOKS / "pilotfish-grok" / "plan_mode_guard.py"
+SHOAL_GUARD = HOOKS / "pilotfish-grok" / "shoal_guard.py"
 
 
 def run(script: Path, stdin: str | bytes, *args: str, env: dict[str, str] | None = None) -> tuple[int, str]:
@@ -87,18 +88,45 @@ class HookConfigTests(unittest.TestCase):
         hits = {name: [m for m in matchers if re.search(m, name)] for name in ("verifier", "plan-verifier")}
         self.assertEqual(hits, {"verifier": ["^verifier$"], "plan-verifier": ["^plan-verifier$"]})
 
-    def test_pre_tool_use_matches_only_spawn_subagent(self) -> None:  # AC-GW-027
-        (entry,) = self.config["PreToolUse"]
+    def test_plan_mode_guard_entry_matches_only_spawn_subagent(self) -> None:  # AC-GW-027
+        entry = self.config["PreToolUse"][0]
         self.assertEqual(entry["matcher"], "^spawn_subagent$")
         self.assertEqual(entry["hooks"][0]["command"], "pilotfish-grok/plan_mode_guard.py")
         self.assertTrue((HOOKS / entry["hooks"][0]["command"]).is_file())
 
+    def test_dispatch_guard_entries(self) -> None:  # dispatch-enforcement R7
+        self.assertEqual(len(self.config["PreToolUse"]), 2)
+        tool = self.config["PreToolUse"][1]
+        self.assertEqual(tool["matcher"], "^(search_replace|spawn_subagent)$")
+        (prompt,) = self.config["UserPromptSubmit"]
+        self.assertNotIn("matcher", prompt)
+        for entry in (tool, prompt):
+            (handler,) = entry["hooks"]
+            self.assertEqual(handler["command"], "pilotfish-grok/shoal_guard.py")
+            self.assertEqual(handler["env"], {"SHOAL_GUARD_HOST": "grok"})
+            self.assertTrue((HOOKS / handler["command"]).is_file())
+
     def test_scripts_import_only_the_standard_library(self) -> None:  # AC-GW-027
-        for script in (GATE, GUARD):
+        for script in (GATE, GUARD, SHOAL_GUARD):
             tree = ast.parse(script.read_text(encoding="utf-8"))
             names = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
             names |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
             self.assertLessEqual(names, set(sys.stdlib_module_names), script.name)
+
+
+class DispatchGuardRunsFromDistTests(unittest.TestCase):
+    """dist 內的 shoal_guard.py 以 grok 的方式執行：路徑直接 exec，host 由 hook 的 env 提供。"""
+
+    def test_dist_guard_denies_a_subagent_dispatch_with_grok_output(self) -> None:
+        payload = {"hookEventName": "pre_tool_use", "sessionId": "gs-1", "promptId": "gp-1", "cwd": "/tmp",
+                   "toolName": "spawn_subagent", "toolInput": {"subagent_type": "scout"},
+                   "subagentType": "executor", "permissionMode": "default"}
+        with tempfile.TemporaryDirectory() as home:
+            code, out = run(SHOAL_GUARD, json.dumps(payload),
+                            env={"SHOAL_GUARD_HOST": "grok", "SHOAL_GUARD": "enforce", "HOME": home,
+                                 "XDG_STATE_HOME": str(Path(home) / "state")})
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["decision"], "deny")
 
 
 class FormatGateTests(unittest.TestCase):

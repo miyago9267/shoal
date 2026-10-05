@@ -3,6 +3,48 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v1.3.0
+
+### Features
+
+Dispatch 強制與權限補強（`docs/specs/dispatch-enforcement/`，E0-E5）。
+
+- 新增 host 中立的 dispatch guard `hooks/shoal_guard.py`，取代 dotfile 的
+  Claude 專用 guard。main session 沒派 write 等級的 role 就直接改到第 3 個
+  檔案時 deny；有分類 provider 時，判定為 judgment 或 mechanical 的一輪
+  直接改檔也會 deny。修正舊 guard 的 bypass：路徑先 realpath 再判斷豁免，
+  派唯讀 role 不再解鎖，prompt 內的 `#direct` 改為環境變數
+  `SHOAL_GUARD_DIRECT=1`。
+- subagent 規則：write role 再派 subagent 時 deny（LEAF），verifier 用
+  編輯工具時 deny（VERIFY_EDIT），只在能辨識 role 的 host 生效。
+- adapter：Claude、Codex、Grok、agy 共用 Python 版；OpenCode 在 plugin 內
+  以 TypeScript 移植，兩份實作重播同一份測試向量
+  `tests/fixtures/guard_vectors.json`。
+- 模式：`SHOAL_GUARD=enforce|shadow|off`。Claude 預設 enforce；Codex、Grok、
+  OpenCode 預設 shadow，等 shadow log 達標再切；agy 無法辨識 subagent，
+  固定 shadow。
+- 安裝：Codex 由 `install/install.py` 註冊（獨立 projection
+  `shoal-guard-v1`，安裝後要在互動 session 用 `/hooks` 核准一次）；Grok 由
+  `tools/install_grok.py`；Claude 與 agy 由新的 `tools/install_hooks.py`；
+  OpenCode 隨 plugin。
+- 權限：Claude verifier 補擋 `MultiEdit`；OpenCode executor、
+  security-executor 加 `task: deny`。
+- 版本：codex 1.8.3、claude 1.4.2-claude.3、grok 1.0.6-shoal.2、
+  OpenCode plugin 0.2.0。
+
+### Fixes
+
+- OpenCode plugin 入口只 export plugin 函式。先前入口多 export 了一個
+  symbol 常數，OpenCode 1.18.31 載入時報 `Plugin export is not a function`，
+  全域安裝實際沒有生效。
+
+### 已知限制
+
+- guard 擋不住經 shell 寫檔，也擋不住同 uid 的 model 關掉 guard。
+- Codex 0.160.0 的 subagent 繼承 main 的 sandbox 與網路，role 檔的
+  `sandbox_mode`、`network_access` 不生效。
+- agy 無法辨識 role，write role 再派 subagent 沒有強制手段。
+
 ## v1.2.0
 
 ### Features

@@ -6,7 +6,7 @@ import {
   createPilotfishRouteTool,
   PILOTFISH_REGISTRATION_KEY,
   PilotfishOpenCodePlugin,
-} from "../src/plugin/pilotfish-opencode.ts";
+} from "../src/plugin/pilotfish-plugin.ts";
 
 // 全域設定層（R1）與重複載入去重（R2a）。
 // 全域目錄一律由 OPENCODE_CONFIG_DIR（或 HOME）指到 temp，不碰真實的 ~/.config/opencode。

@@ -24,7 +24,7 @@ tools = ["Read", "Glob", "Grep"]
 disallowedTools = ["Agent", "Workflow"]
 
 [access.verify]
-disallowedTools = ["Write", "Edit", "NotebookEdit", "Agent", "Workflow"]
+disallowedTools = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]
 
 # capability 疊加在 access 之上：list 附加到 access 表同名的 allowlist；
 # write / verify 是 denylist，本來就允許 web 工具，所以不會輸出任何東西。

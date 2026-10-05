@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hook_registration import (
     CURRENT_PROJECTION_ID,
     HookRegistrationError,
+    merge_registration,
     semantic_projection_digest,
     strict_json_loads,
     validate_projection_state,
@@ -48,6 +49,9 @@ HASHED_TOP_LEVEL = frozenset({
 REQUIRED_RUNTIME_FILES = frozenset({"auth.json"})
 PROJECTED_TOP_LEVEL = HASHED_TOP_LEVEL | REQUIRED_RUNTIME_FILES
 HOOK_SCRIPT = Path("hooks/pilotfish_autoroute_gate.py")
+# Optional: present once the Codex installer has registered the dispatch guard.  The
+# smoke home registers only the autoroute gate, so the guard script is inert there.
+GUARD_SCRIPT = Path("hooks/shoal_guard.py")
 SOURCE_HOOK_REGISTRATION = Path(__file__).resolve().parents[1] / "templates" / "hooks.json"
 ROLLBACK_STAMP_RE = re.compile(r"^(?:\d{8}-\d{6}|\d{8}-\d{6}-\d{6})$")
 LEGACY_ROLE_ROLLBACK_STAMP_RE = re.compile(r"^\d{8}$")
@@ -377,7 +381,11 @@ def _active_hook_state(
     state_path = active.with_name(f"{active.name}.pilotfish-install-state.json")
     if not state_path.exists():
         source_hooks, _ = _read_stable_regular(SOURCE_HOOK_REGISTRATION)
-        if active_hooks != source_hooks:
+        # A fresh install registers the autoroute template plus the guard groups.
+        with_guard, _, _ = merge_registration(
+            None, source_hooks, owned_projection_id=None
+        )
+        if active_hooks not in (source_hooks, with_guard):
             raise StageError("co-owned active hooks.json requires committed state")
         return CURRENT_PROJECTION_ID, None, None
     payload, fingerprint = _read_stable_regular(state_path)
@@ -392,11 +400,13 @@ def _active_hook_state(
             "hook_registration",
             "policy_ownership",
         }
+        # optional dispatch-guard projection (docs/specs/dispatch-enforcement)
+        state_keys = set(state) - {"guard_registration"} if isinstance(state, dict) else set()
         expected_v3_keys = expected_keys | {"plugin", "runtime_status", "rollback_backups"}
         expected_v4_keys = expected_v3_keys | {"reconciliation"}
         if (
             not isinstance(state, dict)
-            or set(state) not in (
+            or state_keys not in (
                 expected_keys, expected_keys - {"policy_ownership"},
                 expected_v3_keys, expected_v4_keys,
             )
@@ -427,6 +437,8 @@ def _state_policy_digest(
         HOOK_SCRIPT.as_posix(),
         *(f"agents/{role}.toml" for role in ROLES),
     }
+    if isinstance(targets, dict) and GUARD_SCRIPT.as_posix() in targets:
+        expected_targets.add(GUARD_SCRIPT.as_posix())
     if (
         not isinstance(targets, dict)
         or not isinstance(originals, dict)
@@ -492,7 +504,7 @@ def _rollback_backup(relative: Path) -> bool:
         )
     if relative.parent == HOOK_SCRIPT.parent:
         return (
-            base == HOOK_SCRIPT.name
+            base in {HOOK_SCRIPT.name, GUARD_SCRIPT.name}
             and not relative.name.endswith(marker)
         )
     return (
@@ -639,7 +651,7 @@ def explicit_layout_error(
                 return f"unapproved entry: {relative.as_posix()}"
             if allow_rollback_backups and _rollback_backup(relative):
                 continue
-            if relative != HOOK_SCRIPT:
+            if relative not in {HOOK_SCRIPT, GUARD_SCRIPT}:
                 return f"unapproved entry: {relative.as_posix()}"
             hook_files.add(relative)
             continue
@@ -666,7 +678,7 @@ def explicit_layout_error(
     if empty_manifest_directories:
         relative = min(empty_manifest_directories, key=lambda path: path.as_posix())
         return f"unapproved entry: {relative.as_posix()}"
-    if hook_files != {HOOK_SCRIPT}:
+    if HOOK_SCRIPT not in hook_files:
         return "missing mandatory hook script"
     return None
 

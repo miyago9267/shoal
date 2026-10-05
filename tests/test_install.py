@@ -21,6 +21,7 @@ import hook_registration  # noqa: E402
 import stage_smoke_home  # noqa: E402
 from hook_registration import (  # noqa: E402
     CURRENT_PROJECTION_ID,
+    GUARD_PROJECTION_ID,
     HookRegistrationError,
     TRUSTED_PROJECTIONS,
     load_registration,
@@ -47,6 +48,37 @@ def _foreign_group(command: str = "/bin/foreign") -> dict[str, object]:
 
 def _write_registration(path: Path, document: dict[str, object]) -> None:
     path.write_text(json.dumps(document, indent=2) + "\n")
+
+
+GUARD_SCRIPT = "hooks/shoal_guard.py"
+
+
+def _state_path(home: Path) -> Path:
+    return home.with_name(f"{home.name}.pilotfish-install-state.json")
+
+
+def _make_pre_guard(home: Path) -> None:
+    """Turn a freshly installed home into one installed before the dispatch guard existed."""
+    hooks_path = home / "hooks.json"
+    document = json.loads(hooks_path.read_text())
+    for event, group in TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID].items():
+        document["hooks"][event] = [
+            candidate for candidate in document["hooks"][event] if candidate != group
+        ]
+        if not document["hooks"][event]:
+            del document["hooks"][event]
+    _write_registration(hooks_path, document)
+    (home / GUARD_SCRIPT).unlink()
+    state_path = _state_path(home)
+    state = json.loads(state_path.read_text())
+    state.pop("guard_registration")
+    state["target_fingerprints"].pop(GUARD_SCRIPT)
+    state["original_targets"].pop(GUARD_SCRIPT)
+    reconciliation = state.get("reconciliation")
+    if reconciliation is not None:
+        reconciliation["previous_target_fingerprints"].pop(GUARD_SCRIPT, None)
+        reconciliation["post_merge_target_fingerprints"].pop(GUARD_SCRIPT)
+    state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
 
 
 class HookRegistrationTests(unittest.TestCase):
@@ -125,7 +157,7 @@ class HookRegistrationTests(unittest.TestCase):
                     "Stop": [old_group, _foreign_group("/after")],
                 }
             }
-            merged, projection_id = merge_registration(
+            merged, projection_id, _guard = merge_registration(
                 json.dumps(document).encode(), source, owned_projection_id=old_id
             )
             parsed = json.loads(merged)
@@ -430,14 +462,27 @@ class NativeInstallTests(unittest.TestCase):
             recorded = json.loads(state.read_text())
             self.assertEqual(recorded["status"], "committed")
             self.assertIn("config.toml", recorded["target_fingerprints"])
+            # templates/hooks.json (autoroute gate, prompt-lock surface) plus the guard groups
             self.assertEqual(
                 (home / "hooks.json").read_bytes(),
-                (ROOT / "templates" / "hooks.json").read_bytes(),
+                merge_registration(
+                    None,
+                    (ROOT / "templates" / "hooks.json").read_bytes(),
+                    owned_projection_id=None,
+                )[0],
             )
             self.assertEqual(
                 (home / "hooks" / "pilotfish_autoroute_gate.py").read_bytes(),
                 (ROOT / "hooks" / "pilotfish_autoroute_gate.py").read_bytes(),
             )
+            self.assertEqual(
+                (home / GUARD_SCRIPT).read_bytes(),
+                (ROOT / "hooks" / "shoal_guard.py").read_bytes(),
+            )
+            self.assertEqual(
+                recorded["guard_registration"]["projection_id"], GUARD_PROJECTION_ID
+            )
+            self.assertIn(GUARD_SCRIPT, recorded["target_fingerprints"])
             self.assertEqual(recorded["state_version"], 3)
             self.assertEqual(recorded["plugin"]["name"], "pilotfish-codex")
             self.assertEqual(recorded["plugin"]["status"], "unavailable")
@@ -841,6 +886,7 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
+            _make_pre_guard(home)
             hooks_path = home / "hooks.json"
             hooks = json.loads(hooks_path.read_text())
             legacy = TRUSTED_PROJECTIONS["pilotfish-autoroute-v1"]
@@ -1015,7 +1061,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "pilotfish-codex",
                             "marketplaceName": "pilotfish-codex",
-                            "version": "1.8.3",
+                            "version": "1.8.4",
                             "enabled": True,
                         }
                     ]
@@ -1221,6 +1267,7 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
+            _make_pre_guard(home)
             script = home / "hooks" / "pilotfish_autoroute_gate.py"
             previous_payload = b"# previously installed trusted hook payload\n"
             script.write_bytes(previous_payload)
@@ -1261,6 +1308,132 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             self.assertEqual(script.read_bytes(), selected_payload)
             self.assertEqual(state_path.read_bytes(), committed_before)
+
+    def test_guard_is_registered_next_to_autoroute_with_its_own_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            document = json.loads((home / "hooks.json").read_text())
+            prompt_groups = document["hooks"]["UserPromptSubmit"]
+            self.assertEqual(len(prompt_groups), 2)
+            tool_groups = document["hooks"]["PreToolUse"]
+            self.assertEqual(len(tool_groups), 1)
+            self.assertEqual(
+                tool_groups[0]["matcher"],
+                "^(apply_patch|spawn_agent|collaborationspawn_agent)$",
+            )
+            for group in (prompt_groups[1], tool_groups[0]):
+                command = group["hooks"][0]["command"]
+                self.assertIn("hooks/shoal_guard.py", command)
+                self.assertTrue(command.endswith("--host codex"))
+            # the autoroute gate keeps its own events and PreToolUse is guard-only
+            self.assertNotIn("Stop", {
+                event for event, groups in document["hooks"].items()
+                if any(g in groups for g in TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID].values())
+            })
+            # the installer never writes hook trust
+            self.assertNotIn("hooks.state", (home / "config.toml").read_text())
+
+    def test_existing_pre_guard_home_gains_guard_without_hook_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            _make_pre_guard(home)
+            hooks = home / "hooks.json"
+            document = json.loads(hooks.read_text())
+            foreign = _foreign_group("/keep-me")
+            document["hooks"].setdefault("PreToolUse", []).append(foreign)
+            _write_registration(hooks, document)
+            gate_before = (home / "hooks" / "pilotfish_autoroute_gate.py").read_bytes()
+
+            self.assertEqual(self.run_install(home), 0)
+            installed = json.loads(hooks.read_text())
+            self.assertEqual(installed["hooks"]["PreToolUse"][0], foreign)
+            self.assertEqual(
+                installed["hooks"]["PreToolUse"][1],
+                TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["PreToolUse"],
+            )
+            self.assertEqual(
+                (home / GUARD_SCRIPT).read_bytes(),
+                (ROOT / "hooks" / "shoal_guard.py").read_bytes(),
+            )
+            self.assertEqual(
+                (home / "hooks" / "pilotfish_autoroute_gate.py").read_bytes(), gate_before
+            )
+            state = json.loads(_state_path(home).read_text())
+            self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
+            self.assertIn(GUARD_SCRIPT, state["target_fingerprints"])
+
+            # second run is a no-op
+            state_before = _state_path(home).read_bytes()
+            hooks_before = hooks.read_bytes()
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual(_state_path(home).read_bytes(), state_before)
+            self.assertEqual(hooks.read_bytes(), hooks_before)
+
+    def test_dry_run_on_pre_guard_home_plans_guard_and_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            _make_pre_guard(home)
+            before = {p: p.read_bytes() for p in home.rglob("*") if p.is_file()}
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = install(
+                    source_root=ROOT, codex_home=home, dry_run=True, check_codex=False
+                )
+            self.assertEqual(code, 0)
+            self.assertIn("would change primary: hooks/shoal_guard.py", output.getvalue())
+            self.assertIn("would change primary: hooks.json", output.getvalue())
+            self.assertEqual(
+                before, {p: p.read_bytes() for p in home.rglob("*") if p.is_file()}
+            )
+
+    def test_edited_guard_script_without_state_proof_raises_hook_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            _make_pre_guard(home)
+            (home / GUARD_SCRIPT).write_bytes(b"# user edited, never installed by shoal\n")
+            with self.assertRaisesRegex(InstallAbort, "installed_hook_drift"):
+                self.run_install(home)
+
+    def test_state_proven_guard_script_upgrades(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            old_payload = b"# previously installed guard\n"
+            (home / GUARD_SCRIPT).write_bytes(old_payload)
+            state = json.loads(_state_path(home).read_text())
+            state["target_fingerprints"][GUARD_SCRIPT] = hashlib.sha256(old_payload).hexdigest()
+            _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual(
+                (home / GUARD_SCRIPT).read_bytes(),
+                (ROOT / "hooks" / "shoal_guard.py").read_bytes(),
+            )
+
+    def test_unowned_canonical_guard_group_aborts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            home.mkdir()
+            _write_registration(
+                home / "hooks.json",
+                {"hooks": {"PreToolUse": [TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["PreToolUse"]]}},
+            )
+            with self.assertRaisesRegex(InstallAbort, "canonical"):
+                self.run_install(home)
+
+    def test_guard_state_without_script_target_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            state = json.loads(_state_path(home).read_text())
+            state["target_fingerprints"].pop(GUARD_SCRIPT)
+            state["original_targets"].pop(GUARD_SCRIPT)
+            _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
+            with self.assertRaisesRegex(InstallAbort, "stale or incomplete"):
+                self.run_install(home)
 
     def test_hook_script_mutation_after_state_validation_aborts_before_writes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1377,6 +1550,7 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
+            _make_pre_guard(home)
             hooks = home / "hooks.json"
             document = json.loads(hooks.read_text())
             foreign = _foreign_group("/legacy-foreign")
@@ -1397,10 +1571,15 @@ class NativeInstallTests(unittest.TestCase):
                 "bytes_b64": None,
             }
             state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
-            before = hooks.read_bytes()
 
             self.assertEqual(self.run_install(home), 0)
-            self.assertEqual(hooks.read_bytes(), before)
+            installed = json.loads(hooks.read_text())
+            # the foreign group and the autoroute groups survive; the guard is added
+            self.assertEqual(installed["hooks"]["Stop"][0], foreign)
+            for event, group in TRUSTED_PROJECTIONS[CURRENT_PROJECTION_ID].items():
+                self.assertIn(group, installed["hooks"][event])
+            for event, group in TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID].items():
+                self.assertIn(group, installed["hooks"][event])
             migrated = json.loads(state_path.read_text())
             self.assertEqual(migrated["state_version"], 3)
             self.assertNotIn("hooks.json", migrated["target_fingerprints"])
