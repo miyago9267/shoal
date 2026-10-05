@@ -362,6 +362,15 @@ class GrokAdapterTests(CliCase):
         out = json.loads(self.run_guard("grok", e0("d"), SHOAL_GUARD="enforce"))
         self.assertEqual(out["decision"], "deny")
 
+    def test_write_file_counts_toward_r2(self) -> None:
+        self.assertEqual(guard.adapt_grok(self.tool("write_file", {"path": "/r/n"}))["paths"], ["/r/n"])
+        self.run_guard("grok", self.prompt(cwd=self.work))
+        for key, name in (("path", "a"), ("file_path", "b"), ("file_path", "c")):
+            payload = self.tool("write_file", {key: "src/" + name + ".py"}, cwd=self.work)
+            del payload["promptId"]
+            out = self.run_guard("grok", payload)
+            self.assertEqual(out, "")
+
     def test_subagent_leaf_denied(self) -> None:
         payload = self.tool("spawn_subagent", {"subagent_type": "scout"}, subagentType="executor")
         out = json.loads(self.run_guard("grok", payload, SHOAL_GUARD="enforce"))

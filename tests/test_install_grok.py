@@ -258,7 +258,7 @@ class ApplyTests(InstallGrokCase):
         self.assertEqual(
             config["PreToolUse"][0]["hooks"][0]["command"], "pilotfish-grok/plan_mode_guard.py"
         )
-        self.assertEqual(config["PreToolUse"][1]["matcher"], "^(search_replace|spawn_subagent)$")
+        self.assertEqual(config["PreToolUse"][1]["matcher"], "^(search_replace|write_file|spawn_subagent)$")
         self.assertEqual(len(config["UserPromptSubmit"]), 1)
         # tampering after install is caught by the same hash verification as any other file
         script.write_bytes(script.read_bytes() + b"# tampered\n")

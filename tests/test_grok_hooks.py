@@ -97,7 +97,7 @@ class HookConfigTests(unittest.TestCase):
     def test_dispatch_guard_entries(self) -> None:  # dispatch-enforcement R7
         self.assertEqual(len(self.config["PreToolUse"]), 2)
         tool = self.config["PreToolUse"][1]
-        self.assertEqual(tool["matcher"], "^(search_replace|spawn_subagent)$")
+        self.assertEqual(tool["matcher"], "^(search_replace|write_file|spawn_subagent)$")
         (prompt,) = self.config["UserPromptSubmit"]
         self.assertNotIn("matcher", prompt)
         for entry in (tool, prompt):

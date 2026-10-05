@@ -680,8 +680,12 @@ def adapt_grok(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if name != "pre_tool_use":
         return None
     tool, tin = payload.get("toolName"), _dict(payload.get("toolInput"))
-    if tool == "search_replace":
-        path = _str(tin.get("file_path"))
+    if tool in ("search_replace", "write_file"):
+        path = None
+        for key in ("file_path", "path", "target_file", "filePath"):
+            path = _str(tin.get(key))
+            if path:
+                break
         return _event(
             "grok",
             "tool",
