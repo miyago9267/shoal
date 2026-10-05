@@ -52,16 +52,26 @@
 - [ ] `hosts/claude` 不放 settings snippet：entry 由 `install_hooks.py` 產生，靜態 snippet
       會成為第二份來源。
 
-live（commit 之後，需要使用者核准）：
+live（2026-10-05，commit `e33b26e`、`0fccdb8` 之後）：
 
-- [ ] Claude：`install_hooks.py --host claude --apply`，驗證實際擋下一次 main 越權改檔並放行
-      派工後的改檔；dotfile 移除舊 guard 兩處註冊（獨立 commit）。
-- [ ] Codex：`install/install.py` 真實安裝，使用者在 Codex 內以 `/hooks` 核准新 hook 一次。
-- [ ] Grok、agy：`install_grok.py --apply`、`install_hooks.py --host agy
-      --apply`，shadow log 產生
-      `would_deny` 與派工後 allow 各一筆。
-- [ ] OpenCode：隨 plugin 安裝（E3）。
-- [ ] dotfile 設定：OpenCode `monika` 的 `task` 權限加入 `executor`。
+- [x] Claude：`install_hooks.py --host claude --apply`（enforce）。live `claude -p`
+      在 `~/.cache/shoal-e5/proj` 實測：第 3 個檔 `R2 deny`，派 mech-executor 後
+      `dispatched allow`。dotfile 已移除舊 guard 兩處註冊與舊 script、測試；
+      Jev `write_turn` 另寫 shoal 的 turn 檔；auto-update 會呼叫
+      `install_hooks.py --host claude --apply`（dotfile 未 commit）。
+- [x] Codex：`install/install.py` 因本機 install state 過期（使用者自改的
+      autoroute gate 與 symlink policy）無法使用，改用
+      `install_hooks.py --host codex --apply`，只增加 shoal-guard-v1 兩組 entry。
+      live prompt 事件已記錄；工具事件的 live 驗證受 Codex 用量上限阻擋。
+- [ ] Codex：使用者在互動 session 以 `/hooks` 核准新 hook 一次。
+- [x] Grok：`install_grok.py --apply`。live `grok -p` 第 3 個檔 `R2 would_deny`
+      （修正 `0fccdb8` 前每筆都是 `skip_reason=missing_id`）。
+- [x] agy：`install_hooks.py --host agy --apply`。live 第 3 個檔
+      `R2 would_deny`。
+- [x] OpenCode：全域與 harness 重裝 0.2.0 bundle，live 載入無錯誤，第 3 個檔
+      `R2 would_deny`。
+- [ ] dotfile 設定：OpenCode `monika` 的 `task` 權限是否加入 pilotfish role，
+      待使用者決定（影響 daily agent 行為）。
 
 ## Phase E6 - 非 Claude host 切 enforce（條件化）
 
