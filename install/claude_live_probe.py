@@ -50,7 +50,7 @@ SAMPLES = claude.ROOT / "tests" / "fixtures" / "claude_stream"
 # Synthetic sample each stage's real shape is compared with.
 BASELINES = {
     "auth": "no-agent-call",
-    "dispatch": "dispatch-ok",
+    "dispatch": "dispatch-two-rounds",
     "budget": "no-agent-call",
 }
 
@@ -425,13 +425,50 @@ def stream_shape(stdout: str) -> dict[str, Any]:
     sequence: list[str] = []
     tool_uses: list[dict[str, Any]] = []
     rate_limits: list[dict[str, Any]] = []
+    task_events: list[dict[str, Any]] = []
+    rounds: list[dict[str, Any]] = []
+    # Where the first parent-level Agent call, its tool result, the child's
+    # own messages and the task notification sit in the stream (positions and
+    # text lengths only): enough to tell an answer from a launch receipt.
+    trace: dict[str, Any] = {}
+    dispatch_id: str | None = None
     models: set[str] = set()
     init: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
-    for event in events:
+    for index, event in enumerate(events):
         kind = _event_kind(event)
         sequence.append(kind)
         note(kind, event)
+        if event.get("type") == "system" and kind.startswith("system/task_"):
+            if len(task_events) < MAX_TOOL_USES:
+                entry = {"kind": kind, "index": index}
+                for key in ("status", "task_type"):
+                    if isinstance(event.get(key), str):
+                        entry[key] = _name(event[key])
+                for key in ("is_backgrounded", "spawn_depth"):
+                    if isinstance(event.get(key), bool) or _number(event.get(key)) is not None:
+                        entry[key] = event[key]
+                patch = event.get("patch")
+                if isinstance(patch, dict) and isinstance(patch.get("status"), str):
+                    entry["patch_status"] = _name(patch["status"])
+                task_events.append(entry)
+            note(f"{kind}.patch", event.get("patch"))
+            note(f"{kind}.usage", event.get("usage"))
+            if (
+                kind == "system/task_notification"
+                and dispatch_id is not None
+                and event.get("tool_use_id") == dispatch_id
+            ):
+                trace.setdefault("task_notification_index", index)
+        parent_id = event.get("parent_tool_use_id")
+        if (
+            dispatch_id is not None
+            and parent_id == dispatch_id
+            and event.get("type") == "assistant"
+        ):
+            trace["child_assistant_events"] = trace.get("child_assistant_events", 0) + 1
+            trace.setdefault("first_child_assistant_index", index)
+            trace["last_child_assistant_index"] = index
         message = event.get("message")
         if isinstance(message, dict):
             note(f"{kind}.message", message)
@@ -444,8 +481,38 @@ def stream_shape(stdout: str) -> dict[str, Any]:
                     continue
                 block_type = _name(block.get("type"))
                 note(f"{kind}.message.content[{block_type}]", block)
+                if dispatch_id is not None and parent_id == dispatch_id:
+                    if block_type == "text" and isinstance(block.get("text"), str):
+                        trace["last_child_text_chars"] = len(block["text"])
+                if (
+                    block_type == "tool_result"
+                    and dispatch_id is not None
+                    and parent_id is None
+                    and block.get("tool_use_id") == dispatch_id
+                    and "tool_result_index" not in trace
+                ):
+                    trace["tool_result_index"] = index
+                    body = block.get("content")
+                    if isinstance(body, str):
+                        trace["tool_result_text_chars"] = len(body)
+                    elif isinstance(body, list):
+                        trace["tool_result_text_chars"] = sum(
+                            len(part["text"])
+                            for part in body
+                            if isinstance(part, dict) and isinstance(part.get("text"), str)
+                        )
+                    if isinstance(block.get("is_error"), bool):
+                        trace["tool_result_is_error"] = block["is_error"]
                 if block_type != "tool_use":
                     continue
+                if (
+                    dispatch_id is None
+                    and parent_id is None
+                    and block.get("name") == claude.DISPATCH_TOOL
+                    and isinstance(block.get("id"), str)
+                ):
+                    dispatch_id = block["id"]
+                    trace["tool_use_index"] = index
                 tool, tool_input = _name(block.get("name")), block.get("input")
                 note(f"tool_use[{tool}].input", tool_input)
                 if len(tool_uses) < MAX_TOOL_USES:
@@ -511,6 +578,19 @@ def stream_shape(stdout: str) -> dict[str, Any]:
                 if isinstance(event.get("is_error"), bool)
                 else None,
                 "is_last_event": event is events[-1],
+                "index": index,
+                "text_chars": len(event["result"])
+                if isinstance(event.get("result"), str)
+                else None,
+                "origin": {
+                    key: _name(value)
+                    for key, value in (
+                        event["origin"].items()
+                        if isinstance(event.get("origin"), dict)
+                        else []
+                    )
+                    if key in ("kind", "type", "source") and isinstance(value, str)
+                },
                 "numbers": {
                     key: event[key]
                     for key in numeric
@@ -541,6 +621,8 @@ def stream_shape(stdout: str) -> dict[str, Any]:
                     )[:MAX_NAMES],
                 },
             }
+            note("result.origin", event.get("origin"))
+            rounds.append(result)
     return {
         "event_count": len(events),
         "unparsed_lines": unparsed,
@@ -555,6 +637,10 @@ def stream_shape(stdout: str) -> dict[str, Any]:
         },
         "tool_uses": tool_uses,
         "rate_limits": rate_limits,
+        "task_events": task_events,
+        "dispatch_trace": trace,
+        "rounds": rounds[:MAX_TOOL_USES],
+        "round_count": len(rounds),
         "models": sorted(models),
         "init": init,
         "result": result,
@@ -918,14 +1004,43 @@ def _cli_result(observed: dict[str, Any], failure: str | None) -> dict[str, Any]
     shape = observed.get("shape")
     if shape is None:
         return _check(FAIL, failure or "no_observation")
-    result = shape["result"]
+    result = _decisive_round(shape)
     if result is None:
         return _check(FAIL, "no_result_event")
     if result["subtype"] != "success" or result["is_error"] is not False:
         return _check(FAIL, "result_" + _code(result["subtype"]))
+    if not shape["result"]["is_last_event"]:
+        return _check(FAIL, "events_after_last_result")
+    if shape["round_count"] > claude.MAX_STAGE_ROUNDS:
+        return _check(FAIL, "too_many_rounds")
     if observed["returncode"] != 0:
         return _check(FAIL, "exit_nonzero")
     return _check(PASS, "result_success")
+
+
+def _decisive_round(shape: dict[str, Any]) -> dict[str, Any] | None:
+    """The first round that did not succeed, else the last round.
+
+    A stage is as good as its worst round: one failed round fails the stage.
+    """
+    for entry in shape["rounds"]:
+        if entry["subtype"] != "success" or entry["is_error"] is not False:
+            return entry
+    return shape["result"]
+
+
+def _stage_cost(shape: dict[str, Any]) -> tuple[Any, bool]:
+    """Stage cost over all rounds and whether any round's cost was abnormal.
+
+    ``total_cost_usd`` is read as cumulative over the session (see the
+    adapter's ``_stage_totals``); the largest value is the stage cost.
+    """
+    costs = [entry["numbers"].get("total_cost_usd") for entry in shape["rounds"]]
+    anomalous = any(
+        "total_cost_usd" in entry["numbers_dropped"] for entry in shape["rounds"]
+    ) or any(cost is not None and not _valid_cost(cost) for cost in costs)
+    valid = [cost for cost in costs if _valid_cost(cost)]
+    return (None if anomalous or not valid else max(valid)), anomalous
 
 
 def _budget_observation(
@@ -935,7 +1050,7 @@ def _budget_observation(
     shape = observed.get("shape")
     if shape is None:
         return _check(UNDETERMINED, failure or "no_observation")
-    result = shape["result"]
+    result = _decisive_round(shape)
     extra: dict[str, Any] = {"exit_code": observed["returncode"]}
     if result is None:
         mentioned = "budget" in observed["stderr"]["keywords"]
@@ -1157,9 +1272,7 @@ def run_stage(
     # is then charged its whole reservation.
     cost, cost_anomalous = None, False
     if shape is not None and shape["result"] is not None:
-        result = shape["result"]
-        cost = result["numbers"].get("total_cost_usd")
-        cost_anomalous = "total_cost_usd" in result["numbers_dropped"]
+        cost, cost_anomalous = _stage_cost(shape)
     if cost is None and not cost_anomalous and outcome is not None:
         cost = outcome.cost_usd
     if cost is not None and not _valid_cost(cost):

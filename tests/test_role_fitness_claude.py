@@ -419,7 +419,13 @@ class DispatchEvidenceTests(ClaudeStageCase):
         self.assertIn("rate_limit_event", [event["type"] for event in _events()])
         without = [event for event in _events() if event["type"] != "rate_limit_event"]
         plain, _, _ = self.run_stage(_Host(stdout=_stream(without)), name="plain")
-        for index, info in enumerate(({}, {"status": "allowed"}, {"unknown_key": 1})):
+        for index, info in enumerate(
+            (
+                {"status": "allowed"},
+                {"status": "allowed_warning", "isUsingOverage": False},
+                {"status": "allowed", "rateLimitType": "seven_day", "unknown_key": 1},
+            )
+        ):
             events = _events()
             events[6]["rate_limit_info"] = info
             events.insert(2, dict(events[6]))
@@ -447,6 +453,244 @@ class DispatchEvidenceTests(ClaudeStageCase):
                 )
                 self.assertEqual(error.detail, "unrecognized_stream_event")
                 self.assertEqual(_tree(request.scratch), ["clean-cwd"])
+
+    def test_rate_limit_that_is_not_plainly_allowed_stops_the_stage(self) -> None:
+        """AC-CE-032; inferred from the observed ``allowed*`` values."""
+        cases = (
+            ({"status": "rejected"}, "rate_limit_not_allowed"),
+            ({"status": "blocked", "isUsingOverage": False}, "rate_limit_not_allowed"),
+            ({"status": "Allowed"}, "rate_limit_not_allowed"),
+            ({"status": "not_allowed"}, "rate_limit_not_allowed"),
+            ({"status": ""}, "rate_limit_status_unknown"),
+            ({"status": None}, "rate_limit_status_unknown"),
+            ({"status": 1}, "rate_limit_status_unknown"),
+            ({}, "rate_limit_status_unknown"),
+            ({"rateLimitType": "five_hour"}, "rate_limit_status_unknown"),
+            ({"status": "allowed", "isUsingOverage": True}, "rate_limit_overage"),
+            ({"status": "allowed_warning", "isUsingOverage": "false"}, "rate_limit_overage"),
+            ({"status": "allowed", "isUsingOverage": None}, "rate_limit_overage"),
+        )
+        for index, (info, detail) in enumerate(cases):
+            events = _events()
+            events[6]["rate_limit_info"] = info
+            with self.subTest(info):
+                error, _, request = self.run_failing(
+                    claude.StageRateLimited,
+                    _Host(stdout=_stream(events)),
+                    name=f"limited-{index}",
+                )
+                self.assertIsInstance(error, StageEvidenceError)
+                self.assertEqual(error.detail, detail)
+                self.assertEqual(_tree(request.scratch), ["clean-cwd"])
+        # One bad event among allowed ones is enough.
+        events = _events()
+        events.insert(2, {**events[6], "rate_limit_info": {"status": "rejected"}})
+        error, _, _ = self.run_failing(
+            claude.StageRateLimited, _Host(stdout=_stream(events)), name="limited-mix"
+        )
+        self.assertEqual(error.detail, "rate_limit_not_allowed")
+
+    def test_rate_limit_stop_closes_admission_for_the_run(self) -> None:
+        events = _events()
+        events[6]["rate_limit_info"]["status"] = "rejected"
+        admission = claude.CostAdmission(per_stage_cap_usd="0.50")
+        admitted = claude.AdmittedStageAdapter(self.adapter, admission)
+        limited, later = _Host(stdout=_stream(events)), _Host()
+        with (
+            patch.object(claude.subprocess, "run", limited.run),
+            self.assertRaises(claude.StageRateLimited),
+        ):
+            admitted.run_stage(self.request(name="limited"))
+        # The limited stage is charged its reservation; nothing else may start.
+        self.assertEqual(admission.spent_usd, Decimal("0.50"))
+        with (
+            patch.object(claude.subprocess, "run", later.run),
+            self.assertRaises(claude.StageNotAdmitted),
+        ):
+            admitted.run_stage(self.request(name="after-limit"))
+        self.assertEqual((len(limited.calls), later.calls), (1, []))
+
+    def test_informational_system_events_anywhere_change_nothing(self) -> None:
+        """Task and thinking bookkeeping seen in live dispatch runs."""
+        plain, _, _ = self.run_stage(name="plain")
+        extra = [
+            event
+            for event in _events("dispatch-two-rounds")
+            if event["type"] == "system" and event["subtype"] != "init"
+        ]
+        self.assertEqual(
+            sorted({event["subtype"] for event in extra}),
+            [
+                "background_tasks_changed",
+                "task_notification",
+                "task_started",
+                "task_updated",
+                "thinking_tokens",
+            ],
+        )
+        base = _events()
+        for position in range(1, len(base)):
+            events = base[:position] + extra + base[position:]
+            with self.subTest(position):
+                outcome, _, _ = self.run_stage(
+                    _Host(stdout=_stream(events)), name=f"system-{position}"
+                )
+                self.assertEqual(outcome.evidence, plain.evidence)
+                self.assertEqual(
+                    (outcome.messages, outcome.usage, outcome.cost_usd, outcome.returncode),
+                    (plain.messages, plain.usage, plain.cost_usd, 0),
+                )
+        # After the result only a new round may start.
+        error, _, _ = self.run_failing(
+            StageEvidenceError, _Host(stdout=_stream(base + extra[:1])), name="trailing"
+        )
+        self.assertEqual(error.detail, "no_result_event")
+
+    def test_task_events_are_never_dispatch_evidence(self) -> None:
+        events = [
+            event
+            for event in _events("dispatch-two-rounds")
+            if not any(
+                block.get("type") in ("tool_use", "tool_result")
+                for block in event.get("message", {}).get("content", [])
+            )
+        ]
+        started = [event for event in events if event.get("subtype") == "task_started"]
+        self.assertEqual(started[0]["subagent_type"], "plan-verifier")
+        outcome, _, _ = self.run_stage(_Host(stdout=_stream(events)))
+        self.assertEqual(
+            (outcome.evidence.ok, outcome.evidence.reason_code, outcome.messages),
+            (False, "no_agent_call", []),
+        )
+
+    def test_two_round_stream_is_one_stage(self) -> None:
+        events = _events("dispatch-two-rounds")
+        self.assertEqual(
+            [index for index, event in enumerate(events) if event["type"] == "result"],
+            [17, 23],
+        )
+        outcome, _, _ = self.run_stage(_Host(stdout=_stream(events)))
+        self.assertEqual(
+            (outcome.evidence.ok, outcome.evidence.reason_code, outcome.messages),
+            (True, "ok", ["READY"]),
+        )
+        # Two models were used over the stage, so none is reported.
+        self.assertIsNone(outcome.evidence.model)
+        self.assertEqual(outcome.returncode, 0)
+        # Cost is the cumulative total of the last round, not the first (0.03).
+        self.assertEqual(outcome.cost_usd, 0.0421)
+        # Per-round sums: input 200, cache write 60, cache read 500, output 40;
+        # the last round's per-model totals are larger and win field by field.
+        self.assertEqual(
+            outcome.usage,
+            {
+                "input_tokens": 220 + 500 + 70,
+                "cached_input_tokens": 500,
+                "cache_write_input_tokens": 70,
+                "output_tokens": 45,
+            },
+        )
+        self.assertEqual(outcome.child_usage, outcome.usage)
+        self.assertEqual(
+            (outcome.event_counts["result"], outcome.event_counts["system"]), (2, 13)
+        )
+
+    def test_usage_never_drops_a_round_or_a_subagent(self) -> None:
+        events = _events("dispatch-two-rounds")
+        for index in (17, 23):
+            events[index]["usage"].update(
+                {
+                    "input_tokens": 1000,
+                    "cache_creation_input_tokens": 100,
+                    "cache_read_input_tokens": 10,
+                    "output_tokens": 1,
+                }
+            )
+        outcome, _, _ = self.run_stage(_Host(stdout=_stream(events)), name="sum")
+        self.assertEqual(
+            outcome.usage,
+            {
+                "input_tokens": 2000 + 500 + 200,
+                "cached_input_tokens": 500,
+                "cache_write_input_tokens": 200,
+                "output_tokens": 45,
+            },
+        )
+        # Without usable per-model totals the per-round sum stands alone.
+        del events[23]["modelUsage"]["synthetic-model"]["inputTokens"]
+        outcome, _, _ = self.run_stage(_Host(stdout=_stream(events)), name="no-model")
+        self.assertEqual(
+            outcome.usage,
+            {
+                "input_tokens": 2000 + 20 + 200,
+                "cached_input_tokens": 20,
+                "cache_write_input_tokens": 200,
+                "output_tokens": 2,
+            },
+        )
+
+    def test_any_failed_round_fails_the_stage(self) -> None:
+        for index in (17, 23):
+            for change in ({"is_error": True}, {"subtype": "error_during_execution"}):
+                events = _events("dispatch-two-rounds")
+                events[index].update(change)
+                with self.subTest((index, list(change))):
+                    outcome, _, _ = self.run_stage(
+                        _Host(stdout=_stream(events)), name=f"failed-{index}"
+                    )
+                    self.assertEqual(outcome.returncode, 1)
+                    self.assertEqual(outcome.cost_usd, 0.0421)
+
+    def test_round_rules_fail_closed(self) -> None:
+        base = _events("dispatch-two-rounds")
+        second = base[18:]
+
+        def cheaper() -> list[dict[str, Any]]:
+            events = _events("dispatch-two-rounds")
+            events[17]["total_cost_usd"] = 0.05
+            return events
+
+        def bad_first_result() -> list[dict[str, Any]]:
+            events = _events("dispatch-two-rounds")
+            del events[17]["usage"]
+            return events
+
+        def second_agent_call() -> list[dict[str, Any]]:
+            events = _events("dispatch-two-rounds")
+            again = json.loads(json.dumps(events[4]))
+            again["message"]["content"][0]["id"] = "toolu_synthetic_02"
+            return events[:21] + [again] + events[21:]
+
+        cases = {
+            "three_rounds_ok": (base + second, None),
+            "four_rounds": (base + second + second, "too_many_rounds"),
+            "no_init_after_result": (base[:18] + base[19:], "unrecognized_stream_event"),
+            "result_twice": (base[:18] + [base[17]] + base[18:], "unrecognized_stream_event"),
+            "ends_inside_a_round": (base[:-1], "no_result_event"),
+            "cost_goes_down": (cheaper(), "inconsistent_round_costs"),
+            "bad_first_result": (bad_first_result(), "unrecognized_result_event"),
+        }
+        self.assertEqual(claude.MAX_STAGE_ROUNDS, 3)
+        for index, (label, (events, detail)) in enumerate(cases.items()):
+            with self.subTest(label):
+                host = _Host(stdout=_stream(events))
+                if detail is None:
+                    outcome, _, _ = self.run_stage(host, name=f"rounds-{index}")
+                    self.assertTrue(outcome.evidence.ok)
+                    self.assertEqual(outcome.event_counts["result"], 3)
+                else:
+                    error, _, request = self.run_failing(
+                        StageEvidenceError, host, name=f"rounds-{index}"
+                    )
+                    self.assertEqual(error.detail, detail)
+                    self.assertEqual(_tree(request.scratch), ["clean-cwd"])
+        outcome, _, _ = self.run_stage(
+            _Host(stdout=_stream(second_agent_call())), name="second-call"
+        )
+        self.assertEqual(
+            (outcome.evidence.ok, outcome.evidence.reason_code),
+            (False, "multiple_agent_calls"),
+        )
 
     def test_rate_limit_event_cannot_stand_in_for_the_result(self) -> None:
         error, _, _ = self.run_failing(

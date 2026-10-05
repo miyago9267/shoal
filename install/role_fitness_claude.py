@@ -59,12 +59,25 @@ DISPATCH_TOOL = "Agent"
 DISPATCH_OK = "NATIVE_OK"
 DISPATCH_FAILED = "NATIVE_DISPATCH_FAILED"
 
-# Informational event seen in live runs (CLI 2.1.289, 2026-10-05) between the
-# last assistant message and the result.  Only its top-level keys were
-# observed; what `rate_limit_info` holds was not, so it is not interpreted and
-# cannot yet signal a rejected quota (AC-CE-032 still relies on the result
-# event and the exit status).
+# Informational event seen in live runs (CLI 2.1.289, 2026-10-05).  Observed
+# `rate_limit_info`: `status` ("allowed_warning" in every run so far),
+# `rateLimitType`, `isUsingOverage` (false), `resetsAt`, `utilization`,
+# `unifiedWindows`.  A rejected quota has never been observed: the stop rule
+# below is inferred from the `allowed*` values, not from a seen rejection.
 RATE_LIMIT_EVENT = "rate_limit_event"
+RATE_LIMIT_ALLOWED_PREFIX = "allowed"
+
+# A stream is one or more rounds, each closed by a `result` event.  Live
+# dispatch runs showed two: the Agent task is tracked as a background task and,
+# after the first result, the parent is woken once more (a second `system/init`
+# ... `result`).  One dispatch explains two rounds; one more is slack.
+MAX_STAGE_ROUNDS = 3
+_MODEL_USAGE_KEYS = {
+    "input_tokens": "inputTokens",
+    "cache_creation_input_tokens": "cacheCreationInputTokens",
+    "cache_read_input_tokens": "cacheReadInputTokens",
+    "output_tokens": "outputTokens",
+}
 
 # StageRequest.sandbox -> permission mode.  Prompts are never answered
 # (`--permission-prompts none`), so anything the mode does not allow is denied.
@@ -102,6 +115,14 @@ _RESULT_USAGE_KEYS = (
 
 class StageCleanupError(Exception):
     """Stage-private data could not be deleted; the stage has failed."""
+
+
+class StageRateLimited(StageEvidenceError):
+    """The host reported a usage limit that is not plainly allowed (AC-CE-032).
+
+    ``detail`` is ``rate_limit_not_allowed``, ``rate_limit_status_unknown`` or
+    ``rate_limit_overage``.  The run must not start another stage.
+    """
 
 
 class StageNotAdmitted(StageSetupError):
@@ -330,6 +351,86 @@ def _result_texts(content: Any) -> list[str]:
     return texts
 
 
+def _require_rate_limit_allowed(event: dict[str, Any]) -> None:
+    """Fail closed unless a rate limit event plainly allows the run to go on.
+
+    Only a ``status`` starting with ``allowed`` continues; any other value, a
+    missing status or active overage (extra cost) stops the stage.
+    """
+    info = event.get("rate_limit_info")
+    if not isinstance(info, dict):
+        raise _bad_stream("unrecognized_stream_event")
+    status, overage = info.get("status"), info.get("isUsingOverage", False)
+    if not isinstance(status, str) or not status:
+        raise StageRateLimited("rate_limit_status_unknown")
+    if not status.startswith(RATE_LIMIT_ALLOWED_PREFIX):
+        raise StageRateLimited("rate_limit_not_allowed")
+    if overage is not False:
+        raise StageRateLimited("rate_limit_overage")
+
+
+def _result_round(result: dict[str, Any]) -> dict[str, Any]:
+    """Validate one ``result`` event and return what a round contributes."""
+    usage, cost, models = (
+        result.get("usage"),
+        result.get("total_cost_usd"),
+        result.get("modelUsage"),
+    )
+    if (
+        not isinstance(result.get("subtype"), str)
+        or not isinstance(result.get("is_error"), bool)
+        or not isinstance(usage, dict)
+        or not all(_count(usage.get(key)) for key in _RESULT_USAGE_KEYS)
+        or isinstance(cost, bool)
+        or not isinstance(cost, (int, float))
+        or not math.isfinite(cost)
+        or cost < 0
+        or not isinstance(models, dict)
+        or any(
+            not isinstance(name, str) or not name or not isinstance(entry, dict)
+            for name, entry in models.items()
+        )
+    ):
+        raise _bad_stream("unrecognized_result_event")
+    return {
+        "usage": {key: usage[key] for key in _RESULT_USAGE_KEYS},
+        "cost": float(cost),
+        "models": models,
+        "failed": result["is_error"] or result["subtype"] != "success",
+        "text": result.get("result"),
+    }
+
+
+def _stage_totals(rounds: list[dict[str, Any]]) -> tuple[dict[str, int], float]:
+    """Raw usage and cost of a whole stage from its rounds; never undercounts.
+
+    Cost: ``total_cost_usd`` is cumulative over the session (in the live
+    two-round run the last value equalled the sum of ``modelUsage`` costs,
+    which included the subagent's model that only ran in the first round), so
+    the last round's value is the stage cost.  A later value below an earlier
+    one contradicts that reading and fails closed.
+
+    Usage: ``usage`` is per round and ``modelUsage`` is cumulative per model.
+    Each field is the larger of the per-round sum and the last round's
+    per-model sum, so neither a second round nor a subagent is left out.
+    """
+    costs = [entry["cost"] for entry in rounds]
+    if any(later < earlier for earlier, later in zip(costs, costs[1:])):
+        raise _bad_stream("inconsistent_round_costs")
+    totals = {
+        key: sum(entry["usage"][key] for entry in rounds) for key in _RESULT_USAGE_KEYS
+    }
+    per_model = list(rounds[-1]["models"].values())
+    if per_model and all(
+        _count(entry.get(name))
+        for entry in per_model
+        for name in _MODEL_USAGE_KEYS.values()
+    ):
+        for key, name in _MODEL_USAGE_KEYS.items():
+            totals[key] = max(totals[key], sum(entry[name] for entry in per_model))
+    return totals, costs[-1]
+
+
 def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
     """Read one ``--output-format stream-json`` run.
 
@@ -338,7 +439,14 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
     reported the run as failed.  Raises ``StageEvidenceError`` with a short
     code (never stream content) for any event shape it does not recognise.
     With ``role`` None (a single-agent stage) there is no dispatch evidence and
-    the message is the result event's final text.
+    the message is the last result event's final text.
+
+    The stream may hold up to ``MAX_STAGE_ROUNDS`` rounds, each ending in a
+    ``result`` event and each later one opening with ``system/init``.  The
+    stage has failed when any round failed.  ``system`` events (task and
+    thinking bookkeeping among them) and ``rate_limit_event`` are informational
+    and never count as dispatch evidence: that comes only from the parent's
+    ``Agent`` tool call and its tool result, wherever in the rounds they are.
     """
     events: list[dict[str, Any]] = []
     for line in stdout.splitlines():
@@ -358,16 +466,27 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
     calls: list[tuple[str, Any]] = []
     results: dict[str, tuple[bool, list[str]]] = {}
     seen_tool_ids: set[str] = set()
-    for event in events[:-1]:
+    rounds: list[dict[str, Any]] = []
+    round_closed = False
+    for event in events:
         kind = event["type"]
         event_counts[kind] = event_counts.get(kind, 0) + 1
+        # Nothing but the start of a new round may follow a result.
+        if round_closed and (kind != "system" or event.get("subtype") != "init"):
+            raise _bad_stream("unrecognized_stream_event")
+        round_closed = False
+        if kind == "result":
+            rounds.append(_result_round(event))
+            if len(rounds) > MAX_STAGE_ROUNDS:
+                raise _bad_stream("too_many_rounds")
+            round_closed = True
+            continue
         if kind == "system":
             if not isinstance(event.get("subtype"), str):
                 raise _bad_stream("unrecognized_stream_event")
             continue
         if kind == RATE_LIMIT_EVENT:
-            if not isinstance(event.get("rate_limit_info"), dict):
-                raise _bad_stream("unrecognized_stream_event")
+            _require_rate_limit_allowed(event)
             continue
         if kind not in {"assistant", "user"}:
             raise _bad_stream("unrecognized_stream_event")
@@ -420,30 +539,8 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
                     raise _bad_stream("unrecognized_tool_result")
                 results[tool_id] = (is_error, _result_texts(block.get("content")))
 
-    result = events[-1]
-    event_counts["result"] = 1
-    usage, cost, models = (
-        result.get("usage"),
-        result.get("total_cost_usd"),
-        result.get("modelUsage"),
-    )
-    if (
-        not isinstance(result.get("subtype"), str)
-        or not isinstance(result.get("is_error"), bool)
-        or not isinstance(usage, dict)
-        or not all(_count(usage.get(key)) for key in _RESULT_USAGE_KEYS)
-        or isinstance(cost, bool)
-        or not isinstance(cost, (int, float))
-        or not math.isfinite(cost)
-        or cost < 0
-        or not isinstance(models, dict)
-        or any(
-            not isinstance(name, str) or not name or not isinstance(entry, dict)
-            for name, entry in models.items()
-        )
-    ):
-        raise _bad_stream("unrecognized_result_event")
-
+    usage, cost = _stage_totals(rounds)
+    host_failed = any(entry["failed"] for entry in rounds)
     # Anthropic usage reports cache tokens outside input_tokens; the runner's
     # keys (and its weighted-token formula) expect them included.
     cache_read, cache_write = (
@@ -457,17 +554,18 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
         "output_tokens": usage["output_tokens"],
     }
     # The result event does not say which model served the subagent, so a model
-    # is only reported when the run used exactly one.
+    # is only reported when the whole stage used exactly one.
+    models = {name for entry in rounds for name in entry["models"]}
     model = next(iter(models)) if len(models) == 1 else None
 
     if role is None:
-        final = result.get("result")
+        final = rounds[-1]["text"]
         return {
             "messages": [final] if isinstance(final, str) else [],
             "event_counts": event_counts,
             "usage": normalized,
-            "cost_usd": float(cost),
-            "host_failed": result["is_error"] or result["subtype"] != "success",
+            "cost_usd": cost,
+            "host_failed": host_failed,
             "evidence": None,
         }
     if not calls:
@@ -487,8 +585,8 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
         "messages": results[calls[0][0]][1] if ok else [],
         "event_counts": event_counts,
         "usage": normalized,
-        "cost_usd": float(cost),
-        "host_failed": result["is_error"] or result["subtype"] != "success",
+        "cost_usd": cost,
+        "host_failed": host_failed,
         "evidence": DispatchEvidence(
             ok,
             DISPATCH_OK if ok else DISPATCH_FAILED,
@@ -715,6 +813,11 @@ class CostAdmission:
         if cost > self.per_stage_cap_usd:
             self._closed = "per-stage cap was exceeded"
 
+    def close(self, reason: str) -> None:
+        """Refuse every later stage of the run (first reason wins)."""
+        if self._closed is None:
+            self._closed = reason
+
 
 class AdmittedStageAdapter:
     """A ``StageAdapter`` that runs its inner adapter only after cost admission."""
@@ -730,6 +833,11 @@ class AdmittedStageAdapter:
         except StageSetupError:
             # Raised before the host starts: nothing was spent.
             self.admission.settle(0.0)
+            raise
+        except StageRateLimited:
+            # AC-CE-032: a usage limit ends the run; finished stages are kept.
+            self.admission.settle(None)
+            self.admission.close("usage limit reported by the host")
             raise
         except BaseException:
             self.admission.settle(None)

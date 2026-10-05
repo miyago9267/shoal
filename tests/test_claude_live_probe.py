@@ -54,23 +54,36 @@ def _stream(events: list[dict[str, Any]]) -> str:
 
 
 def stage_events(
-    stage: str, *, init: dict[str, Any] | None = None, cwd: str = "/synthetic"
+    stage: str,
+    *,
+    init: dict[str, Any] | None = None,
+    cwd: str = "/synthetic",
+    sample: str | None = None,
 ) -> list[dict[str, Any]]:
     """A synthetic stream for one probe stage, seeded with unreportable text."""
-    events = _events("dispatch-ok" if stage == "dispatch" else "no-agent-call")
-    events = json.loads(json.dumps(events).replace("plan-verifier", "scout"))
-    events[0].update(
-        {
-            "agents": STAGED + ["general-purpose"],
-            "skills": [],
-            "slash_commands": ["init"],
-            "plugins": [],
-            "hooks": [],
-            "apiKeySource": "none",
-            "cwd": cwd,
-        }
+    events = _events(
+        sample or ("dispatch-ok" if stage == "dispatch" else "no-agent-call")
     )
-    events[0].update(init or {})
+    events = json.loads(json.dumps(events).replace("plan-verifier", "scout"))
+    for event in events:
+        if event["type"] == "system" and event["subtype"] == "init":
+            event.update(
+                {
+                    "agents": STAGED + ["general-purpose"],
+                    "skills": [],
+                    "slash_commands": ["init"],
+                    "plugins": [],
+                    "hooks": [],
+                    "apiKeySource": "none",
+                    "cwd": cwd,
+                }
+            )
+            event.update(init or {})
+        for key in ("description", "prompt", "summary", "output_file"):
+            if event["type"] == "system" and key in event:
+                event[key] = FREE_TEXT
+        if event["type"] == "result":
+            event["result"] = FREE_TEXT
     for event in events:
         content = event.get("message", {}).get("content")
         for block in content if isinstance(content, list) else []:
@@ -847,7 +860,7 @@ class DispatchStageTests(ProbeCase):
             (evidence["reason"], evidence["dispatch_status"], evidence["model"]),
             ("ok", "NATIVE_OK", "synthetic-model"),
         )
-        self.assertEqual(stage["synthetic_diff"]["sample"], "dispatch-ok")
+        self.assertEqual(stage["synthetic_diff"]["sample"], "dispatch-two-rounds")
         self.assertEqual(code, 0)
 
     def test_no_agent_call_fails(self) -> None:
@@ -1175,7 +1188,7 @@ class LiveCalibrationTests(ProbeCase):
         events = stage_events("auth")
         self.assertEqual(events[-2]["type"], "rate_limit_event")
         events[-2]["rate_limit_info"] = {
-            "status": "allowed",
+            "status": "allowed_warning",
             "rateLimitType": "five_hour",
             "resetsAt": 1790000000,
             "isUsingOverage": False,
@@ -1190,7 +1203,7 @@ class LiveCalibrationTests(ProbeCase):
         )
         self.assertEqual(
             stage["shape"]["rate_limits"],
-            [{"status": "allowed", "rateLimitType": "five_hour", "isUsingOverage": False}],
+            [{"status": "allowed_warning", "rateLimitType": "five_hour", "isUsingOverage": False}],
         )
         self.assertNotIn("SENTINEL", out)
         self.assertEqual(stage["adapter"]["event_counts"]["rate_limit_event"], 1)
@@ -1203,7 +1216,7 @@ class LiveCalibrationTests(ProbeCase):
         stage = report["stages"]["auth"]
         self.assertEqual(
             stage["shape"]["sequence"],
-            ["system/init", "assistant", "assistant", "rate_limit_event", "result/success"],
+            ["system/init", "system/thinking_tokens", "system/thinking_tokens", "assistant", "assistant", "rate_limit_event", "result/success"],
         )
         diff = stage["synthetic_diff"]
         self.assertEqual(
@@ -1222,11 +1235,150 @@ class LiveCalibrationTests(ProbeCase):
         self.assertEqual(len(keys["assistant"]), 8)
         self.assertEqual(len(keys["assistant.message"]), 13)
         self.assertIn("assistant.message.content[thinking]", keys)
-        for name in ("dispatch-ok", "unknown-event"):
+        for name in ("dispatch-two-rounds",):
             other = probe.stream_shape((SAMPLES / f"{name}.jsonl").read_text(encoding="utf-8"))
-            for path in ("system/init", "result/success", "result.usage", "result.modelUsage[]", "rate_limit_event", "assistant"):
+            for path in ("system/init", "result.usage", "result.modelUsage[]", "rate_limit_event", "assistant.message"):
                 self.assertEqual(sorted(other["keys"][path]), sorted(keys[path]), (name, path))
-        self.assertIn("synthetic_unknown_event", other["kinds"])
+        self.assertEqual(
+            sorted(keys["rate_limit_event.rate_limit_info"]),
+            ["isUsingOverage", "rateLimitType", "resetsAt", "status", "unifiedWindows", "utilization"],
+        )
+        unknown = probe.stream_shape((SAMPLES / "unknown-event.jsonl").read_text(encoding="utf-8"))
+        self.assertIn("synthetic_unknown_event", unknown["kinds"])
+
+
+class DispatchRoundsTests(ProbeCase):
+    """Live dispatch shape of 2026-10-05: task bookkeeping events and two rounds."""
+
+    def dispatch(self, events: list[dict[str, Any]], *args: str) -> tuple[int, dict[str, Any], dict[str, Any], str, _Host]:
+        code, report, host, out, _ = self.probe(
+            "--stages", "auth,dispatch,budget", *args, host=_Host(dispatch={"events": events})
+        )
+        return code, report["stages"]["dispatch"], report, out, host
+
+    def events(self) -> list[dict[str, Any]]:
+        events = stage_events("dispatch", sample="dispatch-two-rounds")
+        del events[0]["hooks"], events[18]["hooks"]
+        return events
+
+    def test_two_round_dispatch_passes_and_matches_the_sample(self) -> None:
+        code, stage, report, out, host = self.dispatch(self.events())
+        self.assertEqual(
+            {name: entry["status"] for name, entry in stage["checks"].items()},
+            dict.fromkeys(stage["checks"], "pass"),
+        )
+        shape = stage["shape"]
+        self.assertEqual((shape["round_count"], shape["event_count"]), (2, 24))
+        self.assertEqual(shape["sequence"][17:19], ["result/success", "system/init"])
+        self.assertEqual([entry["index"] for entry in shape["rounds"]], [17, 23])
+        self.assertEqual(shape["rounds"][1]["origin"], {"kind": "task-notification"})
+        self.assertEqual(
+            shape["dispatch_trace"],
+            {
+                "tool_use_index": 4,
+                "tool_result_index": 7,
+                "tool_result_text_chars": 5,
+                "child_assistant_events": 1,
+                "first_child_assistant_index": 10,
+                "last_child_assistant_index": 10,
+                "last_child_text_chars": len(FREE_TEXT),
+                "task_notification_index": 13,
+            },
+        )
+        self.assertEqual(
+            shape["task_events"],
+            [
+                {"kind": "system/task_started", "index": 6, "task_type": "local_agent", "is_backgrounded": False, "spawn_depth": 1},
+                {"kind": "system/task_updated", "index": 12, "patch_status": "completed"},
+                {"kind": "system/task_notification", "index": 13, "status": "completed"},
+            ],
+        )
+        for path in ("system/task_started", "system/task_updated", "system/task_notification", "system/background_tasks_changed", "system/thinking_tokens", "result.origin"):
+            self.assertIn(path, shape["keys"])
+        diff = stage["synthetic_diff"]
+        self.assertEqual((diff["sample"], diff["keys"], diff["kinds_only_live"], diff["paths_only_live"]), ("dispatch-two-rounds", {}, [], []))
+        # Cost is the cumulative value of the last round, not the first one.
+        self.assertEqual(stage["cost_usd"], 0.0421)
+        self.assertEqual(report["charged_usd"], "0.1263")
+        self.assertEqual(stage["adapter"]["event_counts"]["result"], 2)
+        self.assertEqual([call["stage"] for call in host.calls], ["auth", "dispatch", "budget"])
+        self.assertNotIn("SENTINEL", out)
+
+    def test_a_failed_round_fails_the_stage_and_stops_the_run(self) -> None:
+        for index in (17, 23):
+            events = self.events()
+            events[index].update({"subtype": "error_during_execution", "is_error": True})
+            with self.subTest(index):
+                code, stage, report, _, host = self.dispatch(events)
+                self.assertEqual(
+                    stage["checks"]["cli_result"],
+                    {"status": "fail", "reason": "result_error_during_execution"},
+                )
+                self.assertEqual(stage["adapter"]["returncode"], 1)
+                self.assertEqual(report["stopped"], "dispatch_stage_did_not_pass")
+                self.assertEqual([call["stage"] for call in host.calls], ["auth", "dispatch"])
+                self.assertEqual(code, 1)
+
+    def test_too_many_rounds_fail_closed(self) -> None:
+        events = self.events()
+        events += events[18:] + events[18:]
+        self.assertEqual(sum(event["type"] == "result" for event in events), 4)
+        code, stage, report, _, host = self.dispatch(events)
+        self.assertEqual(stage["checks"]["cli_result"]["reason"], "too_many_rounds")
+        self.assertEqual(stage["adapter"]["reason"], "evidence_too_many_rounds")
+        self.assertEqual(report["stopped"], "dispatch_stage_did_not_pass")
+        self.assertEqual(len(host.calls), 2)
+
+    def test_round_costs_use_the_largest_and_flag_an_abnormal_one(self) -> None:
+        events = self.events()
+        events[17]["total_cost_usd"] = 0.2
+        code, stage, report, _, host = self.dispatch(events)
+        # The adapter refuses a total that goes down; the probe charges the larger.
+        self.assertEqual(stage["adapter"]["reason"], "evidence_inconsistent_round_costs")
+        self.assertEqual(stage["cost_usd"], 0.2)
+        events = self.events()
+        events[17]["total_cost_usd"] = -1
+        code, stage, report, _, host = self.dispatch(events)
+        self.assertEqual((stage["cost_usd"], stage["cost_anomalous"]), (None, True))
+        self.assertEqual(report["charged_usd"], "1.0421")
+
+    def test_task_events_are_not_dispatch_evidence(self) -> None:
+        events = [
+            event
+            for event in self.events()
+            if not any(block.get("type") in ("tool_use", "tool_result") for block in event.get("message", {}).get("content", []))
+        ]
+        self.assertIn("task_started", [event.get("subtype") for event in events])
+        code, stage, _, _, _ = self.dispatch(events)
+        self.assertEqual(stage["checks"]["agent_tool_call"], {"status": "fail", "reason": "no_agent_call"})
+        self.assertEqual(stage["checks"]["adapter_evidence"]["reason"], "no_agent_call")
+        self.assertEqual(stage["shape"]["dispatch_trace"], {})
+
+    def test_rate_limit_that_is_not_allowed_stops_the_run(self) -> None:
+        cases = {
+            "rejected": "evidence_rate_limit_not_allowed",
+            "": "evidence_rate_limit_status_unknown",
+        }
+        for status, reason in cases.items():
+            events = stage_events("auth")
+            events[-2]["rate_limit_info"]["status"] = status
+            with self.subTest(status):
+                code, report, host, _, _ = self.probe("--stages", ALL, host=_Host(auth={"events": events}))
+                auth = report["stages"]["auth"]
+                self.assertEqual(auth["checks"]["adapter_parse"], {"status": "fail", "reason": reason})
+                self.assertEqual(auth["checks"]["cli_result"]["status"], "pass")
+                self.assertEqual(report["stopped"], "auth_stage_did_not_pass")
+                self.assertEqual([call["stage"] for call in host.calls], ["auth"])
+                self.assertEqual(code, 1)
+        events = stage_events("auth")
+        events[-2]["rate_limit_info"].update({"status": "allowed_warning", "isUsingOverage": True})
+        _, report, host, _, _ = self.probe("--stages", ALL, host=_Host(auth={"events": events}))
+        self.assertEqual(report["stages"]["auth"]["adapter"]["reason"], "evidence_rate_limit_overage")
+        self.assertEqual(len(host.calls), 1)
+        events = stage_events("auth")
+        events[-2]["rate_limit_info"]["status"] = "allowed_warning"
+        code, report, _, _, _ = self.probe(host=_Host(auth={"events": events}))
+        self.assertEqual((report["stages"]["auth"]["status"], code), ("pass", 0))
 
 
 class StopAfterFailureTests(ProbeCase):
