@@ -58,7 +58,7 @@ live（2026-10-05，commit `e33b26e`、`0fccdb8` 之後）：
       在 `~/.cache/shoal-e5/proj` 實測：第 3 個檔 `R2 deny`，派 mech-executor 後
       `dispatched allow`。dotfile 已移除舊 guard 兩處註冊與舊 script、測試；
       Jev `write_turn` 另寫 shoal 的 turn 檔；auto-update 會呼叫
-      `install_hooks.py --host claude --apply`（dotfile 未 commit）。
+      `install_hooks.py --host claude --apply`。
 - [x] Codex：`install/install.py` 因本機 install state 過期（使用者自改的
       autoroute gate 與 symlink policy）無法使用，改用
       `install_hooks.py --host codex --apply`，只增加 shoal-guard-v1 兩組 entry。
@@ -70,8 +70,9 @@ live（2026-10-05，commit `e33b26e`、`0fccdb8` 之後）：
       `R2 would_deny`。
 - [x] OpenCode：全域與 harness 重裝 0.2.0 bundle，live 載入無錯誤，第 3 個檔
       `R2 would_deny`。
-- [ ] dotfile 設定：OpenCode `monika` 的 `task` 權限是否加入 pilotfish role，
-      待使用者決定（影響 daily agent 行為）。
+- [x] dotfile 設定：OpenCode `monika` 的 `task` 權限加入 executor、
+      security-executor、verifier、security-reviewer（Miyago 2026-10-05 決定）。
+      dotfile 變更已 commit（`8eeb198`）。
 
 ## Phase E6 - 非 Claude host 切 enforce（條件化）
 
