@@ -59,6 +59,13 @@ DISPATCH_TOOL = "Agent"
 DISPATCH_OK = "NATIVE_OK"
 DISPATCH_FAILED = "NATIVE_DISPATCH_FAILED"
 
+# Informational event seen in live runs (CLI 2.1.289, 2026-10-05) between the
+# last assistant message and the result.  Only its top-level keys were
+# observed; what `rate_limit_info` holds was not, so it is not interpreted and
+# cannot yet signal a rejected quota (AC-CE-032 still relies on the result
+# event and the exit status).
+RATE_LIMIT_EVENT = "rate_limit_event"
+
 # StageRequest.sandbox -> permission mode.  Prompts are never answered
 # (`--permission-prompts none`), so anything the mode does not allow is denied.
 _PERMISSION_MODES = {"read-only": "manual", "workspace-write": "acceptEdits"}
@@ -356,6 +363,10 @@ def parse_stream(stdout: str, role: str | None) -> dict[str, Any]:
         event_counts[kind] = event_counts.get(kind, 0) + 1
         if kind == "system":
             if not isinstance(event.get("subtype"), str):
+                raise _bad_stream("unrecognized_stream_event")
+            continue
+        if kind == RATE_LIMIT_EVENT:
+            if not isinstance(event.get("rate_limit_info"), dict):
                 raise _bad_stream("unrecognized_stream_event")
             continue
         if kind not in {"assistant", "user"}:

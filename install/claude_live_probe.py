@@ -29,6 +29,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -183,6 +184,79 @@ _STDERR_KEYWORDS = (
     "not supported",
     "deprecated",
 )
+
+
+# Names the CLI ships itself, as loaded by a live run with a fresh config dir
+# and `--setting-sources project` (CLI 2.1.289, observed 2026-10-05).  A user
+# skill or command of the same name cannot be told apart from the built-in, so
+# these names are never evidence of the user layer.
+BUILTIN_SKILLS = frozenset(
+    {
+        "batch",
+        "claude-api",
+        "code-review",
+        "dataviz",
+        "debug",
+        "deep-research",
+        "design",
+        "design-sync",
+        "doctor",
+        "fewer-permission-prompts",
+        "loop",
+        "plugin-authoring",
+        "run",
+        "run-skill-generator",
+        "schedule",
+        "simplify",
+        "update-config",
+        "verify",
+        "workflow-authoring",
+    }
+)
+BUILTIN_SLASH_COMMANDS = BUILTIN_SKILLS | frozenset(
+    {
+        "__remote-workflow",
+        "advisor",
+        "agents",
+        "auto-mode-setup",
+        "autocompact",
+        "clear",
+        "color",
+        "compact",
+        "config",
+        "context",
+        "design-consent",
+        "design-revoke",
+        "effort",
+        "fast",
+        "focus",
+        "goal",
+        "heapdump",
+        "import",
+        "init",
+        "insights",
+        "list-agents",
+        "mcp",
+        "model",
+        "output-style",
+        "recap",
+        "reload-plugins",
+        "reload-skills",
+        "rename",
+        "security-review",
+        "skill-doctor",
+        "team-onboarding",
+        "ultrareview",
+        "usage",
+        "workflow-launch-exec",
+    }
+)
+BUILTIN_AGENTS = frozenset({"Plan", "claude", "general-purpose", "statusline-setup"})
+# Plugins bundled with the CLI carry this prefix (same observation).
+BUILTIN_PLUGIN_PREFIX = "cc-plugin-"
+# Slack around the child's lifetime when a change is dated by its mtime; file
+# systems round timestamps, so a change this close counts as inside.
+CHILD_WINDOW_SLACK_NS = 2_000_000_000
 
 
 class _ScanLimit(Exception):
@@ -350,6 +424,7 @@ def stream_shape(stdout: str) -> dict[str, Any]:
 
     sequence: list[str] = []
     tool_uses: list[dict[str, Any]] = []
+    rate_limits: list[dict[str, Any]] = []
     models: set[str] = set()
     init: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
@@ -408,6 +483,19 @@ def stream_shape(stdout: str) -> dict[str, Any]:
                     if isinstance(value, list)
                 },
             }
+        if event.get("type") == "rate_limit_event":
+            info = event.get("rate_limit_info")
+            note("rate_limit_event.rate_limit_info", info)
+            if isinstance(info, dict) and len(rate_limits) < MAX_TOOL_USES:
+                # Only enum-like values (lower-case codes) and booleans.
+                rate_limits.append(
+                    {
+                        _name(key): value
+                        for key, value in list(info.items())[:MAX_KEYS]
+                        if isinstance(value, bool)
+                        or (isinstance(value, str) and _CODE_RE.fullmatch(value))
+                    }
+                )
         if event.get("type") == "result":
             note("result.usage", event.get("usage"))
             usage_by_model = event.get("modelUsage")
@@ -466,6 +554,7 @@ def stream_shape(stdout: str) -> dict[str, Any]:
             for path, slot in sorted(keys.items())
         },
         "tool_uses": tool_uses,
+        "rate_limits": rate_limits,
         "models": sorted(models),
         "init": init,
         "result": result,
@@ -555,10 +644,46 @@ def _project_entries(config: Path, marker: str) -> int:
     return sum(1 for name in names if marker in _munge(name))
 
 
+def _changed_in_window(
+    name: str,
+    before: dict[str, tuple[Any, ...]],
+    after: dict[str, tuple[Any, ...]],
+    window: tuple[int, int],
+) -> bool:
+    """Whether a changed entry's new mtime falls in the child's lifetime.
+
+    An entry that is gone, or whose change left no new mtime to date it by,
+    counts as inside: only a change positively dated outside is set apart.
+    """
+    if name not in after:
+        return True
+    old = before.get(name, ())
+    # Positions 1 and 3 hold the entry's own mtime and a link target's mtime.
+    stamps = [
+        after[name][index]
+        for index in (1, 3)
+        if index < len(after[name])
+        and (index >= len(old) or old[index] != after[name][index])
+    ]
+    if not stamps or any(not isinstance(stamp, int) for stamp in stamps):
+        return True
+    low, high = window[0] - CHILD_WINDOW_SLACK_NS, window[1] + CHILD_WINDOW_SLACK_NS
+    return any(low <= stamp <= high for stamp in stamps)
+
+
 def compare_user_config(
-    before: dict[str, tuple[Any, ...]], after: dict[str, tuple[Any, ...]]
+    before: dict[str, tuple[Any, ...]],
+    after: dict[str, tuple[Any, ...]],
+    window: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
-    """Counts of changed entries per stable item and extension; no file names."""
+    """Counts of changed entries per stable item and extension; no file names.
+
+    ``window`` is the child's lifetime in epoch nanoseconds.  A change dated
+    inside it (or that cannot be dated) fails the check, because a write by the
+    child and a concurrent write by another session look the same.  Only when
+    every change is dated outside the window is the result ``undetermined``:
+    mtimes can be set by the writer, so this is never a pass.
+    """
     changes = {
         "added": set(after) - set(before),
         "removed": set(before) - set(after),
@@ -568,20 +693,32 @@ def compare_user_config(
     }
     by_item: dict[str, dict[str, int]] = {}
     by_extension: dict[str, int] = {}
+    inside = 0
     for kind, names in changes.items():
         for name in names:
             parts = name.split("/")
             # The first component is always one of the fixed STABLE_ITEMS.
             _tally(by_item.setdefault(parts[0], {}), kind)
             _tally(by_extension, _extension(parts[-1]))
-    changed = any(changes.values())
+            if window is None or _changed_in_window(name, before, after, window):
+                inside += 1
+    total = sum(len(names) for names in changes.values())
+    if not total:
+        status, reason = PASS, "stable_items_unchanged"
+    elif inside:
+        status, reason = FAIL, "user_config_changed"
+    else:
+        status, reason = UNDETERMINED, "user_config_changed_outside_child_lifetime"
     return {
-        "status": FAIL if changed else PASS,
-        "reason": "user_config_changed" if changed else "stable_items_unchanged",
+        "status": status,
+        "reason": reason,
         "entries_compared": len(before),
         **{f"{kind}_count": len(names) for kind, names in changes.items()},
         "changed_by_item": {item: by_item[item] for item in sorted(by_item)},
         "changed_by_extension": dict(sorted(by_extension.items())),
+        "timing_basis": "mtime_vs_child_lifetime" if window else "not_available",
+        "changed_during_child_or_undated": inside,
+        "changed_outside_child": total - inside,
     }
 
 
@@ -657,7 +794,18 @@ def judge_setting_sources(
     def verdict(status: str, reason: str, **extra: Any) -> dict[str, Any]:
         return {"status": status, "reason": reason, **extra}
 
-    def user_layer(category: str, user_names: set[str] | None, own: set[str]) -> None:
+    def user_layer(
+        category: str,
+        user_names: set[str] | None,
+        own: set[str],
+        builtin: frozenset[str],
+    ) -> None:
+        """Judge one name list against the staged, built-in and user layers.
+
+        A loaded name that only the user layer explains fails.  A name shared
+        by the user layer and the CLI's own set proves nothing (``ambiguous``).
+        A name nobody explains is new: ``undetermined``, never a pass.
+        """
         if category not in lists:
             categories[category] = verdict(UNDETERMINED, "init_key_missing")
             return
@@ -673,14 +821,21 @@ def judge_setting_sources(
                 **extra,
             )
             return
-        distinguishing = user_names - own
+        distinguishing = user_names - own - builtin
         from_user = sorted(_name(name) for name in loaded & distinguishing)
+        unknown = sorted(loaded - own - builtin - user_names)
         extra["user_layer_loaded"] = from_user
-        extra["unattributed"] = sorted(loaded - own - user_names)
+        extra["ambiguous"] = sorted(
+            _name(name) for name in loaded & user_names & builtin
+        )
+        extra["unattributed"] = unknown
+        extra["distinguishing_user_entries"] = len(distinguishing)
         if missing:
             categories[category] = verdict(FAIL, "staged_not_loaded", **extra)
         elif from_user:
             categories[category] = verdict(FAIL, "user_layer_loaded", **extra)
+        elif unknown:
+            categories[category] = verdict(UNDETERMINED, "unknown_names_loaded", **extra)
         elif not distinguishing:
             categories[category] = verdict(
                 UNDETERMINED, "no_distinguishing_user_entries", **extra
@@ -688,22 +843,44 @@ def judge_setting_sources(
         else:
             categories[category] = verdict(PASS, "no_user_layer_entry_loaded", **extra)
 
-    user_layer("agents", None if user is None else user["agents"], staged)
-    user_layer("skills", None if user is None else user["skills"], set())
+    user_layer(
+        "agents", None if user is None else user["agents"], staged, BUILTIN_AGENTS
+    )
+    user_layer(
+        "skills", None if user is None else user["skills"], set(), BUILTIN_SKILLS
+    )
     user_layer(
         "slash_commands",
         None if user is None else user["commands"] | user["skills"],
         set(),
+        BUILTIN_SLASH_COMMANDS,
     )
-    for category in ("mcp_servers", "plugins"):
-        if category not in lists:
-            categories[category] = verdict(UNDETERMINED, "init_key_missing")
-        elif lists[category]:
-            categories[category] = verdict(
-                FAIL, f"{category}_present", loaded=lists[category]
+    if "mcp_servers" not in lists:
+        categories["mcp_servers"] = verdict(UNDETERMINED, "init_key_missing")
+    elif lists["mcp_servers"]:
+        categories["mcp_servers"] = verdict(
+            FAIL, "mcp_servers_present", loaded=lists["mcp_servers"]
+        )
+    else:
+        categories["mcp_servers"] = verdict(PASS, "none_loaded")
+    if "plugins" not in lists:
+        categories["plugins"] = verdict(UNDETERMINED, "init_key_missing")
+    else:
+        foreign = [
+            name
+            for name in lists["plugins"]
+            if not name.startswith(BUILTIN_PLUGIN_PREFIX)
+        ]
+        if foreign:
+            categories["plugins"] = verdict(
+                FAIL, "plugins_present", loaded=lists["plugins"], not_builtin=foreign
+            )
+        elif lists["plugins"]:
+            categories["plugins"] = verdict(
+                PASS, "only_builtin_plugins", loaded=lists["plugins"]
             )
         else:
-            categories[category] = verdict(PASS, "none_loaded")
+            categories["plugins"] = verdict(PASS, "none_loaded")
     hook_events = sorted(kind for kind in shape["kinds"] if "/hook" in kind)
     if hook_events or lists.get("hooks"):
         categories["hooks"] = verdict(
@@ -718,6 +895,7 @@ def judge_setting_sources(
         "status": status,
         "reason": "see_categories",
         "basis": "init_event_names_vs_user_file_names",
+        "builtin_names_observed": "cli_2.1.289_2026-10-05",
         "not_observable": ["memory"],
         "categories": categories,
     }
@@ -837,6 +1015,8 @@ def run_stage(
     observed: dict[str, Any] = {}
 
     def observe(observation: claude.StageObservation) -> None:
+        # Called right after the child exits: the end of its lifetime.
+        observed["ended_ns"] = time.time_ns()
         observed["returncode"] = observation.returncode
         observed["stderr"] = _stderr_summary(observation.stderr, argv)
         observed["private"] = private_listing(observation.private)
@@ -862,17 +1042,22 @@ def run_stage(
         before, scan_problem = None, "user_config_unreadable"
 
     outcome, failure = None, None
+    started_ns = time.time_ns()
     try:
         outcome = adapter.run_stage(request)
     except Exception as error:  # reduced to a code; the message is never reported
         failure = _failure_code(error)
+    # Without an observation the child's end is unknown: take the later bound.
+    window = (started_ns, observed.get("ended_ns") or time.time_ns())
 
     user_check: dict[str, Any]
     if before is None:
         user_check = _check(UNDETERMINED, scan_problem or "user_config_unreadable")
     else:
         try:
-            user_check = compare_user_config(before, snapshot_user_config(config))
+            user_check = compare_user_config(
+                before, snapshot_user_config(config), window
+            )
         except _ScanLimit:
             user_check = _check(UNDETERMINED, "user_config_scan_limit")
         except OSError:

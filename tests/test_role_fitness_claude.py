@@ -235,7 +235,14 @@ class DispatchEvidenceTests(ClaudeStageCase):
         self.assertEqual(outcome.evidence.model, "synthetic-model")
         self.assertIsNone(outcome.evidence.reasoning_effort)
         self.assertEqual(
-            outcome.event_counts, {"system": 1, "assistant": 3, "user": 2, "result": 1}
+            outcome.event_counts,
+            {
+                "system": 1,
+                "assistant": 3,
+                "user": 2,
+                "rate_limit_event": 1,
+                "result": 1,
+            },
         )
 
     def test_model_is_not_guessed_when_the_run_used_several(self) -> None:
@@ -406,6 +413,46 @@ class DispatchEvidenceTests(ClaudeStageCase):
                 # A short code, never stream content.
                 self.assertRegex(error.detail, r"^[a-z_]+$")
                 self.assertEqual(_tree(request.scratch), ["clean-cwd"])
+
+    def test_rate_limit_event_is_a_known_informational_event(self) -> None:
+        """Live shape (CLI 2.1.289): accepted, and its content is not interpreted."""
+        self.assertIn("rate_limit_event", [event["type"] for event in _events()])
+        without = [event for event in _events() if event["type"] != "rate_limit_event"]
+        plain, _, _ = self.run_stage(_Host(stdout=_stream(without)), name="plain")
+        for index, info in enumerate(({}, {"status": "allowed"}, {"unknown_key": 1})):
+            events = _events()
+            events[6]["rate_limit_info"] = info
+            events.insert(2, dict(events[6]))
+            with self.subTest(info):
+                outcome, _, _ = self.run_stage(
+                    _Host(stdout=_stream(events)), name=f"rate-{index}"
+                )
+                self.assertEqual(outcome.evidence, plain.evidence)
+                self.assertEqual(outcome.messages, plain.messages)
+                self.assertEqual((outcome.returncode, outcome.usage), (0, plain.usage))
+                self.assertEqual(outcome.event_counts["rate_limit_event"], 2)
+
+    def test_malformed_rate_limit_event_fails_closed(self) -> None:
+        for index, info in enumerate((None, "allowed", [], 1, "absent")):
+            events = _events()
+            if info == "absent":
+                del events[6]["rate_limit_info"]
+            else:
+                events[6]["rate_limit_info"] = info
+            with self.subTest(repr(info)):
+                error, _, request = self.run_failing(
+                    StageEvidenceError,
+                    _Host(stdout=_stream(events)),
+                    name=f"bad-rate-{index}",
+                )
+                self.assertEqual(error.detail, "unrecognized_stream_event")
+                self.assertEqual(_tree(request.scratch), ["clean-cwd"])
+
+    def test_rate_limit_event_cannot_stand_in_for_the_result(self) -> None:
+        error, _, _ = self.run_failing(
+            StageEvidenceError, _Host(stdout=_stream(_events()[:-1]))
+        )
+        self.assertEqual(error.detail, "no_result_event")
 
     def test_unknown_event_sample_is_otherwise_a_valid_dispatch(self) -> None:
         events = [

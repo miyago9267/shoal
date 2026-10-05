@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Any
@@ -211,10 +212,11 @@ class ProbeCase(unittest.TestCase):
             err.getvalue(),
         )
 
-    def touch(self, relative: str) -> None:
+    def touch(self, relative: str, offset_seconds: int = 0) -> None:
+        """Rewrite an entry's mtime: now (inside the child's lifetime) by default."""
         path = self.config / relative
-        status = path.stat()
-        os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns + 5_000_000_000))
+        stamp = time.time_ns() + offset_seconds * 1_000_000_000
+        os.utime(path, ns=(stamp, stamp))
 
 
 class StageSelectionTests(ProbeCase):
@@ -485,6 +487,7 @@ class ReportContentTests(ProbeCase):
                 "user",
                 "user",
                 "assistant",
+                "rate_limit_event",
                 "result/success",
             ],
         )
@@ -524,7 +527,7 @@ class ReportContentTests(ProbeCase):
     def test_difference_from_the_synthetic_sample_is_listed(self) -> None:
         events = stage_events("auth", init={"mcp_servers": []})
         del events[-1]["permission_denials"]
-        events[-1]["fast_mode_state"] = "off"
+        events[-1]["brand_new_key"] = "off"
         events[-1]["duration_ms"] = 1.5
         events.insert(1, {"type": "system", "subtype": "status", "session_id": "s"})
         _, report, _, _, _ = self.probe(host=_Host(auth={"events": events}))
@@ -534,12 +537,13 @@ class ReportContentTests(ProbeCase):
         self.assertEqual(diff["kinds_only_live"], ["system/status"])
         result = diff["keys"]["result/success"]
         self.assertEqual(result["missing_in_live"], ["permission_denials"])
-        self.assertEqual(result["extra_in_live"], ["fast_mode_state"])
+        self.assertEqual(result["extra_in_live"], ["brand_new_key"])
         self.assertEqual(
             result["type_changed"],
             {"duration_ms": {"live": ["float"], "synthetic": ["int"]}},
         )
-        self.assertIn("apiKeySource", diff["keys"]["system/init"]["extra_in_live"])
+        self.assertEqual(diff["keys"]["system/init"]["extra_in_live"], ["hooks"])
+        self.assertEqual(list(diff["keys"]), ["result/success", "system/init"])
         # The adapter accepts an unknown `system` subtype, so the stage still passes.
         self.assertEqual(stage["checks"]["adapter_parse"]["status"], "pass")
 
@@ -633,10 +637,7 @@ class IsolationTests(ProbeCase):
         (self.config / "settings.json").symlink_to(target)
 
         def modify(stage: str, cwd: Path) -> None:
-            status = target.stat()
-            os.utime(
-                target, ns=(status.st_atime_ns, status.st_mtime_ns + 5_000_000_000)
-            )
+            os.utime(target, ns=(time.time_ns(), time.time_ns()))
 
         _, report, _, out, _ = self.probe(host=_Host(on_run=modify))
         user = report["stages"]["auth"]["isolation"]["user_config"]
@@ -734,11 +735,10 @@ class SettingSourcesTests(ProbeCase):
                 agents["user_layer_loaded"],
                 agents["unattributed"],
             ),
-            ([], [], ["general-purpose"]),
+            ([], [], []),
         )
-        self.assertEqual(
-            sources["categories"]["slash_commands"]["unattributed"], ["init"]
-        )
+        self.assertEqual(sources["categories"]["slash_commands"]["unattributed"], [])
+        self.assertEqual(sources["builtin_names_observed"], "cli_2.1.289_2026-10-05")
         self.assertEqual(sources["not_observable"], ["memory"])
         self.assertEqual(code, 0)
 
@@ -1047,6 +1047,188 @@ class AdapterOptionTests(ProbeCase):
         self.assertEqual(seen, [])
 
 
+class LiveCalibrationTests(ProbeCase):
+    """Rules corrected from the live reports of 2026-10-05 (CLI 2.1.289)."""
+
+    def sources(self, **init: Any) -> tuple[int, dict[str, Any]]:
+        events = stage_events("auth", init=init)
+        code, report, _, _, _ = self.probe(host=_Host(auth={"events": events}))
+        return code, report["stages"]["auth"]["isolation"]["setting_sources"]
+
+    def add_user_skill(self, name: str) -> None:
+        (self.config / "skills" / name).mkdir()
+        (self.config / "skills" / name / "SKILL.md").write_text("x", encoding="utf-8")
+
+    def test_builtin_plugins_are_not_the_user_layer(self) -> None:
+        builtin = ["cc-plugin-agents-md", "cc-plugin-plugin-authoring", "cc-plugin-telemetry"]
+        code, sources = self.sources(plugins=builtin)
+        self.assertEqual(
+            sources["categories"]["plugins"],
+            {"status": "pass", "reason": "only_builtin_plugins", "loaded": builtin},
+        )
+        self.assertEqual(code, 0)
+        for foreign in ("my-plugin", "xcc-plugin-a", "CC-PLUGIN-A", "cc_plugin_a"):
+            with self.subTest(foreign):
+                code, sources = self.sources(plugins=builtin + [foreign])
+                plugins = sources["categories"]["plugins"]
+                self.assertEqual((plugins["status"], plugins["reason"]), ("fail", "plugins_present"))
+                self.assertEqual(plugins["not_builtin"], [foreign])
+                self.assertEqual(code, 1)
+
+    def test_builtin_skill_shared_with_the_user_layer_is_not_a_failure(self) -> None:
+        self.add_user_skill("code-review")
+        builtin = sorted(probe.BUILTIN_SKILLS)
+        self.assertEqual(len(builtin), 19)
+        code, sources = self.sources(skills=builtin, slash_commands=sorted(probe.BUILTIN_SLASH_COMMANDS))
+        skills = sources["categories"]["skills"]
+        self.assertEqual((skills["status"], skills["reason"]), ("pass", "no_user_layer_entry_loaded"))
+        self.assertEqual((skills["ambiguous"], skills["user_layer_loaded"], skills["unattributed"]), (["code-review"], [], []))
+        self.assertEqual(skills["distinguishing_user_entries"], 1)
+        commands = sources["categories"]["slash_commands"]
+        self.assertEqual((commands["status"], commands["ambiguous"]), ("pass", ["code-review"]))
+        self.assertEqual((sources["status"], code), ("pass", 0))
+
+    def test_user_only_skill_still_fails(self) -> None:
+        self.add_user_skill("code-review")
+        code, sources = self.sources(skills=sorted(probe.BUILTIN_SKILLS) + ["my-skill"])
+        skills = sources["categories"]["skills"]
+        self.assertEqual((skills["status"], skills["reason"]), ("fail", "user_layer_loaded"))
+        self.assertEqual(skills["user_layer_loaded"], ["my-skill"])
+        self.assertEqual(code, 1)
+
+    def test_unknown_new_names_are_undetermined_not_a_pass(self) -> None:
+        for category in ("skills", "slash_commands", "agents"):
+            loaded = {"skills": ["batch"], "slash_commands": ["init"], "agents": STAGED}[category]
+            with self.subTest(category):
+                code, sources = self.sources(**{category: loaded + ["brand-new-name"]})
+                entry = sources["categories"][category]
+                self.assertEqual((entry["status"], entry["reason"]), ("undetermined", "unknown_names_loaded"))
+                self.assertEqual(entry["unattributed"], ["brand-new-name"])
+                self.assertEqual((sources["status"], code), ("undetermined", 3))
+
+    def test_only_builtin_named_user_skills_cannot_prove_isolation(self) -> None:
+        shutil.rmtree(self.config / "skills")
+        (self.config / "skills").mkdir()
+        self.add_user_skill("verify")
+        _, sources = self.sources(skills=["verify"])
+        skills = sources["categories"]["skills"]
+        self.assertEqual((skills["status"], skills["reason"]), ("undetermined", "no_distinguishing_user_entries"))
+
+    def user_config(self, on_run: Any, **host: Any) -> tuple[int, dict[str, Any], dict[str, Any]]:
+        code, report, _, _, _ = self.probe(host=_Host(on_run=on_run, **host))
+        return code, report["stages"]["auth"]["isolation"]["user_config"], report
+
+    def test_change_dated_inside_the_child_lifetime_fails(self) -> None:
+        code, user, _ = self.user_config(lambda stage, cwd: self.touch("settings.json"))
+        self.assertEqual((user["status"], user["reason"]), ("fail", "user_config_changed"))
+        self.assertEqual((user["changed_during_child_or_undated"], user["changed_outside_child"]), (1, 0))
+        self.assertEqual(user["timing_basis"], "mtime_vs_child_lifetime")
+        self.assertEqual(code, 1)
+
+    def test_change_dated_outside_the_child_lifetime_is_set_apart(self) -> None:
+        for offset in (-60, 60):
+            with self.subTest(offset):
+                code, user, report = self.user_config(
+                    lambda stage, cwd: self.touch("settings.json", offset)
+                )
+                self.assertEqual(
+                    (user["status"], user["reason"]),
+                    ("undetermined", "user_config_changed_outside_child_lifetime"),
+                )
+                self.assertEqual((user["changed_during_child_or_undated"], user["changed_outside_child"]), (0, 1))
+                self.assertEqual(user["modified_count"], 1)
+                # Not a pass, and not a reason to stop the run either.
+                self.assertIsNone(report["stopped"])
+                self.assertEqual(code, 3)
+
+    def test_changes_within_the_slack_count_as_inside(self) -> None:
+        _, user, _ = self.user_config(lambda stage, cwd: self.touch("settings.json", -1))
+        self.assertEqual(user["status"], "fail")
+
+    def test_one_inside_change_among_outside_ones_fails(self) -> None:
+        def modify(stage: str, cwd: Path) -> None:
+            self.touch("settings.json", -60)
+            self.touch("AGENTS.md", -60)
+            self.touch("rules/shared.md")
+
+        _, user, _ = self.user_config(modify)
+        self.assertEqual((user["status"], user["changed_during_child_or_undated"], user["changed_outside_child"]), ("fail", 1, 2))
+
+    def test_removed_entry_cannot_be_dated_and_fails(self) -> None:
+        def modify(stage: str, cwd: Path) -> None:
+            (self.config / "rules" / "shared.md").unlink()
+            self.touch("rules", -60)
+
+        _, user, _ = self.user_config(modify)
+        self.assertEqual((user["status"], user["removed_count"], user["changed_outside_child"]), ("fail", 1, 1))
+
+    def test_compare_without_a_window_keeps_any_change_a_failure(self) -> None:
+        before = {"settings.json": (1, 10)}
+        after = {"settings.json": (1, 20)}
+        self.assertEqual(probe.compare_user_config(before, after)["status"], "fail")
+        self.assertEqual(probe.compare_user_config(before, after, (10**18, 2 * 10**18))["status"], "undetermined")
+        self.assertEqual(probe.compare_user_config(before, before, (0, 1))["status"], "pass")
+        retargeted = {"settings.json": (2, 10, "a", 5)}, {"settings.json": (2, 10, "b", 5)}
+        self.assertEqual(probe.compare_user_config(*retargeted, (10**18, 2 * 10**18))["status"], "fail")
+
+    def test_rate_limit_event_shape_is_reported_without_free_text(self) -> None:
+        events = stage_events("auth")
+        self.assertEqual(events[-2]["type"], "rate_limit_event")
+        events[-2]["rate_limit_info"] = {
+            "status": "allowed",
+            "rateLimitType": "five_hour",
+            "resetsAt": 1790000000,
+            "isUsingOverage": False,
+            "note": FREE_TEXT,
+            "Mixed": "NotACode",
+        }
+        code, report, _, out, _ = self.probe(host=_Host(auth={"events": events}))
+        stage = report["stages"]["auth"]
+        self.assertEqual(stage["checks"]["adapter_parse"]["status"], "pass")
+        self.assertEqual(
+            stage["shape"]["keys"]["rate_limit_event.rate_limit_info"]["resetsAt"], ["int"]
+        )
+        self.assertEqual(
+            stage["shape"]["rate_limits"],
+            [{"status": "allowed", "rateLimitType": "five_hour", "isUsingOverage": False}],
+        )
+        self.assertNotIn("SENTINEL", out)
+        self.assertEqual(stage["adapter"]["event_counts"]["rate_limit_event"], 1)
+        self.assertEqual(code, 0)
+
+    def test_stream_shaped_like_the_live_run_matches_the_calibrated_sample(self) -> None:
+        events = stage_events("auth")
+        del events[0]["hooks"]
+        _, report, _, _, _ = self.probe(host=_Host(auth={"events": events}))
+        stage = report["stages"]["auth"]
+        self.assertEqual(
+            stage["shape"]["sequence"],
+            ["system/init", "assistant", "assistant", "rate_limit_event", "result/success"],
+        )
+        diff = stage["synthetic_diff"]
+        self.assertEqual(
+            {key: value for key, value in diff.items() if key != "sample"},
+            {"kinds_only_live": [], "kinds_only_synthetic": [], "paths_only_live": [], "paths_only_synthetic": [], "keys": {}},
+        )
+
+    def test_samples_carry_the_key_sets_of_the_live_report(self) -> None:
+        shape = probe.stream_shape((SAMPLES / "no-agent-call.jsonl").read_text(encoding="utf-8"))
+        keys = shape["keys"]
+        self.assertEqual(sorted(keys["rate_limit_event"]), ["rate_limit_info", "session_id", "type", "uuid"])
+        self.assertEqual(len(keys["system/init"]), 26)
+        self.assertEqual(len(keys["result/success"]), 25)
+        self.assertEqual(len(keys["result.modelUsage[]"]), 12)
+        self.assertEqual(len(keys["result.usage"]), 12)
+        self.assertEqual(len(keys["assistant"]), 8)
+        self.assertEqual(len(keys["assistant.message"]), 13)
+        self.assertIn("assistant.message.content[thinking]", keys)
+        for name in ("dispatch-ok", "unknown-event"):
+            other = probe.stream_shape((SAMPLES / f"{name}.jsonl").read_text(encoding="utf-8"))
+            for path in ("system/init", "result/success", "result.usage", "result.modelUsage[]", "rate_limit_event", "assistant"):
+                self.assertEqual(sorted(other["keys"][path]), sorted(keys[path]), (name, path))
+        self.assertIn("synthetic_unknown_event", other["kinds"])
+
+
 class StopAfterFailureTests(ProbeCase):
     """F1: a stage that did not fully pass is the last live call of the run."""
 
@@ -1161,7 +1343,10 @@ class NameAllowlistTests(ProbeCase):
         self.assertNotIn("Zq9Zq9", out)
         lists = report["stages"]["auth"]["shape"]["init"]["lists"]
         self.assertEqual(lists["tools"], ["<other>", "Read"])
-        self.assertEqual(code, 0)
+        # A reduced name is one nobody can attribute: not a pass.
+        agents = report["stages"]["auth"]["isolation"]["setting_sources"]["categories"]["agents"]
+        self.assertEqual((agents["status"], agents["reason"]), ("undetermined", "unknown_names_loaded"))
+        self.assertEqual(code, 3)
 
     def test_a_fragment_of_the_token_withholds_the_report(self) -> None:
         for part in (FAKE_TOKEN[:-1], FAKE_TOKEN[1:], FAKE_TOKEN[5:20]):
@@ -1362,7 +1547,7 @@ class HardeningTests(ProbeCase):
         events = stage_events("auth")
         deep = '{"a":' * 600 + "1" + "}" * 600
         line = json.dumps(events[-1])
-        line = line.replace('"num_turns": 2', f'"num_turns": {10**400}')
+        line = line.replace('"num_turns": 1', f'"num_turns": {10**400}')
         line = line.replace('"output_tokens": 25', f'"output_tokens": 25, "deep": {deep}, "huge": {10**400}', 1)
         self.assertIn('"deep"', line)
         stdout = _stream(events[:-1]) + line + "\n"
