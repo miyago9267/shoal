@@ -23,6 +23,14 @@ from typing import Any, Sequence
 
 from role_fitness_fixtures import BenchmarkContractError, score_plan_review, validate_bundle
 from role_fitness_scorecard import score_switch_cohort
+from role_fitness_stage import (
+    DispatchEvidence,
+    StageEvidenceError,
+    StageOutcome,
+    StageRequest,
+    StageSetupError,
+    StageTimeout,
+)
 from benchmark_role_fitness import build_split_handoff, validate_mechanical_result
 from stage_smoke_home import StageError, materialize
 import verify_dispatch as dispatch
@@ -339,6 +347,81 @@ def _native_review_command(*, codex_bin: str, cwd: Path, prompt: str, sandbox_mo
     ]
 
 
+class CodexStageAdapter:
+    """Run one stage through ``codex exec`` in a materialized private CODEX_HOME.
+
+    ``model``/``effort`` apply to single-agent stages (``role`` is None); a
+    native stage uses the fixed command from ``_native_review_command``.
+    """
+
+    def __init__(self, *, codex_bin: str, active_home: Path, model: str | None = None, effort: str | None = None) -> None:
+        self.codex_bin = codex_bin
+        self.active_home = active_home
+        self.model = model
+        self.effort = effort
+
+    def _command(self, request: StageRequest) -> list[str]:
+        if request.role is not None:
+            return _native_review_command(
+                codex_bin=self.codex_bin, cwd=request.workdir, prompt=request.prompt, sandbox_mode=request.sandbox,
+            )
+        return [
+            self.codex_bin, "exec", "--json", "--strict-config", "--skip-git-repo-check", "-C", str(request.workdir),
+            "-m", str(self.model), "-c", f'model_reasoning_effort="{self.effort}"', "-s", request.sandbox, request.prompt,
+        ]
+
+    def run_stage(self, request: StageRequest) -> StageOutcome:
+        home = request.scratch / "codex-home"
+        try:
+            materialize(self.active_home, home)
+        except StageError as exc:
+            raise StageSetupError(str(exc)) from exc
+        command = self._command(request)
+        env = {**os.environ, "CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(home)}
+        started = time.monotonic()
+        try:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env, timeout=request.timeout, check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise StageTimeout() from exc
+        elapsed = time.monotonic() - started
+        if request.role is None:
+            messages, event_counts, usage = _messages(completed.stdout)
+            return StageOutcome(completed.returncode, messages, event_counts, usage, usage, [], elapsed, None)
+        try:
+            parent_id = dispatch.parse_exec_thread_id(completed.stdout)
+            parent_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", parent_id))
+            child_id = dispatch.child_thread_from_parent(parent_events)
+            child_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", child_id))
+            verdict = dispatch.inspect_dispatch(
+                parent_events,
+                child_events,
+                expected_role=dispatch.read_role_binding(home / "agents" / f"{request.role}.toml"),
+                expected_role_name=request.role,
+                expected_task_name=request.task_name,
+            )
+        except (dispatch.EvidenceError, dispatch.ReceiptError, OSError) as exc:
+            raise StageEvidenceError(type(exc).__name__) from exc
+        messages, event_counts, child_usage = _messages("\n".join(json.dumps(event) for event in child_events))
+        _, _, parent_usage = _messages("\n".join(json.dumps(event) for event in parent_events))
+        evidence = DispatchEvidence(
+            verdict.status == "NATIVE_OK", verdict.status, verdict.reason_code, verdict.model, verdict.reasoning_effort,
+        )
+        return StageOutcome(
+            completed.returncode, messages, event_counts, _merge_usage(parent_usage, child_usage), child_usage,
+            child_events, elapsed, evidence,
+        )
+
+
+def _run_stage(adapter: Any, request: StageRequest, setup_failure: str) -> StageOutcome:
+    """Run a stage, reporting a setup failure as a contract error."""
+    try:
+        return adapter.run_stage(request)
+    except StageSetupError as exc:
+        raise BenchmarkContractError(f"{setup_failure}: {exc}") from exc
+
+
 def run_native_review_case(
     *,
     private_root: Path,
@@ -356,48 +439,22 @@ def run_native_review_case(
     ledger = json.loads((private_root / "ledgers.json").read_text(encoding="utf-8"))[case_id]
     directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-content-{case_id}-"))
     try:
-        home = directory / "codex-home"
         cwd = directory / "clean-cwd"
         cwd.mkdir()
+        request = StageRequest(
+            prompt=_native_review_prompt(plan), role="plan-verifier", sandbox="read-only", workdir=cwd,
+            scratch=directory, timeout=timeout, task_name="role_fitness_plan_review",
+        )
         try:
-            materialize(active_home, home)
-        except StageError as exc:
-            raise BenchmarkContractError(f"native content stage materialization failed: {exc}") from exc
-        env = {**os.environ, "CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(home)}
-        started = time.monotonic()
-        try:
-            completed = subprocess.run(
-                _native_review_command(codex_bin=codex_bin, cwd=cwd, prompt=_native_review_prompt(plan)),
-                capture_output=True,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                env=env,
-                timeout=timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
+            stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native content stage materialization failed")
+        except StageTimeout:
             return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "plan-verifier"}
-        elapsed = time.monotonic() - started
-        try:
-            parent_id = dispatch.parse_exec_thread_id(completed.stdout)
-            parent_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", parent_id))
-            child_id = dispatch.child_thread_from_parent(parent_events)
-            child_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", child_id))
-            verdict = dispatch.inspect_dispatch(
-                parent_events,
-                child_events,
-                expected_role=dispatch.read_role_binding(home / "agents" / "plan-verifier.toml"),
-                expected_role_name="plan-verifier",
-                expected_task_name="role_fitness_plan_review",
-            )
-        except (dispatch.EvidenceError, dispatch.ReceiptError, OSError) as exc:
-            return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": type(exc).__name__}
-        messages, event_counts, child_usage = _messages("\n".join(json.dumps(event) for event in child_events))
-        _, _, parent_usage = _messages("\n".join(json.dumps(event) for event in parent_events))
-        usage = _merge_usage(parent_usage, child_usage)
+        except StageEvidenceError as exc:
+            return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": exc.detail}
+        verdict, elapsed, usage, event_counts, messages = stage.evidence, stage.wall_seconds, stage.usage, stage.event_counts, stage.messages
         output = _parse_review(messages, ledger)
         weighted_tokens = _weighted_tokens(usage)
-        if verdict.status != "NATIVE_OK" or completed.returncode != 0 or output is None or weighted_tokens is None or weighted_tokens <= 0:
+        if not verdict.ok or stage.returncode != 0 or output is None or weighted_tokens is None or weighted_tokens <= 0:
             return {
                 "case_id": case_id,
                 "status": "inconclusive",
@@ -419,7 +476,7 @@ def run_native_review_case(
                     }
                     for text in messages[-8:]
                 ],
-                "event_shapes": _event_shape_summary(child_events),
+                "event_shapes": _event_shape_summary(stage.events),
                 "role_shapes": [_role_shape(text) for text in messages[-8:]],
             }
         score = score_plan_review(ledger, output)
@@ -472,43 +529,19 @@ def run_native_mechanical_case(
         + "\nThen call wait_agent exactly once with timeout_ms=30000."
     )
     try:
-        home = directory / "codex-home"
         cwd = directory / "clean-cwd"
         cwd.mkdir()
+        request = StageRequest(
+            prompt=prompt, role="mech-executor", sandbox="workspace-write", workdir=cwd,
+            scratch=directory, timeout=timeout, task_name=task_name,
+        )
         try:
-            materialize(active_home, home)
-        except StageError as exc:
-            raise BenchmarkContractError(f"native mechanical stage materialization failed: {exc}") from exc
-        env = {**os.environ, "CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(home)}
-        started = time.monotonic()
-        try:
-            completed = subprocess.run(
-                _native_review_command(codex_bin=codex_bin, cwd=cwd, prompt=prompt, sandbox_mode="workspace-write"),
-                capture_output=True,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                env=env,
-                timeout=timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
+            stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native mechanical stage materialization failed")
+        except StageTimeout:
             return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "mech-executor"}
-        elapsed = time.monotonic() - started
-        try:
-            parent_id = dispatch.parse_exec_thread_id(completed.stdout)
-            parent_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", parent_id))
-            child_id = dispatch.child_thread_from_parent(parent_events)
-            child_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", child_id))
-            verdict = dispatch.inspect_dispatch(
-                parent_events,
-                child_events,
-                expected_role=dispatch.read_role_binding(home / "agents" / "mech-executor.toml"),
-                expected_role_name="mech-executor",
-                expected_task_name=task_name,
-            )
-        except (dispatch.EvidenceError, dispatch.ReceiptError, OSError) as exc:
-            return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": type(exc).__name__}
-        _, event_counts, usage = _messages("\n".join(json.dumps(event) for event in child_events))
+        except StageEvidenceError as exc:
+            return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": exc.detail}
+        verdict, elapsed, usage, event_counts = stage.evidence, stage.wall_seconds, stage.child_usage, stage.event_counts
         result_path = cwd / "result.json"
         result: dict[str, Any] | None = None
         try:
@@ -517,7 +550,7 @@ def run_native_mechanical_case(
         except (OSError, json.JSONDecodeError, BenchmarkContractError):
             result = None
         weighted_tokens = _weighted_tokens(usage)
-        if verdict.status != "NATIVE_OK" or completed.returncode != 0 or result is None or weighted_tokens is None:
+        if not verdict.ok or stage.returncode != 0 or result is None or weighted_tokens is None:
             return {
                 "case_id": case_id,
                 "status": "inconclusive",
@@ -574,46 +607,20 @@ def run_native_verifier_case(
         "\nThen call wait_agent exactly once with timeout_ms=30000."
     )
     try:
-        home = directory / "codex-home"
         cwd = directory / "clean-cwd"
         cwd.mkdir()
         (cwd / "result.json").write_text(json.dumps({"case_id": case_id, "accepted": True}) + "\n", encoding="utf-8")
+        request = StageRequest(
+            prompt=prompt, role="verifier", sandbox="workspace-write", workdir=cwd,
+            scratch=directory, timeout=timeout, task_name=task_name,
+        )
         try:
-            materialize(active_home, home)
-        except StageError as exc:
-            raise BenchmarkContractError(f"native verifier stage materialization failed: {exc}") from exc
-        env = {**os.environ, "CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(home)}
-        started = time.monotonic()
-        try:
-            completed = subprocess.run(
-                _native_review_command(codex_bin=codex_bin, cwd=cwd, prompt=prompt, sandbox_mode="workspace-write"),
-                capture_output=True,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                env=env,
-                timeout=timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
+            stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native verifier stage materialization failed")
+        except StageTimeout:
             return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "verifier"}
-        elapsed = time.monotonic() - started
-        try:
-            parent_id = dispatch.parse_exec_thread_id(completed.stdout)
-            parent_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", parent_id))
-            child_id = dispatch.child_thread_from_parent(parent_events)
-            child_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", child_id))
-            verdict = dispatch.inspect_dispatch(
-                parent_events,
-                child_events,
-                expected_role=dispatch.read_role_binding(home / "agents" / "verifier.toml"),
-                expected_role_name="verifier",
-                expected_task_name=task_name,
-            )
-        except (dispatch.EvidenceError, dispatch.ReceiptError, OSError) as exc:
-            return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": type(exc).__name__}
-        messages, event_counts, child_usage = _messages("\n".join(json.dumps(event) for event in child_events))
-        _, _, parent_usage = _messages("\n".join(json.dumps(event) for event in parent_events))
-        usage = _merge_usage(parent_usage, child_usage)
+        except StageEvidenceError as exc:
+            return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": exc.detail}
+        verdict, elapsed, usage, event_counts, messages = stage.evidence, stage.wall_seconds, stage.usage, stage.event_counts, stage.messages
         statuses = [
             match.group(1)
             for message in messages
@@ -621,7 +628,7 @@ def run_native_verifier_case(
         ]
         verification = statuses[-1] if statuses else "INCONCLUSIVE"
         weighted_tokens = _weighted_tokens(usage)
-        if verdict.status != "NATIVE_OK" or completed.returncode != 0 or verification != "CONFIRMED" or weighted_tokens is None:
+        if not verdict.ok or stage.returncode != 0 or verification != "CONFIRMED" or weighted_tokens is None:
             return {
                 "case_id": case_id,
                 "status": "inconclusive",
@@ -674,32 +681,14 @@ def run_native_split_executor_case(
         + "\nThen call wait_agent exactly once with timeout_ms=30000."
     )
     try:
-        home = directory / "codex-home"
         cwd = directory / "clean-cwd"
         cwd.mkdir()
-        try:
-            materialize(active_home, home)
-        except StageError as exc:
-            raise BenchmarkContractError(f"native split executor materialization failed: {exc}") from exc
-        env = {**os.environ, "CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(home)}
-        started = time.monotonic()
-        completed = subprocess.run(
-            _native_review_command(codex_bin=codex_bin, cwd=cwd, prompt=prompt, sandbox_mode="workspace-write"),
-            capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env, timeout=timeout, check=False,
+        request = StageRequest(
+            prompt=prompt, role="mech-executor", sandbox="workspace-write", workdir=cwd,
+            scratch=directory, timeout=timeout, task_name=task_name,
         )
-        elapsed = time.monotonic() - started
-        parent_id = dispatch.parse_exec_thread_id(completed.stdout)
-        parent_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", parent_id))
-        child_id = dispatch.child_thread_from_parent(parent_events)
-        child_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", child_id))
-        verdict = dispatch.inspect_dispatch(
-            parent_events, child_events,
-            expected_role=dispatch.read_role_binding(home / "agents" / "mech-executor.toml"),
-            expected_role_name="mech-executor", expected_task_name=task_name,
-        )
-        _, event_counts, child_usage = _messages("\n".join(json.dumps(event) for event in child_events))
-        _, _, parent_usage = _messages("\n".join(json.dumps(event) for event in parent_events))
-        usage = _merge_usage(parent_usage, child_usage)
+        stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native split executor materialization failed")
+        verdict, elapsed, usage, event_counts = stage.evidence, stage.wall_seconds, stage.usage, stage.event_counts
         result = None
         try:
             result = json.loads((cwd / "result.json").read_text(encoding="utf-8"))
@@ -707,7 +696,7 @@ def run_native_split_executor_case(
         except (OSError, json.JSONDecodeError, BenchmarkContractError):
             pass
         weighted_tokens = _weighted_tokens(usage)
-        if verdict.status != "NATIVE_OK" or completed.returncode != 0 or result is None or weighted_tokens is None:
+        if not verdict.ok or stage.returncode != 0 or result is None or weighted_tokens is None:
             return {"case_id": case_id, "status": "inconclusive", "reason": "invalid_split_executor_acceptance", "dispatch_status": verdict.status, "dispatch_reason": verdict.reason_code, "wall_seconds": round(elapsed, 3), "event_types": event_counts}
         return {"case_id": case_id, "status": "accepted", "native_role": "mech-executor", "model": verdict.model, "reasoning_effort": verdict.reasoning_effort, "dispatch_status": verdict.status, "dispatch_reason": verdict.reason_code, "accepted": True, "wall_seconds": round(elapsed, 3), "usage": usage, "weighted_tokens": weighted_tokens, "event_types": event_counts}
     finally:
@@ -755,25 +744,20 @@ def run_review_case(
     prompt = prompt_override if prompt_override is not None else _review_prompt(plan)
     directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-content-{case_id}-{candidate}-"))
     try:
-        home = directory / "codex-home"
         cwd = directory / "clean-cwd"
         cwd.mkdir()
+        request = StageRequest(prompt=prompt, role=None, sandbox="read-only", workdir=cwd, scratch=directory, timeout=timeout)
         try:
-            materialize(active_home, home)
-        except StageError as exc:
-            raise BenchmarkContractError(f"content stage materialization failed: {exc}") from exc
-        command = [codex_bin, "exec", "--json", "--strict-config", "--skip-git-repo-check", "-C", str(cwd), "-m", model, "-c", f'model_reasoning_effort="{effort}"', "-s", "read-only", prompt]
-        env = {**os.environ, "CODEX_HOME": str(home), "CODEX_SQLITE_HOME": str(home)}
-        started = time.monotonic()
-        try:
-            completed = subprocess.run(command, capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env, timeout=timeout, check=False)
-        except subprocess.TimeoutExpired:
+            stage = _run_stage(
+                CodexStageAdapter(codex_bin=codex_bin, active_home=active_home, model=model, effort=effort),
+                request, "content stage materialization failed",
+            )
+        except StageTimeout:
             return {"case_id": case_id, "candidate": candidate, "status": "inconclusive", "reason": "timeout"}
-        elapsed = time.monotonic() - started
-        messages, event_counts, usage = _messages(completed.stdout)
+        elapsed, messages, event_counts, usage = stage.wall_seconds, stage.messages, stage.event_counts, stage.usage
         output = _parse_review(messages)
         weighted_tokens = _weighted_tokens(usage)
-        if completed.returncode != 0 or output is None or weighted_tokens is None or weighted_tokens <= 0:
+        if stage.returncode != 0 or output is None or weighted_tokens is None or weighted_tokens <= 0:
             return {"case_id": case_id, "candidate": candidate, "status": "inconclusive", "reason": "invalid_review_output", "wall_seconds": round(elapsed, 3), "event_types": event_counts}
         score = score_plan_review(ledger, output)
         quality_score = _quality_score(score)

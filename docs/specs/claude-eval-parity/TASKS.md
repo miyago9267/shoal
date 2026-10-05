@@ -56,10 +56,17 @@
 
 ## Phase B1 — host adapter 介面
 
-- [ ] 從 `install/run_role_fitness_content.py` 抽出 stage 執行介面
+- [x] 從 `install/run_role_fitness_content.py` 抽出 stage 執行介面
       （prompt、role、sandbox → messages、usage、wall、evidence）。
-- [ ] Codex 實作改走新介面；既有 content runner 測試全數通過，輸出逐欄位
+  - 介面在 `install/role_fitness_stage.py`（`StageRequest`、`StageOutcome`、
+    `DispatchEvidence`、`StageAdapter`），不 import 任何 host。
+- [x] Codex 實作改走新介面；既有 content runner 測試全數通過，輸出逐欄位
       相同。
+  - 證據：`tests/test_run_role_fitness_stage_characterization.py` 的 21 個
+    case 在重構前（HEAD `789c27c` 的乾淨 clone）與重構後都通過，斷言相同。
+  - 已知差異：split executor 的 timeout 與 evidence 失敗原本就不 catch，
+    例外型別改為 `StageTimeout`、`StageEvidenceError`；repo 內沒有呼叫者
+    依賴舊型別。
 
 ## Phase B2 — Claude adapter（offline）
 
