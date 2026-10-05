@@ -52,6 +52,25 @@ Prompt lock 依 host 判斷版本，並納入 Claude surface
 - 新增 `hosts/claude/VERSION`，Claude host 版本 `1.4.2-claude.2`，測試檢查與
   `SKILL.md` marker 一致。
 
+role-fitness 的 host adapter 與失敗分類
+（`docs/specs/claude-eval-parity/`，B1-B3）。
+
+- B1：content runner 的 stage 執行抽出 host 中立的介面
+  `install/role_fitness_stage.py`（`StageRequest`、`StageOutcome`、
+  `DispatchEvidence`、`StageAdapter`），Codex 改走此介面，輸出與重構前逐欄位
+  相同。
+- B3：content 層失敗分類，六個類別加 `unclassified`；`failure_taxonomy` 同時
+  彙總 dispatch 與 `content.*`。報表在分數旁列各類別次數與佔比，R1-R3 分開列；
+  public projection（`role-fitness-public-v1`）新增 `content_failure_counts`，
+  仍拒絕 free text。runner 新增 `attempt` 與 `rerun_of`，只在操作者指定重跑時
+  輸出，不自動重試。
+- B2（離線）：新增 Claude stage adapter `install/role_fitness_claude.py`，以
+  暫存專案目錄與全新的 `CLAUDE_CONFIG_DIR` 執行 `claude -p`，用 `Agent` 工具的
+  `subagent_type` 當 dispatch evidence，並有累計成本的停止點。測試用的 stream
+  樣本是 synthetic；token 環境變數名稱（`CLAUDE_CODE_OAUTH_TOKEN`）與
+  `--max-budget-usd`、`--setting-sources project` 等旗標的效果尚未以 live
+  驗證，adapter 也還沒接進 runner 的 case 函式。
+
 ### 已知限制
 
 - 專案 plugin 的共存警告只檢查目前目錄與其 git root；`--target` 沒有集中記錄，

@@ -212,11 +212,31 @@ rechecked after the new role bindings are installed:
 - [x] `docs/specs/claude-eval-parity/SPEC.md`、`TASKS.md`、`TESTS.md`
   （Claude prompt surface 加入 lock、role-fitness host adapter、content 層
   失敗分類）。Open questions 全部已決定；付費 run 需另行核准。
-  - Spec B 的 B0 已完成（2026-10-05）：lock 依 host 判斷版本，27 個 surface
-    （含 11 個 Claude），CI 納入 `hosts/claude/**` 與 renewal 綠燈路徑。
-    B0 的 CI 實證（main push trailer 路徑）待 renewal commit 的結果。
-  - B1、B2、B3 待實作。
-  - B4、B5 為付費 run，需另行核准。
+  - Spec B 目前狀態（2026-10-05）：
+    - B0 完成：lock 依 host 判斷版本，27 個 surface（含 11 個 Claude），
+      CI 納入 `hosts/claude/**` 與 renewal 綠燈路徑。main push 的 trailer
+      路徑已由 `91a23e6` 的 CI 驗證（macos、ubuntu、windows 皆 success）。
+    - B1 完成：stage 介面 `install/role_fitness_stage.py`，Codex 行為不變。
+    - B3 完成（fixture 回放除外，見下）：content 層失敗分類、報表、public
+      projection 與 `attempt`／`rerun_of`。
+    - B2 離線部分完成：`install/role_fitness_claude.py`，stream 樣本為
+      synthetic，尚未與真實輸出比對。
+  - 待 Miyago 出手或核准：
+    - B2 的 live 驗證：一次最小的實際呼叫，需 Miyago 核准，並由 Miyago 親自
+      以 `claude setup-token` 產生 token（經 credential broker 注入）。驗證
+      項目見 `TASKS.md` 的 B2 最後一項（token 環境變數名稱、`--verbose` 搭配
+      stream-json、`~/.claude` 隔離、`--max-budget-usd` 超額中止）。證明不了就
+      把 B4、B5 維持 dry-run。
+    - 四個 native case 函式尚未接上 Claude adapter，併入 B4。
+    - `missed_risk` 的 per-case `risk_coverage` 尚未以 private root ledger
+      重新計分確認（B3 fixture 項目因此未勾）；目前的值由檔內 aggregate
+      `risk_coverage` 推論。
+    - B4（Claude smoke）與 B5（R1-R3）是付費 run，需逐次核准。
+    - PR label `lock-renewal` 這條 renewal 路徑尚未有真實 PR 驗證；同一項
+      也包含「只改 `hosts/claude/dist/agents/*.md` 的 PR 會觸發 workflow」
+      （B0 的 `validate_prompt_lock.py` 生效確認項尚未勾）。
+    - Spec B Decision 2 的 0.35 變更預算（`executor`、`mech-executor`、
+      `security-executor`）待 Miyago 確認。
 
 ### In progress — P0 policy installation safety
 
