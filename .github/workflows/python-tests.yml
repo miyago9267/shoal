@@ -10,6 +10,7 @@ on:
       - "plugin/**"
       - "tests/**"
       - "tools/**"
+      - "core/**"
       - "README.md"
       - "CHANGELOG.md"
       - "hosts/claude/**"
@@ -28,6 +29,7 @@ on:
       - "plugin/**"
       - "tests/**"
       - "tools/**"
+      - "core/**"
       - "README.md"
       - "CHANGELOG.md"
       - "hosts/claude/**"
@@ -69,6 +71,8 @@ jobs:
 
       # Renewal 綠燈路徑：只有 PR 帶 label lock-renewal，或 push 到 main 的 head
       # commit message 含一行 "Lock-Renewal: approved"，才放寬 LOCK.json 的變動。
+      # surface 的一次性 migration 只能走 push 路徑；PR label 路徑帶
+      # --no-migration，遇到會生效的 migration 標記直接失敗。
       # commit message 是不可信輸入，只經環境變數傳入，不插進指令字串。
       - name: Enforce prompt document lock
         shell: bash
@@ -80,7 +84,7 @@ jobs:
         run: |
           flags=()
           if [ "${EVENT_NAME}" = "pull_request" ] && [ "${PR_HAS_RENEWAL_LABEL}" = "true" ]; then
-            flags+=(--allow-lock-update)
+            flags+=(--allow-lock-update --no-migration)
           elif [ "${EVENT_NAME}" = "push" ] && printf '%s\n' "${HEAD_COMMIT_MESSAGE}" | tr -d '\r' | grep -qx 'Lock-Renewal: approved'; then
             flags+=(--allow-lock-update)
           fi

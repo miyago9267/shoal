@@ -79,9 +79,14 @@ class LockStepBehaviorTests(unittest.TestCase):
         )
 
     def test_label_enables_flag_on_pull_request_only(self) -> None:
-        expected = "ARGS: install/validate_prompt_lock.py --base-ref BASE --allow-lock-update"
+        # The label path never accepts a surface migration (core-policy P0).
+        expected = "ARGS: install/validate_prompt_lock.py --base-ref BASE --allow-lock-update --no-migration"
         self.assertEqual(self.run_step(EVENT_NAME="pull_request", PR_HAS_RENEWAL_LABEL="true"), expected)
         self.assertNotIn("--allow-lock-update", self.run_step(EVENT_NAME="push", PR_HAS_RENEWAL_LABEL="true"))
+        self.assertNotIn(
+            "--no-migration",
+            self.run_step(EVENT_NAME="push", HEAD_COMMIT_MESSAGE="x\n\nLock-Renewal: approved\n"),
+        )
 
     def test_trailer_must_be_its_own_line_on_push(self) -> None:
         expected = "ARGS: install/validate_prompt_lock.py --base-ref BASE --allow-lock-update"

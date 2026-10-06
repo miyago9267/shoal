@@ -1,8 +1,8 @@
 ---
 title: Prompt and document lock
-status: complete
+status: active
 created: 2026-09-14
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -47,9 +47,24 @@ General README and historical report prose remains outside the lock.
 - Lock renewal (adding surfaces or editing `LOCK.json`) needs
   `--allow-lock-update` and human review. CI turns the flag on through exactly
   two paths: a pull request carrying the label `lock-renewal`, or a push to
-  `main` whose head commit message has a line `Lock-Renewal: approved`. Neither
-  relaxes the budgets or the version gate of existing surfaces; without the
-  label or trailer a `LOCK.json` change stays red.
+  `main` whose head commit message has a line `Lock-Renewal: approved`. Renewal
+  alone does not relax the budgets or the version gate of existing surfaces;
+  without the label or trailer a `LOCK.json` change stays red. The only
+  exception is the one-time surface migration below.
+- One-time surface migration (decided 2026-10-06 by Miyago, core-policy Open
+  question 1). A surface may carry `migration`: `{migration_id, equivalence}`,
+  where `migration_id` matches `^[a-z0-9][a-z0-9-]{2,63}$` and `equivalence` is
+  a repo-relative path to a non-empty, section-by-section equivalence table.
+  The marker is active only when the validator runs with `--allow-lock-update`
+  and the base manifest's same surface lacks the same `migration_id`. While
+  active it skips only the change budget (`check_change_budget`) of that
+  surface; `max_lines`, `max_bytes`, `required_fragments`, mirrors and the
+  version gate still apply, and the hard ceilings are unchanged. If the base
+  already holds the same `migration_id` the marker is inert and the normal
+  budget applies; remove it at the next renewal. CI accepts a migration only on
+  the push path (`Lock-Renewal: approved`): the label path passes
+  `--no-migration`, and an active marker there fails. Each host migrates in its
+  own commit, and a rollback is a new migration with a new `migration_id`.
 - The Claude host `hosts/claude/dist/agents/*.md` (8 files, 7 core-rendered plus
   `Explore`) and `skills/pilotfish-orchestration/` (`SKILL.md` plus 2
   references) are protected. `hosts/claude/dist/claude-md.bootstrap.md` and

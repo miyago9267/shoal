@@ -53,6 +53,8 @@ HARD_MAX_CHANGED_LINES = 32
 HARD_MAX_CHANGED_CHARACTERS = 4000
 HARD_MAX_CHANGE_RATIO = 0.35
 HARD_MAX_BYTES = 60_000
+MIGRATION_ID = re.compile(r"[a-z0-9][a-z0-9-]{2,63}")
+MIGRATION_KEYS = frozenset({"migration_id", "equivalence"})
 
 
 class PromptLockError(ValueError):
@@ -115,6 +117,26 @@ def _validate_surface(surface: Any, index: int) -> None:
         isinstance(fragment, str) and fragment for fragment in fragments
     ):
         raise PromptLockError(f"surface {surface['id']}: required_fragments must be non-empty strings")
+    if "migration" in surface:
+        _validate_migration(surface["id"], surface["migration"])
+
+
+def _validate_migration(surface_id: str, migration: Any) -> None:
+    """Check the shape of the optional one-time migration marker."""
+
+    if not isinstance(migration, dict):
+        raise PromptLockError(f"surface {surface_id}: migration must be an object")
+    unknown = migration.keys() - MIGRATION_KEYS
+    if unknown:
+        raise PromptLockError(f"surface {surface_id}: migration has unknown keys {sorted(unknown)}")
+    missing = MIGRATION_KEYS - migration.keys()
+    if missing:
+        raise PromptLockError(f"surface {surface_id}: migration is missing fields {sorted(missing)}")
+    migration_id = migration["migration_id"]
+    if not isinstance(migration_id, str) or not MIGRATION_ID.fullmatch(migration_id):
+        raise PromptLockError(f"surface {surface_id}: migration_id must match {MIGRATION_ID.pattern}")
+    if not _is_relative_repo_path(migration["equivalence"]):
+        raise PromptLockError(f"surface {surface_id}: migration equivalence must stay inside the repository")
 
 
 def _validate_lock_shape(lock: Any) -> dict[str, Any]:
@@ -293,13 +315,53 @@ def _validate_mirrors(root: Path, lock: dict[str, Any]) -> None:
             raise PromptLockError(f"mirror {index} diverged: {mirror['left']} and {mirror['right']}")
 
 
+def _base_migration_ids(base_manifest: str) -> dict[str, str]:
+    """Return {surface id: migration_id} recorded in the base manifest."""
+
+    try:
+        surfaces = json.loads(base_manifest).get("surfaces", [])
+    except (json.JSONDecodeError, AttributeError):
+        return {}
+    ids: dict[str, str] = {}
+    for surface in surfaces if isinstance(surfaces, list) else []:
+        if isinstance(surface, dict) and isinstance(surface.get("migration"), dict):
+            migration_id = surface["migration"].get("migration_id")
+            if isinstance(migration_id, str):
+                ids[str(surface.get("id"))] = migration_id
+    return ids
+
+
+def _check_equivalence(root: Path, surface: dict[str, Any]) -> None:
+    relative_path = surface["migration"]["equivalence"]
+    path = (root / relative_path).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError as exc:
+        raise PromptLockError(f"{surface['id']}: migration equivalence escapes the repository") from exc
+    try:
+        text = path.read_text(encoding="utf-8") if path.is_file() else None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise PromptLockError(f"{surface['id']}: migration equivalence is unreadable") from exc
+    if text is None:
+        raise PromptLockError(f"{surface['id']}: migration equivalence file is missing")
+    if not text.strip():
+        raise PromptLockError(f"{surface['id']}: migration equivalence file is empty")
+
+
 def validate_lock(
     root: Path,
     base_ref: str | None = None,
     *,
     allow_lock_update: bool = False,
+    allow_migration: bool = True,
 ) -> dict[str, Any]:
-    """Validate current surfaces and, when available, their Git diff budget."""
+    """Validate current surfaces and, when available, their Git diff budget.
+
+    A surface may carry a one-time `migration` marker. It waives only the change
+    budget, and only while `allow_lock_update` is set and the base manifest's
+    same surface lacks the same `migration_id`. With `allow_migration=False`
+    (the pull-request label path) an active marker is an error.
+    """
 
     root = root.resolve()
     lock = load_lock(root)
@@ -335,6 +397,7 @@ def validate_lock(
             "LOCK.json changed; use --allow-lock-update only for an explicitly approved policy renewal"
         )
 
+    base_migrations = _base_migration_ids(base_manifest)
     reports: list[dict[str, Any]] = []
     for surface in lock["surfaces"]:
         relative_path = surface["path"]
@@ -354,6 +417,27 @@ def validate_lock(
                     "removed_lines": 0,
                     "changed_characters": 0,
                     "change_ratio": 0.0,
+                }
+            )
+            continue
+        marker = surface.get("migration")
+        if (
+            marker
+            and allow_lock_update
+            and base_migrations.get(surface["id"]) != marker["migration_id"]
+        ):
+            if not allow_migration:
+                raise PromptLockError(
+                    f"{surface['id']}: migration is not accepted on this path"
+                )
+            _check_equivalence(root, surface)
+            metrics = _diff_metrics(before, contents[relative_path])
+            reports.append(
+                {
+                    "id": surface["id"],
+                    "path": relative_path,
+                    "migration": marker["migration_id"],
+                    **metrics,
                 }
             )
             continue
@@ -385,6 +469,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--base-ref", default=None)
     parser.add_argument("--allow-lock-update", action="store_true")
+    parser.add_argument(
+        "--no-migration",
+        action="store_true",
+        help="reject surface migration markers (pull-request label path)",
+    )
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)
     try:
@@ -392,6 +481,7 @@ def main(argv: list[str] | None = None) -> int:
             args.root,
             base_ref=args.base_ref or None,
             allow_lock_update=args.allow_lock_update,
+            allow_migration=not args.no_migration,
         )
     except PromptLockError as exc:
         print(f"prompt-document-lock: error: {exc}", file=sys.stderr)
