@@ -1,0 +1,78 @@
+# 完整 policy 的入口 skill：first move 與 references 清單。
+# 條款由 Claude 的 policy 切出（core-policy Decision 1）；host 專屬名稱用 {{placeholder}}，詞彙在 placeholders.toml。
+
+[[clause]]
+id = "skill-intro"
+kind = "invariant"
+sep = "newline"
+text = '''
+This {{skill_term}} is the detailed procedure behind the always-on Pilotfish bootstrap.'''
+
+[[clause]]
+id = "skill-bootstrap-authority"
+kind = "invariant"
+sep = "paragraph"
+text = '''
+The bootstrap stays authoritative for its invariants; this {{skill_term}} supplies the
+complete contract.'''
+
+[[clause]]
+id = "first-move-heading"
+kind = "heading"
+sep = "paragraph"
+text = '''
+## First move'''
+
+[[clause]]
+id = "first-move-steps"
+kind = "routing"
+sep = "paragraph"
+text = '''
+1. Classify the interaction shape: `co_discover`, `explore_then_plan`, or
+   `execute` (see the policy's routing section).
+2. Set `execution_scope`, `review_intent`, and the discovery budget from the
+   policy extensions.
+3. Apply risk triggers before size, then the phase gate and dispatch brake
+   before every {{dispatch_tool}} call.'''
+
+[[clause]]
+id = "references-heading"
+kind = "heading"
+sep = "paragraph"
+text = '''
+## References'''
+
+[[clause]]
+id = "references-intro"
+kind = "invariant"
+sep = "paragraph"
+text = '''
+Read only the part needed for the current decision:'''
+
+[[clause]]
+id = "reference-policy"
+kind = "routing"
+sep = "newline"
+text = '''
+- [{{policy_doc}}]({{references_dir}}{{policy_doc}}): routing,
+  lifecycle gates, dispatch and ownership, severity, recovery, AUTO/ASK,
+  parallel and runtime mechanics.'''
+
+[[clause]]
+id = "reference-extensions"
+kind = "routing"
+sep = "paragraph"
+text = '''
+- [{{extensions_doc}}]({{references_dir}}{{extensions_doc}}): outcome-level
+  continuation, turn-scoped review intent, discovery budget, decision
+  checkpoint through `{{question_tool}}`, task ledger and blocked-task
+  isolation, continuation across user input, review-service circuit breaker,
+  and verifier direction checkpoint.'''
+
+[[clause]]
+id = "reference-fail-soft"
+kind = "invariant"
+sep = "paragraph"
+text = '''
+If a reference is unavailable, keep the bootstrap invariants, work fail-soft,
+and do not claim full Pilotfish verification.'''

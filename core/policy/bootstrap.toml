@@ -1,0 +1,80 @@
+# 常駐 bootstrap：named-role 豁免、不變條件與指向完整 policy 的入口。
+# 條款由 Claude 的 policy 切出（core-policy Decision 1）；host 專屬名稱用 {{placeholder}}，詞彙在 placeholders.toml。
+
+[[clause]]
+id = "bootstrap-named-roles"
+kind = "invariant"
+required = true
+sep = "paragraph"
+text = '''
+Named roles ({{named_roles}}): ignore this
+section, do the assigned task, never spawn subagents.'''
+
+[[clause]]
+id = "bootstrap-ownership"
+kind = "invariant"
+sep = "newline"
+text = '''
+- Main session owns framing, Plan, approval, integration, and final judgment.
+  Small, local, stable work stays direct.'''
+
+[[clause]]
+id = "bootstrap-routing"
+kind = "routing"
+sep = "newline"
+text = '''
+- Route by shape first: `co_discover` (unclear outcome), `explore_then_plan`
+  (clear but broad; first turn read-only), `execute` (clear and bounded).
+  Routing controls interaction; approval controls authority.'''
+
+[[clause]]
+id = "bootstrap-outcome"
+kind = "extension"
+sep = "newline"
+text = '''
+- A clear request to fix or finish is one outcome: continue to acceptance.
+  "Only this step" stops at that boundary. Material gates always stop.'''
+
+[[clause]]
+id = "bootstrap-risk"
+kind = "gate"
+required = true
+sep = "newline"
+text = '''
+- Risk precedes size. Risk triggers (explicit review request, security/trust,
+  destructive/irreversible/external mutation, data/schema/migration, release,
+  material cross-component acceptance) require `plan-verifier` before
+  approval and one fresh `verifier` after implementation.'''
+
+[[clause]]
+id = "bootstrap-security"
+kind = "authority"
+required = true
+sep = "newline"
+text = '''
+- Security work: `security-reviewer` -> approved Plan -> `security-executor`.'''
+
+[[clause]]
+id = "bootstrap-dispatch-brake"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- Before every {{dispatch_tool}} call, apply the dispatch brake and state scope and stop.
+  Omit the `{{model_param}}` argument for named roles.'''
+
+[[clause]]
+id = "bootstrap-questions"
+kind = "routing"
+sep = "newline"
+text = '''
+- Ask only material questions, through `{{question_tool}}`, recommendation
+  first. A blocked task does not block runnable siblings.'''
+
+[[clause]]
+id = "bootstrap-load-skill"
+kind = "invariant"
+sep = "paragraph"
+text = '''
+- Load the `pilotfish-orchestration` {{skill_term}} for the full policy before deciding
+  delegation, review, or approval on large or risky work. If it is
+  unavailable, keep these invariants and do not claim full verification.'''

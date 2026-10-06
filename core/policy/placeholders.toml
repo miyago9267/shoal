@@ -1,0 +1,45 @@
+# policy 條款可用的 host 名稱 placeholder 詞彙。條款寫 {{key}}，host 在 binding 的
+# [policy.placeholders] 提供值（值不可含 `{{` 或換行）；條款用到詞彙外的 key 或 host 少給 key，
+# render 都會失敗。新增 key 要同時補每個切到 core 的 host。
+
+[placeholders.dispatch_tool]
+description = "派工給 named role 的工具名稱（例如 Claude 的 Agent）。"
+
+[placeholders.question_tool]
+description = "向使用者提出結構化問題的工具名稱。"
+
+[placeholders.named_roles]
+description = "named role 的清單（逐項加反引號、以逗號分隔），含該 host 專屬的 role。"
+
+[placeholders.shell_tool]
+description = "執行 shell 指令的工具名稱。"
+
+[placeholders.write_tools]
+description = "會修改檔案的工具，以斜線連接（用於 read-only 回合的禁止清單）。"
+
+[placeholders.read_tools]
+description = "讀取與搜尋用的工具，以斜線連接（用於 active-agent 範圍的衝突檢查）。"
+
+[placeholders.background_option]
+description = "把指令或 agent 放到背景執行的參數寫法（不含反引號）。"
+
+[placeholders.worktree_option]
+description = "平行寫入時隔離 worktree 的參數寫法（不含反引號）。"
+
+[placeholders.model_param]
+description = "派工時指定模型的參數名稱；named role 的選模在 agent 定義，不傳這個參數。"
+
+[placeholders.goal_command]
+description = "使用者宣告長時間目標的指令（含斜線）。"
+
+[placeholders.skill_term]
+description = "host 對 skill 的稱呼（首字大小寫照該 host 的用法）。"
+
+[placeholders.policy_doc]
+description = "主 policy 文件的檔名，用於文件之間的連結。"
+
+[placeholders.extensions_doc]
+description = "擴充規則文件的檔名，用於文件之間的連結。"
+
+[placeholders.references_dir]
+description = "skill 內 references 目錄的相對前綴（含結尾斜線），用於 skill 對 policy 文件的連結。"

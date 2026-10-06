@@ -5,6 +5,35 @@
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
 role_text = "core"
 
+# policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
+# omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
+[policy]
+policy_text = "legacy"
+omit = []
+
+[policy.placeholders]
+dispatch_tool = "Agent"
+question_tool = "AskUserQuestion"
+named_roles = "`scout`, `Explore`, `plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`, `security-executor`"
+shell_tool = "Bash"
+write_tools = "Write/Edit/NotebookEdit"
+read_tools = "Read/Glob/Grep/Bash"
+background_option = "run_in_background: true"
+worktree_option = 'isolation: "worktree"'
+model_param = "model"
+goal_command = "/goal"
+skill_term = "Skill"
+policy_doc = "orchestration-policy.md"
+extensions_doc = "workflow-extensions.md"
+references_dir = "references/"
+
+# core 文件 -> 輸出路徑（相對 dist）；policy_text = "core" 時取代 src 內同路徑的原文。
+[policy.documents]
+bootstrap = "claude-md.bootstrap.md"
+skill = "skills/pilotfish-orchestration/SKILL.md"
+orchestration = "skills/pilotfish-orchestration/references/orchestration-policy.md"
+extensions = "skills/pilotfish-orchestration/references/workflow-extensions.md"
+
 # 這個 host 可用的模型與其 alias；resolver 只在這裡選（規則見 core/tiers.toml）。
 # security role 不會選到 fable（帶 refuses_defensive_security 旗標，分類器會誤拒防禦性資安工作）。
 # 要手動指定某個 tier 的模型時，才另外寫 [tiers]；某個 role 要 pin 就在 [roles.<name>] 寫 model。

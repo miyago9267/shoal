@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """從 core/（roles、models、tiers）、hosts/<host>/binding.toml 與 hosts/<host>/src/ 產生 host 輸出。
 
-用法：python3 tools/render.py --host <host> (--check|--write|--explain) [--root DIR]
+用法：python3 tools/render.py --host <host> (--check|--write|--explain|--explain-policy|--policy-preview DIR) [--root DIR]
 <host> 是 claude、codex、agy、grok、opencode，或 hosts/<name>/binding.toml 宣告
 renderer = "generic-md" 的 host（輸出格式由 binding 的 [output] 宣告，不需寫程式碼）。
 另有 claude-plugin：由 claude 的 render 結果、hooks/shoal_guard.py 與根目錄 VERSION 產生
 Claude plugin（claude-plugin/ 與 .claude-plugin/marketplace.json），不屬於五個 host。
 
 --explain 只印出每個 role 的選模與權限推導過程，不讀也不改 dist。
+--explain-policy 印出 core policy 每份文件的條款狀態（core / omitted / replaced）與 addenda；
+--policy-preview DIR 把 core 組出來的 policy 文件寫到 DIR（不論 policy_text），不碰 dist，供 legacy 與 core 對照。
 exit code：0 成功；1 --check 發現 dist 與 render 結果不同；2 來源驗證失敗或沒有模型滿足規則。
 """
 from __future__ import annotations
@@ -45,6 +47,9 @@ EXCLUSIVE_KEYS = {"claude": ("tools", "disallowedTools")}
 TIERS = ("fast", "standard", "strong", "frontier")
 # role 文字來源：core = core/contracts 的條款加 host 的 frames/addenda；legacy = host src 內的原文。
 ROLE_TEXT_MODES = ("core", "legacy")
+# policy 文字來源：core = core/policy 的條款加 host 的 policy-frames/policy-addenda；legacy = host src 內的原文。
+POLICY_TEXT_MODES = ("core", "legacy")
+POLICY_KEYS = {"policy_text", "omit", "placeholders", "documents"}
 READ_ONLY_FORBIDDEN_TOOLS = {"Write", "Edit", "Bash", "NotebookEdit"}
 # frontmatter 之後緊接一行空白，再接 body。
 FRONTMATTER_KEYS = ("name", "description", "model", "effort")
@@ -206,6 +211,7 @@ def load_core(root: Path) -> dict:
     for name in ("roles", "models", "tiers"):
         core.update(load_toml(root / "core" / f"{name}.toml"))
     core["contracts"] = load_contracts(root, core["roles"])
+    core["policy"] = load_policy(root)
     return core
 
 
@@ -220,6 +226,193 @@ def load_contracts(root: Path, roles: dict) -> dict[str, list[contracts.Clause]]
         except contracts.ContractError as exc:
             raise RenderError(f"core/contracts/{path.name}: {exc}") from exc
     return out
+
+
+def load_policy(root: Path) -> dict:
+    """core/policy：placeholders.toml 是 placeholder 詞彙，其餘 <doc>.toml 是文件的條款（kind 用 POLICY_KINDS）。
+
+    條款 id 跨文件唯一（binding 的 omit 與 addenda 直接用 id）；條款只能用詞彙內的 placeholder。
+    回傳 {"docs": {doc: [Clause]}, "placeholders": {key: 說明}}；沒有 core/policy 目錄時兩者皆空。
+    """
+    folder = root / "core" / "policy"
+    out: dict = {"docs": {}, "placeholders": {}}
+    if not folder.is_dir():
+        return out
+    vocab = folder / "placeholders.toml"
+    if vocab.is_file():
+        table = load_toml(vocab)
+        unknown = sorted(set(table) - {"placeholders"})
+        if unknown:
+            raise RenderError(f"core/policy/placeholders.toml: 未知的頂層 key {', '.join(unknown)}")
+        for key, spec in table.get("placeholders", {}).items():
+            if (not re.fullmatch(r"[a-z][a-z0-9_]*", key) or set(spec) != {"description"}
+                    or not isinstance(spec["description"], str) or not spec["description"]):
+                raise RenderError(f"core/policy/placeholders.toml: {key} 必須是小寫英數加底線，且只有非空的 description")
+            out["placeholders"][key] = spec["description"]
+    seen: dict[str, str] = {}
+    for path in sorted(folder.glob("*.toml")):
+        if path == vocab:
+            continue
+        try:
+            clauses = contracts.load_policy_contract(path)
+        except contracts.ContractError as exc:
+            raise RenderError(f"core/policy/{path.name}: {exc}") from exc
+        for clause in clauses:
+            if clause.id in seen:
+                raise RenderError(f"core/policy/{path.name}: 條款 {clause.id} 與 {seen[clause.id]} 重複（id 跨文件唯一）")
+            seen[clause.id] = path.name
+            unknown_keys = sorted(contracts.placeholder_keys(clause.text) - set(out["placeholders"]))
+            if unknown_keys:
+                raise RenderError(
+                    f"core/policy/{path.name} clause {clause.id}: placeholder {', '.join(unknown_keys)} "
+                    "不在 core/policy/placeholders.toml")
+        out["docs"][path.stem] = clauses
+    return out
+
+
+def policy_text_mode(binding: dict) -> str:
+    """binding 的 [policy].policy_text；沒有 [policy] 視為 legacy。"""
+    return binding.get("policy", {}).get("policy_text", "legacy")
+
+
+def policy_omits(binding: dict) -> dict[str, str]:
+    """[policy].omit 的 {條款 id: 理由}。"""
+    return {item["id"]: item["reason"] for item in binding.get("policy", {}).get("omit", [])}
+
+
+def _safe_relative(path: object) -> bool:
+    return (isinstance(path, str) and bool(path) and not path.startswith("/") and "\\" not in path
+            and ".." not in path.split("/") and not path.endswith("/"))
+
+
+def validate_policy(core: dict, binding: dict, *, core_supported: bool) -> None:
+    """binding 的 [policy]：policy_text、omit（要有理由、不可含 required）、placeholders、documents。
+
+    policy_text = "core" 時 documents 必須涵蓋每份 core 文件、placeholders 必須恰好是詞彙；
+    其餘情況（legacy）只驗已寫的欄位。沒有 [policy] 視為 legacy。
+    """
+    policy = binding.get("policy")
+    if policy is None:
+        return
+    if not isinstance(policy, dict):
+        raise RenderError("[policy] 必須是 table")
+    unknown = sorted(set(policy) - POLICY_KEYS)
+    if unknown:
+        raise RenderError(f"[policy]: 未知欄位 {', '.join(unknown)}")
+    mode = policy.get("policy_text")
+    if mode not in POLICY_TEXT_MODES:
+        raise RenderError(f"[policy].policy_text 必須是 {list(POLICY_TEXT_MODES)}")
+    if mode == "core" and not core_supported:
+        raise RenderError('[policy].policy_text = "core" 尚未支援這個 host（core-policy P2、P3 逐 host 開放）')
+    docs, vocab = core["policy"]["docs"], core["policy"]["placeholders"]
+    ids = {c.id: c for clauses in docs.values() for c in clauses}
+    omit = policy.get("omit", [])
+    if not isinstance(omit, list):
+        raise RenderError("[policy].omit 必須是 [{id, reason}] 陣列")
+    seen: set[str] = set()
+    for index, item in enumerate(omit, 1):
+        where = f"[policy].omit 第 {index} 項"
+        if not isinstance(item, dict) or set(item) != {"id", "reason"}:
+            raise RenderError(f"{where}: 必須恰好有 id 與 reason")
+        if not isinstance(item["reason"], str) or not item["reason"].strip():
+            raise RenderError(f"{where}: reason 必須是非空字串（每個省略都要有理由）")
+        if item["id"] not in ids:
+            raise RenderError(f"{where}: core/policy 沒有條款 {item['id']}")
+        if item["id"] in seen:
+            raise RenderError(f"{where}: 條款 {item['id']} 重複")
+        if ids[item["id"]].required:
+            raise RenderError(f"{where}: required 條款 {item['id']} 不可 omit")
+        seen.add(item["id"])
+    try:
+        values = contracts.check_placeholder_values("[policy.placeholders]", policy.get("placeholders", {}))
+    except contracts.ContractError as exc:
+        raise RenderError(str(exc)) from exc
+    unknown = sorted(set(values) - set(vocab))
+    if unknown:
+        raise RenderError(f"[policy.placeholders]: 未知的 key {', '.join(unknown)}（詞彙在 core/policy/placeholders.toml）")
+    documents = policy.get("documents", {})
+    if not isinstance(documents, dict):
+        raise RenderError("[policy.documents] 必須是 table")
+    for doc, path in documents.items():
+        if doc not in docs:
+            raise RenderError(f"[policy.documents]: core/policy 沒有文件 {doc}")
+        if not _safe_relative(path):
+            raise RenderError(f"[policy.documents].{doc}: 必須是不含 .. 的相對路徑")
+    if len(set(documents.values())) != len(documents):
+        raise RenderError("[policy.documents]: 兩份文件不可輸出到同一個路徑")
+    if mode == "core":
+        require_policy_complete(core, binding)
+
+
+def require_policy_complete(core: dict, binding: dict) -> None:
+    """core 輸出或預覽的前提：documents 涵蓋每份 core 文件，placeholders 恰好是詞彙。"""
+    policy = binding.get("policy", {})
+    docs, vocab = core["policy"]["docs"], core["policy"]["placeholders"]
+    if not docs:
+        raise RenderError("core/policy 沒有任何條款文件")
+    missing = sorted(set(docs) - set(policy.get("documents", {})))
+    if missing:
+        raise RenderError(f"[policy.documents] 缺少文件 {', '.join(missing)}")
+    absent = sorted(set(vocab) - set(policy.get("placeholders", {})))
+    if absent:
+        raise RenderError(f"[policy.placeholders] 缺少 {', '.join(absent)}")
+
+
+def policy_files(core: dict, binding: dict, host_dir: Path) -> dict[str, bytes]:
+    """core 組出來的 policy 文件：{host 輸出路徑: bytes}。每份文件 = policy-frames 外框 + 條款（扣 omit）+ policy-addenda。
+
+    與 role 共用 contracts.compose 與 load_frame / load_addenda；全部條款被 omit 且沒有 addendum 的文件不輸出。
+    """
+    require_policy_complete(core, binding)
+    policy = binding["policy"]
+    omitted = set(policy_omits(binding))
+    values = policy["placeholders"]
+    addenda_dir = host_dir / "policy-addenda"
+    stray = (sorted(p.name for p in addenda_dir.glob("*") if p.stem not in core["policy"]["docs"])
+             if addenda_dir.is_dir() else [])
+    if stray:
+        raise RenderError(f"policy-addenda/{', '.join(stray)}: core/policy 沒有對應的文件")
+    out: dict[str, bytes] = {}
+    for doc, clauses in core["policy"]["docs"].items():
+        try:
+            addenda = contracts.load_addenda(addenda_dir / f"{doc}.toml")
+            body = contracts.compose_policy(doc, clauses, addenda, omitted, values)
+            if body is None:
+                continue
+            frame = contracts.load_frame(host_dir / "policy-frames", doc)
+            out[policy["documents"][doc]] = contracts.apply_frame(frame, body).encode("utf-8")
+        except contracts.ContractError as exc:
+            raise RenderError(f"policy {doc}: {exc}") from exc
+    return out
+
+
+def explain_policy(root: Path, host: str) -> str:
+    """每份 policy 文件的輸出路徑、外框、每個 core 條款的狀態（core / omitted / replaced）與 addenda。"""
+    core, binding = load_core(root), load_toml(root / "hosts" / host / "binding.toml")
+    host_dir = root / "hosts" / host
+    validate_policy(core, binding, core_supported=True)
+    require_policy_complete(core, binding)
+    omitted = policy_omits(binding)
+    out = [f"host: {host}", f"policy_text: {policy_text_mode(binding)}", ""]
+    for doc, clauses in core["policy"]["docs"].items():
+        addenda = contracts.load_addenda(host_dir / "policy-addenda" / f"{doc}.toml")
+        replaced = {a.at.split(":", 1)[1]: a.id for a in addenda if a.at.startswith("replace:")}
+        frames = host_dir / "policy-frames"
+        has_frame = (frames / f"{doc}.md").is_file() or (frames / "default.md").is_file()
+        out.append(f"{doc} -> {binding['policy']['documents'][doc]}（外框：{'有' if has_frame else '無'}）")
+        for clause in clauses:
+            flags = [clause.kind] + (["required"] if clause.required else [])
+            if clause.id in omitted:
+                state = f"omitted：{omitted[clause.id]}"
+            elif clause.id in replaced:
+                state = f"replaced by addendum {replaced[clause.id]}"
+            else:
+                state = "core"
+            out.append(f"  {clause.id} [{', '.join(flags)}] {state}")
+        for add in addenda:
+            out.append(f"  + addendum {add.id} at {add.at}")
+        out.append("")
+    return "\n".join(out).rstrip("\n") + "\n"
 
 
 def role_text_mode(name: str, binding: dict) -> str:
@@ -267,8 +460,11 @@ def _legacy_body(src: Path, folder: str, name: str) -> bytes:
     return (src / folder / f"{name}.md").read_bytes()
 
 
-def validate_catalog(core: dict, binding: dict) -> None:
-    """host 共通規則：catalog 合法、catalog 的每個 role 在 binding 有對應或列入 omitted_roles、選模規則可解。"""
+def validate_catalog(core: dict, binding: dict, *, core_policy: bool = False) -> None:
+    """host 共通規則：catalog 合法、catalog 的每個 role 在 binding 有對應或列入 omitted_roles、選模規則可解、[policy] 合法。
+
+    core_policy 表示這個 host 的 renderer 已能輸出 core policy；其他 host 設 policy_text = "core" 會失敗。
+    """
     try:
         resolve.validate_core(core)
         resolve.validate_binding(core, binding)
@@ -293,6 +489,7 @@ def validate_catalog(core: dict, binding: dict) -> None:
     for name, spec in binding.get("extra_roles", {}).items():
         if "role_text" in spec:
             raise RenderError(f"{name}: host 專屬 role 沒有 core 條款，不可設 role_text")
+    validate_policy(core, binding, core_supported=core_policy)
     omitted = binding.get("omitted_roles", [])
     for name in omitted:
         if name not in catalog:
@@ -318,7 +515,7 @@ def _claude_tools(name: str, perm: Permission) -> tuple[str, list[str]]:
 
 
 def validate_claude(core: dict, binding: dict) -> dict[str, Permission]:
-    validate_catalog(core, binding)
+    validate_catalog(core, binding, core_policy=True)
     perms = derive_permissions("claude", core, binding)
     for name, perm in perms.items():
         kind, tools = _claude_tools(name, perm)
@@ -357,6 +554,11 @@ def render_claude(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         rel = path.relative_to(src)
         if path.is_file() and rel.parts[0] != "agents":
             out[rel.as_posix()] = path.read_bytes()
+    if policy_text_mode(binding) == "core":
+        # core 的文件取代 src 內同路徑的原文；整份被 omit 的文件從輸出移除。
+        for path in binding["policy"]["documents"].values():
+            out.pop(path, None)
+        out.update(policy_files(core, binding, src.parent))
     return out
 
 
@@ -1184,6 +1386,33 @@ def plugin_main(args: argparse.Namespace) -> int:
     return 0
 
 
+def policy_main(args: argparse.Namespace) -> int:
+    """--explain-policy 與 --policy-preview：只讀 core 與 binding，不論 policy_text 都組 core 輸出，不碰 dist。"""
+    if args.host == CLAUDE_PLUGIN_HOST:
+        print("render 失敗: claude-plugin 沒有 policy 預覽（用 --host claude）", file=sys.stderr)
+        return 2
+    try:
+        if args.explain_policy:
+            print(explain_policy(args.root, args.host), end="")
+            return 0
+        host_dir = args.root / "hosts" / args.host
+        core, binding = load_core(args.root), load_toml(host_dir / "binding.toml")
+        validate_policy(core, binding, core_supported=True)
+        files = policy_files(core, binding, host_dir)
+        target = args.policy_preview.resolve()
+        protected = (args.root / dist_dir(args.host)).resolve()
+        if target == protected or protected in target.parents:
+            raise RenderError(f"預覽目錄不可在 {dist_dir(args.host)} 之內")
+        for rel, data in files.items():  # 只寫預覽檔，不清理 DIR 內其他檔案
+            (target / rel).parent.mkdir(parents=True, exist_ok=True)
+            (target / rel).write_bytes(data)
+        print(f"已寫入 {len(files)} 個 policy 檔案到 {target}")
+        return 0
+    except (RenderError, OSError, KeyError) as exc:
+        print(f"render 失敗: host {args.host}: {exc}", file=sys.stderr)
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     # Windows 預設 cp1252，輸出中文會拋 UnicodeEncodeError，強制 UTF-8
     sys.stdout.reconfigure(encoding="utf-8")
@@ -1202,11 +1431,17 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--explain", action="store_true", help="印出每個 role 的選模過程")
+    mode.add_argument("--explain-policy", action="store_true", help="印出 core policy 的條款狀態與 addenda")
+    mode.add_argument("--policy-preview", type=Path, metavar="DIR",
+                      help="把 core 組出來的 policy 文件寫到 DIR（不碰 dist）")
     parser.add_argument("--root", type=Path, default=REPO, help="repo 根目錄（測試用）")
     args = parser.parse_args(argv)
 
     if args.host == CLAUDE_PLUGIN_HOST:
         return plugin_main(args)
+
+    if args.explain_policy or args.policy_preview:
+        return policy_main(args)
 
     if args.explain:
         try:

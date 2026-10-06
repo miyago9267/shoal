@@ -59,9 +59,8 @@ role 只在 `roles.toml` 宣告 `access` 與 `capabilities`；各 host 的權限
 - `--explain` 對每個 role 印出 `access`、`capabilities`、套用的對應表、
   覆寫與推導出的欄位。
 
-policy 文字目前還在各 host 底下（例如 `hosts/claude/src/`），不在 core。
-原因是 claude 和 codex 的 policy 已經分岔，先搬家並用 golden test
-證明行為不變；要到 P5 才合併成 host 中立的 `core/policy/`。
+orchestration policy 的條款在 `core/policy/`（見下一節）；各 host 目前仍輸出
+`hosts/<h>/src/` 內的 legacy 原文，切換是逐 host 的 migration。
 
 ## role 條款（core/contracts）
 
@@ -97,6 +96,47 @@ core（規格見
   輸出與切換前逐位元組相同。各 host 專屬的句子放在各自的 `addenda/`；
   host 專屬 role（`Explore`、`sol-executor`）維持 `src/agents` 的原文。
   對照表在 `docs/specs/role-contracts/MAPPING-*.md`。
+
+## policy 條款（core/policy）
+
+orchestration policy（bootstrap、skill、主 policy、擴充規則）以 Claude 的文字為
+canonical，切成 host 中立的條款（規格見
+[docs/specs/core-policy/SPEC.md](../docs/specs/core-policy/SPEC.md)）。組裝沿用
+role 條款的機制（`tools/contracts.py` 的 `compose`、`load_frame`、
+`load_addenda`），不另有一套組裝器。
+
+- `core/policy/<doc>.toml`：一份輸出文件一個檔案（`bootstrap`、`skill`、
+  `orchestration`、`extensions`），格式同 `core/contracts`（`id`、`kind`、`text`、
+  選用 `sep`），另有選用的 `required = true`。條款 id 跨文件唯一。`kind` 只能是
+  `heading`、`invariant`、`routing`、`gate`、`dispatch`、`verification`、
+  `recovery`、`authority`、`mechanics`、`extension`（`contracts.POLICY_KINDS`）；
+  role 條款不接受 `required`。
+- `required` 的條款（named-role 豁免、risk trigger 與核准、security-reviewer 到
+  security-executor 的路徑、destructive／external 確認、extension 不擴權）不可被
+  `omit`，也不可被 addendum `replace:`，render 直接失敗。集合鎖在
+  `tests/test_core_policy.py` 的 `EXPECTED_REQUIRED`。
+- host 專屬的名稱（派工工具、問答工具、shell、參數寫法、文件檔名）不寫在條款裡，
+  用 `{{key}}` placeholder。詞彙在 `core/policy/placeholders.toml`；條款用到詞彙外的
+  key、詞彙內的 key 沒人用、或 host 少給 key 都會失敗。代入是單次 regex：未知 key
+  或格式不合的 `{{` 報錯，值不得含 `{{` 或換行。條款文字同樣不得含
+  `HOST_SPECIFIC_TERMS`（`tests/test_role_contracts.py`）。
+- binding 的 `[policy]`：
+  - `policy_text = "legacy" | "core"`：與 `role_text` 相同的開關，`legacy` 輸出 src
+    原文，是逐 host 的 rollback。目前五個 host 都是 `legacy`；只有 Claude 的
+    renderer 支援 `core`，其他 host 設 `core` 會失敗（P3 才開放）。
+  - `omit = [{ id, reason }]`：該 host 省略的條款，每項都要有理由；未列出的條款一律
+    輸出。整份文件的條款都被省略（且沒有 addendum）時，該文件不輸出。
+  - `[policy.placeholders]`：詞彙內每個 key 的值。
+  - `[policy.documents]`：core 文件對應的輸出路徑（相對 dist）。
+- `hosts/<h>/policy-frames/<doc>.md`（找不到則 `default.md`）：外框，必須恰好有一個
+  `{{role_body}}`；`hosts/<h>/policy-addenda/<doc>.toml`：host 專屬補充，`at` 語法與
+  role addenda 相同，不可掛在被 omit 的條款上。兩者在 `src/` 之外，不會被帶進 dist，
+  `lint:md` 也排除 `policy-frames`。每個 host 的 omit 與 replace 清單鎖在
+  `EXPECTED_POLICY_OMITS`、`EXPECTED_POLICY_REPLACES`。
+- 預覽（不論 `policy_text`、不碰 dist）：`python3 tools/render.py --host claude
+  --policy-preview DIR` 把 core 組出來的文件寫到 DIR，用來和 legacy 對照；
+  `--explain-policy` 印出每個條款是 core、omitted 或 replaced。對照表放在
+  `docs/specs/core-policy/equivalence/<host>.md`。
 
 ## 新增 host（generic-md）
 

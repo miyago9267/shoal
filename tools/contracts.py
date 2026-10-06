@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 # sep 是「這一段之後」接什麼：paragraph = 空行，space = 同一行接續，newline = 換行（例如條列）。
@@ -29,7 +29,24 @@ KINDS = frozenset(
         "leaf",
     }
 )
+# policy 條款（core/policy）的 kind 詞彙；與 role 的 KINDS 分開，新增同樣要改 core/README.md。
+POLICY_KINDS = frozenset(
+    {
+        "heading",
+        "invariant",
+        "routing",
+        "gate",
+        "dispatch",
+        "verification",
+        "recovery",
+        "authority",
+        "mechanics",
+        "extension",
+    }
+)
 FRAME_PLACEHOLDER = "{{role_body}}"
+# policy 條款內的 host 名稱 placeholder：{{key}}，key 是小寫英數加底線。
+_PLACEHOLDER = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
 _ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _ANCHOR = re.compile(r"^(?:(start|end)|(after|before|replace):(.+))$")
 
@@ -44,6 +61,8 @@ class Clause:
     kind: str
     text: str
     sep: str = "paragraph"
+    # 只有 policy 條款可標 required：host 不可 omit 或 replace（見 check_policy_edits）。
+    required: bool = False
 
 
 @dataclass(frozen=True)
@@ -101,7 +120,13 @@ def _check_sep(where: str, value: object) -> str:
     return value
 
 
-def parse_contract(data: dict, label: str = "contract") -> list[Clause]:
+def parse_contract(
+    data: dict,
+    label: str = "contract",
+    *,
+    kinds: frozenset[str] = KINDS,
+    allow_required: bool = False,
+) -> list[Clause]:
     unknown = sorted(set(data) - {"clause"})
     if unknown:
         raise ContractError(f"{label}: 未知的頂層 key {', '.join(unknown)}")
@@ -112,21 +137,28 @@ def parse_contract(data: dict, label: str = "contract") -> list[Clause]:
     seen: set[str] = set()
     for index, item in enumerate(raw, 1):
         table = _check_table(
-            f"{label} 第 {index} 個 clause", item, {"id", "kind", "text"}, {"sep"}
+            f"{label} 第 {index} 個 clause",
+            item,
+            {"id", "kind", "text"},
+            {"sep", "required"} if allow_required else {"sep"},
         )
         cid = _check_id(f"{label} 第 {index} 個 clause", table["id"])
         where = f"{label} clause {cid}"
         if cid in seen:
             raise ContractError(f"{where}: id 重複")
         seen.add(cid)
-        if table["kind"] not in KINDS:
-            raise ContractError(f"{where}: kind 必須是 {sorted(KINDS)}")
+        if table["kind"] not in kinds:
+            raise ContractError(f"{where}: kind 必須是 {sorted(kinds)}")
+        required = table.get("required", False)
+        if not isinstance(required, bool):
+            raise ContractError(f"{where}: required 必須是 true 或 false")
         clauses.append(
             Clause(
                 cid,
                 table["kind"],
                 _check_text(where, table["text"]),
                 _check_sep(where, table.get("sep", "paragraph")),
+                required,
             )
         )
     return clauses
@@ -169,6 +201,13 @@ def parse_addenda(data: dict, label: str = "addenda") -> list[Addendum]:
 
 def load_contract(path: Path) -> list[Clause]:
     return parse_contract(_load(path), str(path.name))
+
+
+def load_policy_contract(path: Path) -> list[Clause]:
+    """core/policy/<doc>.toml：kind 用 POLICY_KINDS，條款可標 required。"""
+    return parse_contract(
+        _load(path), str(path.name), kinds=POLICY_KINDS, allow_required=True
+    )
 
 
 def load_addenda(path: Path) -> list[Addendum]:
@@ -267,3 +306,82 @@ def apply_frame(frame: str | None, body: str) -> str:
         return body
     head, tail = frame.split(FRAME_PLACEHOLDER, 1)
     return head + body + tail
+
+
+# --- policy：placeholder、omit 與 required ---------------------------------
+
+
+def check_placeholder_values(where: str, values: object) -> dict[str, str]:
+    """binding 的 placeholder 值：key 小寫英數加底線，值是不含 `{{` 與換行的非空字串。"""
+    if not isinstance(values, dict):
+        raise ContractError(f"{where}: 必須是 table")
+    for key, value in values.items():
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", key):
+            raise ContractError(f"{where}: key {key!r} 必須是小寫英數加底線")
+        if not isinstance(value, str) or not value:
+            raise ContractError(f"{where}: {key} 必須是非空字串")
+        if "{{" in value or "\n" in value or "\r" in value:
+            raise ContractError(f"{where}: {key} 的值不可含 `{{{{` 或換行")
+    return values
+
+
+def placeholder_keys(text: str) -> set[str]:
+    return set(_PLACEHOLDER.findall(text))
+
+
+def substitute(text: str, values: dict[str, str], where: str) -> str:
+    """單次 regex 代入：未知 key 報錯；值不會被再次掃描；沒配成 placeholder 的 `{{` 也報錯。"""
+    if "{{" in _PLACEHOLDER.sub("", text):
+        raise ContractError(f"{where}: 有格式不合的 `{{{{`（placeholder 只能是 {{{{key}}}}）")
+
+    def fill(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in values:
+            raise ContractError(f"{where}: 未知的 placeholder {{{{{key}}}}}")
+        return values[key]
+
+    return _PLACEHOLDER.sub(fill, text)
+
+
+def check_policy_edits(
+    doc: str,
+    clauses: list[Clause],
+    addenda: list[Addendum],
+    omitted: set[str],
+) -> None:
+    """required 條款不可被 omit 或 replace；addendum 不可掛在被 omit 的條款上。"""
+    required = {c.id for c in clauses if c.id in omitted and c.required}
+    if required:
+        raise ContractError(f"{doc}: required 條款不可 omit：{', '.join(sorted(required))}")
+    locked = {c.id for c in clauses if c.required}
+    for add in addenda:
+        target = add.at.split(":", 1)[1] if ":" in add.at else None
+        if target is None:
+            continue
+        if add.at.startswith("replace:") and target in locked:
+            raise ContractError(f"{doc}: addendum {add.id} 不可 replace required 條款 {target}")
+        if target in omitted:
+            raise ContractError(f"{doc}: addendum {add.id} 指向被 omit 的條款 {target}")
+
+
+def compose_policy(
+    doc: str,
+    clauses: list[Clause],
+    addenda: list[Addendum],
+    omitted: set[str],
+    values: dict[str, str],
+) -> str | None:
+    """依序排列 policy 條款（扣掉 omit）與 addenda，並代入 placeholder；全部被 omit 且沒有 addendum 時回傳 None。"""
+    check_policy_edits(doc, clauses, addenda, omitted)
+    kept = [
+        replace(c, text=substitute(c.text, values, f"{doc} clause {c.id}"))
+        for c in clauses
+        if c.id not in omitted
+    ]
+    extra = [
+        replace(a, text=substitute(a.text, values, f"{doc} addendum {a.id}"))
+        for a in addenda
+    ]
+    if not kept and not extra:
+        return None
+    return compose(kept, extra)

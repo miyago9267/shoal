@@ -8,6 +8,12 @@
 # host 專屬的 sol-executor 沒有 core 條款，一律沿用 src/agents/sol-executor.md。
 role_text = "core"
 
+# policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
+# omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
+[policy]
+policy_text = "legacy"
+omit = []
+
 # 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
 [models]
 "openai/gpt-6-luna" = "gpt-6-luna"

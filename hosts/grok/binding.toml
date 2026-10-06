@@ -14,6 +14,12 @@ role_text = "core"
 # render 會驗證 src/agents/<role>.md 的 model 等於解析出的值。
 selection = "inherit"
 
+# policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
+# omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
+[policy]
+policy_text = "legacy"
+omit = []
+
 # 存取等級 -> default_capability_mode。read-only role 必須（且只有 read-only role）是 "read-only"。
 [access.read-only]
 capability_mode = "read-only"
