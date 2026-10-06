@@ -1,5 +1,5 @@
 repo: shoal
-ref: shoal@dd70aa0
-commit: dd70aa0011d50e917ff6040fb0565a9bff4aa25f
+ref: shoal@2c459ca
+commit: 2c459ca9d079341e247e965e5fdf2340cf67ac6f
 path: hosts/grok/dist
 dirty: true

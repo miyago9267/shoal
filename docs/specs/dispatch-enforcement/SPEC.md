@@ -189,8 +189,9 @@ E0 需要少量 live 呼叫（每個 host 一個小 prompt），執行前取得�
 ## 完結狀態（2026-10-06）
 
 - E0 到 E5 完成；E6 完成 OpenCode（live 實擋，`b445151`）。
-- Grok 與 Codex 的 E6 依 Miyago 2026-10-05 決定延後，guard 維持 shadow。重啟條件
-  同 Open question 1；Codex 另需使用者以 `/hooks` 核准新 hook。
+- Codex E6 完成（2026-10-06）：預設切為 enforce（23 筆決策、誤擋 0）。
+- Grok 仍延後，guard 維持 shadow（免費額度中途再次用完；`write` tool 修正
+  `2c459ca` 已 live 驗證）。重啟條件同 Open question 1。
 - agy 依 R5 固定 shadow。
 
 ## Rollback

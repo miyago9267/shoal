@@ -590,8 +590,19 @@
    ]
   },
   {
-   "name": "mode_codex_default_shadow",
+   "name": "mode_codex_default_enforce",
    "host": "codex",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "mode_codex_explicit_shadow",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "shadow"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
@@ -759,6 +770,7 @@
   {
    "name": "subagent_rules_shadow",
    "host": "codex",
+   "env": {"SHOAL_GUARD": "shadow"},
    "steps": [
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor", "is_subagent": true, "role": "executor"}, "expect": {"decision": "would_deny", "rule": "LEAF"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "would_deny", "rule": "VERIFY_EDIT"}}

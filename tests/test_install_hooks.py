@@ -568,12 +568,12 @@ class CodexTests(Case):
             return subprocess.run(command, shell=True, input=json.dumps(payload).encode(),
                                   capture_output=True, env=env, timeout=30)
 
-        enforced = run({"SHOAL_GUARD": "enforce"})
+        enforced = run({})
         self.assertEqual(enforced.returncode, 0, enforced.stderr)
         self.assertEqual(
             json.loads(enforced.stdout)["hookSpecificOutput"]["permissionDecision"], "deny"
         )
-        shadow = run({})
+        shadow = run({"SHOAL_GUARD": "shadow"})
         self.assertEqual(shadow.returncode, 0, shadow.stderr)
         self.assertEqual(shadow.stdout, b"")
         log = Path(sandbox.home, "xdg-state", "shoal", "guard", "guard.jsonl").read_text(encoding="utf-8")

@@ -45,10 +45,10 @@ MAX_STATE_BYTES = 64 * 1024
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 LOCK_WAIT_SECONDS = 2.0
 
-# Default mode per host.  E6 flips codex/grok/agy to enforce after shadow evidence.
+# Default mode per host.  E6: claude/codex enforce; grok/agy stay shadow (evidence pending / forced).
 HOST_DEFAULT_MODE = {
     "claude": "enforce",
-    "codex": "shadow",
+    "codex": "enforce",
     "grok": "shadow",
     "agy": "shadow",
 }

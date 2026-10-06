@@ -62,10 +62,10 @@ export type GuardResult = {
 type StateFile = { turn_id: string | null; dispatched: boolean; edited: string[] };
 type LogRecord = Record<string, unknown>;
 
-// Default mode per host.  E6: opencode is enforce (shadow evidence met); codex/grok stay shadow, agy is forced shadow.
+// Default mode per host.  E6: opencode is enforce (shadow evidence met); codex is enforce, grok stays shadow, agy is forced shadow.
 const HOST_DEFAULT_MODE: Record<string, string> = {
   claude: "enforce",
-  codex: "shadow",
+  codex: "enforce",
   grok: "shadow",
   agy: "shadow",
   opencode: "enforce",

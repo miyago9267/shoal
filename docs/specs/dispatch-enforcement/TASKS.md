@@ -85,6 +85,6 @@ live（2026-10-05，commit `e33b26e`、`0fccdb8` 之後）：
       （檔案實際未建立，model 送出的路徑無法確認），補了 realpath 測試向量。
 - [-] Grok：Miyago 2026-10-05 決定延後（免費額度用完）。工作負載先抓到 `write_file`
       未納入，已修正（`a1ff1bc`）。
-- [-] Codex：Miyago 2026-10-05 決定延後（用量上限；正常 session 需先以 `/hooks`
-      核准新 hook）。
+- [x] Codex：2026-10-06 預設切為 enforce（23 筆決策、4 筆 would_deny 全為正確
+      R2、誤擋 0、skip 0；Miyago 已以 `/hooks` 核准 hook）。
 - [-] agy：依 R5 固定 shadow，不在 E6 範圍。

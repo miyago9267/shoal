@@ -7,6 +7,7 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ### Features
 
+- Codex 的 dispatch guard 預設切為 enforce（E6：23 筆決策、誤擋 0）。
 - core-policy P2：Claude host 的 policy 改由 `core/policy` 條款組裝
   （`policy_text = "core"`）；兩處「workflow」改為 procedure／policy 的
   用字，沒有預期的行為變更。claude host 版本 1.4.2-claude.4。

@@ -91,7 +91,7 @@ class SyntaxTests(unittest.TestCase):
         ast.parse(GUARD.read_text(encoding="utf-8"), feature_version=(3, 9))
 
     def test_default_mode_table(self) -> None:
-        self.assertEqual(guard.HOST_DEFAULT_MODE, {"claude": "enforce", "codex": "shadow", "grok": "shadow", "agy": "shadow"})
+        self.assertEqual(guard.HOST_DEFAULT_MODE, {"claude": "enforce", "codex": "enforce", "grok": "shadow", "agy": "shadow"})
 
     def test_valid_id(self) -> None:
         self.assertTrue(guard.valid_id("ses_ab-1"))
@@ -368,15 +368,16 @@ class CodexAdapterTests(CliCase):
         self.assertEqual((sub["is_subagent"], sub["role"]), (True, "verifier"))
         self.assertEqual(guard.adapt_codex(self.tool("shell", {"command": "ls"}))["tool_kind"], "other")
 
-    def test_default_shadow_then_enforce_denies_third_file(self) -> None:
+    def test_default_enforce_and_explicit_shadow_off(self) -> None:
         self.run_guard("codex", self.prompt(cwd=self.work))
         for name in ("a", "b"):
             patch = "*** Begin Patch\n*** Add File: %s\n+x\n*** End Patch" % name
             self.assertEqual(self.run_guard("codex", self.tool("apply_patch", {"command": patch}, cwd=self.work)), "")
         patch = "*** Begin Patch\n*** Add File: c\n+x\n*** End Patch"
-        self.assertEqual(self.run_guard("codex", self.tool("apply_patch", {"command": patch}, cwd=self.work)), "")
+        self.assertEqual(self.run_guard("codex", self.tool("apply_patch", {"command": patch}, cwd=self.work), SHOAL_GUARD="shadow"), "")
         self.assertEqual(self.log_records()[-1]["decision"], "would_deny")
-        out = self.run_guard("codex", self.tool("apply_patch", {"command": patch}, cwd=self.work), SHOAL_GUARD="enforce")
+        self.assertEqual(self.run_guard("codex", self.tool("apply_patch", {"command": patch}, cwd=self.work), SHOAL_GUARD="off"), "")
+        out = self.run_guard("codex", self.tool("apply_patch", {"command": patch}, cwd=self.work))
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("spawn_agent", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
 
@@ -601,7 +602,9 @@ class RobustnessTests(CliCase):
 
     def test_resolve_mode(self) -> None:
         self.assertEqual(guard.resolve_mode("claude", {}), "enforce")
-        self.assertEqual(guard.resolve_mode("codex", {}), "shadow")
+        self.assertEqual(guard.resolve_mode("codex", {}), "enforce")
+        self.assertEqual(guard.resolve_mode("codex", {"SHOAL_GUARD": "shadow"}), "shadow")
+        self.assertEqual(guard.resolve_mode("codex", {"SHOAL_GUARD": "off"}), "off")
         self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "enforce"}), "shadow")
         self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "off"}), "off")
         self.assertEqual(guard.resolve_mode("claude", {"PILOTFISH_GUARD": "shadow"}), "shadow")
