@@ -212,7 +212,8 @@ rechecked after the new role bindings are installed:
 - [x] `docs/specs/claude-eval-parity/SPEC.md`、`TASKS.md`、`TESTS.md`
   （Claude prompt surface 加入 lock、role-fitness host adapter、content 層
   失敗分類）。Open questions 全部已決定；付費 run 需另行核准。
-  - Spec B 目前狀態（2026-10-05）：
+  - Spec B 最終狀態（2026-10-06）：B0–B3、B2 live 驗證與 B4 離線接線完成；
+    B4 live smoke 與 B5（R1–R3）依 Miyago 2026-10-06 的決定不執行。
     - B0 完成：lock 依 host 判斷版本，27 個 surface（含 11 個 Claude），
       CI 納入 `hosts/claude/**` 與 renewal 綠燈路徑。main push 的 trailer
       路徑已由 `91a23e6` 的 CI 驗證（macos、ubuntu、windows 皆 success）。
@@ -221,22 +222,30 @@ rechecked after the new role bindings are installed:
       projection 與 `attempt`／`rerun_of`。
     - B2 完成：`install/role_fitness_claude.py`；2026-10-05 已以 live probe
       實測（見下方「已完成」），stream 樣本的形狀依實測校正，值仍是 synthetic。
+    - B4 離線接線完成（commit `136a76b`）：四個 native case 函式可經
+      `ClaudeStageAdapter` 執行，Codex 路徑不變；
+      `install/claude_eval_smoke.py` 提供 `--dry-run`（stage budget 1.00、
+      turn reserve 0.50、total 14，7 個 process）與受限的 live 模式。
   - 已完成（2026-10-05）：B2 的 live 驗證，經 credential broker
     執行 `install/claude_live_probe.py`（CLI 2.1.289，7 次，API 等值約 0.29
     USD）。token 環境變數 `CLAUDE_CODE_OAUTH_TOKEN`、`-p --output-format
     stream-json --verbose --setting-sources project` 搭配、`~/.claude` 隔離
     （hooks 除外）、`--max-budget-usd` 超額中止都已確認；細節見 `TASKS.md`
     的 B2 最後一項。
-  - 待 Miyago 出手或核准：
+  - 決定不執行（2026-10-06，Miyago）：B4 live smoke（7 個 process，預留上限
+    合計 14 USD）與 B5 的 R1–R3 不跑。因此以下維持未驗證：改 `model:` 後
+    child 是否真的用該模型、`--max-budget-usd` 是否涵蓋 subagent 的花費、
+    實際 eval case 的成本、額度被拒時 `rate_limit_event` 的真實值。frozen
+    manifest v2 hash 相符的 private root 存在，但已超過 30 天 TTL。對
+    Skills Map 清單：「每次改 prompt 都對同一組 eval set 重跑」在 Claude
+    host 上有工具與入口，但沒有任何一次實際評測結果；「失敗分類表」的分類器
+    已完成並以既有 Codex 結果回放驗證，沒有 Claude 的資料。
+  - 仍待處理：
     - hooks 的隔離無法判定：init 事件沒有列出 hooks，stream 看不到 user 層
-      hook 有沒有被載入。
-    - `--max-budget-usd` 只在一個 turn 結束後檢查；B4 排預算時，每 stage 的
-      預留額要以單一 turn 可能的最大花費計。
-    - 四個 native case 函式尚未接上 Claude adapter，併入 B4。
+      hook 有沒有被載入（B4 不跑 live，此項不會由 smoke 補上）。
     - `missed_risk` 的 per-case `risk_coverage` 尚未以 private root ledger
       重新計分確認（B3 fixture 項目因此未勾）；目前的值由檔內 aggregate
       `risk_coverage` 推論。
-    - B4（Claude smoke）與 B5（R1-R3）是付費 run，需逐次核准。
     - PR label `lock-renewal` 這條 renewal 路徑尚未有真實 PR 驗證；同一項
       也包含「只改 `hosts/claude/dist/agents/*.md` 的 PR 會觸發 workflow」
       （B0 的 `validate_prompt_lock.py` 生效確認項尚未勾）。

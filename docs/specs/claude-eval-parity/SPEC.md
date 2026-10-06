@@ -3,7 +3,7 @@ title: Claude host 的 eval parity 與失敗分類
 status: approved
 approved_by: Miyago
 created: 2026-10-04
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -299,6 +299,31 @@ inconclusive 路徑（`run_role_fitness_content.py:491`）歸入 `unclassified`�
 | B3 | runner 新增 `rerun_of`；content 層失敗分類（以 runner 格式 stage 測試）、scorecard 與報表、public allowlist | 否 |
 | B4 | Claude smoke（process 上限 = 每 arm process 數 × arm 數） | 是，需核准 |
 | B5 | Claude R1–R3 | 是，逐次核准 |
+
+## 執行紀錄
+
+2026-10-06，Miyago 在 B4 的離線接線完成、`--dry-run` 通過之後，被問到是否
+執行付費 smoke（7 個 process，預留上限合計 14 USD），決定「不跑，B4 到此為
+止」。付費評測（B4 的 live smoke 與 B5 的 R1–R3）不執行；離線的接線、測試
+與 smoke 入口（`install/claude_eval_smoke.py`，commit `136a76b`）保留在
+repo。本節只記錄結果，不改動上方的 requirements 與 decisions。
+
+- 離線完成：四個 native case 函式可經 `ClaudeStageAdapter` 執行，Codex 路徑
+  不變；`--dry-run` 以 stage budget 1.00、turn reserve 0.50、total 14 通過，
+  列出 7 個 process。
+- 與 frozen manifest v2 hash 相符的 private root 存在於 Miyago 的機器上，
+  但已超過 role-fitness spec 的 30 天 TTL（`validate_bundle` 仍通過）。
+- 維持未驗證（因為沒有 live run）：
+  - 改 `model:` 後 child 是否真的使用該模型。
+  - `--max-budget-usd` 是否涵蓋 subagent 的花費。
+  - 實際 eval case 的成本。
+  - 額度被拒時 `rate_limit_event` 的真實值。
+  - hooks 的隔離。
+- 對 Skills Map 清單的影響：
+  - 「每次改 prompt 都對同一組 eval set 重跑」在 Claude host 上有工具與入口，
+    但沒有任何一次實際的評測結果。
+  - 「失敗分類表」的分類器已完成，並以既有 Codex 結果回放驗證，沒有 Claude
+    的資料。
 
 ## Open questions
 

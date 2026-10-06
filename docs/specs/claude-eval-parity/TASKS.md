@@ -201,7 +201,11 @@
 
 ## Phase B4 — Claude smoke（付費，需核准）
 
-離線部分（2026-10-06，全部未經 live 驗證，測試為
+2026-10-06 Miyago 決定不執行付費 run：離線接線完成、`--dry-run` 通過後，
+被問到是否執行 smoke（7 個 process，預留上限合計 14 USD），選擇「不跑，B4
+到此為止」。下方未勾的 live 項目因此不會執行，維持未勾。
+
+離線部分（2026-10-06，commit `136a76b`，全部未經 live 驗證，測試為
 `tests/test_claude_eval_smoke.py`）：
 
 - [x] plan_review、mechanical、verifier、split executor 四個 case 函式可經
@@ -249,22 +253,27 @@
       不輸出。`failure_taxonomy` 與 `content_failure_counts` 由既有的
       scorecard 與 public projection 函式產生。
 
-需 live 與核准：
+需 live 與核准（2026-10-06 Miyago 決定不執行，以下全部維持未勾）：
 
 - [ ] 備妥核准單：每 stage 上限（`--max-budget-usd` 金額）、依 arm 數算出
       的 process 總數（每 arm process 數 × arm 數）、累計停止點。
   - 核准單的內容可由 `install/claude_eval_smoke.py --dry-run` 產生；金額
-    仍待 Miyago 決定，所以維持未勾。live 執行另需 `--live --yes`、
+    由 Miyago 於 2026-10-06 決定不執行，所以維持未勾（`--dry-run` 以 stage
+    budget 1.00、turn reserve 0.50、total 14 執行通過，列出 7 個 process）。
+    live 執行另需 `--live --yes`、
     `--approved-processes 7` 與 frozen private root。
   - 前置：`--max-budget-usd` 只在一個 turn 結束後才檢查（2026-10-05 實測，
     上限 0.001 時實際花了 0.0181 USD），不能直接把它的值當成每 stage 的
     花費上限。排預算時，每個 stage 的預留額以「單一 turn 可能的最大花費」
     計。
-- [ ] Miyago 核准 smoke。
+- [ ] Miyago 核准 smoke。（2026-10-06 未核准：決定不跑。）
 - [ ] 每個 cohort 1 個 case，process 數不超過核准單上的總數。
 - [ ] 回報實測單次成本、時間，以及完整 run 的外推成本。
 
 ## Phase B5 — Claude R1–R3（付費，逐次核准）
+
+2026-10-06 Miyago 決定不執行付費 run（見 B4）；B5 的三項皆未執行，維持
+未勾。Claude 沒有任何 eval 結果，所以沒有 Claude 與 Codex 的 scorecard 對照。
 
 - [ ] Miyago 核准 R1；依停止點執行。
 - [ ] R1 結果審過後，再各自核准 R2、R3。
