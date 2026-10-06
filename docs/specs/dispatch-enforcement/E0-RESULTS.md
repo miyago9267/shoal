@@ -55,6 +55,7 @@ prompt 來源：五個 host 的 `UserPromptSubmit`（或對應事件）都沒有
   條目，已移除；agy probe 暫時修改的 `hooks.json` 已還原並逐位元組比對。
 - grok 1.0.46 建立新檔用內建 `write_file`（`features.write_file` 預設
   true），不是 `search_replace`；guard 的 matcher 與 adapter 已補上。
+- grok 1.0.46 新檔用 `write`（toolInput 為 content、file_path），matcher 與 adapter 已補上。
 
 ## E4 實測：Codex per-role sandbox 與網路（2026-10-05）
 

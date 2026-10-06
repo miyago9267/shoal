@@ -465,6 +465,14 @@ class GrokAdapterTests(CliCase):
             out = self.run_guard("grok", payload)
             self.assertEqual(out, "")
 
+    def test_write_tool_counts_toward_r2(self) -> None:
+        self.run_guard("grok", self.prompt(cwd=self.work))
+        for name in ("a", "b", "c"):
+            payload = self.tool("write", {"content": "x", "file_path": "src/" + name + ".py"}, cwd=self.work)
+            del payload["promptId"]
+            self.assertEqual(self.run_guard("grok", payload), "")
+        self.assertEqual(self.log_records()[-1]["decision"], "would_deny")
+
     def test_subagent_leaf_denied(self) -> None:
         payload = self.tool("spawn_subagent", {"subagent_type": "scout"}, subagentType="executor")
         out = json.loads(self.run_guard("grok", payload, SHOAL_GUARD="enforce"))

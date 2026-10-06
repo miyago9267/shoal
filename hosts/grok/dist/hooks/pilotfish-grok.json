@@ -59,7 +59,7 @@
         ]
       },
       {
-        "matcher": "^(search_replace|write_file|spawn_subagent)$",
+        "matcher": "^(search_replace|write|write_file|edit|multi_edit|create_file|spawn_subagent)$",
         "hooks": [
           {
             "type": "command",
