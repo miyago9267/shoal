@@ -1,8 +1,8 @@
 ---
 title: OpenCode 全域安裝
-status: draft
+status: completed
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -91,3 +91,8 @@ Claude（`~/.claude`，auto-update）、Codex（`~/.codex`）、agy（`~/.gemini
 
 同一台機器：`install.sh --global --rollback`（使用 `<state-dir>` 的備份）。
 其他機器或 state 遺失：revert dotfile 的安裝 commit。
+
+## 完結狀態（2026-10-06）
+
+- O1 到 O3 已在 v1.2.0 實作並安裝。v1.3.0 修正 plugin 入口多 export 導致的載入
+  失敗後，live OpenCode 1.18.31 載入正常；`pilotfish_route` 只註冊一次仍未在 live 查證。

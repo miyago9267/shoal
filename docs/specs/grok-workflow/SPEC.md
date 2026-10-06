@@ -1,8 +1,8 @@
 ---
 title: 補足 grok 的 AI workflow（v1.1.0）
-status: draft
+status: completed
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -161,3 +161,8 @@ shoal 的五個 host 裡，grok 最不完整。2026-10-04 查證（shoal main
 - shoal 端：revert 對應 commit。
 - `~/.grok`：`install_grok.py --restore <backup-dir>` 還原，或
   `--uninstall` 移除 shoal 安裝的檔案。
+
+## 完結狀態（2026-10-06）
+
+- 已在 v1.1.0 實作並發布。v1.3.0 起 grok hooks 另含 shoal dispatch guard，live
+  grok 1.0.46 已觀察到 hook 觸發；`plan_mode_guard` 未在 live 實測。

@@ -1,9 +1,9 @@
 ---
 title: 審查列出隱含權衡與隱私檢查
-status: approved
+status: completed
 approved_by: Miyago
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -153,3 +153,7 @@ revert 該 commit 即可；agy 立即回到舊文字，Claude 隔天回到舊文
    `LOCK.json:248-253` 同步）。同步 bump，以免安裝後的 marker 與內容不符。
 3. **（已決定，2026-10-04，採預設）權衡的回報位置**：是否也要 security-reviewer 列權衡（例如安全與
    可用性的取捨）？不要，以保持單一職責。
+
+## 完結狀態（2026-10-06）
+
+- A1 到 A3 已在 v1.2.0 實作並發布（`4f3cdee`）。
