@@ -76,5 +76,14 @@ live（2026-10-05，commit `e33b26e`、`0fccdb8` 之後）：
 
 ## Phase E6 - 非 Claude host 切 enforce（條件化）
 
-- [ ] 依 SPEC Open question 1：每個 host 至少 20 筆決策、至少 1 筆 `would_deny`、誤擋 0、
-      `skip_reason` 比例 0，逐 host 切換並實際擋下一次。
+條件（SPEC Open question 1）：每個 host 至少 20 筆決策、至少 1 筆 `would_deny`、誤擋 0、
+`skip_reason` 比例 0，逐 host 切換並實際擋下一次。
+
+- [x] OpenCode：shadow log 21 筆決策、4 筆 would_deny、誤擋 0、skip 0，
+      預設切為 enforce（plugin 0.2.1）。
+      過程中修正 TS 對不存在路徑的 realpath 與 Python 不一致（`/tmp` 新檔被計數）。
+- [-] Grok：Miyago 2026-10-05 決定延後（免費額度用完）。工作負載先抓到 `write_file`
+      未納入，已修正（`a1ff1bc`）。
+- [-] Codex：Miyago 2026-10-05 決定延後（用量上限；正常 session 需先以 `/hooks`
+      核准新 hook）。
+- [-] agy：依 R5 固定 shadow，不在 E6 範圍。

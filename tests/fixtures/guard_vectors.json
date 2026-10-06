@@ -425,6 +425,30 @@
    ]
   },
   {
+   "name": "path_new_file_under_symlinked_tmp_root_is_exempt",
+   "setup": {"dirs": ["$TMPDIR/real"], "symlinks": {"$WORK/troot": "$TMPDIR/real"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/troot/new.txt"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "path_new_nested_under_symlinked_tmp_root_is_exempt",
+   "setup": {"dirs": ["$TMPDIR/real"], "symlinks": {"$WORK/troot": "$TMPDIR/real"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/troot/a/b/../c/new.txt"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "path_new_file_under_symlink_into_repo_is_counted",
+   "setup": {"dirs": ["$WORK/src"], "symlinks": {"$TMPDIR/lnk": "$WORK/src"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/lnk/new/x.txt"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
    "name": "path_symlinked_ai_dir_is_not_exempt",
    "setup": {"dirs": ["$WORK/real"], "symlinks": {"$WORK/.ai": "$WORK/real"}},
    "steps": [

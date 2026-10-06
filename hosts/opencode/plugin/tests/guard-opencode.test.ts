@@ -83,12 +83,28 @@ afterEach(() => {
 });
 
 describe("OpenCode guard: main session", () => {
-  test("defaults to shadow: the third file is logged as would_deny, not thrown", async () => {
+  test("defaults to enforce: the third file throws", async () => {
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN);
+    await call(guard, "write", MAIN, edit("a"));
+    await call(guard, "write", MAIN, edit("b"));
+    await expect(call(guard, "write", MAIN, edit("c"))).rejects.toThrow(/Shoal dispatch guard/);
+    expect(logLines().at(-1)).toMatchObject({ decision: "deny", rule: "R2", mode: "enforce", host: "opencode", tool: "write", file: "c" });
+  });
+
+  test("SHOAL_GUARD=shadow logs would_deny without throwing", async () => {
+    process.env.SHOAL_GUARD = "shadow";
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
     for (const name of ["a", "b", "c"]) await call(guard, "write", MAIN, edit(name));
-    const last = logLines().at(-1)!;
-    expect(last).toMatchObject({ decision: "would_deny", rule: "R2", mode: "shadow", host: "opencode", tool: "write", file: "c" });
+    expect(logLines().at(-1)).toMatchObject({ decision: "would_deny", rule: "R2", mode: "shadow", host: "opencode", file: "c" });
+  });
+
+  test("SHOAL_GUARD=off never throws", async () => {
+    process.env.SHOAL_GUARD = "off";
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN);
+    for (const name of ["a", "b", "c", "d"]) await call(guard, "write", MAIN, edit(name));
   });
 
   test("enforce throws the deny message on the third file and allows after a write-level dispatch", async () => {
@@ -185,12 +201,12 @@ describe("OpenCode guard: main session", () => {
 });
 
 describe("OpenCode guard: subagents", () => {
-  test("a subagent dispatching `task` hits LEAF (enforce) and is only logged in shadow", async () => {
+  test("a subagent dispatching `task` hits LEAF: thrown by default, only logged in shadow", async () => {
     const guard = makeGuard(defaultSessions());
+    await expect(call(guard, "task", CHILD, { subagent_type: "scout" })).rejects.toThrow(/leaf workers/);
+    process.env.SHOAL_GUARD = "shadow";
     await call(guard, "task", CHILD, { subagent_type: "scout" });
     expect(logLines().at(-1)).toMatchObject({ decision: "would_deny", rule: "LEAF", mode: "shadow" });
-    process.env.SHOAL_GUARD = "enforce";
-    await expect(call(guard, "task", CHILD, { subagent_type: "scout" })).rejects.toThrow(/leaf workers/);
   });
 
   test("a verifier subagent cannot use editing tools", async () => {

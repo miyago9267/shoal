@@ -181,3 +181,10 @@ Live（OpenCode 1.18.31，temp 專案，bundle 放 `.opencode/plugins/`）：
 
 binding/render/golden/lock（E4）由另一位 executor 進行，工作樹已有變更，本文件不記錄其狀態。
 dotfile 切換與非 Claude host 切 enforce 尚未開始。
+
+## E6
+
+- OpenCode 依 shadow log（21 筆決策、4 筆 would_deny、誤擋 0、skip 0）切為預設
+  enforce，plugin 版本 0.2.1；
+  `SHOAL_GUARD=shadow|off` 仍可覆寫。
+- Grok、Codex 由 Miyago 2026-10-05 決定延後；agy 依 R5 固定 shadow。

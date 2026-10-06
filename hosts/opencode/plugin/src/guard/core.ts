@@ -54,13 +54,13 @@ export type GuardResult = {
 type StateFile = { turn_id: string | null; dispatched: boolean; edited: string[] };
 type LogRecord = Record<string, unknown>;
 
-// Default mode per host.  E6 flips codex/grok/agy/opencode to enforce after shadow evidence.
+// Default mode per host.  E6: opencode is enforce (shadow evidence met); codex/grok stay shadow, agy is forced shadow.
 const HOST_DEFAULT_MODE: Record<string, string> = {
   claude: "enforce",
   codex: "shadow",
   grok: "shadow",
   agy: "shadow",
-  opencode: "shadow",
+  opencode: "enforce",
 };
 // Hosts that cannot tell main from subagent: enforce is never allowed (spec R5).
 const FORCED_SHADOW_HOSTS = new Set(["agy"]);

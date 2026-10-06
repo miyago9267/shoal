@@ -1,6 +1,6 @@
 {
   "name": "pilotfish-opencode",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Role-based routing primitives and an explicit OpenCode plugin.",
   "license": "MIT",
   "type": "module",

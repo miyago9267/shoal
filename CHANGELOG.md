@@ -20,9 +20,11 @@ Dispatch 強制與權限補強（`docs/specs/dispatch-enforcement/`，E0-E5）�
 - adapter：Claude、Codex、Grok、agy 共用 Python 版；OpenCode 在 plugin 內
   以 TypeScript 移植，兩份實作重播同一份測試向量
   `tests/fixtures/guard_vectors.json`。
-- 模式：`SHOAL_GUARD=enforce|shadow|off`。Claude 預設 enforce；Codex、Grok、
-  OpenCode 預設 shadow，等 shadow log 達標再切；agy 無法辨識 subagent，
+- 模式：`SHOAL_GUARD=enforce|shadow|off`。Claude、OpenCode 預設 enforce；
+  Codex、Grok 預設 shadow，等 shadow log 達標再切；agy 無法辨識 subagent，
   固定 shadow。
+- E6：OpenCode 依 shadow log（21 筆決策、4 筆 would_deny、誤擋 0、skip 0）
+  切為預設 enforce；Grok、Codex 延後，agy 固定 shadow。
 - 安裝：Codex 由 `install/install.py` 註冊（獨立 projection
   `shoal-guard-v1`，安裝後要在互動 session 用 `/hooks` 核准一次）；Grok 由
   `tools/install_grok.py`；Claude 與 agy 由新的 `tools/install_hooks.py`；
