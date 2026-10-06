@@ -3,16 +3,36 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
-## Unreleased
+## v1.5.0
 
 ### Features
 
-- dispatch guard 的 R1、R2 改為提醒（不再擋），只有 LEAF、VERIFY_EDIT 會擋；
-  依 pilotfish 的 dispatch brake 原則（2026-10-06 設計對照）。
-- Codex 的 dispatch guard 預設切為 enforce（E6：23 筆決策、誤擋 0）。
 - core-policy P2：Claude host 的 policy 改由 `core/policy` 條款組裝
   （`policy_text = "core"`）；兩處「workflow」改為 procedure／policy 的
   用字，沒有預期的行為變更。claude host 版本 1.4.2-claude.4。
+- core-policy 完結：只有 Claude 使用 core，其他 host 維持 legacy。P3 不推進：
+  Grok 的 rules 逐字取自上游 pilotfish-grok（agy 衍生自它），改由 core 組成會失去
+  與上游的同步；Codex 有自己的選模與 decision checkpoint 機制，共用部分少且需
+  lock migration；OpenCode 缺 plan-verifier 與 mech-executor。持平優先，不藉共用化
+  新增能力。
+- generic-shoal（`docs/specs/generic-shoal/`）完結。
+- Codex 的 dispatch guard 預設切為 enforce（E6：23 筆決策、4 筆 would_deny
+  皆正確、誤擋 0）。
+
+### Fixes
+
+- dispatch guard 的 R1、R2 改為提醒（不再擋）：派工與否是淨效益判斷，不該以
+  數字門檻強制，回到 pilotfish 的 dispatch brake 原則（2026-10-06 設計對照）。
+  Claude 與 Codex 每輪第一次以 additionalContext 提醒，其他 host 只記 log；
+  LEAF、VERIFY_EDIT 照舊會擋。
+- guard 納入 grok 1.0.46 建新檔用的 write 等編輯工具。
+
+### 已知限制
+
+- Grok 的 E6 延後，等免費額度恢復後再累積 shadow log。
+- agy 固定 shadow。
+- guard 擋不住 shell 寫檔（例如重導向、sed -i）。
+- guard 在 Windows 為 no-op。
 
 ## v1.4.0
 

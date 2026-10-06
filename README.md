@@ -93,7 +93,7 @@ subagent 的 LEAF、VERIFY_EDIT 會擋。
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 1.4.0 |
+| shoal（產品） | 1.5.0 |
 | codex host | 1.8.3（`hosts/codex/VERSION`） |
 | claude host | 1.4.2-claude.4（`hosts/claude/VERSION`） |
 | agy host | 0.1.0 |
