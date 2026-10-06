@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 
@@ -68,8 +68,11 @@ def _is_positive_int(value: Any) -> bool:
 def _is_relative_repo_path(value: Any) -> bool:
     if not isinstance(value, str) or not value or "\\" in value:
         return False
-    path = Path(value)
-    return not path.is_absolute() and ".." not in path.parts
+    # 以 POSIX 與 Windows 兩種語意都檢查：Windows 上 "/etc/hosts" 不算 absolute。
+    posix, windows = PurePosixPath(value), PureWindowsPath(value)
+    if posix.is_absolute() or windows.is_absolute() or windows.drive or windows.root:
+        return False
+    return ".." not in posix.parts
 
 
 def _validate_surface(surface: Any, index: int) -> None:

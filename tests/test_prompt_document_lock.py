@@ -559,3 +559,15 @@ class MigrationMarkerTests(unittest.TestCase):
 
     def test_real_lock_carries_no_migration_marker(self) -> None:
         self.assertTrue(all("migration" not in s for s in load_lock(ROOT)["surfaces"]))
+
+
+class RepoPathSemanticsTests(unittest.TestCase):
+    """repo 相對路徑的判斷不分平台：Windows 語意下的 rooted、drive 路徑也要拒絕。"""
+
+    def test_rooted_and_drive_paths_are_rejected_on_every_platform(self) -> None:
+        import validate_prompt_lock
+
+        check = validate_prompt_lock._is_relative_repo_path
+        for bad in ("/etc/hosts", "C:/x", "C:x", "//server/share", "../o.md", "a/../b", "docs\\t.md", ""):
+            self.assertFalse(check(bad), bad)
+        self.assertTrue(check("docs/specs/core-policy/equivalence/claude.md"))
