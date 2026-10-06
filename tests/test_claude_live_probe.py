@@ -396,6 +396,7 @@ class TokenTests(ProbeCase):
                     self.assertNotIn(value.strip(), err)
         self.assertEqual(self.roots, [])
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes and symlinks; the live probe runs on macOS/Linux")
     def test_token_is_in_no_output(self) -> None:
         target = self.root / "report.json"
         code, _, host, out, err = self.probe("--stages", ALL, "--report", str(target))
@@ -1605,6 +1606,7 @@ class ReportFileTests(ProbeCase):
         self.assertEqual(self.roots, [])
         self.assertNotIn(str(destination), err)
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes and symlinks; the live probe runs on macOS/Linux")
     def test_existing_file_is_refused_and_left_alone(self) -> None:
         target = self.root / "existing.json"
         target.write_text("keep me", encoding="utf-8")
@@ -1622,6 +1624,7 @@ class ReportFileTests(ProbeCase):
         self.assertEqual(target.read_text(encoding="utf-8"), "keep me")
         self.assertTrue(link.is_symlink())
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes and symlinks; the live probe runs on macOS/Linux")
     def test_dangling_symlink_is_refused_and_its_target_not_created(self) -> None:
         target = self.root / "absent.json"
         link = self.root / "dangling.json"
@@ -1630,6 +1633,7 @@ class ReportFileTests(ProbeCase):
         self.assertFalse(target.exists())
         self.assertTrue(link.is_symlink())
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes and symlinks; the live probe runs on macOS/Linux")
     def test_new_file_is_owner_only_even_with_a_loose_umask(self) -> None:
         target = self.root / "new.json"
         previous = os.umask(0)
