@@ -90,7 +90,7 @@ dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 1.3.0 |
+| shoal（產品） | 1.4.0 |
 | codex host | 1.8.3（`hosts/codex/VERSION`） |
 | claude host | 1.4.2-claude.3（`hosts/claude/VERSION`） |
 | agy host | 0.1.0 |

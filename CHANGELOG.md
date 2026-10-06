@@ -3,6 +3,43 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v1.4.0
+
+### Features
+
+Claude plugin 與 host 中立 guard 補強（`docs/specs/generic-shoal/`）。
+
+- guard M1：Claude 的接續回合沒有 `prompt_id` 時改用 session state；沒有
+  id 的 prompt 會清掉 dispatched，避免上一輪的派工狀態被沿用。
+- guard K3：`shoal:` namespace 白名單，plugin 版 role 以此前綴辨識。
+- state K4：state 檔加 flock；plugin 版 guard 遇到全域已有 guard entry 時
+  讓位，不重複註冊。
+- Claude plugin 打包：新增 `claude-plugin/` 與
+  `.claude-plugin/marketplace.json`，由
+  `python3 tools/render.py --host claude-plugin --write` 產生，版本取自根目錄
+  `VERSION`；安裝方式是 marketplace 加上 tag（見 INSTALL.md）。
+- F2：agy 實測證據記錄在 spec，維持固定 shadow。
+
+Prompt lock 與 orchestration policy（`docs/specs/core-policy/`）。
+
+- P0：prompt lock 新增一次性 migration；PR label 路徑加 `--no-migration`，
+  CI 觸發路徑加入 `core/**`、`claude-plugin/**`。
+- P1：orchestration policy 抽成 `core/policy` 條款與組裝器。各 host 仍用
+  舊版 policy，行為沒有變。
+
+### Fixes
+
+- smoke report 的 private root 在 Windows 路徑下正確 JSON escape。
+- lock 的 repo 相對路徑判斷同時套用 Windows 語意。
+- Claude live probe 在 Windows 上略過不適用的項目。
+
+### 已知限制
+
+- Grok、Codex 的 E6 仍是 shadow，等 shadow log 達標再切。
+- agy 固定 shadow。
+- policy 各 host 仍用舊版，要等 P2、P3 才切換。
+- guard 在 Windows 為 no-op。
+
 ## v1.3.0
 
 ### Features

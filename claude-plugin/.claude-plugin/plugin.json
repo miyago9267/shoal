@@ -1,6 +1,6 @@
 {
   "name": "shoal",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Pilotfish orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
   "author": {
     "name": "Miyago",
