@@ -219,14 +219,19 @@ rechecked after the new role bindings are installed:
     - B1 完成：stage 介面 `install/role_fitness_stage.py`，Codex 行為不變。
     - B3 完成（fixture 回放除外，見下）：content 層失敗分類、報表、public
       projection 與 `attempt`／`rerun_of`。
-    - B2 離線部分完成：`install/role_fitness_claude.py`，stream 樣本為
-      synthetic，尚未與真實輸出比對。
+    - B2 完成：`install/role_fitness_claude.py`；2026-10-05 已以 live probe
+      實測（見下方「已完成」），stream 樣本的形狀依實測校正，值仍是 synthetic。
+  - 已完成（2026-10-05）：B2 的 live 驗證，經 credential broker
+    執行 `install/claude_live_probe.py`（CLI 2.1.289，7 次，API 等值約 0.29
+    USD）。token 環境變數 `CLAUDE_CODE_OAUTH_TOKEN`、`-p --output-format
+    stream-json --verbose --setting-sources project` 搭配、`~/.claude` 隔離
+    （hooks 除外）、`--max-budget-usd` 超額中止都已確認；細節見 `TASKS.md`
+    的 B2 最後一項。
   - 待 Miyago 出手或核准：
-    - B2 的 live 驗證：一次最小的實際呼叫，需 Miyago 核准，並由 Miyago 親自
-      以 `claude setup-token` 產生 token（經 credential broker 注入）。驗證
-      項目見 `TASKS.md` 的 B2 最後一項（token 環境變數名稱、`--verbose` 搭配
-      stream-json、`~/.claude` 隔離、`--max-budget-usd` 超額中止）。證明不了就
-      把 B4、B5 維持 dry-run。
+    - hooks 的隔離無法判定：init 事件沒有列出 hooks，stream 看不到 user 層
+      hook 有沒有被載入。
+    - `--max-budget-usd` 只在一個 turn 結束後檢查；B4 排預算時，每 stage 的
+      預留額要以單一 turn 可能的最大花費計。
     - 四個 native case 函式尚未接上 Claude adapter，併入 B4。
     - `missed_risk` 的 per-case `risk_coverage` 尚未以 private root ledger
       重新計分確認（B3 fixture 項目因此未勾）；目前的值由檔內 aggregate

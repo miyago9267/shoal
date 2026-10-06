@@ -74,8 +74,8 @@
       dist 複製、`claude -p --output-format stream-json --verbose
       --setting-sources project`，`CLAUDE_CONFIG_DIR` 指向每 stage 全新的
       暫存目錄，加 `--max-budget-usd <amount>`。
-  - `install/role_fitness_claude.py` 的 `ClaudeStageAdapter`。只做離線驗證；
-    以下都**未以 live 驗證**，留給下方的最小 live 呼叫：
+  - `install/role_fitness_claude.py` 的 `ClaudeStageAdapter`。離線實作後，
+    以下各點已於 2026-10-05 以 live probe 驗證（結果見本節最後一項）：
     - token 的環境變數名稱暫定 `CLAUDE_CODE_OAUTH_TOKEN`
       （常數 `SUBSCRIPTION_TOKEN_ENV`）；沒有 token 時不啟動，也不退回
       `~/.claude` 或 keychain。
@@ -86,8 +86,9 @@
     - `--max-budget-usd` 超額時是否中止、`--setting-sources project` 與
       `CLAUDE_CONFIG_DIR` 的隔離效果。
 - [x] 以 `Agent` 工具呼叫的 `subagent_type` 作為 dispatch evidence。
-  - stream 樣本是 synthetic（`tests/fixtures/claude_stream/`），**尚未與真實
-    輸出比對**；解析器遇到不認得的事件形狀就讓 stage 失敗。結果事件不指出
+  - stream 樣本（`tests/fixtures/claude_stream/`）的形狀已依 2026-10-05 的
+    live 結果校正，值仍是 synthetic；解析器遇到不認得的事件形狀就讓 stage
+    失敗。結果事件不指出
     subagent 用哪個 model，所以只有整個 run 用單一 model 時才回報 model；
     `child_usage` 等於整個 stage 的 usage。
 - [x] Claude 版 prompt 不使用 `spawn_agent`、`wait_agent`。
@@ -100,33 +101,62 @@
     的停止（AC-CE-031、032）不在這一項。
 - [x] 以錄製的 stream 樣本做 offline 測試，不呼叫模型；測試斷言 adapter
       組出的 argv 與 env，不只檢查複製的 agents。
-  - `tests/test_role_fitness_claude.py`（AC-CE-011 到 017）；樣本是
-    synthetic，不是錄製檔。
+  - `tests/test_role_fitness_claude.py`（AC-CE-011 到 017）；樣本的形狀
+    來自 live，值是 synthetic，不是錄製檔。
 
 已知限制（B2 離線部分，B4 接線前需留意）：
 
-- stream 樣本是 synthetic，尚未與真實輸出比對。
+- stream 樣本的形狀已依 2026-10-05 的 live 實測校正（不再只是 synthetic
+  推定），但值仍是手工填的假值，不是錄製檔。
+- 事件順序不固定：同一個 `dispatch` stage 連跑兩次，事件相同但順序不同
+  （第一個 `result` 可能在第二輪 `system/init` 之前，也可能兩個 `result` 連在
+  最後）。Adapter 不依賴順序（commit `690088d`），只要求最後一個事件是
+  `result`。
+- `StageOutcome.messages` 取 child 自己的 `assistant` 訊息；`Agent` 的
+  `tool_result`（實測 1130 字元）是啟動回條，不是回答（child 回答實測 5
+  字元）。
 - `StageOutcome.events` 在 Claude adapter 一律回空清單，raw stream 不保留，
   runner 的 `event_shapes` 診斷因此是空的。
 - frozen manifest 的檢查只在 `open_claude_run`；直接建立
   `ClaudeStageAdapter` 不會檢查，B4 接線必須走 `open_claude_run`。
-- 四個 native case 函式尚未接上 Claude adapter。
+- 四個 native case 函式尚未接上 Claude adapter（併入 B4）。
+- hooks 的隔離無法判定：init 事件沒有列出 hooks，stream 看不到 user 層的
+  hook 有沒有被載入。
+- 額度被拒時的 `rate_limit_event` 實際值尚未見過；adapter 的規則（`status`
+  以 `allowed` 開頭才繼續，其他值或 `isUsingOverage` 為 true 就停止後續
+  stage）由 `allowed_warning` 反推。
+- argv 傳 `--permission-mode manual`，但 init 事件回報的 `permissionMode`
+  是 `default`，原因未查；實測 `permission_denials` 為 0，沒有造成工具被擋。
 - `workdir`、`scratch` 必須是絕對路徑且不含 `..`，否則啟動前就拒絕。
 - stage 結束後會掃描 workdir 的檔案內容找 token（上限 1000 個檔案、
   單檔 1 MiB、合計 32 MiB）；找到 token 或超出上限，stage 失敗並清空
   workdir。
 - 保護清單同時涵蓋帳號資料庫的 home 與 `HOME`／`USERPROFILE` 推得的
   `.claude`，以及繼承到的 `CLAUDE_CONFIG_DIR`。
-- [ ] 實測 repo 外部事實（一次最小 live 呼叫，消耗訂閱用量，執行前要
+- [x] 實測 repo 外部事實（一次最小 live 呼叫，消耗訂閱用量，執行前要
       Miyago 核准；token 經 credential broker 注入）：
-  - 注入 token 用的環境變數名稱，以及全新 `CLAUDE_CONFIG_DIR` 下 token
-    可用（Open question 5）。
-  - `--verbose` 與 `-p --output-format stream-json` 的搭配。
-  - 隔離：前後比對 `~/.claude` 的檔案清單與 mtime 沒有變化；
-    `--setting-sources project` 擋掉 user 層的 hook、skill、agent；
-    transcript 只在暫存 config dir，用完整個刪除。
-  - `--max-budget-usd` 在超額時確實中止（用極小金額測）；證明不了就把
-    B4、B5 維持 dry-run。
+  - 2026-10-05 由 main session 執行 `install/claude_live_probe.py`，CLI
+    2.1.289，共 7 次，API 等值成本累計約 0.29 USD。
+  - [x] 注入 token 用的環境變數名稱，以及全新 `CLAUDE_CONFIG_DIR` 下 token
+    可用（Open question 5）：`CLAUDE_CODE_OAUTH_TOKEN` 正確；在全新
+    `CLAUDE_CONFIG_DIR` 與假 `HOME` 下可登入（`claude setup-token` 產生的
+    訂閱 token）。`--model haiku` 可用，實際模型為
+    `claude-haiku-4-5-20251001`。
+  - [x] `--verbose` 與 `-p --output-format stream-json` 的搭配：加上
+    `--setting-sources project` 後可用。
+  - [x] 隔離（hooks 除外）：transcript 只出現在暫存 config 目錄，執行後整個
+    刪除，home 底下 0 個檔；使用者 `projects/` 沒有對應項目；穩定的使用者
+    config 項目在子行程存活期間沒有變動；init 事件列出的 agents、skills、
+    plugins、MCP servers、slash commands 都沒有 user 層獨有的名稱（user 層
+    三十多個獨有名稱的 skill 一個都沒出現）。**hooks 無法判定**：init 事件
+    沒有列出 hooks，列入「已知限制」。
+  - [x] `--max-budget-usd` 在超額時中止：用 `0.001` 測，CLI 以
+    `result/error_max_budget_usd`（`is_error: true`）結束，exit code 1，只
+    跑了 1 個 turn，實際成本 0.0181 USD。上限在一個 turn 結束後才檢查：能
+    阻止繼續執行，但管不到單一 turn 的花費，實際成本可能遠高於上限值。
+    因此 B4、B5 不必維持 dry-run，但預算必須依此限制編列（見 B4）。
+  - 實測單價：`auth` stage（單 agent）每次約 0.017 USD；`dispatch` stage
+    （parent 為 haiku、派出一個 `scout`）每次約 0.034 USD。
 
 ## Phase B3 — 失敗分類
 
@@ -173,6 +203,10 @@
 
 - [ ] 備妥核准單：每 stage 上限（`--max-budget-usd` 金額）、依 arm 數算出
       的 process 總數（每 arm process 數 × arm 數）、累計停止點。
+  - 前置：`--max-budget-usd` 只在一個 turn 結束後才檢查（2026-10-05 實測，
+    上限 0.001 時實際花了 0.0181 USD），不能直接把它的值當成每 stage 的
+    花費上限。排預算時，每個 stage 的預留額以「單一 turn 可能的最大花費」
+    計。
 - [ ] Miyago 核准 smoke。
 - [ ] 每個 cohort 1 個 case，process 數不超過核准單上的總數。
 - [ ] 回報實測單次成本、時間，以及完整 run 的外推成本。

@@ -97,6 +97,11 @@ updated: 2026-10-05
   - `--verbose` 為 `-p --output-format stream-json` 所需，`CLAUDE_CONFIG_DIR`
     隔離與 `--setting-sources` 的實際效果是 repo 外部事實，只有本機
     `claude --help` 佐證旗標存在；B2 必須實測（見 R6）。
+  - 實測（2026-10-05，CLI 2.1.289）：`-p --output-format stream-json
+    --verbose --setting-sources project` 的搭配可用；一次 `dispatch` 有兩個
+    `result` 事件，且事件順序在兩次實測間不同，所以解析不依賴順序，只要求
+    最後一個事件是 `result`。child 的回答取其自己的 `assistant` 訊息；
+    `Agent` 的 `tool_result` 是啟動回條，不是回答。
 - **R5（同一組 eval set）**：The Claude run shall 使用同一份 frozen
   manifest（v2）、同一份 rubric 與 scorecard 版本；不得重做或修改 fixtures。
 - **R6（隔離）**：Each Claude stage shall 在全新的 private root 與暫存
@@ -111,6 +116,11 @@ updated: 2026-10-05
   - 以上為 repo 外部事實：B2 要實測「不讀寫 `~/.claude`」（前後比對
     `~/.claude` 的檔案清單與 mtime）、`--verbose` 與 stream-json 的
     搭配，以及 `--setting-sources project` 是否擋掉 user 層內容。
+  - 實測（2026-10-05，CLI 2.1.289）：transcript 只出現在暫存 config 目錄，
+    用完整個刪除，home 底下 0 個檔；使用者 `projects/` 沒有對應項目；穩定
+    的使用者 config 項目在子行程存活期間沒有變動；init 事件列出的 agents、
+    skills、plugins、MCP servers、slash commands 都沒有 user 層獨有的名稱。
+    **hooks 無法由 stream 判定**：init 事件沒有列出 hooks，這一點仍未驗證。
 
 ### B2：失敗分類表
 
@@ -247,15 +257,24 @@ inconclusive 路徑（`run_role_fitness_content.py:491`）歸入 `unclassified`�
   Claude 的單價資料**。Claude 的成本以 `claude -p` 結果中的
   `total_cost_usd`（API 等值金額）計算；在 Max 方案下實際消耗的是用量
   額度，不是帳單金額。
+  - 實測單價（2026-10-05，CLI 2.1.289，7 次累計約 0.29 USD）：`auth`
+    stage（單 agent，haiku）每次約 0.017 USD；`dispatch` stage（haiku
+    parent 加一個 sonnet 的 `scout`）每次約 0.034 USD。這是最小 prompt 的
+    值，不代表實際 eval case 的成本，B4 smoke 仍要實測。
 - **每 stage 上限**：role-fitness `SPEC.md:535-539` 要求付費 run 前先
   證明 per-stage 的上游上限並在 admission 預留，否則只能 dry-run。Claude
   的做法：
   - 每個 stage 以 `claude -p --max-budget-usd <amount>` 限額（旗標存在於
     本機 `claude --help`，說明為「only works with --print」；實際
-    執行時是否會在超額時中止，**尚未驗證**，B2 必須以最小呼叫實測）。
+    執行時是否會在超額時中止，已於 2026-10-05 實測，見下方「實測」）。
   - runner 在 stage 之間做累計停止：admission 時預留該 stage 的上限，
     累計 `total_cost_usd` 加上預留值會超過 $30 就不再放行下一個 stage。
   - B2 若證明不了 `--max-budget-usd` 會強制中止，B4、B5 維持 dry-run。
+  - 實測（2026-10-05，CLI 2.1.289）：`--max-budget-usd 0.001` 時 CLI 以
+    `result/error_max_budget_usd`（`is_error: true`）結束，exit code 1，
+    只跑了 1 個 turn，實際成本 0.0181 USD。上限在一個 turn 結束後才檢查：
+    能阻止繼續執行，但管不到單一 turn 的花費，實際成本可能遠高於上限值，
+    所以 admission 預留額要以單一 turn 可能的最大花費計，不能只用旗標的值。
   - 金額由 Miyago 在 B4 核准單列出，spec 不預設數字。
 - **上限**：
   - 先跑 smoke：每個 cohort 1 個 case，用來實測單次成本與時間。process
@@ -299,8 +318,13 @@ inconclusive 路徑（`run_role_fitness_content.py:491`）歸入 `unclassified`�
    skill、agent），加上 `claude setup-token` 產生的長效 token（該指令的
    help 寫明 requires Claude subscription）。token 是 secret：由 Miyago
    親自產生，經 credential broker 以環境變數注入，不得寫入檔案、指令參數
-   或 log。尚未驗證的兩點列為 B2 的第一個工作：注入 token 用的環境變數
-   名稱；全新 config dir 下 token 可用，且不載入 `~/.claude` 的任何內容。
+   或 log。B2 第一個工作要驗證的兩點（已於 2026-10-05 驗證）：注入 token
+   用的環境變數名稱；全新 config dir 下 token 可用，且不載入 `~/.claude`
+   的任何內容。
+   - 驗證結果（CLI 2.1.289）：環境變數名稱為
+     `CLAUDE_CODE_OAUTH_TOKEN`；在全新 `CLAUDE_CONFIG_DIR` 與假 `HOME` 下
+     可登入，`--model haiku` 可用。不載入 user 層內容除 hooks 外已確認
+     （hooks 無法由 stream 判定，見 R6）。
 6. **（已決定，2026-10-04）`missed_risk` 怎麼推導**：risk case 且 per-case
    `risk_coverage < 1.0`（Decision 4）。plan-review-06 的
    `supported_findings` 是 1 仍然漏掉風險，只看 `supported_findings == 0`
