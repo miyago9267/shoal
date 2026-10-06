@@ -570,7 +570,7 @@ class ReportContentTests(ProbeCase):
         self.assertEqual(stage["checks"]["cli_result"]["status"], "pass")
         self.assertEqual(
             stage["checks"]["adapter_parse"],
-            {"status": "fail", "reason": "evidence_unrecognized_stream_event"},
+            {"status": "fail", "reason": "evidence_rate_limit_status_unknown"},
         )
         self.assertIn("rate_limit_event", stage["shape"]["kinds"])
         self.assertEqual(stage["adapter"]["outcome"], "raised")
@@ -1462,7 +1462,7 @@ class StopAfterFailureTests(ProbeCase):
         self.assertEqual(auth["checks"]["cli_result"]["status"], "pass")
         self.assertEqual(
             auth["checks"]["adapter_parse"]["reason"],
-            "evidence_unrecognized_stream_event",
+            "evidence_rate_limit_status_unknown",
         )
 
     def test_token_written_into_the_workdir_stops_the_run(self) -> None:

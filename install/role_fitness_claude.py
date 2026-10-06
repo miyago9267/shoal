@@ -66,6 +66,11 @@ DISPATCH_FAILED = "NATIVE_DISPATCH_FAILED"
 # below is inferred from the `allowed*` values, not from a seen rejection.
 RATE_LIMIT_EVENT = "rate_limit_event"
 RATE_LIMIT_ALLOWED_PREFIX = "allowed"
+# A top-level type marker in a line that is not valid JSON (text nested in a
+# message would carry escaped quotes and does not match).
+_BROKEN_RATE_LIMIT_RE = re.compile(r'(?<!\\)"type"\s*:\s*"rate_limit_event"')
+USAGE_LIMIT_REPORTED = "usage limit reported by the host"
+USAGE_STATE_UNKNOWN = "usage state could not be read"
 
 # A dispatching stream holds more than one `result` event: the Agent task runs
 # in the background and the parent is woken once more when it completes (that
@@ -185,14 +190,12 @@ def claude_dispatch_prompt(*, role: str, task_name: str, message: str) -> str:
 
 def claude_native_review_prompt(plan: str) -> str:
     """Claude form of the native plan-verifier review; the inner message matches Codex."""
-    from run_role_fitness_content import _review_prompt
+    from run_role_fitness_content import _native_review_message
 
-    message = _review_prompt(plan).replace(
-        "Do not call tools, modify files, or delegate. ",
-        "Do not call tools or modify files. ",
-    )
     return claude_dispatch_prompt(
-        role="plan-verifier", task_name="role_fitness_plan_review", message=message
+        role="plan-verifier",
+        task_name="role_fitness_plan_review",
+        message=_native_review_message(plan),
     )
 
 
@@ -269,6 +272,42 @@ def _committed_agents() -> list[Path]:
             "committed Claude agents directory has an unexpected entry"
         )
     return entries
+
+
+def _role_models(value: Any, agents: list[Path]) -> dict[str, str]:
+    """Validate per-role model overrides: committed roles, plain model names."""
+    if value is None:
+        return {}
+    known = {entry.stem for entry in agents}
+    if not isinstance(value, dict) or any(
+        not isinstance(role, str)
+        or role not in known
+        or not isinstance(model, str)
+        or not _MODEL_RE.fullmatch(model)
+        for role, model in value.items()
+    ):
+        raise BenchmarkContractError(
+            "role models must map committed Claude agents to model names"
+        )
+    return dict(value)
+
+
+def _with_model(text: str, model: str) -> str:
+    """Agent file text with the frontmatter ``model:`` line replaced.
+
+    Only that one line changes: the role's prompt body and every other binding
+    stay byte for byte what the committed dist holds.  A file without exactly
+    one such line in a leading frontmatter block is refused.
+    """
+    end = text.find("\n---\n", 4)
+    if not text.startswith("---\n") or end < 0:
+        raise StageSetupError("staged agent has no frontmatter")
+    head = text[4:end].split("\n")
+    bound = [index for index, line in enumerate(head) if line.startswith("model:")]
+    if len(bound) != 1:
+        raise StageSetupError("staged agent has no single model binding")
+    head[bound[0]] = f"model: {model}"
+    return "---\n" + "\n".join(head) + text[end:]
 
 
 def _remove_private(*paths: Path) -> None:
@@ -372,6 +411,39 @@ def _require_rate_limit_allowed(event: dict[str, Any]) -> None:
         raise StageRateLimited("rate_limit_not_allowed")
     if overage is not False:
         raise StageRateLimited("rate_limit_overage")
+
+
+def _require_no_usage_limit(stdout: Any) -> None:
+    """Raise ``StageRateLimited`` unless every usage report plainly allows the run.
+
+    Runs before, and independently of, the completeness checks of
+    ``parse_stream``: a rejected quota is exactly when the stream is likely to
+    be cut short or malformed, and a timeout leaves only partial output.  Lines
+    that are not JSON are skipped unless they are a broken rate limit event.
+    A rate limit event that cannot be read (no ``rate_limit_info`` object, no
+    string ``status``, or a damaged line) means the usage state is unknown,
+    which also stops the run: ``rate_limit_status_unknown``.
+    """
+    if isinstance(stdout, bytes):
+        stdout = stdout.decode("utf-8", errors="replace")
+    if not isinstance(stdout, str):
+        return
+    for line in stdout.splitlines():
+        if RATE_LIMIT_EVENT not in line:
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, RecursionError):
+            if _BROKEN_RATE_LIMIT_RE.search(line):
+                raise StageRateLimited("rate_limit_status_unknown") from None
+            continue
+        if isinstance(event, dict) and event.get("type") == RATE_LIMIT_EVENT:
+            try:
+                _require_rate_limit_allowed(event)
+            except StageRateLimited:
+                raise
+            except StageEvidenceError:
+                raise StageRateLimited("rate_limit_status_unknown") from None
 
 
 def _result_round(result: dict[str, Any]) -> dict[str, Any]:
@@ -652,7 +724,9 @@ class ClaudeStageAdapter:
     Optional, all off by default: ``model`` adds ``--model`` for the parent
     session; ``allow_single_agent`` accepts ``StageRequest.role`` None (no
     dispatch evidence); ``observer`` is shown a ``StageObservation`` after the
-    child exits and before the private tree is deleted.
+    child exits and before the private tree is deleted; ``role_models`` maps a
+    committed role to the model its staged copy is bound to for this adapter
+    (an evaluation arm), leaving the committed file and the role text alone.
     """
 
     def __init__(
@@ -663,6 +737,7 @@ class ClaudeStageAdapter:
         model: str | None = None,
         allow_single_agent: bool = False,
         observer: Callable[[StageObservation], None] | None = None,
+        role_models: dict[str, str] | None = None,
     ) -> None:
         if model is not None and (
             not isinstance(model, str) or not _MODEL_RE.fullmatch(model)
@@ -673,6 +748,18 @@ class ClaudeStageAdapter:
         self.model = model
         self.allow_single_agent = allow_single_agent
         self.observer = observer
+        self.role_models = _role_models(role_models, _committed_agents())
+
+    def with_role_models(self, role_models: dict[str, str]) -> "ClaudeStageAdapter":
+        """The same adapter settings with different per-role model bindings."""
+        return ClaudeStageAdapter(
+            claude_bin=self.claude_bin,
+            max_budget_usd=self.max_budget_usd,
+            model=self.model,
+            allow_single_agent=self.allow_single_agent,
+            observer=self.observer,
+            role_models=role_models,
+        )
 
     def _command(self, request: StageRequest) -> list[str]:
         if request.sandbox not in _PERMISSION_MODES:
@@ -752,8 +839,17 @@ class ClaudeStageAdapter:
                     (private / name).mkdir(mode=0o700)
                 (staged / "agents").mkdir(parents=True)
                 for entry in agents:
-                    shutil.copyfile(entry, staged / "agents" / entry.name)
-            except OSError:
+                    target = staged / "agents" / entry.name
+                    if entry.stem in self.role_models:
+                        target.write_bytes(
+                            _with_model(
+                                entry.read_bytes().decode("utf-8"),
+                                self.role_models[entry.stem],
+                            ).encode("utf-8")
+                        )
+                    else:
+                        shutil.copyfile(entry, target)
+            except (OSError, UnicodeDecodeError):
                 raise StageSetupError(
                     "stage directories could not be prepared"
                 ) from None
@@ -775,8 +871,26 @@ class ClaudeStageAdapter:
                     timeout=request.timeout,
                     check=False,
                 )
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as expired:
                 failure = StageTimeout()
+                # What arrived before the timeout is checked like a finished
+                # stream: a leaked token first, then the usage state.
+                partial = [
+                    part.decode("utf-8", errors="replace")
+                    if isinstance(part, bytes)
+                    else part
+                    for part in (expired.output, expired.stderr)
+                    if isinstance(part, (bytes, str))
+                ]
+                if any(token in part for part in partial):
+                    failure = StageEvidenceError("credential_in_stream")
+                else:
+                    try:
+                        _require_no_usage_limit(
+                            expired.output
+                        )
+                    except StageRateLimited as limited:
+                        failure = StageRateLimited(limited.detail)
             except OSError:
                 failure = StageSetupError("claude could not be started")
             if failure is not None:
@@ -794,6 +908,7 @@ class ClaudeStageAdapter:
                         request.workdir,
                     )
                 )
+            _require_no_usage_limit(completed.stdout)
             parsed = parse_stream(completed.stdout, role)
         finally:
             problem = _workdir_problem(request.workdir, token)
@@ -821,13 +936,21 @@ class CostAdmission:
     """Cumulative stop: reserve the per-stage cap before each stage starts.
 
     A stage is admitted only while spent cost plus the reservation stays within
-    ``RUN_COST_CAP_USD``.  A stage whose cost is unknown is charged its full
+    the run cap (``RUN_COST_CAP_USD`` unless a lower ``run_cap_usd`` is given).
+    A stage whose cost is unknown is charged its full
     reservation, and a stage that reports more than its reservation proves the
     per-stage cap is not enforced, which closes admission for the rest of the run.
+
+    ``per_stage_cap_usd`` is the reservation, not necessarily the host's budget
+    flag: the flag is only checked after a turn ends, so the reservation has to
+    cover what a stage can really cost.
     """
 
-    def __init__(self, *, per_stage_cap_usd: Any) -> None:
+    def __init__(self, *, per_stage_cap_usd: Any, run_cap_usd: Any = None) -> None:
         self.per_stage_cap_usd = _usd(per_stage_cap_usd, "per-stage cap")
+        self.run_cap_usd = (
+            RUN_COST_CAP_USD if run_cap_usd is None else _usd(run_cap_usd, "run cap")
+        )
         self.spent_usd = Decimal("0")
         self._reserved = False
         self._closed: str | None = None
@@ -837,7 +960,7 @@ class CostAdmission:
             raise StageNotAdmitted(self._closed)
         if self._reserved:
             raise StageNotAdmitted("previous stage is not settled")
-        if self.spent_usd + self.per_stage_cap_usd > RUN_COST_CAP_USD:
+        if self.spent_usd + self.per_stage_cap_usd > self.run_cap_usd:
             raise StageNotAdmitted("cumulative cost cap reached")
         self._reserved = True
 
@@ -861,6 +984,11 @@ class CostAdmission:
         if self._closed is None:
             self._closed = reason
 
+    @property
+    def closed_reason(self) -> str | None:
+        """Why no further stage will be admitted, or None while the run is open."""
+        return self._closed
+
 
 class AdmittedStageAdapter:
     """A ``StageAdapter`` that runs its inner adapter only after cost admission."""
@@ -877,10 +1005,15 @@ class AdmittedStageAdapter:
             # Raised before the host starts: nothing was spent.
             self.admission.settle(0.0)
             raise
-        except StageRateLimited:
+        except StageRateLimited as limited:
             # AC-CE-032: a usage limit ends the run; finished stages are kept.
+            # So does a usage state that cannot be read.
             self.admission.settle(None)
-            self.admission.close("usage limit reported by the host")
+            self.admission.close(
+                USAGE_STATE_UNKNOWN
+                if limited.detail == "rate_limit_status_unknown"
+                else USAGE_LIMIT_REPORTED
+            )
             raise
         except BaseException:
             self.admission.settle(None)
@@ -890,11 +1023,34 @@ class AdmittedStageAdapter:
 
 
 def open_claude_run(
-    *, private_root: Path, claude_bin: str, per_stage_cap_usd: Any
+    *,
+    private_root: Path,
+    claude_bin: str,
+    per_stage_cap_usd: Any,
+    reserve_usd: Any = None,
+    run_cap_usd: Any = None,
+    model: str | None = None,
+    observer: Callable[[StageObservation], None] | None = None,
 ) -> AdmittedStageAdapter:
-    """Stage adapter for one Claude run: frozen manifest checked, one cap for flag and reservation."""
+    """Stage adapter for one Claude run, after the frozen manifest check.
+
+    ``per_stage_cap_usd`` is the ``--max-budget-usd`` flag.  ``reserve_usd`` is
+    what admission sets aside per stage; it defaults to the flag value and may
+    only be higher, because the flag is checked after a turn has been paid for.
+    ``run_cap_usd`` lowers the run's stop point below ``RUN_COST_CAP_USD``.
+    An arm with other role bindings shares the run through
+    ``AdmittedStageAdapter(run.inner.with_role_models(...), run.admission)``.
+    """
     require_frozen_manifest(private_root)
+    inner = ClaudeStageAdapter(
+        claude_bin=claude_bin,
+        max_budget_usd=per_stage_cap_usd,
+        model=model,
+        observer=observer,
+    )
+    reserve = inner.max_budget_usd if reserve_usd is None else _usd(reserve_usd, "stage reservation")
+    if reserve < inner.max_budget_usd:
+        raise BenchmarkContractError("stage reservation is below the stage budget")
     return AdmittedStageAdapter(
-        ClaudeStageAdapter(claude_bin=claude_bin, max_budget_usd=per_stage_cap_usd),
-        CostAdmission(per_stage_cap_usd=per_stage_cap_usd),
+        inner, CostAdmission(per_stage_cap_usd=reserve, run_cap_usd=run_cap_usd)
     )

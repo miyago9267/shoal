@@ -353,9 +353,14 @@ def _review_prompt(plan: str) -> str:
     )
 
 
+def _native_review_message(plan: str) -> str:
+    """The host-neutral request the plan-verifier child receives."""
+    return _review_prompt(plan).replace("Do not call tools, modify files, or delegate. ", "Do not call tools or modify files. ")
+
+
 def _native_review_prompt(plan: str) -> str:
     """Ask the installed plan-verifier role for one machine-readable review."""
-    message = _review_prompt(plan).replace("Do not call tools, modify files, or delegate. ", "Do not call tools or modify files. ")
+    message = _native_review_message(plan)
     return (
         "Call spawn_agent exactly once with the following message, using "
         "agent_type='plan-verifier', task_name='role_fitness_plan_review', "
@@ -453,6 +458,34 @@ class CodexStageAdapter:
         )
 
 
+def _codex_dispatch_prompt(*, role: str, task_name: str, message: str) -> str:
+    """Codex parent prompt that hands ``message`` to one named role."""
+    return (
+        "Call spawn_agent exactly once with the following message, using "
+        f"agent_type='{role}', task_name='{task_name}', fork_turns='none':\n\n"
+        + message
+        + "\nThen call wait_agent exactly once with timeout_ms=30000."
+    )
+
+
+def _stage_host(adapter: Any, dispatch_prompt: Any, active_home: Path | None, codex_bin: str | None) -> tuple[Any, Any]:
+    """Pick the host of a native stage: Codex by default, or a caller-supplied one.
+
+    Codex needs ``active_home`` and ``codex_bin`` and builds its own prompts
+    (``dispatch_prompt`` None).  Another host passes its ``StageAdapter`` together
+    with ``dispatch_prompt(role=, task_name=, message=)``, which wraps the same
+    child message in that host's dispatch wording; the Codex arguments must then
+    be absent, so a stage can never be half one host and half another.
+    """
+    if adapter is None and dispatch_prompt is None:
+        if active_home is None or codex_bin is None:
+            raise BenchmarkContractError("codex stage needs active_home and codex_bin")
+        return CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), None
+    if adapter is None or not callable(dispatch_prompt) or active_home is not None or codex_bin is not None:
+        raise BenchmarkContractError("stage host arguments are inconsistent")
+    return adapter, dispatch_prompt
+
+
 def _run_stage(adapter: Any, request: StageRequest, setup_failure: str) -> StageOutcome:
     """Run a stage, reporting a setup failure as a contract error."""
     try:
@@ -465,12 +498,15 @@ def _run_stage(adapter: Any, request: StageRequest, setup_failure: str) -> Stage
 def run_native_review_case(
     *,
     private_root: Path,
-    active_home: Path,
-    codex_bin: str,
+    active_home: Path | None = None,
+    codex_bin: str | None = None,
     case_id: str,
     timeout: int = 360,
+    adapter: Any = None,
+    dispatch_prompt: Any = None,
 ) -> dict[str, Any]:
     """Run one native plan-verifier child and score only its child rollout."""
+    host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     manifest = json.loads((private_root / "manifest.json").read_text(encoding="utf-8"))
     case = next((item for item in manifest["cases"] if item.get("case_id") == case_id), None)
     if not isinstance(case, dict) or case.get("cohort") not in {"plan_review", "split_workflow"}:
@@ -481,12 +517,15 @@ def run_native_review_case(
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()
+        prompt = _native_review_prompt(plan) if wrap is None else wrap(
+            role="plan-verifier", task_name="role_fitness_plan_review", message=_native_review_message(plan),
+        )
         request = StageRequest(
-            prompt=_native_review_prompt(plan), role="plan-verifier", sandbox="read-only", workdir=cwd,
+            prompt=prompt, role="plan-verifier", sandbox="read-only", workdir=cwd,
             scratch=directory, timeout=timeout, task_name="role_fitness_plan_review",
         )
         try:
-            stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native content stage materialization failed")
+            stage = _run_stage(host, request, "native content stage materialization failed")
         except StageTimeout:
             return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "plan-verifier"}
         except StageEvidenceError as exc:
@@ -547,12 +586,15 @@ def run_native_review_case(
 def run_native_mechanical_case(
     *,
     private_root: Path,
-    active_home: Path,
-    codex_bin: str,
+    active_home: Path | None = None,
+    codex_bin: str | None = None,
     case_id: str,
     timeout: int = 360,
+    adapter: Any = None,
+    dispatch_prompt: Any = None,
 ) -> dict[str, Any]:
     """Run one native mech-executor child and validate its declared artifact."""
+    host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     manifest = json.loads((private_root / "manifest.json").read_text(encoding="utf-8"))
     case = next((item for item in manifest["cases"] if item.get("case_id") == case_id), None)
     if not isinstance(case, dict) or case.get("cohort") != "mechanical_execution":
@@ -560,15 +602,13 @@ def run_native_mechanical_case(
     fixture = json.loads((private_root / "fixtures" / f"{case_id}.json").read_text(encoding="utf-8"))
     directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-mechanical-{case_id}-"))
     task_name = "role_fitness_mechanical_execution"
-    prompt = (
-        "Call spawn_agent exactly once with the following message, using "
-        f"agent_type='mech-executor', task_name='{task_name}', fork_turns='none':\n\n"
+    message = (
         "Work only in the current isolated directory. Execute the fixture exactly. "
         "Create result.json with exactly this JSON object and no other files: "
         + json.dumps({"case_id": case_id, "accepted": True}, sort_keys=True)
         + "\nFixture:\n" + json.dumps(fixture, sort_keys=True)
-        + "\nThen call wait_agent exactly once with timeout_ms=30000."
     )
+    prompt = (wrap or _codex_dispatch_prompt)(role="mech-executor", task_name=task_name, message=message)
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()
@@ -577,7 +617,7 @@ def run_native_mechanical_case(
             scratch=directory, timeout=timeout, task_name=task_name,
         )
         try:
-            stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native mechanical stage materialization failed")
+            stage = _run_stage(host, request, "native mechanical stage materialization failed")
         except StageTimeout:
             return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "mech-executor"}
         except StageEvidenceError as exc:
@@ -623,21 +663,22 @@ def run_native_mechanical_case(
 def run_native_verifier_case(
     *,
     private_root: Path,
-    active_home: Path,
-    codex_bin: str,
+    active_home: Path | None = None,
+    codex_bin: str | None = None,
     case_id: str,
     timeout: int = 360,
+    adapter: Any = None,
+    dispatch_prompt: Any = None,
 ) -> dict[str, Any]:
     """Run an independent verifier against an identity-free accepted artifact."""
+    host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     manifest = json.loads((private_root / "manifest.json").read_text(encoding="utf-8"))
     case = next((item for item in manifest["cases"] if item.get("case_id") == case_id), None)
     if not isinstance(case, dict) or case.get("cohort") not in {"mechanical_execution", "split_workflow"}:
         raise BenchmarkContractError("native verifier case is not executable")
     directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-verifier-{case_id}-"))
     task_name = "role_fitness_mechanical_verification"
-    prompt = (
-        "Call spawn_agent exactly once with the following message, using "
-        f"agent_type='verifier', task_name='{task_name}', fork_turns='none':\n\n"
+    message = (
         "Contract: outcome_verification. The artifact is already present in the child "
         "cwd; read result.json directly and do not look for any other evidence. "
         "The exact claim is: the mechanical executor produced the declared artifact. "
@@ -646,8 +687,8 @@ def run_native_verifier_case(
         "After reading it, return CONFIRMED with the observed case_id and accepted "
         "value when it matches; otherwise return REFUTED with the mismatch. "
         "Do not modify files or delegate."
-        "\nThen call wait_agent exactly once with timeout_ms=30000."
     )
+    prompt = (wrap or _codex_dispatch_prompt)(role="verifier", task_name=task_name, message=message)
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()
@@ -657,7 +698,7 @@ def run_native_verifier_case(
             scratch=directory, timeout=timeout, task_name=task_name,
         )
         try:
-            stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native verifier stage materialization failed")
+            stage = _run_stage(host, request, "native verifier stage materialization failed")
         except StageTimeout:
             return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "verifier"}
         except StageEvidenceError as exc:
@@ -703,26 +744,27 @@ def run_native_verifier_case(
 @_with_attempt
 def run_native_split_executor_case(
     *,
-    active_home: Path,
-    codex_bin: str,
+    active_home: Path | None = None,
+    codex_bin: str | None = None,
     case_id: str,
     handoff: dict[str, Any],
     timeout: int = 360,
+    adapter: Any = None,
+    dispatch_prompt: Any = None,
 ) -> dict[str, Any]:
     """Execute one already-approved split handoff through mech-executor."""
+    host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     if handoff.get("scenario_id") != case_id:
         raise BenchmarkContractError("split executor handoff identity is invalid")
     directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-split-executor-{case_id}-"))
     task_name = "role_fitness_split_execution"
-    prompt = (
-        "Call spawn_agent exactly once with the following message, using "
-        f"agent_type='mech-executor', task_name='{task_name}', fork_turns='none':\n\n"
+    message = (
         "Execute only the approved split handoff below in the current isolated directory. "
         "Create result.json with exactly " + json.dumps({"case_id": case_id, "accepted": True}, sort_keys=True) + " after "
         "the approved revision fragments are applied. Do not modify any other file.\n"
         + json.dumps(handoff, sort_keys=True)
-        + "\nThen call wait_agent exactly once with timeout_ms=30000."
     )
+    prompt = (wrap or _codex_dispatch_prompt)(role="mech-executor", task_name=task_name, message=message)
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()
@@ -730,7 +772,7 @@ def run_native_split_executor_case(
             prompt=prompt, role="mech-executor", sandbox="workspace-write", workdir=cwd,
             scratch=directory, timeout=timeout, task_name=task_name,
         )
-        stage = _run_stage(CodexStageAdapter(codex_bin=codex_bin, active_home=active_home), request, "native split executor materialization failed")
+        stage = _run_stage(host, request, "native split executor materialization failed")
         verdict, elapsed, usage, event_counts = stage.evidence, stage.wall_seconds, stage.usage, stage.event_counts
         result = None
         try:

@@ -449,12 +449,14 @@ class DispatchEvidenceTests(ClaudeStageCase):
             else:
                 events[6]["rate_limit_info"] = info
             with self.subTest(repr(info)):
+                # An unreadable usage report is an unknown usage state: it
+                # stops the run like a reported limit, not just the stage.
                 error, _, request = self.run_failing(
-                    StageEvidenceError,
+                    claude.StageRateLimited,
                     _Host(stdout=_stream(events)),
                     name=f"bad-rate-{index}",
                 )
-                self.assertEqual(error.detail, "unrecognized_stream_event")
+                self.assertEqual(error.detail, "rate_limit_status_unknown")
                 self.assertEqual(_tree(request.scratch), ["clean-cwd"])
 
     def test_rate_limit_that_is_not_plainly_allowed_stops_the_stage(self) -> None:
@@ -1318,17 +1320,26 @@ class TokenTests(ClaudeStageCase):
 
     def test_token_never_appears_in_a_raised_error(self) -> None:
         leaking_output = f"env dump {FAKE_TOKEN}"
-        hosts = {
-            StageTimeout: _Host(
-                error=subprocess.TimeoutExpired(
-                    ["claude-stub"], 30, output=leaking_output, stderr=leaking_output
-                )
+        # A timeout whose partial output carries the token is a leak, not a
+        # plain timeout; a timeout with clean output stays a timeout.
+        hosts = [
+            (
+                StageEvidenceError,
+                _Host(
+                    error=subprocess.TimeoutExpired(
+                        ["claude-stub"], 30, output=leaking_output, stderr=leaking_output
+                    )
+                ),
             ),
-            StageSetupError: _Host(error=OSError(f"exec failed {FAKE_TOKEN}")),
-            StageEvidenceError: _Host(stdout=leaking_output + "\n"),
-        }
-        for index, (error_type, host) in enumerate(hosts.items()):
-            with self.subTest(error_type.__name__):
+            (
+                StageTimeout,
+                _Host(error=subprocess.TimeoutExpired(["claude-stub"], 30, output="x")),
+            ),
+            (StageSetupError, _Host(error=OSError(f"exec failed {FAKE_TOKEN}"))),
+            (StageEvidenceError, _Host(stdout=leaking_output + "\n")),
+        ]
+        for index, (error_type, host) in enumerate(hosts):
+            with self.subTest(f"{index}-{error_type.__name__}"):
                 error, _, request = self.run_failing(
                     error_type, host, name=f"leak-{index}"
                 )

@@ -119,7 +119,7 @@
   runner 的 `event_shapes` 診斷因此是空的。
 - frozen manifest 的檢查只在 `open_claude_run`；直接建立
   `ClaudeStageAdapter` 不會檢查，B4 接線必須走 `open_claude_run`。
-- 四個 native case 函式尚未接上 Claude adapter（併入 B4）。
+- 四個 native case 函式已於 B4 離線部分接上 Claude adapter（見 B4）。
 - hooks 的隔離無法判定：init 事件沒有列出 hooks，stream 看不到 user 層的
   hook 有沒有被載入。
 - 額度被拒時的 `rate_limit_event` 實際值尚未見過；adapter 的規則（`status`
@@ -190,9 +190,9 @@
 
 - public projection 的 arm 名稱接受任意 32 字內的小寫詞
   （`[a-z][a-z0-9_]{0,31}`），計數沒有上限。
-- `public_content_failure_counts` 與 summary 的 `content_stages` 目前沒有
-  production 呼叫端，重跑也沒有 CLI 入口；R9、R10 只在函式層成立，要等 B4
-  接上後驗一次端到端輸出。
+- `public_content_failure_counts` 已由 B4 的 smoke 入口呼叫（離線測試驗過
+  端到端輸出，尚未 live）；summary 的 `content_stages` 仍沒有 production
+  呼叫端，重跑也沒有 CLI 入口。
 - runner 不檢查 `rerun_of` 指向的 stage 是否真的是 INCONCLUSIVE，只檢查格式
   與 attempt 順序。
 - 取代關係只作用於 verifier INCONCLUSIVE（reason 為
@@ -201,8 +201,61 @@
 
 ## Phase B4 — Claude smoke（付費，需核准）
 
+離線部分（2026-10-06，全部未經 live 驗證，測試為
+`tests/test_claude_eval_smoke.py`）：
+
+- [x] plan_review、mechanical、verifier、split executor 四個 case 函式可經
+      `ClaudeStageAdapter` 執行，stage dict 的欄位與 Codex 路徑相同（含
+      `attempt`、`rerun_of`）。
+  - case 函式新增 `adapter` 與 `dispatch_prompt` 兩個參數，兩者要一起給；
+    不給時走 Codex，prompt 與輸出不變
+    （`tests/test_run_role_fitness_stage_characterization.py` 未修改）。
+  - child 收到的訊息與 Codex 相同，只有 parent 的派工包裝不同
+    （`claude_dispatch_prompt`）。
+- [x] smoke 入口 `install/claude_eval_smoke.py`：`--dry-run` 列出 stage、arm、
+      每個 stage 的預留額與總上限，不啟動子行程、不需要 token 與 private
+      root。
+  - arm 依 Open question 3：plan_review 跑 `plan_frontier`（committed
+    binding）與 `plan_strong`（`core/tiers.toml` 的 strong tier 在 Claude host
+    解出的模型），mechanical 與 split 各一個 arm，共 7 個 process，超過就
+    拒絕。
+  - strong arm 只改暫存 agent 檔 frontmatter 的 `model:` 一行，committed 的
+    dist 與 role 文字不動。未經 live 驗證：改這一行後 child 是否真的用該
+    模型；報告的 `models_observed` 列出 stream 回報的模型名稱供核對。
+- [x] 每個 stage 的預留額與 `--max-budget-usd` 分開：預留額 = stage budget
+      + 2 × 單一 turn 上限（parent 與 child 各可能多跑完一個 turn）。金額
+      沒有預設值，由核准單提供（`--stage-budget-usd`、`--turn-reserve-usd`、
+      `--total-budget-usd`）；總額必須涵蓋 7 個預留額，否則不啟動。
+  - 未經 live 驗證：`--max-budget-usd` 是否把 subagent 的花費算進去。若
+    不算，child 的花費只受 timeout 限制，要等 stage 結束、回報成本超過
+    預留額時才會停止後續 stage。
+- [x] 停止條件：回報成本超過預留額、累計加預留額超過總額、8,000,000
+      weighted tokens、`rate_limit_event` 非 `allowed*` 或進入 overage、
+      setup 或清除失敗、stream 或 workdir 出現 token。已完成的 stage 保留在
+      報告中。
+  - 沒有 usage 的失敗 stage（timeout、stream 被拒）不計入 weighted
+    tokens；成本以預留額計。
+  - 用量上限的檢查先於 stream 的完整性檢查，也讀 timeout 時已收到的部分
+    輸出；stream 殘缺或含壞行時仍會停止後續 stage。
+  - 讀不懂的 `rate_limit_event`（缺 `rate_limit_info` 或 `status`、行被
+    截斷）視為用量狀態不明，同樣停止後續 stage，reason 為
+    `usage_limit_unknown`；timeout 的部分輸出（含 stderr）出現 token 記為
+    `credential_in_stream` 並停止。
+  - child 的 review 格式不合（例如 `decision` 不是 READY／REVISE）在 smoke
+    記為 `inconclusive`、歸 `unparseable_output`，不停止整個 run；case 函式
+    本身在兩個 host 都仍丟出 contract error。
+- [x] 報告只含分數、類別 enum、計數、usage 與成本數字、stage 狀態與 reason
+      code；輸出前掃描 token 片段與 home、private root、暫存路徑，命中就
+      不輸出。`failure_taxonomy` 與 `content_failure_counts` 由既有的
+      scorecard 與 public projection 函式產生。
+
+需 live 與核准：
+
 - [ ] 備妥核准單：每 stage 上限（`--max-budget-usd` 金額）、依 arm 數算出
       的 process 總數（每 arm process 數 × arm 數）、累計停止點。
+  - 核准單的內容可由 `install/claude_eval_smoke.py --dry-run` 產生；金額
+    仍待 Miyago 決定，所以維持未勾。live 執行另需 `--live --yes`、
+    `--approved-processes 7` 與 frozen private root。
   - 前置：`--max-budget-usd` 只在一個 turn 結束後才檢查（2026-10-05 實測，
     上限 0.001 時實際花了 0.0181 USD），不能直接把它的值當成每 stage 的
     花費上限。排預算時，每個 stage 的預留額以「單一 turn 可能的最大花費」
