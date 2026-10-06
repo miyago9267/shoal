@@ -305,7 +305,7 @@ class SessionStartTests(unittest.TestCase):
 
     def test_skips_injection_when_claude_md_already_has_the_bootstrap(self) -> None:
         (self.cfg / "CLAUDE.md").write_text(
-            "<!-- pilotfish v1.4.2-claude.3 -->\n## Orchestration\n", encoding="utf-8"
+            "<!-- pilotfish v1.4.2-claude.4 -->\n## Orchestration\n", encoding="utf-8"
         )
         out = self.run_script()
         self.assertIn("already carries the pilotfish bootstrap", out)

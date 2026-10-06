@@ -8,7 +8,7 @@ role_text = "core"
 # policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
 # omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
 [policy]
-policy_text = "legacy"
+policy_text = "core"
 omit = []
 
 [policy.placeholders]

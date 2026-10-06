@@ -1339,7 +1339,7 @@ def explain(root: Path, host: str) -> str:
     """印出每個 role 的 tier、候選模型（含被排除的原因）、結果（resolver 選的或手動 pin 的）與權限推導。"""
     core, binding = load_core(root), load_toml(root / "hosts" / host / "binding.toml")
     if host in RENDERERS:
-        validate_catalog(core, binding)
+        validate_catalog(core, binding, core_policy=host == "claude")
         perms = derive_permissions(host, core, binding)
     else:
         perms = validate_generic(host, core, binding)

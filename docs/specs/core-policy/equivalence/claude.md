@@ -1,15 +1,16 @@
 ---
-title: Claude policy 對照表（core-policy P1 草稿）
-status: draft
+title: Claude policy 對照表（core-policy P1）
+status: reviewed
 created: 2026-10-06
 updated: 2026-10-06
+reviewed: 2026-10-06
 ---
 
 <!-- markdownlint-disable MD025 -->
 
-# Claude policy 對照表（P1 草稿）
+# Claude policy 對照表（P1）
 
-草稿，不是核准。這是 P2（Claude 切 `core`）給 plan-verifier 審的輸入；每條
+已由 plan-verifier 審過（READY，2026-10-06）。這是 P2（Claude 切 `core`）的輸入；每條
 legacy 規則對應到哪個 core 條款、哪個 host 外框，或明列刪除理由。
 legacy 指 `hosts/claude/src/` 目前的四份 policy 文件（HEAD `07eb6c6`），
 core 指 `core/policy/*.toml` 加 `hosts/claude/policy-frames/` 的組合結果。

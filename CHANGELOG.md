@@ -3,6 +3,14 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## Unreleased
+
+### Features
+
+- core-policy P2：Claude host 的 policy 改由 `core/policy` 條款組裝
+  （`policy_text = "core"`）；兩處「workflow」改為 procedure／policy 的
+  用字，沒有預期的行為變更。claude host 版本 1.4.2-claude.4。
+
 ## v1.4.0
 
 ### Features

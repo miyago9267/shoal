@@ -92,7 +92,7 @@ dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex
 | --- | --- |
 | shoal（產品） | 1.4.0 |
 | codex host | 1.8.3（`hosts/codex/VERSION`） |
-| claude host | 1.4.2-claude.3（`hosts/claude/VERSION`） |
+| claude host | 1.4.2-claude.4（`hosts/claude/VERSION`） |
 | agy host | 0.1.0 |
 | grok host | 1.0.6-shoal.2（`hosts/grok/VERSION`，衍生自上游 v1.0.6） |
 | opencode host | 以 `hosts/opencode/plugin/package.json` 為準 |

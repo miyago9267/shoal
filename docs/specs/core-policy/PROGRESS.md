@@ -56,3 +56,24 @@ CI `paths` 加入 `core/**`。prompt-document-lock SPEC 已改寫並記錄 decis
   `hosts/claude/VERSION` 一起更新。
 - Claude plugin 的 `policy/claude-md.bootstrap.md` 與 golden（`tests/golden/`）會跟著
   `core` 輸出改變，P2 要同步 `render --write` 與 golden。
+
+## P2 Claude 切換 core（2026-10-06，完成，未 commit）
+
+Claude 的 `policy_text` 改為 `core`，其餘 host 維持 `legacy`。對照表
+`equivalence/claude.md` 經 plan-verifier 審為 READY，狀態改為 reviewed（2026-10-06）。
+
+- **決定**：不新增獨立的 secret 處理條款；沿用 `security-sensitive-routing`、
+  `explicit-approval-only`、`auto-limits`。後續追蹤：是否新增獨立 secret 條款
+  （行為變更，需另案決定）。
+- **Prompt lock**：不加 migration 標記。`validate_prompt_lock.py`（base main）
+  ok surfaces=27；變更量在現行預算內（orchestration-policy 15 行、SKILL 4 行、
+  extensions 0 行）。
+- **版本**：`hosts/claude/VERSION` 1.4.2-claude.3 -> 1.4.2-claude.4，同步
+  SKILL.md 與 bootstrap 標記（src 與 policy-frames）、`upstream.lock`
+  `marker_version`、README 表格、`tests/test_claude_plugin.py` 的 fixture。
+- **render**：`--host claude --write`、`--host claude-plugin --write`；golden
+  （`tests/golden/claude`、`tests/golden/claude-plugin`）已更新。dist 變更只在
+  bootstrap、SKILL、orchestration-policy 三個檔案；extensions 沒有變。
+- **測試修正**：`tools/render.py` 的 `explain` 對 Claude 放行 `core` policy；
+  `tests/test_core_policy.py`（鎖定值與 temp 副本以 legacy 為基準）、
+  `tests/test_generic_md_render.py`（只比 role，副本設 legacy）配合 Claude 已切 core。

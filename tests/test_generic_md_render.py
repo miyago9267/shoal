@@ -665,6 +665,7 @@ def _compose(host: str, fragment: str, dest: Path) -> None:
             shutil.copytree(ROOT / "hosts" / host / sub, target / sub)
     text = (ROOT / "hosts" / host / "binding.toml").read_text(encoding="utf-8")
     text = re.sub(r"(?m)^supports_effort = false\n", "", text)
+    text = text.replace('policy_text = "core"', 'policy_text = "legacy"')  # 這裡只比 role；generic-md 不支援 core policy
     text = re.sub(r"(?ms)^# host 專屬 role.*", "", text)
     text = (
         'renderer = "generic-md"\n'

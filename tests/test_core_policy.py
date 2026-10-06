@@ -29,7 +29,7 @@ import contracts  # noqa: E402  (render_helpers 已把 tools/ 放進 sys.path)
 HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 
 # 每個 host 的 policy_text；切換是逐 host 的 migration（core-policy P2、P3），改這裡要同時有核准。
-EXPECTED_POLICY_TEXT = {host: "legacy" for host in HOSTS}
+EXPECTED_POLICY_TEXT = {host: "core" if host == "claude" else "legacy" for host in HOSTS}
 # 每個 host 目前省略（binding [policy].omit）與取代（policy-addenda 的 replace:）的條款；
 # 全部 legacy，所以都是空。新增 omit 或 replace 要同時改這裡（P3、P3a）。
 EXPECTED_POLICY_OMITS: dict[str, list[str]] = {host: [] for host in HOSTS}
@@ -364,6 +364,9 @@ class PolicyRenderCase(unittest.TestCase):
         )
         self.binding = self.root / "hosts" / "claude" / "binding.toml"
         self.dist = self.root / "hosts" / "claude" / "dist"
+        # repo 的 Claude 已是 core；這組測試以 legacy 為基準，副本改回 legacy 並重寫 dist。
+        self.edit(self.binding, 'policy_text = "core"', 'policy_text = "legacy"')
+        self.assertEqual(self.render("--write").returncode, 0)
 
     def edit(self, path: Path, old: str, new: str) -> None:
         text = path.read_text(encoding="utf-8")

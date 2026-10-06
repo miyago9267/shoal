@@ -2,11 +2,11 @@
 name: pilotfish-orchestration
 description: Full Pilotfish orchestration workflow - interaction-shape routing, Plan and approval gates, dispatch brakes, named-role delegation, security separation, verification, recovery, outcome continuation, review intent, decision checkpoints, and blocked-task isolation. Load before deciding delegation, review, or approval for large, architectural, risky, or cross-surface work.
 ---
-<!-- pilotfish-claude v1.4.2-claude.3 -->
+<!-- pilotfish-claude v1.4.2-claude.4 -->
 
 # Pilotfish orchestration
 
-This Skill is the detailed workflow behind the always-on Pilotfish bootstrap.
+This Skill is the detailed procedure behind the always-on Pilotfish bootstrap.
 The bootstrap stays authoritative for its invariants; this Skill supplies the
 complete contract.
 
@@ -15,7 +15,7 @@ complete contract.
 1. Classify the interaction shape: `co_discover`, `explore_then_plan`, or
    `execute` (see the policy's routing section).
 2. Set `execution_scope`, `review_intent`, and the discovery budget from the
-   workflow extensions.
+   policy extensions.
 3. Apply risk triggers before size, then the phase gate and dispatch brake
    before every Agent call.
 

@@ -1,8 +1,6 @@
 # Pilotfish orchestration policy
 
-Main-session policy. Named roles (`scout`, `Explore`, `plan-verifier`,
-`security-reviewer`, `mech-executor`, `executor`, `verifier`,
-`security-executor`): ignore this section, perform assigned task, never spawn
+Main-session policy. Named roles (`scout`, `Explore`, `plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`, `security-executor`): ignore this section, perform assigned task, never spawn
 subagents.
 
 Main session owns framing, architecture, ambiguity, Plan synthesis, approval,
@@ -17,7 +15,7 @@ fresh-context review.
   otherwise-clear bounded outcome. `co_discover` asks only direction-changing
   questions or uses the smallest reversible probe. Routing controls interaction;
   approval controls authority.
-  **`explore_then_plan` boundary:** its first turn is `discovery_read_only`
+**`explore_then_plan` boundary:** its first turn is `discovery_read_only`
   despite imperative implementation wording. Inspect only;
   Write/Edit/NotebookEdit and mutating Bash are forbidden. Return assumptions
   and one reversible slice; label `next_gate: user_approval` only after every
@@ -110,7 +108,7 @@ fresh-context review.
   take over—no third same-tier retry.
 - Security-sensitive work (authn/authz, credentials/secrets, identity/privacy,
   crypto, validation/hardening, vuln analysis) never uses general executors.
-  Before required approval and first readiness review, finish tool-enforced
+Before required approval and first readiness review, finish tool-enforced
   read-only `security-reviewer`; carry findings/dispositions into Plan. After
   approval, send stable contract to `security-executor`. Never run both
   pre-approval reviews concurrently or send pre-approval work to write-capable
@@ -216,7 +214,7 @@ fresh-context review.
   cross-cutting blocker, all remaining work depending on paused slice, new
   authority/product decision, destructive/irreversible/external action,
   exhausted budget/quota, unsafe environment, or unattainable original scope.
-  Final report separates confirmed/fixed/deferred/regraded findings
+Final report separates confirmed/fixed/deferred/regraded findings
   (original/revised priority, evidence, disposition), rejected findings with
   evidence, paused slices/dependents, inconclusive/unrun checks, narrowed
   claims, tests/gates/cost, external actions not taken.
@@ -229,13 +227,12 @@ fresh-context review.
   reconnaissance; collect all results before dependent work/final answer.
   Foreground only when next action blocks on result, no useful independent work
   remains, net benefit is positive. Never launch merely to wait when main owns
-  the same evolving evidence more cheaply. Parallel writers use `isolation:
-  "worktree"` (requires Git); without Git, never fan out—use one shared-checkout
+  the same evolving evidence more cheaply. Parallel writers use `isolation: "worktree"` (requires Git); without Git, never fan out—use one shared-checkout
   writer or work direct. Read-only roles may share checkout. Integrate every
   collected worktree; uncollected worktree means lost work.
 - Long-running processes belong to main session. Agent with possible long
   command runs `run_in_background: true`; Bash-capable leaf roles never detach.
-  Leaf unable to finish bounded foreground work returns exact command, absolute
+Leaf unable to finish bounded foreground work returns exact command, absolute
   working/worktree directory, environment, input paths; main runs
   `Bash(run_in_background: true)` in that context, then resumes role with
   captured output. Liveness comes from tracked task state/output, never
