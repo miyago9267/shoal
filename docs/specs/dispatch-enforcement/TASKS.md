@@ -80,8 +80,9 @@ live（2026-10-05，commit `e33b26e`、`0fccdb8` 之後）：
 `skip_reason` 比例 0，逐 host 切換並實際擋下一次。
 
 - [x] OpenCode：shadow log 21 筆決策、4 筆 would_deny、誤擋 0、skip 0，
-      預設切為 enforce（plugin 0.2.1）。
-      過程中修正 TS 對不存在路徑的 realpath 與 Python 不一致（`/tmp` 新檔被計數）。
+      預設切為 enforce（plugin 0.2.1，`b445151`）。重裝後 live `opencode run` 連建三檔，
+      第 3 個檔 `R2 deny`、未建立。shadow 期間一筆 `/tmp` 新檔被計數，source 重現不出
+      （檔案實際未建立，model 送出的路徑無法確認），補了 realpath 測試向量。
 - [-] Grok：Miyago 2026-10-05 決定延後（免費額度用完）。工作負載先抓到 `write_file`
       未納入，已修正（`a1ff1bc`）。
 - [-] Codex：Miyago 2026-10-05 決定延後（用量上限；正常 session 需先以 `/hooks`

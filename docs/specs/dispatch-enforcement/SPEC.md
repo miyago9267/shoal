@@ -1,9 +1,9 @@
 ---
 title: Dispatch 強制與權限補強
-status: approved
+status: completed
 approved_by: Miyago
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -185,6 +185,13 @@ E0 需要少量 live 呼叫（每個 host 一個小 prompt），執行前取得�
   Codex write 等級不輸出 `sandbox_mode`，role 層的限制只能靠 hook。
 - agy 沒有可證實的完整工具名單，write 等級不加 allowlist；agy 也無法辨識
   role，所以 write role 能否再派 subagent 目前沒有強制手段。
+
+## 完結狀態（2026-10-06）
+
+- E0 到 E5 完成；E6 完成 OpenCode（live 實擋，`b445151`）。
+- Grok 與 Codex 的 E6 依 Miyago 2026-10-05 決定延後，guard 維持 shadow。重啟條件
+  同 Open question 1；Codex 另需使用者以 `/hooks` 核准新 hook。
+- agy 依 R5 固定 shadow。
 
 ## Rollback
 
