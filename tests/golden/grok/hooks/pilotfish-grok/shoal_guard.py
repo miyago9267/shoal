@@ -18,19 +18,27 @@ Modes (SHOAL_GUARD, alias PILOTFISH_GUARD): enforce | shadow | off.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import stat
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
+
+try:
+    import fcntl
+except ImportError:  # Windows: run() is a no-op there
+    fcntl = None  # type: ignore[assignment]
 
 MAX_INPUT_BYTES = 256 * 1024
 MAX_LOG_BYTES = 1024 * 1024
 MAX_STATE_BYTES = 64 * 1024
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+LOCK_WAIT_SECONDS = 2.0
 
 # Default mode per host.  E6 flips codex/grok/agy to enforce after shadow evidence.
 HOST_DEFAULT_MODE = {
@@ -45,8 +53,14 @@ FORCED_SHADOW_HOSTS = frozenset({"agy"})
 ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 COMPOSED_TURN_HOSTS = frozenset({"agy"})
-# Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId); use state turn.
-STATE_TURN_HOSTS = frozenset({"agy", "grok"})
+# Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId; claude
+# after `/login` resumes without prompt_id); use the state turn.
+STATE_TURN_HOSTS = frozenset({"agy", "grok", "claude"})
+# Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
+PROMPT_KEEP_HOSTS = frozenset({"claude"})
+# Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
+# `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
+ROLE_NAMESPACES = ("shoal:",)
 
 # role -> access level.  Must match core/roles.toml and every [extra_roles.*] in
 # hosts/*/binding.toml; tests/test_shoal_guard.py asserts it.
@@ -226,6 +240,33 @@ def _write_json(path: Path, obj: Dict[str, Any]) -> bool:
     return True
 
 
+@contextlib.contextmanager
+def _state_lock(path: Path) -> Iterator[Optional[str]]:
+    """Advisory flock on `path` (0600, O_NOFOLLOW) around a state read-modify-write.
+
+    Yields None once held, else the skip reason (the caller then fails open).  Waits at
+    most LOCK_WAIT_SECONDS; the lock dies with the process, so a crash never wedges it.
+    """
+    fd = _open_private(path, os.O_RDWR | os.O_CREAT) if fcntl is not None else None
+    if fd is None:
+        yield "state_unavailable"
+        return
+    try:
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    yield "lock_timeout"
+                    return
+                time.sleep(0.01)
+        yield None
+    finally:
+        os.close(fd)  # closing the descriptor releases the lock
+
+
 def _safe_text(value: Any) -> Optional[str]:
     return value[:200] if isinstance(value, str) else None
 
@@ -267,6 +308,20 @@ def valid_id(value: Any, composed: bool = False) -> bool:
     if not isinstance(value, str):
         return False
     return bool(ID_RE.match(value.replace(":", "_") if composed else value))
+
+
+def normalize_role(role: Any) -> Optional[str]:
+    """Bare role name; a leading allowlisted namespace (`shoal:`) is removed once (K3)."""
+    if not isinstance(role, str):
+        return None
+    for prefix in ROLE_NAMESPACES:
+        if role.startswith(prefix):
+            return role[len(prefix):]
+    return role
+
+
+def role_access(role: Any) -> Optional[str]:
+    return ROLE_ACCESS.get(normalize_role(role))
 
 
 def resolve_mode(host: str, env: Dict[str, str]) -> str:
@@ -380,7 +435,7 @@ class _Guard:
         rule = None
         if tool_kind == "dispatch":
             rule = "LEAF"
-        elif tool_kind == "edit" and ROLE_ACCESS.get(role) == "verify":
+        elif tool_kind == "edit" and role_access(role) == "verify":
             rule = "VERIFY_EDIT"
         if rule is None:
             return {
@@ -418,7 +473,8 @@ class _Guard:
         if not valid_id(sid):
             return self.result("skip", skip="invalid_id")
         turn_optional = kind == "tool" and self.host in STATE_TURN_HOSTS
-        if tid is None and not turn_optional:
+        keep_turn = kind == "prompt" and self.host in PROMPT_KEEP_HOSTS
+        if tid is None and not (turn_optional or keep_turn):
             return self.result("skip", skip="missing_id")
         if tid is not None and not valid_id(tid, composed=self.host in COMPOSED_TURN_HOSTS):
             return self.result("skip", skip="invalid_id")
@@ -427,8 +483,29 @@ class _Guard:
             return self.result("skip", skip="state_unavailable")
         state_path = guard / "state" / (sid + ".json")
 
+        with _state_lock(guard / "state" / (sid + ".lock")) as lock_skip:
+            if lock_skip is not None:
+                return self.result("skip", skip=lock_skip)
+            return self._locked(is_boundary, keep_turn and tid is None, tid, state_path, guard)
+
+    def _locked(
+        self, is_boundary: bool, keep: bool, tid: Optional[str], state_path: Path, guard: Path
+    ) -> Dict[str, Any]:
+        """The state read-modify-write; the caller holds the per-session lock."""
+        event = self.event
         if is_boundary:
-            if not _write_json(state_path, {"turn_id": tid, "dispatched": False, "edited": []}):
+            if keep:
+                # M1: id-less prompt.  Clear the unlock, keep turn and edits; no state, nothing to do.
+                prior = _read_json(state_path)
+                if not prior:
+                    return self.result("skip", skip="missing_id")
+                edited = prior.get("edited") if isinstance(prior.get("edited"), list) else []
+                prior_tid = prior.get("turn_id")
+                state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
+                         "dispatched": False, "edited": edited}
+            else:
+                state = {"turn_id": tid, "dispatched": False, "edited": []}
+            if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
 
@@ -443,7 +520,7 @@ class _Guard:
         }
 
         if event.get("tool_kind") == "dispatch":
-            if ROLE_ACCESS.get(event.get("dispatched_role")) == "write":
+            if role_access(event.get("dispatched_role")) == "write":
                 state["dispatched"] = True
                 _write_json(state_path, state)
             return self.result("allow", "dispatch")
@@ -721,7 +798,7 @@ def _agy_dispatched_role(args: Dict[str, Any]) -> Optional[str]:
         item = _dict(item)
         roles.append(_str(item.get("TypeName")) or _str(item.get("Role")) or "")
     for role in roles:
-        if ROLE_ACCESS.get(role) != "write":
+        if role_access(role) != "write":
             return role or None
     return roles[0]
 

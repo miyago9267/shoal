@@ -487,6 +487,7 @@
   },
   {
    "name": "skip_missing_turn_id",
+   "host": "codex",
    "steps": [
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
     {"event": {"kind": "prompt", "turn_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}}
@@ -982,6 +983,137 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "p1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
+   ]
+  },
+  {
+   "name": "m1_claude_tool_without_id_uses_state_turn",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": null}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "m1_claude_prompt_without_id_clears_dispatched_keeps_edited",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "prompt", "turn_id": null}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": null}, "expect": {"decision": "deny", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "m1_claude_prompt_without_id_no_state_unlocks_nothing",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": null}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "m1_claude_prompt_with_id_still_resets",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": null}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "k3_shoal_namespace_executor_unlocks",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "k3_shoal_namespace_read_only_does_not_unlock",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:verifier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "k3_unlisted_role_name_does_not_unlock_0",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "x:executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "k3_unlisted_role_name_does_not_unlock_1",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:shoal:executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "k3_unlisted_role_name_does_not_unlock_2",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "SHOAL:executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "k3_unlisted_role_name_does_not_unlock_3",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "k3_unlisted_role_name_does_not_unlock_4",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal: executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "k3_shoal_namespace_subagent_roles",
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "shoal:verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "shoal:executor", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "shoal:scout", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "is_subagent": true, "role": "shoal:executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "is_subagent": true, "role": "shoal:verifier"}, "expect": {"decision": "deny", "rule": "LEAF"}}
+   ]
+  },
+  {
+   "name": "k3_unlisted_subagent_namespace_is_not_verify",
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "x:verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "shoal:shoal:verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "SHOAL:verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
    ]
   }
  ]

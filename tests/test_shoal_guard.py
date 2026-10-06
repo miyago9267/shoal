@@ -68,6 +68,24 @@ class RoleTableTests(unittest.TestCase):
         self.assertEqual(guard.ROLE_ACCESS, expected)
 
 
+class RoleNameTests(unittest.TestCase):
+    """K3: only a bare name or the `shoal:` prefix names a known role."""
+
+    def test_normalize_role_uses_an_explicit_allowlist(self) -> None:
+        for name, want in (("executor", "executor"), ("shoal:executor", "executor"), ("shoal:verifier", "verifier"),
+                           ("x:executor", "x:executor"), ("shoal:shoal:executor", "shoal:executor"),
+                           ("SHOAL:executor", "SHOAL:executor"), ("", ""), ("shoal:", "")):
+            self.assertEqual(guard.normalize_role(name), want, name)
+        self.assertIsNone(guard.normalize_role(None))
+        self.assertIsNone(guard.normalize_role(7))
+
+    def test_role_access_sees_through_the_shoal_namespace_only(self) -> None:
+        self.assertEqual(guard.role_access("shoal:executor"), "write")
+        self.assertEqual(guard.role_access("shoal:verifier"), "verify")
+        for bad in ("x:executor", "shoal:shoal:executor", "SHOAL:verifier", "shoal:", None):
+            self.assertIsNone(guard.role_access(bad), bad)
+
+
 class SyntaxTests(unittest.TestCase):
     def test_guard_parses_as_python_39(self) -> None:
         ast.parse(GUARD.read_text(encoding="utf-8"), feature_version=(3, 9))
@@ -223,11 +241,39 @@ class ClaudeAdapterTests(CliCase):
 
     def test_missing_ids_record_skip_reason(self) -> None:
         payload = claude_tool("Edit", {"file_path": "a"}, cwd=self.work)
-        del payload["prompt_id"]
+        del payload["session_id"]
         self.assertEqual(self.run_guard("claude", payload), "")
         bad = claude_tool("Edit", {"file_path": "a"}, cwd=self.work, session_id="../../etc")
         self.assertEqual(self.run_guard("claude", bad), "")
         self.assertEqual([r["skip_reason"] for r in self.log_records()], ["missing_id", "invalid_id"])
+
+    def test_prompt_id_is_optional_for_claude_tools_and_prompts(self) -> None:
+        """M1: after `/login` both UserPromptSubmit and PreToolUse arrive without prompt_id."""
+        def no_id(payload):
+            del payload["prompt_id"]
+            return payload
+
+        def edit(name):
+            return no_id(claude_tool("Edit", {"file_path": self.path(name)}, cwd=self.work))
+
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        self.run_guard("claude", edit("a"))
+        self.run_guard("claude", edit("b"))
+        agent = claude_tool("Agent", {"subagent_type": "executor"}, cwd=self.work)
+        self.assertEqual(self.run_guard("claude", agent), "")
+        self.assertEqual(self.run_guard("claude", no_id(claude_prompt(cwd=self.work))), "")
+        self.assertIn("already edited 2 files", self.run_guard("claude", edit("c")))
+        state = json.loads(Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8"))
+        self.assertEqual(state["turn_id"], "p-1")
+        self.assertFalse(state["dispatched"])
+        self.assertEqual(len(state["edited"]), 2)
+
+    def test_prompt_without_id_and_no_state_writes_nothing(self) -> None:
+        payload = claude_prompt(cwd=self.work)
+        del payload["prompt_id"]
+        self.assertEqual(self.run_guard("claude", payload), "")
+        self.assertFalse(os.path.exists(os.path.join(self.guard_dir, "state", "sess-1.json")))
+        self.assertEqual([r["skip_reason"] for r in self.log_records()], ["missing_id"])
 
     def test_log_and_state_never_contain_prompt_or_tool_input(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work))
@@ -241,6 +287,54 @@ class ClaudeAdapterTests(CliCase):
         self.assertNotIn("SECRET-TOOL-BODY", blob)
         self.assertNotIn("transcript", blob)
         self.assertIn('"file":"name.py"', blob)
+
+
+class StateLockTests(CliCase):
+    """K4: the per-session state read-modify-write is serialized by flock."""
+
+    def test_parallel_guards_keep_every_edited_entry(self) -> None:
+        # Limit 40 so R2 never fires; every process edits a distinct file of one session.
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_MAX_FILES="40")
+        count = 16
+        procs = []
+        for index in range(count):
+            raw = json.dumps(claude_tool("Edit", {"file_path": self.path("f%d.py" % index)}, cwd=self.work)).encode()
+            proc = subprocess.Popen([sys.executable, str(GUARD), "--host", "claude"], stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    env=self.env(SHOAL_GUARD_MAX_FILES="40"))
+            proc.stdin.write(raw)
+            proc.stdin.close()
+            procs.append(proc)
+        for proc in procs:
+            self.assertEqual(proc.wait(timeout=60), 0, proc.stderr.read())
+            proc.stdout.close()
+            proc.stderr.close()
+        state = json.loads(Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(state["edited"]), count)
+        self.assertEqual(len(set(state["edited"])), count)
+
+    def test_lock_file_is_private_and_a_held_lock_fails_open(self) -> None:
+        import fcntl
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        lock = Path(self.guard_dir, "state", "sess-1.lock")
+        self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+        fd = os.open(str(lock), os.O_RDWR)
+        self.addCleanup(os.close, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        event = guard.adapt_claude(claude_tool("Edit", {"file_path": self.path("a")}, cwd=self.work))
+        with mock.patch.object(guard, "LOCK_WAIT_SECONDS", 0.05):
+            result = guard.evaluate(event, self.env(), Path(self.home))
+        self.assertEqual((result["decision"], result["skip_reason"]), ("skip", "lock_timeout"))
+
+    def test_symlinked_lock_file_is_refused(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        lock = Path(self.guard_dir, "state", "sess-1.lock")
+        lock.unlink()
+        lock.symlink_to(self.path("elsewhere"))
+        event = guard.adapt_claude(claude_tool("Edit", {"file_path": self.path("a")}, cwd=self.work))
+        result = guard.evaluate(event, self.env(), Path(self.home))
+        self.assertEqual((result["decision"], result["skip_reason"]), ("skip", "state_unavailable"))
+        self.assertFalse(os.path.exists(self.path("elsewhere")))
 
 
 class CodexAdapterTests(CliCase):

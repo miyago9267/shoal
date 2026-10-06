@@ -19,6 +19,7 @@ import {
   readSync,
   readlinkSync,
   statSync,
+  unlinkSync,
   writeSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
@@ -26,6 +27,13 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 export const MAX_LOG_BYTES = 1024 * 1024;
 export const MAX_STATE_BYTES = 64 * 1024;
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const LOCK_STALE_MS = 5000;
+let lockWaitMs = 2000;
+
+/** Tests shorten the lock wait to exercise lock_timeout quickly. */
+export function setLockWaitForTests(ms: number | null): void {
+  lockWaitMs = ms ?? 2000;
+}
 
 export type Env = Record<string, string | undefined>;
 
@@ -68,8 +76,14 @@ const FORCED_SHADOW_HOSTS = new Set(["agy"]);
 const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
 // agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 const COMPOSED_TURN_HOSTS = new Set(["agy"]);
-// Hosts whose tool hooks carry no turn id: the turn recorded at the prompt boundary is used.
-const STATE_TURN_HOSTS = new Set(["agy", "grok", "opencode"]);
+// Hosts whose tool hooks carry no turn id: the turn recorded at the prompt boundary is used
+// (claude: after `/login` a resumed session has no prompt_id).
+const STATE_TURN_HOSTS = new Set(["agy", "grok", "opencode", "claude"]);
+// Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
+const PROMPT_KEEP_HOSTS = new Set(["claude"]);
+// Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
+// `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
+const ROLE_NAMESPACES = ["shoal:"];
 
 // role -> access level.  Keep in sync with ROLE_ACCESS in hooks/shoal_guard.py
 // (tests/guard-vectors.test.ts compares the two tables).
@@ -84,6 +98,20 @@ export const ROLE_ACCESS: Record<string, string> = {
   "sol-executor": "write",
   verifier: "verify",
 };
+
+/** Bare role name; a leading allowlisted namespace (`shoal:`) is removed once (K3). */
+export function normalizeRole(role: string | null | undefined): string | null {
+  if (typeof role !== "string") return null;
+  for (const prefix of ROLE_NAMESPACES) {
+    if (role.startsWith(prefix)) return role.slice(prefix.length);
+  }
+  return role;
+}
+
+function roleAccess(role: string | null | undefined): string | null {
+  const name = normalizeRole(role);
+  return name !== null && Object.hasOwn(ROLE_ACCESS, name) ? ROLE_ACCESS[name] : null;
+}
 
 const CLASSIFIED_ROLE: Record<string, string> = {
   judgment: "executor",
@@ -229,6 +257,46 @@ export function guardDir(env: Env, home: string): string | null {
     return null;
   }
   return join(base, "shoal", "guard");
+}
+
+function sleepMs(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Run `body` holding an exclusive-create `.tslock` file (0600, O_NOFOLLOW) beside the state.
+ * Returns the skip reason instead when the lock cannot be taken within lockWaitMs; a lock
+ * older than LOCK_STALE_MS belongs to a dead process and is removed.
+ */
+function withStateLock(path: string, body: () => GuardResult, skip: (reason: string) => GuardResult): GuardResult {
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0);
+  const deadline = Date.now() + lockWaitMs;
+  let fd: number | null = null;
+  for (;;) {
+    try {
+      fd = openSync(path, flags, 0o600);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") return skip("state_unavailable");
+    }
+    try {
+      if (Date.now() - lstatSync(path).mtimeMs > LOCK_STALE_MS) unlinkSync(path);
+    } catch {
+      // vanished or not removable: retry below
+    }
+    if (Date.now() >= deadline) return skip("lock_timeout");
+    sleepMs(10);
+  }
+  try {
+    return body();
+  } finally {
+    try {
+      closeSync(fd);
+      unlinkSync(path);
+    } catch {
+      // already gone
+    }
+  }
 }
 
 function readJson(path: string): Record<string, unknown> {
@@ -443,9 +511,7 @@ class Guard {
     const { role, tool_kind: toolKind } = this.event;
     let rule: string | null = null;
     if (toolKind === "dispatch") rule = "LEAF";
-    else if (toolKind === "edit" && role !== null && Object.hasOwn(ROLE_ACCESS, role) && ROLE_ACCESS[role] === "verify") {
-      rule = "VERIFY_EDIT";
-    }
+    else if (toolKind === "edit" && roleAccess(role) === "verify") rule = "VERIFY_EDIT";
     if (rule === null) return none(this.mode);
     const first = this.event.paths?.[0];
     return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
@@ -468,16 +534,36 @@ class Guard {
     if (!validId(sid)) return this.result("skip", { skip: "invalid_id" });
     const composed = COMPOSED_TURN_HOSTS.has(this.host);
     const turnOptional = event.kind === "tool" && STATE_TURN_HOSTS.has(this.host);
-    if (tid == null && !turnOptional) return this.result("skip", { skip: "missing_id" });
+    const keepTurn = event.kind === "prompt" && PROMPT_KEEP_HOSTS.has(this.host);
+    if (tid == null && !turnOptional && !keepTurn) return this.result("skip", { skip: "missing_id" });
     if (tid != null && !validId(tid, composed)) return this.result("skip", { skip: "invalid_id" });
     const dir = this.guardDirectory;
     if (dir === null) return this.result("skip", { skip: "state_unavailable" });
     const statePath = join(dir, "state", sid + ".json");
 
+    return withStateLock(
+      join(dir, "state", sid + ".tslock"),
+      () => this.locked(isBoundary, keepTurn && tid == null, tid, statePath, dir),
+      (reason) => this.result("skip", { skip: reason }),
+    );
+  }
+
+  /** The state read-modify-write; the caller holds the per-session lock. */
+  private locked(isBoundary: boolean, keep: boolean, tid: string | null, statePath: string, dir: string): GuardResult {
+    const event = this.event;
     if (isBoundary) {
-      if (!writeJson(statePath, { turn_id: tid, dispatched: false, edited: [] })) {
-        return this.result("skip", { skip: "state_write_failed" });
-      }
+      let next: StateFile;
+      if (keep) {
+        // M1: id-less prompt.  Clear the unlock, keep turn and edits; no state, nothing to do.
+        const prior = readJson(statePath);
+        if (Object.keys(prior).length === 0) return this.result("skip", { skip: "missing_id" });
+        next = {
+          turn_id: typeof prior.turn_id === "string" ? prior.turn_id : null,
+          dispatched: false,
+          edited: Array.isArray(prior.edited) ? (prior.edited as string[]) : [],
+        };
+      } else next = { turn_id: tid, dispatched: false, edited: [] };
+      if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
       return this.result("state");
     }
 
@@ -491,8 +577,7 @@ class Guard {
     };
 
     if (event.tool_kind === "dispatch") {
-      const role = event.dispatched_role;
-      if (role !== null && Object.hasOwn(ROLE_ACCESS, role) && ROLE_ACCESS[role] === "write") {
+      if (roleAccess(event.dispatched_role) === "write") {
         state.dispatched = true;
         writeJson(statePath, state);
       }
