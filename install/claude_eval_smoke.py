@@ -879,15 +879,12 @@ def _withheld(
     if not needs_token:
         # A dry run has no token to leak; everything else is still checked.
         found = [kind for kind in found if kind != "token_unavailable"]
-    if private_root is not None and any(
-        path in text
-        for path in {
-            str(private_root),
-            str(private_root.absolute()),
-            os.path.realpath(private_root),
-        }
-    ):
-        found.append("private_root_path")
+    if private_root is not None:
+        paths = {str(private_root), str(private_root.absolute()), os.path.realpath(private_root)}
+        # text 是序列化後的 JSON；Windows 路徑的反斜線會被 escape，escape 後的寫法也要比對。
+        forms = paths | {json.dumps(p, ensure_ascii=a)[1:-1] for p in paths for a in (True, False)}
+        if any(form in text for form in forms):
+            found.append("private_root_path")
     return found
 
 

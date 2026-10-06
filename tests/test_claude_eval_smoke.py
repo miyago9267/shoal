@@ -1579,3 +1579,14 @@ class ReviewFindingTests(SmokeCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WithheldPathEscapeTests(unittest.TestCase):
+    """報表是序列化後的 JSON：含反斜線的路徑（Windows）escape 後也要被擋下。"""
+
+    def test_backslash_private_root_is_found_in_json_text(self) -> None:
+        root = Path("D:\\a\\shoal\\private")
+        text = json.dumps({"leak": str(root)})
+        self.assertNotIn(str(root), text)
+        found = smoke._withheld({"leak": str(root)}, text, root, needs_token=False)
+        self.assertIn("private_root_path", found)
