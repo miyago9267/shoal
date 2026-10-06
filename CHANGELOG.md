@@ -7,6 +7,8 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ### Features
 
+- dispatch guard 的 R1、R2 改為提醒（不再擋），只有 LEAF、VERIFY_EDIT 會擋；
+  依 pilotfish 的 dispatch brake 原則（2026-10-06 設計對照）。
 - Codex 的 dispatch guard 預設切為 enforce（E6：23 筆決策、誤擋 0）。
 - core-policy P2：Claude host 的 policy 改由 `core/policy` 條款組裝
   （`policy_text = "core"`）；兩處「workflow」改為 procedure／policy 的

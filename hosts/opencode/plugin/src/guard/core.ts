@@ -57,9 +57,11 @@ export type GuardResult = {
   skip_reason: string | null;
   reason: string | null;
   mode: string;
+  /** advise only: true when this call is the first of the turn and the host should print `reason`. */
+  notify?: boolean;
 };
 
-type StateFile = { turn_id: string | null; dispatched: boolean; edited: string[] };
+type StateFile = { turn_id: string | null; dispatched: boolean; advised: boolean; edited: string[] };
 type LogRecord = Record<string, unknown>;
 
 // Default mode per host.  E6: opencode is enforce (shadow evidence met); codex is enforce, grok stays shadow, agy is forced shadow.
@@ -79,6 +81,9 @@ const COMPOSED_TURN_HOSTS = new Set(["agy"]);
 // Hosts whose tool hooks carry no turn id: the turn recorded at the prompt boundary is used
 // (claude: after `/login` a resumed session has no prompt_id).
 const STATE_TURN_HOSTS = new Set(["agy", "grok", "opencode", "claude"]);
+// Hosts whose PreToolUse accepts a non-blocking `additionalContext`: only they print the advise
+// reminder.  The opencode adapter prints nothing (no verified equivalent): log only.
+const ADVISE_OUTPUT_HOSTS = new Set(["claude", "codex"]);
 // Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
 const PROMPT_KEEP_HOSTS = new Set(["claude"]);
 // Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
@@ -128,18 +133,11 @@ const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_r
 
 const MESSAGES: Record<string, Record<string, string>> = {
   en: {
-    R1:
-      "Shoal dispatch guard: this turn was classified as work for `{role}`, so the main " +
-      "session must not edit files directly. Dispatch `{role}` with {tool} (brief: scope, " +
-      "stop condition, output cap); main only integrates and verifies. Once a write-level " +
-      "role is dispatched, main edits for the rest of this turn are allowed. For a genuine " +
-      "1-2 line fix, the user can restart the session with SHOAL_GUARD_DIRECT=1.",
-    R2:
-      "Shoal dispatch guard: the main session already edited {n} files this turn without " +
-      "dispatching any agent. Hand multi-file changes to `executor` (needs judgment) or " +
-      "`mech-executor` (fully specified mechanical change) with {tool}; once a write-level " +
-      "role is dispatched, main edits for the rest of this turn are allowed. If the user " +
-      "wants you to do it directly, they can restart the session with SHOAL_GUARD_DIRECT=1.",
+    ADVISE:
+      "Shoal dispatch brake (a reminder, nothing was blocked): this turn has edited {n} " +
+      "files directly. If the work is stable same-shape repetition, or bounded judgment " +
+      "with a stable contract, consider handing it to `mech-executor` / `executor` with " +
+      "{tool}; otherwise continuing directly is fine.",
     LEAF:
       "Shoal dispatch guard: subagents are leaf workers and must not dispatch other " +
       "agents. Finish the task yourself and report back to the parent.",
@@ -148,16 +146,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Report findings to the parent instead.",
   },
   "zh-TW": {
-    R1:
-      "Shoal dispatch guard：本輪被分類為 `{role}` 的工作，main session 不直接改檔。" +
-      "請用 {tool} 派出 `{role}`（brief 寫清楚 scope、stop condition、output cap），" +
-      "main 只負責整合與驗收；派出 write 等級 role 後，本輪 main 的編輯會自動放行。" +
-      "若確實只是 1-2 行的小修，請使用者以 SHOAL_GUARD_DIRECT=1 重新啟動 session。",
-    R2:
-      "Shoal dispatch guard：main session 這一輪已經直接改了 {n} 個檔案，而且沒有派任何 agent。" +
-      "多檔修改請用 {tool} 交給 `executor`（需要判斷）或 `mech-executor`" +
-      "（規格完整的機械性修改）；派出 write 等級 role 後，本輪 main 的編輯會自動放行。" +
-      "若使用者要你直接做，請他以 SHOAL_GUARD_DIRECT=1 重新啟動 session。",
+    ADVISE:
+      "Shoal dispatch brake（提醒，沒有擋任何操作）：本輪 main session 已直接改了 {n} 個檔案。" +
+      "若這是穩定的同形重複，或契約穩定、範圍有界的判斷工作，可考慮用 {tool} 交給 " +
+      "`mech-executor` / `executor`；否則直接做下去也可以。",
     LEAF: "Shoal dispatch guard：subagent 是 leaf worker，不可再派其他 agent。請自己完成並回報給上層。",
     VERIFY_EDIT: "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
   },
@@ -485,7 +477,7 @@ class Guard {
 
   private result(
     decision: string,
-    opts: { rule?: string; skip?: string; reason?: string; file?: string } = {},
+    opts: { rule?: string; skip?: string; reason?: string; file?: string; notify?: boolean } = {},
   ): GuardResult {
     appendLog(this.guardDirectory, {
       host: this.host,
@@ -503,6 +495,7 @@ class Guard {
       skip_reason: opts.skip ?? null,
       reason: opts.reason ?? null,
       mode: this.mode,
+      notify: opts.notify ?? false,
     };
   }
 
@@ -560,9 +553,10 @@ class Guard {
         next = {
           turn_id: typeof prior.turn_id === "string" ? prior.turn_id : null,
           dispatched: false,
+          advised: false,
           edited: Array.isArray(prior.edited) ? (prior.edited as string[]) : [],
         };
-      } else next = { turn_id: tid, dispatched: false, edited: [] };
+      } else next = { turn_id: tid, dispatched: false, advised: false, edited: [] };
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
       return this.result("state");
     }
@@ -573,6 +567,7 @@ class Guard {
     const state: StateFile = {
       turn_id: tid != null ? tid : ((prior.turn_id as string | undefined) ?? null),
       dispatched: prior.dispatched === true,
+      advised: prior.advised === true,
       edited,
     };
 
@@ -604,36 +599,40 @@ class Guard {
     }
 
     let firstRule = "exempt";
+    let adviseRule: string | null = null;
     for (const [index, path] of resolved.entries()) {
       if (isExempt(path, this.host, this.env, this.home)) continue;
       let rule: string;
       if (direct) rule = "direct";
       else if (state.dispatched) rule = "dispatched";
-      else if (classified) {
-        return this.deny("R1", rawPaths[index], edited.length, CLASSIFIED_ROLE[classified]);
-      } else if (!edited.includes(path) && (limit === null || edited.length >= limit)) {
-        if (limit === null) return this.result("skip", { skip: "invalid_config" });
-        return this.deny("R2", rawPaths[index], edited.length, null);
-      } else rule = "count";
+      else {
+        rule = "count";
+        let fired: string | null = null;
+        if (classified) fired = "R1";
+        else if (!edited.includes(path) && (limit === null || edited.length >= limit)) {
+          if (limit === null) return this.result("skip", { skip: "invalid_config" });
+          fired = "R2";
+        }
+        // R1 and R2 only remind; the edit goes ahead (spec amendment 2026-10-06).
+        if (fired !== null && adviseRule === null) adviseRule = fired;
+      }
       if (firstRule === "exempt") firstRule = rule;
       if (!edited.includes(path)) edited.push(path);
     }
-    if (firstRule !== "exempt") {
-      state.edited = edited;
-      writeJson(statePath, state);
-    }
-    return this.result("allow", { rule: firstRule, file: rawPaths[0] });
-  }
-
-  private deny(rule: string, path: string, count: number, role: string | null): GuardResult {
-    return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
-      rule,
-      reason: text(this.env, rule, {
-        n: count,
-        role,
-        tool: DISPATCH_NAME[this.host] ?? "the dispatch tool",
-      }),
-      file: path,
+    if (firstRule === "exempt") return this.result("allow", { rule: firstRule, file: rawPaths[0] });
+    state.edited = edited;
+    const notify =
+      adviseRule !== null && !state.advised && this.mode === "enforce" && ADVISE_OUTPUT_HOSTS.has(this.host);
+    if (notify) state.advised = true; // the one reminder of this turn is spent
+    writeJson(statePath, state);
+    if (adviseRule === null) return this.result("allow", { rule: firstRule, file: rawPaths[0] });
+    return this.result("advise", {
+      rule: adviseRule,
+      reason: notify
+        ? text(this.env, "ADVISE", { n: edited.length, tool: DISPATCH_NAME[this.host] ?? "the dispatch tool" })
+        : undefined,
+      file: rawPaths[0],
+      notify,
     });
   }
 }

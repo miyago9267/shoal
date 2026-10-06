@@ -88,3 +88,9 @@ live（2026-10-05，commit `e33b26e`、`0fccdb8` 之後）：
 - [x] Codex：2026-10-06 預設切為 enforce（23 筆決策、4 筆 would_deny 全為正確
       R2、誤擋 0、skip 0；Miyago 已以 `/hooks` 核准 hook）。
 - [-] agy：依 R5 固定 shadow，不在 E6 範圍。
+
+## 修訂 - 主 session 規則改為提醒（2026-10-06）
+
+- [x] R1、R2 改為 `advise`（每輪第一次在 claude/codex 回傳 `additionalContext`，其餘
+      host 只記 log；`SHOAL_GUARD_DIRECT=1` 關閉提醒）；LEAF、VERIFY_EDIT 不變。
+      Python guard、OpenCode TS port、共用 vectors、兩邊測試、render 與 golden 已同步。

@@ -85,6 +85,9 @@ dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex
 `install/install.py` 一併註冊（需在 Codex 內用 `/hooks` 核准一次），Grok 隨
 `install_grok.py` 安裝，Claude Code 與 agy 由 `tools/install_hooks.py` 安裝，OpenCode
 的 guard 在 plugin 內。除 Claude 之外的 host 預設 shadow，`SHOAL_GUARD=off` 關閉。
+main session 的直接編輯只會被提醒：R1、R2 不擋（Claude、Codex 每輪第一次回傳
+`additionalContext`，其餘 host 只記 log，`SHOAL_GUARD_DIRECT=1` 關閉提醒），只有
+subagent 的 LEAF、VERIFY_EDIT 會擋。
 
 ## 版本
 

@@ -186,6 +186,27 @@ E0 需要少量 live 呼叫（每個 host 一個小 prompt），執行前取得�
 - agy 沒有可證實的完整工具名單，write 等級不加 allowlist；agy 也無法辨識
   role，所以 write role 能否再派 subagent 目前沒有強制手段。
 
+## 修訂：主 session 規則改為提醒（2026-10-06）
+
+Miyago 指出開發出現隧道視野。對照 pilotfish v1.4.2 後確認：「派不派工」是
+dispatch brake 的淨效益判斷，重複的工作也不以數字門檻認定，小而局部的工作直接做
+（`templates/claude-md.orchestration.md:15、31、32`）；pilotfish 刻意不放
+enforcement hook，只在紀律跑掉時才加（`docs/design.md:142`）。R2 的檔案數 deny
+與這些原則直接衝突，R1 也把判斷變成強制。修訂如下：
+
+- **R1、R2 改為 advise**：不再 deny。決策值為 `advise`，每輪第一次觸發時：
+  Claude 與 Codex 在 `PreToolUse` 回傳只含 `additionalContext` 的
+  `hookSpecificOutput`（不帶 `permissionDecision`，工具照常執行；兩者官方文件皆支援）；
+  Grok、agy、OpenCode 沒有已驗證的非阻斷 context 機制，只記 log。同一輪後續觸發只記
+  log，不重複提醒。
+- **硬規則維持**：LEAF 與 VERIFY_EDIT 依 host 模式（enforce 或 shadow）執行。
+  這兩條是 pilotfish 原文的硬規則（leaf 不派 subagent、verifier 不改檔）。
+- **E6 的意義改變**：Claude、OpenCode、Codex 的 enforce 從此只作用於硬規則；
+  Grok 的 E6 照舊以硬規則為對象。
+- `SHOAL_GUARD_DIRECT=1` 保留，作用改為關閉提醒。
+- 其他不變：路徑正規化、派 write role 才算本輪派工（影響提醒是否觸發）、state 與
+  log 的防護。
+
 ## 完結狀態（2026-10-06）
 
 - E0 到 E5 完成；E6 完成 OpenCode（live 實擋，`b445151`）。

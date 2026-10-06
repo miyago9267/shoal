@@ -415,7 +415,7 @@ class AgyTests(Case):
         self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
         self.assertEqual(self.load(path), mixed)
 
-    def test_installed_command_logs_would_deny_in_shadow(self) -> None:
+    def test_installed_command_logs_advise_in_shadow(self) -> None:
         path = self.hooks_json({})
         self.assertEqual(self.cli("agy", "--apply")[0], 0)
         command = self.load(path)["shoal-guard"]["PreToolUse"][0]["hooks"][0]["command"]
@@ -428,10 +428,10 @@ class AgyTests(Case):
         done = subprocess.run(command, shell=True, input=json.dumps(payload).encode(), capture_output=True,
                               env=env, timeout=30)
         self.assertEqual(done.returncode, 0, done.stderr)
-        # agy is forced to shadow: nothing on stdout, a would_deny record in the guard log
+        # agy is forced to shadow: nothing on stdout, an advise record in the guard log
         self.assertEqual(done.stdout, b"")
         log = Path(sandbox.home, "xdg-state", "shoal", "guard", "guard.jsonl").read_text(encoding="utf-8")
-        self.assertIn('"decision":"would_deny"', log)
+        self.assertIn('"decision":"advise"', log)
 
 
 GATE = {
@@ -549,7 +549,7 @@ class CodexTests(Case):
         self.assertEqual(path.read_bytes(), before)
         self.assertFalse(self.codex_script.exists())
 
-    def test_installed_command_denies_a_three_file_apply_patch(self) -> None:
+    def test_installed_command_advises_a_three_file_apply_patch(self) -> None:
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         command = self.load(self.hooks_path())["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         sandbox = helper.Sandbox()
@@ -570,14 +570,13 @@ class CodexTests(Case):
 
         enforced = run({})
         self.assertEqual(enforced.returncode, 0, enforced.stderr)
-        self.assertEqual(
-            json.loads(enforced.stdout)["hookSpecificOutput"]["permissionDecision"], "deny"
-        )
+        body = json.loads(enforced.stdout)["hookSpecificOutput"]
+        self.assertEqual(set(body), {"hookEventName", "additionalContext"})
         shadow = run({"SHOAL_GUARD": "shadow"})
         self.assertEqual(shadow.returncode, 0, shadow.stderr)
         self.assertEqual(shadow.stdout, b"")
         log = Path(sandbox.home, "xdg-state", "shoal", "guard", "guard.jsonl").read_text(encoding="utf-8")
-        self.assertIn('"decision":"would_deny"', log)
+        self.assertIn('"decision":"advise"', log)
 
 
 @unittest.skipIf(sys.platform == "win32", "POSIX shell, symlinks and file modes")

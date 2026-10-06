@@ -1,6 +1,6 @@
 ---
 title: Orchestration policy 抽成 core 條款
-status: approved
+status: completed
 approved_by: Miyago
 created: 2026-10-06
 updated: 2026-10-06
@@ -97,6 +97,28 @@ policy surface 切到 core 條款，一次必然超過上限。
 | P1 | `core/policy/` 條款與組裝、placeholder、omit、required、`policy_text` 開關 | 組裝器測試（含 omit／replace required 條款時失敗、placeholder 單次代入）；`legacy` 輸出與現行 dist byte-identical |
 | P2 | Claude 切 `core` | 逐段對照表經 plan-verifier 審過；core 輸出跑 `validate_prompt_lock.py` 為 ok；golden |
 | P3 | Codex、Grok、agy、OpenCode 逐 host 切 `core` | 同 P2；OpenCode 的 instructions 掛載實測 |
+
+## 修訂：持平優先（2026-10-06）
+
+設計對照（見 dispatch-enforcement 的同日修訂）後，P3 改為持平優先：
+
+- Claude 維持 `core`（P2，對照表已審，行為等價）。
+- 其他 host 只有在 core 輸出能與該 host 的 legacy 行為持平時才切換：對照表的
+  「行為變更」必須為空，不藉共用化新增能力（例如 Grok、agy 不因此獲得 workflow
+  extensions，OpenCode 不因此需要它沒有的 plan-verifier）。
+- 2026-10-06 的 P3 前置（四個 host 的組裝、addenda 與對照表草稿）由 executor 設計，
+  行為變更共 40 項以上，不符合持平；已收進 git stash
+  「core-policy P3 prep」備查，不合併。
+- 是否對 Codex、Grok、agy 做持平版的 P3，由 main 先以單一 host 評估共用比例後再提案；
+  共用比例低時，維持 legacy 即為完結狀態。OpenCode 維持 legacy。
+- **評估結果（main，2026-10-06）：不做 P3，其他 host 維持 legacy。**
+  - Grok 的 rules 逐字取自上游 pilotfish-grok v1.0.6；改由 core 組成會失去與上游的
+    對照與同步，代價大於共用的好處。agy 衍生自 Grok，理由相同。
+  - Codex 的 policy（674 行）有自己的 Luna／Sol／Astra 選模與 decision checkpoint
+    機制，與 Claude 能持平共用的部分少，且切換需要一次 lock migration。
+  - OpenCode 缺少 plan-verifier 與 mech-executor，持平即 legacy。
+  - core-policy 以 Claude 使用 core 條款為完結狀態；core 組裝器、required 條款與
+    lock migration 機制保留，供日後有 host 能持平時使用。
 
 ## Rollback
 

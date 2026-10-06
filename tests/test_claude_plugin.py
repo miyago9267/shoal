@@ -416,13 +416,12 @@ class PluginDeferralTests(unittest.TestCase):
         records = self.records()
         self.assertEqual(
             [r["decision"] for r in records],
-            ["state", "allow", "allow", "deny"],
+            ["state", "allow", "allow", "advise"],
             records,
         )
         self.assertEqual([bool(o) for o in outs], [False, False, False, True])
-        self.assertEqual(
-            json.loads(outs[3])["hookSpecificOutput"]["permissionDecision"], "deny"
-        )
+        body = json.loads(outs[3])["hookSpecificOutput"]
+        self.assertEqual(set(body), {"hookEventName", "additionalContext"})
         self.assertEqual(records[3]["rule"], "R2")
 
     def test_plugin_only_runs(self) -> None:
@@ -452,7 +451,8 @@ class PluginDeferralTests(unittest.TestCase):
         self.install_global()
         (self.cfg / "settings.json").write_text("{not json", encoding="utf-8")
         outs = self.run_turn()  # the global script still exists and fires: the broken settings case runs it twice
-        self.assertEqual(sum(1 for r in self.records() if r["decision"] == "deny"), 2)
+        # advise records the edit, so the second copy sees the file as already counted and stays quiet
+        self.assertEqual(sum(1 for r in self.records() if r["decision"] == "advise"), 1)
         self.assertEqual([bool(o) for o in outs], [False, False, False, True])
 
     def test_plugin_runs_when_the_global_script_is_a_directory(self) -> None:

@@ -83,21 +83,23 @@ afterEach(() => {
 });
 
 describe("OpenCode guard: main session", () => {
-  test("defaults to enforce: the third file throws", async () => {
+  test("defaults to enforce: the third file is advised, never thrown", async () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
     await call(guard, "write", MAIN, edit("a"));
     await call(guard, "write", MAIN, edit("b"));
-    await expect(call(guard, "write", MAIN, edit("c"))).rejects.toThrow(/Shoal dispatch guard/);
-    expect(logLines().at(-1)).toMatchObject({ decision: "deny", rule: "R2", mode: "enforce", host: "opencode", tool: "write", file: "c" });
+    await call(guard, "write", MAIN, edit("c"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2", mode: "enforce", host: "opencode", tool: "write", file: "c" });
+    await call(guard, "write", MAIN, edit("d"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2", file: "d" });
   });
 
-  test("SHOAL_GUARD=shadow logs would_deny without throwing", async () => {
+  test("SHOAL_GUARD=shadow logs advise without throwing", async () => {
     process.env.SHOAL_GUARD = "shadow";
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
     for (const name of ["a", "b", "c"]) await call(guard, "write", MAIN, edit(name));
-    expect(logLines().at(-1)).toMatchObject({ decision: "would_deny", rule: "R2", mode: "shadow", host: "opencode", file: "c" });
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2", mode: "shadow", host: "opencode", file: "c" });
   });
 
   test("SHOAL_GUARD=off never throws", async () => {
@@ -107,15 +109,17 @@ describe("OpenCode guard: main session", () => {
     for (const name of ["a", "b", "c", "d"]) await call(guard, "write", MAIN, edit(name));
   });
 
-  test("enforce throws the deny message on the third file and allows after a write-level dispatch", async () => {
+  test("enforce still advises on the third file, then the dispatch unlock records dispatched", async () => {
     process.env.SHOAL_GUARD = "enforce";
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
     await call(guard, "write", MAIN, edit("a"));
     await call(guard, "edit", MAIN, edit("b"));
-    await expect(call(guard, "multiedit", MAIN, edit("c"))).rejects.toThrow(/Shoal dispatch guard.*edited 2 files.*with task;/);
+    await call(guard, "multiedit", MAIN, edit("c"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2" });
     await call(guard, "task", MAIN, { subagent_type: "executor", prompt: "x" });
-    await call(guard, "write", MAIN, edit("c"));
+    await call(guard, "write", MAIN, edit("d"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "allow", rule: "dispatched" });
   });
 
   test("a read-only dispatch does not unlock", async () => {
@@ -125,7 +129,8 @@ describe("OpenCode guard: main session", () => {
     await call(guard, "task", MAIN, { subagent_type: "scout" });
     await call(guard, "write", MAIN, edit("a"));
     await call(guard, "write", MAIN, edit("b"));
-    await expect(call(guard, "write", MAIN, edit("c"))).rejects.toThrow();
+    await call(guard, "write", MAIN, edit("c"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2" });
   });
 
   test("a new chat.message (messageID) starts a new turn", async () => {
@@ -134,9 +139,11 @@ describe("OpenCode guard: main session", () => {
     await prompt(guard, MAIN, "msg_001");
     await call(guard, "write", MAIN, edit("a"));
     await call(guard, "write", MAIN, edit("b"));
-    await expect(call(guard, "write", MAIN, edit("c"))).rejects.toThrow();
+    await call(guard, "write", MAIN, edit("c"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2" });
     await prompt(guard, MAIN, "msg_002");
     await call(guard, "write", MAIN, edit("c"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "allow", rule: "count" });
   });
 
   test("apply_patch paths come from the patch headers", async () => {
@@ -152,7 +159,8 @@ describe("OpenCode guard: main session", () => {
       `*** Update File: ${join(work, "c.txt")}`,
       "*** End Patch",
     ].join("\n");
-    await expect(call(guard, "apply_patch", MAIN, { patchText })).rejects.toThrow(/edited 2 files/);
+    await call(guard, "apply_patch", MAIN, { patchText });
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2", file: "a.txt" });
   });
 
   test("SHOAL_GUARD_DIRECT=1 and SHOAL_GUARD=off let everything through", async () => {
@@ -166,13 +174,13 @@ describe("OpenCode guard: main session", () => {
     await call(guard, "write", MAIN, edit("e"));
   });
 
-  test("zh-TW message with SHOAL_GUARD_LANG", async () => {
+  test("SHOAL_GUARD_MAX_FILES=0 advises on the first file without throwing", async () => {
     process.env.SHOAL_GUARD = "enforce";
-    process.env.SHOAL_GUARD_LANG = "zh-TW";
     process.env.SHOAL_GUARD_MAX_FILES = "0";
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
-    await expect(call(guard, "write", MAIN, edit("a"))).rejects.toThrow(/main session/);
+    await call(guard, "write", MAIN, edit("a"));
+    expect(logLines().at(-1)).toMatchObject({ decision: "advise", rule: "R2", file: "a" });
   });
 
   test("non-edit tools never look up the session", async () => {

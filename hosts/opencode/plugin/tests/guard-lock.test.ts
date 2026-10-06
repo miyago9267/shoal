@@ -103,3 +103,47 @@ describe("role namespace (K3)", () => {
     expect(normalizeRole(null)).toBeNull();
   });
 });
+
+describe("advise reminder (R1/R2 never deny)", () => {
+  const advEnv = () => ({ ...env, SHOAL_GUARD: "enforce", SHOAL_GUARD_MAX_FILES: "1" });
+  const turnEvent = (name: string, turn: string, host = "claude"): GuardEvent => ({
+    ...editEvent(name),
+    host,
+    turn_id: turn,
+  });
+  const prompt = (turn: string, host = "claude"): GuardEvent => ({
+    ...editEvent("x"),
+    host,
+    kind: "prompt",
+    turn_id: turn,
+    tool_name: null,
+    tool_kind: null,
+    paths: [],
+  });
+
+  test("first advise per turn carries the message, later ones and other hosts do not, new turn re-arms", () => {
+    const e = advEnv();
+    evaluate(prompt("t1"), e, root);
+    expect(evaluate(turnEvent("a", "t1"), e, root).decision).toBe("allow");
+    const first = evaluate(turnEvent("b", "t1"), e, root);
+    expect([first.decision, first.rule, first.notify]).toEqual(["advise", "R2", true]);
+    expect(first.reason).toContain("edited 2 files directly");
+    const second = evaluate(turnEvent("c", "t1"), e, root);
+    expect([second.decision, second.notify, second.reason]).toEqual(["advise", false, null]);
+    evaluate(prompt("t2"), e, root);
+    evaluate(turnEvent("a", "t2"), e, root);
+    expect(evaluate(turnEvent("b", "t2"), e, root).notify).toBe(true);
+  });
+
+  test("zh-TW message and non-output hosts", () => {
+    const e = { ...advEnv(), SHOAL_GUARD_LANG: "zh-TW" };
+    evaluate(prompt("t1"), e, root);
+    evaluate(turnEvent("a", "t1"), e, root);
+    expect(evaluate(turnEvent("b", "t1"), e, root).reason).toContain("提醒");
+    const grok = { ...e, SHOAL_GUARD: "enforce" };
+    evaluate(prompt("g1", "grok"), grok, root);
+    evaluate(turnEvent("a", "g1", "grok"), grok, root);
+    const result = evaluate(turnEvent("b", "g1", "grok"), grok, root);
+    expect([result.decision, result.notify, result.reason]).toEqual(["advise", false, null]);
+  });
+});

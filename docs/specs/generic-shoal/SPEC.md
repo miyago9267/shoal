@@ -1,6 +1,6 @@
 ---
 title: 補齊泛用化的最後缺口
-status: approved
+status: completed
 approved_by: Miyago
 created: 2026-10-06
 updated: 2026-10-06
@@ -95,6 +95,14 @@ Miyago 2026-10-06 要求補上「泛用版 pilotfish」剩下的四個缺口。�
 | K2 | plugin 的 guard 與 SessionStart、namespace、互斥、flock | temp `CLAUDE_CONFIG_DIR`（路徑含空白）安裝 plugin 後，guard deny 與派 `shoal:executor` 後 allow 各一筆；`shoal:verifier` 加 Edit 為 VERIFY_EDIT deny，`x:executor` 不解鎖；只有 plugin、plugin 加全域、plugin 加壞掉的全域三種情境，每個事件剛好一筆 log |
 | F2 | agy subagent 辨識實測 | 結果表與決定；A conversation 呼叫 invoke_subagent 後，B 的第一個編輯仍當 main 評估 |
 | F1 | Grok、Codex 的 E6 | 依 dispatch-enforcement Open question 1 |
+
+## 完結狀態（2026-10-06）
+
+- M、K1-K6 完成；F2 完成（agy 維持 shadow，見 PROGRESS.md）。
+- F1：Codex 已切 enforce；Grok 的 shadow 工作負載兩次撞到免費額度上限，延後。
+  2026-10-06 起 R1、R2 改為提醒（dispatch-enforcement 修訂），enforce 只作用於
+  LEAF、VERIFY_EDIT，Grok 的 E6 也以這兩條為對象。
+- 缺口 1（policy 共用）在 core-policy 以「Claude 使用 core、其他 host 維持 legacy」完結。
 
 ## Rollback
 

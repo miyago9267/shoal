@@ -268,10 +268,13 @@ next to the autoroute gate. It is a separate script with its own projection ID
 (`shoal-guard-v1`) and its own state entry (`guard_registration`), so the gate is
 unchanged. It adds a `UserPromptSubmit` group that only records the turn, and a
 `PreToolUse` group with matcher `^(apply_patch|spawn_agent|collaborationspawn_agent)$`.
-It runs in shadow mode (`would_deny` log records under
+It runs in shadow mode (`would_deny` and `advise` log records under
 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`) until the enforce switch in
 the spec
-(E6); `SHOAL_GUARD=off` disables it for a session. An existing home that
+(E6); `SHOAL_GUARD=off` disables it for a session. Only the subagent rules
+(LEAF, VERIFY_EDIT) ever deny; the main-session rules R1 and R2 only remind
+(once per turn, as `additionalContext` on Claude and Codex;
+`SHOAL_GUARD_DIRECT=1` silences it). An existing home that
 predates the
 guard gains the script and both groups on the next install; other hook groups are
 preserved. The installer does not write hook trust: after installing, approve

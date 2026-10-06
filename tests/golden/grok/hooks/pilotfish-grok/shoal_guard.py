@@ -17,7 +17,9 @@ directly and sets it through the hook's env map).
 Always exits 0 and fails open: any exception means "no opinion".  The guard is a
 policy nudge, not a security boundary (see docs/specs/dispatch-enforcement/SPEC.md).
 
-Modes (SHOAL_GUARD, alias PILOTFISH_GUARD): enforce | shadow | off.
+Modes (SHOAL_GUARD, alias PILOTFISH_GUARD): enforce | shadow | off.  Only the hard rules (LEAF,
+VERIFY_EDIT) deny; the main-session rules R1/R2 decide `advise` and, on claude/codex in enforce,
+print a one-per-turn `additionalContext` reminder.
 """
 
 from __future__ import annotations
@@ -61,6 +63,9 @@ COMPOSED_TURN_HOSTS = frozenset({"agy"})
 # Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId; claude
 # after `/login` resumes without prompt_id); use the state turn.
 STATE_TURN_HOSTS = frozenset({"agy", "grok", "claude"})
+# Hosts whose PreToolUse accepts a non-blocking `additionalContext`: only they print the advise
+# reminder.  grok, agy (and opencode in the TS port) have no verified equivalent: log only.
+ADVISE_OUTPUT_HOSTS = frozenset({"claude", "codex"})
 # Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
 PROMPT_KEEP_HOSTS = frozenset({"claude"})
 # Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
@@ -102,19 +107,11 @@ LOG_FIELDS = (
 
 MESSAGES = {
     "en": {
-        "R1": (
-            "Shoal dispatch guard: this turn was classified as work for `{role}`, so the main "
-            "session must not edit files directly. Dispatch `{role}` with {tool} (brief: scope, "
-            "stop condition, output cap); main only integrates and verifies. Once a write-level "
-            "role is dispatched, main edits for the rest of this turn are allowed. For a genuine "
-            "1-2 line fix, the user can restart the session with SHOAL_GUARD_DIRECT=1."
-        ),
-        "R2": (
-            "Shoal dispatch guard: the main session already edited {n} files this turn without "
-            "dispatching any agent. Hand multi-file changes to `executor` (needs judgment) or "
-            "`mech-executor` (fully specified mechanical change) with {tool}; once a write-level "
-            "role is dispatched, main edits for the rest of this turn are allowed. If the user "
-            "wants you to do it directly, they can restart the session with SHOAL_GUARD_DIRECT=1."
+        "ADVISE": (
+            "Shoal dispatch brake (a reminder, nothing was blocked): this turn has edited {n} "
+            "files directly. If the work is stable same-shape repetition, or bounded judgment "
+            "with a stable contract, consider handing it to `mech-executor` / `executor` with "
+            "{tool}; otherwise continuing directly is fine."
         ),
         "LEAF": (
             "Shoal dispatch guard: subagents are leaf workers and must not dispatch other "
@@ -126,17 +123,10 @@ MESSAGES = {
         ),
     },
     "zh-TW": {
-        "R1": (
-            "Shoal dispatch guard：本輪被分類為 `{role}` 的工作，main session 不直接改檔。"
-            "請用 {tool} 派出 `{role}`（brief 寫清楚 scope、stop condition、output cap），"
-            "main 只負責整合與驗收；派出 write 等級 role 後，本輪 main 的編輯會自動放行。"
-            "若確實只是 1-2 行的小修，請使用者以 SHOAL_GUARD_DIRECT=1 重新啟動 session。"
-        ),
-        "R2": (
-            "Shoal dispatch guard：main session 這一輪已經直接改了 {n} 個檔案，而且沒有派任何 agent。"
-            "多檔修改請用 {tool} 交給 `executor`（需要判斷）或 `mech-executor`"
-            "（規格完整的機械性修改）；派出 write 等級 role 後，本輪 main 的編輯會自動放行。"
-            "若使用者要你直接做，請他以 SHOAL_GUARD_DIRECT=1 重新啟動 session。"
+        "ADVISE": (
+            "Shoal dispatch brake（提醒，沒有擋任何操作）：本輪 main session 已直接改了 {n} 個檔案。"
+            "若這是穩定的同形重複，或契約穩定、範圍有界的判斷工作，可考慮用 {tool} 交給 "
+            "`mech-executor` / `executor`；否則直接做下去也可以。"
         ),
         "LEAF": "Shoal dispatch guard：subagent 是 leaf worker，不可再派其他 agent。請自己完成並回報給上層。",
         "VERIFY_EDIT": "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
@@ -422,8 +412,9 @@ class _Guard:
         skip: Optional[str] = None,
         reason: Optional[str] = None,
         file: Optional[str] = None,
+        notify: bool = False,
     ) -> Dict[str, Any]:
-        if decision in ("skip", "deny", "would_deny", "allow", "state"):
+        if decision in ("skip", "deny", "would_deny", "advise", "allow", "state"):
             self.log(decision, rule=rule, skip_reason=skip, file=file)
         return {
             "decision": decision,
@@ -431,6 +422,7 @@ class _Guard:
             "skip_reason": skip,
             "reason": reason,
             "mode": self.mode,
+            "notify": notify,
         }
 
     # -- subagent backstop (spec R6) ----------------------------------------
@@ -507,9 +499,9 @@ class _Guard:
                 edited = prior.get("edited") if isinstance(prior.get("edited"), list) else []
                 prior_tid = prior.get("turn_id")
                 state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
-                         "dispatched": False, "edited": edited}
+                         "dispatched": False, "advised": False, "edited": edited}
             else:
-                state = {"turn_id": tid, "dispatched": False, "edited": []}
+                state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": []}
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
@@ -521,6 +513,7 @@ class _Guard:
         state = {
             "turn_id": tid if tid is not None else state.get("turn_id"),
             "dispatched": state.get("dispatched") is True,
+            "advised": state.get("advised") is True,
             "edited": edited,
         }
 
@@ -553,6 +546,7 @@ class _Guard:
             classified = role if role in CLASSIFIED_ROLE else None
 
         first_rule = "exempt"
+        advise_rule: Optional[str] = None
         for index, path in enumerate(resolved):
             if is_exempt(path, self.host, self.env, self.home):
                 continue
@@ -560,37 +554,47 @@ class _Guard:
                 rule = "direct"
             elif state["dispatched"]:
                 rule = "dispatched"
-            elif classified:
-                return self.deny(
-                    "R1", raw_paths[index], len(edited), CLASSIFIED_ROLE[classified]
-                )
-            elif path not in edited and (limit is None or len(edited) >= limit):
-                if limit is None:
-                    return self.result("skip", skip="invalid_config")
-                return self.deny("R2", raw_paths[index], len(edited), None)
             else:
                 rule = "count"
+                if classified:
+                    fired: Optional[str] = "R1"
+                elif path not in edited and (limit is None or len(edited) >= limit):
+                    if limit is None:
+                        return self.result("skip", skip="invalid_config")
+                    fired = "R2"
+                else:
+                    fired = None
+                if fired and advise_rule is None:
+                    advise_rule = fired  # R1 and R2 only remind; the edit goes ahead (spec amendment)
             if first_rule == "exempt":
                 first_rule = rule
             if path not in edited:
                 edited.append(path)
-        if first_rule != "exempt":
-            state["edited"] = edited
-            _write_json(state_path, state)
-        return self.result("allow", first_rule, file=raw_paths[0])
-
-    def deny(
-        self, rule: str, path: str, count: int, role: Optional[str]
-    ) -> Dict[str, Any]:
-        decision = "deny" if self.mode == "enforce" else "would_deny"
-        reason = _text(
-            self.env,
-            rule,
-            n=count,
-            role=role,
-            tool=DISPATCH_NAME.get(self.host, "the dispatch tool"),
+        if first_rule == "exempt":
+            return self.result("allow", first_rule, file=raw_paths[0])
+        state["edited"] = edited
+        notify = (
+            advise_rule is not None
+            and not state["advised"]
+            and self.mode == "enforce"
+            and self.host in ADVISE_OUTPUT_HOSTS
         )
-        return self.result(decision, rule, reason=reason, file=path)
+        if notify:
+            state["advised"] = True  # the one reminder of this turn is spent
+        _write_json(state_path, state)
+        if advise_rule is None:
+            return self.result("allow", first_rule, file=raw_paths[0])
+        reason = None
+        if notify:
+            reason = _text(
+                self.env,
+                "ADVISE",
+                n=len(edited),
+                tool=DISPATCH_NAME.get(self.host, "the dispatch tool"),
+            )
+        return self.result(
+            "advise", advise_rule, reason=reason, file=raw_paths[0], notify=notify
+        )
 
 
 def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str, Any]:
@@ -837,6 +841,13 @@ ADAPTERS = {
 }
 
 
+def advise_output(reason: str) -> str:
+    """Non-blocking PreToolUse context (claude, codex): no permissionDecision, the tool still runs."""
+    return json.dumps(
+        {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": reason}}
+    )
+
+
 def deny_output(host: str, reason: str) -> str:
     if host in ("claude", "codex"):
         return json.dumps(
@@ -1000,6 +1011,8 @@ def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
         result = evaluate(event, env, home)
         if result["decision"] == "deny":
             return deny_output(host, result["reason"])
+        if result["decision"] == "advise" and result.get("notify"):
+            return advise_output(result["reason"])
     except BaseException:
         try:
             _skip_log(host, env, home, "exception")
