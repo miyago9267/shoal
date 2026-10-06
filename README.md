@@ -34,6 +34,8 @@ core/roles.toml            host 中立的 role 定義
 hosts/<host>/binding.toml  可用 model、access 對應的權限、effort
 hosts/<host>/src/          該 host 的 policy 與 skill 原文
 hosts/<host>/dist/         render 產出，已 commit（codex 產出在 templates/）
+claude-plugin/             Claude plugin，render 產出（--host claude-plugin），不手改
+.claude-plugin/            Claude marketplace manifest，同上
 tools/render.py            renderer 與 --check
 tools/install_grok.py      由 committed HEAD 安裝 grok host（預設 dry-run）
 tools/check_links.py       文件相對連結檢查
@@ -55,7 +57,9 @@ python3 tools/render.py --host claude --write
 ```
 
 `--host` 可選 `claude`、`codex`、`agy`、`grok`、`opencode`，以及 binding 設
-`renderer = "generic-md"` 的 host。修改 core 或 binding 後先 `--write`，再跑
+`renderer = "generic-md"` 的 host。另有 `--host claude-plugin`：產生 Claude plugin
+（`claude-plugin/`、`.claude-plugin/marketplace.json`），不是第六個 host。
+修改 core 或 binding 後先 `--write`，再跑
 `python3 -m unittest discover -s tests` 確認 golden 差異是預期的。
 
 ## 新增 host
@@ -70,6 +74,7 @@ python3 tools/render.py --host claude --write
 | --- | --- |
 | Codex CLI | [INSTALL.md](./INSTALL.md)，腳本在 `install/install.sh` |
 | Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [INSTALL.md](./INSTALL.md#claude-code-與-geminiagy-的-dispatch-guard) |
+| Claude Code plugin | `claude plugin marketplace add miyago9267/shoal#v<版本>` 再 `claude plugin install shoal@shoal`（釘 tag；與全域 guard 同時存在時只判斷一次；state 與 log 在 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`，uninstall 不刪），見 [INSTALL.md](./INSTALL.md#claude-code-plugin) |
 | Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結；dispatch guard：`python3 tools/install_hooks.py --host agy`，見 [INSTALL.md](./INSTALL.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Grok Build | `python3 tools/install_grok.py`（預設 dry-run，`--apply` 才寫入），見 [INSTALL.md](./INSTALL.md#grok-build) |
 | OpenCode | 專案：`hosts/opencode/plugin/install/install.sh --target DIR --enable`；全域：`install.sh --global --enable`，見 [INSTALL.md](./INSTALL.md#opencode) |
@@ -85,7 +90,7 @@ dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 1.2.0 |
+| shoal（產品） | 1.3.0 |
 | codex host | 1.8.3（`hosts/codex/VERSION`） |
 | claude host | 1.4.2-claude.3（`hosts/claude/VERSION`） |
 | agy host | 0.1.0 |

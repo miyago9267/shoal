@@ -4,6 +4,8 @@
 用法：python3 tools/render.py --host <host> (--check|--write|--explain) [--root DIR]
 <host> 是 claude、codex、agy、grok、opencode，或 hosts/<name>/binding.toml 宣告
 renderer = "generic-md" 的 host（輸出格式由 binding 的 [output] 宣告，不需寫程式碼）。
+另有 claude-plugin：由 claude 的 render 結果、hooks/shoal_guard.py 與根目錄 VERSION 產生
+Claude plugin（claude-plugin/ 與 .claude-plugin/marketplace.json），不屬於五個 host。
 
 --explain 只印出每個 role 的選模與權限推導過程，不讀也不改 dist。
 exit code：0 成功；1 --check 發現 dist 與 render 結果不同；2 來源驗證失敗或沒有模型滿足規則。
@@ -983,6 +985,120 @@ def diff_mirrors(root: Path, host: str, files: dict[str, bytes]) -> list[str]:
     return problems
 
 
+# ---- claude-plugin：Claude Code plugin 與 marketplace（generic-shoal K1、K2、K5）----
+# 不是第六個 host：沒有自己的 binding，內容全部取自 claude 的 render 結果、guard 與根目錄 VERSION。
+CLAUDE_PLUGIN = "claude-plugin"
+CLAUDE_PLUGIN_HOST = "claude-plugin"  # --host 的名稱
+CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
+CLAUDE_PLUGIN_SRC = "hosts/claude/plugin-src"
+# render 擁有的路徑（相對 repo 根）；其下多出的檔案由 --check 回報、--write 刪除。
+CLAUDE_PLUGIN_OWNED = (CLAUDE_PLUGIN, CLAUDE_MARKETPLACE)
+CLAUDE_PLUGIN_AUTHOR = {"name": "Miyago", "url": "https://github.com/miyago9267"}
+CLAUDE_PLUGIN_REPO = "https://github.com/miyago9267/shoal"
+# 與 tools/install_hooks.py 的 CLAUDE_MATCHER 相同；全域安裝與 plugin 的 guard 要看到同一批工具。
+CLAUDE_PLUGIN_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
+CLAUDE_PLUGIN_GUARD = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
+CLAUDE_PLUGIN_SESSIONSTART = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/emit-sessionstart.sh"'
+CLAUDE_PLUGIN_TIMEOUT = 10
+PRODUCT_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def product_version(root: Path) -> str:
+    """根目錄 VERSION（產品版本）；plugin 與 marketplace 的版本都等於它。"""
+    path = root / "VERSION"
+    try:
+        version = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {path}: {exc}") from exc
+    if not PRODUCT_VERSION.match(version):
+        raise RenderError(f"{path}: 版本格式不合法: {version!r}")
+    return version
+
+
+def _plugin_hooks() -> dict:
+    guard = {"type": "command", "command": CLAUDE_PLUGIN_GUARD, "timeout": CLAUDE_PLUGIN_TIMEOUT}
+    return {
+        "description": "shoal dispatch guard and policy bootstrap for Claude Code.",
+        "hooks": {
+            "SessionStart": [{
+                "matcher": "startup|resume|clear|compact",
+                "hooks": [{"type": "command", "command": CLAUDE_PLUGIN_SESSIONSTART}],
+            }],
+            "UserPromptSubmit": [{"hooks": [dict(guard)]}],
+            "PreToolUse": [{"matcher": CLAUDE_PLUGIN_MATCHER, "hooks": [dict(guard)]}],
+        },
+    }
+
+
+def render_claude_plugin(root: Path) -> dict[str, bytes]:
+    """{相對 repo 根的路徑: bytes}。agents 與 skills 取自 claude 的 render 結果，guard 是 hooks/shoal_guard.py 的逐位元組副本。"""
+    version = product_version(root)
+    claude = RENDERERS["claude"](root)
+    out: dict[str, bytes] = {}
+    for rel, data in claude.items():
+        if rel.startswith("agents/") or rel.startswith("skills/"):
+            out[f"{CLAUDE_PLUGIN}/{rel}"] = data
+    out[f"{CLAUDE_PLUGIN}/policy/claude-md.bootstrap.md"] = claude["claude-md.bootstrap.md"]
+    src = root / CLAUDE_PLUGIN_SRC / "emit-sessionstart.sh"
+    try:
+        out[f"{CLAUDE_PLUGIN}/hooks/emit-sessionstart.sh"] = src.read_bytes()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {src}: {exc}") from exc
+    out[f"{CLAUDE_PLUGIN}/hooks/shoal_guard.py"] = _guard_script(root)
+    out[f"{CLAUDE_PLUGIN}/hooks/hooks.json"] = _json_bytes(_plugin_hooks())
+    out[f"{CLAUDE_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
+        "name": "shoal",
+        "version": version,
+        "description": "Pilotfish orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
+        "author": CLAUDE_PLUGIN_AUTHOR,
+        "repository": CLAUDE_PLUGIN_REPO,
+        "license": "MIT",
+        "keywords": ["orchestration", "subagents", "delegation", "dispatch-guard"],
+    })
+    out[CLAUDE_MARKETPLACE] = _json_bytes({
+        "name": "shoal",
+        "owner": CLAUDE_PLUGIN_AUTHOR,
+        "description": "Marketplace for the shoal Claude Code plugin.",
+        "plugins": [{
+            "name": "shoal",
+            "source": f"./{CLAUDE_PLUGIN}",
+            "version": version,
+            "description": "Pilotfish orchestration roles, skill, dispatch guard and policy bootstrap.",
+            "category": "productivity",
+            "tags": ["orchestration", "subagents", "delegation"],
+        }],
+    })
+    return out
+
+
+def _owned_files(root: Path, owned: tuple[str, ...]) -> set[str]:
+    found: set[str] = set()
+    for item in owned:
+        path = root / item
+        if path.is_file():
+            found.add(item)
+        elif path.is_dir():
+            found |= {p.relative_to(root).as_posix() for p in path.rglob("*")
+                      if p.is_file() and "__pycache__" not in p.parts}
+    return found
+
+
+def write_owned(root: Path, files: dict[str, bytes], owned: tuple[str, ...]) -> None:
+    for rel in sorted(_owned_files(root, owned) - set(files)):
+        (root / rel).unlink()
+    for rel, data in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(data)
+
+
+def diff_owned(root: Path, files: dict[str, bytes], owned: tuple[str, ...]) -> list[str]:
+    existing = _owned_files(root, owned)
+    problems = [f"缺少: {rel}" for rel in files if rel not in existing]
+    problems += [f"多出: {rel}" for rel in existing if rel not in files]
+    problems += [f"內容不同: {rel}" for rel, data in files.items() if rel in existing and (root / rel).read_bytes() != data]
+    return sorted(problems)
+
+
 def _name(value: object) -> str:
     return json.dumps(value, ensure_ascii=False) if isinstance(value, dict) else str(value)
 
@@ -1044,6 +1160,30 @@ def explain(root: Path, host: str) -> str:
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+def plugin_main(args: argparse.Namespace) -> int:
+    """--host claude-plugin 的 --check / --write；輸出散在 repo 根下，所以用擁有的路徑清單比對，不是單一 dist 目錄。"""
+    if args.explain:
+        print("render 失敗: claude-plugin 沒有選模過程可 --explain（用 --host claude --explain）", file=sys.stderr)
+        return 2
+    try:
+        files = render_claude_plugin(args.root)
+    except (RenderError, OSError, KeyError) as exc:
+        print(f"render 失敗: host {args.host}: {exc}", file=sys.stderr)
+        return 2
+    if args.write:
+        write_owned(args.root, files, CLAUDE_PLUGIN_OWNED)
+        print(f"已寫入 {len(files)} 個檔案到 {args.root / CLAUDE_PLUGIN} 與 {args.root / CLAUDE_MARKETPLACE}")
+        return 0
+    problems = diff_owned(args.root, files, CLAUDE_PLUGIN_OWNED)
+    if problems:
+        print(f"{CLAUDE_PLUGIN}/ 與 render 結果不同：", file=sys.stderr)
+        for line in problems:
+            print(f"  {line}", file=sys.stderr)
+        return 1
+    print(f"OK: {len(files)} 個檔案一致")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     # Windows 預設 cp1252，輸出中文會拋 UnicodeEncodeError，強制 UTF-8
     sys.stdout.reconfigure(encoding="utf-8")
@@ -1057,13 +1197,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"render 失敗: {exc}", file=sys.stderr)
         return 2
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--host", required=True, choices=[*sorted(RENDERERS), *generic])
+    parser.add_argument("--host", required=True, choices=[*sorted(RENDERERS), *generic, CLAUDE_PLUGIN_HOST])
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--explain", action="store_true", help="印出每個 role 的選模過程")
     parser.add_argument("--root", type=Path, default=REPO, help="repo 根目錄（測試用）")
     args = parser.parse_args(argv)
+
+    if args.host == CLAUDE_PLUGIN_HOST:
+        return plugin_main(args)
 
     if args.explain:
         try:

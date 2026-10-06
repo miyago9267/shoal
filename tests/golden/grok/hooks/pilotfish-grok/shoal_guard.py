@@ -5,7 +5,11 @@ One script serves claude, codex, grok and agy.  Each host gets a small adapter t
 normalizes the hook payload into an event; the core decides on the event only, so a
 TypeScript port can replay tests/fixtures/guard_vectors.json against the same logic.
 
-    python3 hooks/shoal_guard.py --host {claude,codex,grok,agy}   (JSON on stdin)
+    python3 hooks/shoal_guard.py --host {claude,codex,grok,agy} [--plugin]   (JSON on stdin)
+
+--plugin is set only by the Claude plugin's hooks.json.  When the user settings already
+register the tools/install_hooks.py guard (and its script exists) the plugin copy does
+nothing, so each event is judged once; in every other case it runs normally.
 
 SHOAL_GUARD_HOST supplies the host when --host is absent (grok runs the hook path
 directly and sets it through the hook's env map).
@@ -22,6 +26,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import stat
 import sys
 import time
@@ -865,6 +870,115 @@ def _skip_log(host: str, env: Dict[str, str], home: Path, reason: str) -> None:
     )
 
 
+MAX_SETTINGS_BYTES = 1024 * 1024
+
+
+def _abs_env_dir(env: Dict[str, str], key: str, default: Path) -> Path:
+    value = env.get(key, "")
+    return Path(value) if value and os.path.isabs(value) else default
+
+
+def _expand_home(token: str, home: Path) -> str:
+    """The `~` and `$HOME` spellings a hand-written hook command may use for the script path."""
+    if token == "~" or token.startswith("~/"):
+        token = str(home) + token[1:]
+    return token.replace("${HOME}", str(home)).replace("$HOME", str(home))
+
+
+def _matcher_covers(matcher: Any, tool: Optional[str]) -> bool:
+    if matcher is None or matcher in ("", "*"):
+        return True
+    if not isinstance(matcher, str) or tool is None:
+        return False
+    try:
+        return re.fullmatch(matcher, tool) is not None
+    except re.error:
+        return False
+
+
+def _runs_global_guard(command: Any, script: str, host: str, home: Path) -> bool:
+    """`command` invokes the install_hooks.py script (same resolved path) with `--host <host>`."""
+    if not isinstance(command, str):
+        return False
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    for index, token in enumerate(tokens):
+        if os.path.basename(token) != "shoal_guard.py":
+            continue
+        if tokens[index + 1:index + 3] != ["--host", host]:
+            continue
+        if os.path.realpath(_expand_home(token, home)) == script:
+            return True
+    return False
+
+
+def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], home: Path) -> bool:
+    """K4: the effective user settings file already runs the install_hooks.py guard for this event.
+
+    Decided by where the entry lives (the user settings file, symlinks resolved) and which script
+    it names: ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py, which must exist.  The
+    plugin's own command also matches install_hooks.OWNED, so a regex on the command is not enough.
+    """
+    if not isinstance(name, str):
+        return False
+    script = _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share") / "shoal" / "guard" / "shoal_guard.py"
+    script = Path(os.path.realpath(str(script)))
+    if not script.is_file():
+        return False
+    settings = _abs_env_dir(env, "CLAUDE_CONFIG_DIR", home / ".claude") / "settings.json"
+    fd = _open_readable(Path(os.path.realpath(str(settings))))
+    if fd is None:
+        return False
+    try:
+        data = json.loads(os.read(fd, MAX_SETTINGS_BYTES))
+    except ValueError:
+        return False
+    finally:
+        os.close(fd)
+    hooks = _dict(data).get("hooks")
+    groups = _dict(hooks).get(name)
+    if not isinstance(groups, list):
+        return False
+    for group in groups:
+        group = _dict(group)
+        if name == "PreToolUse" and not _matcher_covers(group.get("matcher"), tool if isinstance(tool, str) else None):
+            continue
+        handlers = group.get("hooks")
+        for handler in handlers if isinstance(handlers, list) else []:
+            if _runs_global_guard(_dict(handler).get("command"), str(script), host, home):
+                return True
+    return False
+
+
+def _open_readable(path: Path) -> Optional[int]:
+    try:
+        fd = os.open(str(path), os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd)
+            return None
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
+
+
+def defer_to_global(host: str, raw: bytes, env: Dict[str, str]) -> bool:
+    """True when the plugin copy must stay silent.  Any doubt returns False: never zero evaluations."""
+    if os.name == "nt" or host != "claude" or not raw or len(raw) > MAX_INPUT_BYTES:
+        return False
+    try:
+        payload = json.loads(raw)
+        home = Path(env.get("HOME") or os.path.expanduser("~"))
+        return global_guard_covers(host, _dict(payload).get("hook_event_name"), _dict(payload).get("tool_name"), env, home)
+    except BaseException:
+        return False
+
+
 def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
     """Process one stdin payload; returns the stdout text, if any."""
     if os.name == "nt":  # POSIX-only semantics (O_NOFOLLOW, uid ownership); fail-open no-op
@@ -904,7 +1018,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         if host not in ADAPTERS:
             return 0
         raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
-        out = run(host, raw, dict(os.environ))
+        env = dict(os.environ)
+        if "--plugin" in args and defer_to_global(host, raw, env):
+            return 0
+        out = run(host, raw, env)
         if out:
             sys.stdout.write(out)
             sys.stdout.flush()

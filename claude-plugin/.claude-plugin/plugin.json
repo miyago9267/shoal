@@ -1,0 +1,17 @@
+{
+  "name": "shoal",
+  "version": "1.3.0",
+  "description": "Pilotfish orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
+  "author": {
+    "name": "Miyago",
+    "url": "https://github.com/miyago9267"
+  },
+  "repository": "https://github.com/miyago9267/shoal",
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "subagents",
+    "delegation",
+    "dispatch-guard"
+  ]
+}

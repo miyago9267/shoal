@@ -499,6 +499,69 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   entry 也會在 grok session 觸發；guard 的 Claude adapter 看到 grok 的 camelCase payload
   就放行，由 grok 自己的註冊處理。
 
+## Claude Code plugin
+
+Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容（8 個 role、
+`pilotfish-orchestration` skill、dispatch guard、policy bootstrap）全部由
+`python3 tools/render.py --host claude-plugin --write` 從 `hosts/claude/dist`、
+`hooks/shoal_guard.py` 與根目錄 `VERSION` 產生，輸出在 `claude-plugin/` 與
+`.claude-plugin/marketplace.json`；`--check` 與 golden 擋住手改。Codex 的
+`plugin/` 目錄與這條路徑無關。需要 Claude Code 2.1 以上與 `python3`。
+
+```bash
+# 1. 釘在 tag 上安裝（不追預設 branch）。
+claude plugin marketplace add miyago9267/shoal#v1.3.0
+claude plugin install shoal@shoal
+
+# 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
+claude plugin marketplace remove shoal
+claude plugin marketplace add miyago9267/shoal#v1.4.0
+claude plugin update shoal@shoal
+
+# 解除安裝。
+claude plugin uninstall shoal@shoal
+claude plugin marketplace remove shoal
+
+# 只在單一 session 試用（不寫任何 config）。
+claude --plugin-dir ./claude-plugin
+```
+
+- `owner/repo#<ref>` 的 `<ref>` 是 branch 或 tag，由 `git clone --branch` 解析（在
+  Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
+  `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
+  `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
+  上面的 `#v1.3.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
+- plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
+- guard hook 的 command 一律是
+  `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin`，
+  路徑加引號，安裝路徑含空白也能跑；SessionStart 的 `emit-sessionstart.sh` 自己固定
+  `PATH=/usr/bin:/bin`，把 `claude-plugin/policy/claude-md.bootstrap.md` 注入 session。
+  如果全域 `CLAUDE.md` 已經有 pilotfish bootstrap，就不再注入。
+- namespace：plugin 的 agent 名稱是 `shoal:<role>`（例如 `shoal:executor`），skill 是
+  `shoal:pilotfish-orchestration`。實測 hook payload 的 `agent_type` 與 Agent 工具的
+  `subagent_type` 都是 `shoal:executor`；guard 只認裸名稱與 `shoal:` 前綴。
+- 與全域安裝共存：已經用 `tools/install_hooks.py --host claude` 裝過全域 guard 時，
+  plugin 的 hook 帶 `--plugin`，只在 user `settings.json`（`CLAUDE_CONFIG_DIR` 或
+  `~/.claude`，symlink 會解開）確實有指向
+  `${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py` 的對應 event entry，
+  而且那支腳本存在時才什麼都不做；其他情況（沒有全域安裝、腳本不見、settings 讀不
+  懂）plugin 那份照常執行，不會變成零次。兩邊同時存在時每個事件只會有一筆 log。
+  SessionStart 偵測到全域 guard 會印一行提示，僅供參考。
+- 預設模式與全域安裝相同（Claude 是 enforce）；`SHOAL_GUARD=shadow|off` 照常有效。
+
+資料與保留（K6）：plugin 與全域安裝共用同一個 state 與 log 目錄
+`${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`（`state/`、`turns/` 與
+`guard.jsonl`）。`guard.jsonl` 超過 1 MiB 就停止寫入，不輪替。
+`claude plugin uninstall` 與 `marketplace remove` 不會刪這個目錄；要清除時手動執行：
+
+```bash
+rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/shoal/guard"
+```
+
+目錄會在下次事件重建。這個目錄與全域安裝共用，清除前先確認沒有進行中的 session
+要保留 guard 的 turn 狀態。
+
 ## OpenCode
 
 OpenCode host 的 installer 是 `hosts/opencode/plugin/install/install.sh`，有兩種
