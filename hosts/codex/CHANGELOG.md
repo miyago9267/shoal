@@ -1,11 +1,31 @@
 # Changelog
 
-All notable changes to pilotfish-codex. The installed version is stamped inside
-the policy block in `AGENTS.md` (`<!-- pilotfish-codex vX.Y.Z -->`).
-pilotfish-codex uses its own semantic versioning; upstream pilotfish versions
-are noted only as source references.
+All notable changes to the shoal Codex host. The installed version is
+stamped inside the policy block in `AGENTS.md`
+(`<!-- shoal-codex vX.Y.Z -->`). The Codex host uses its own semantic
+versioning; upstream versions are noted only as source references. Entries
+before v2.0.0 were written under the previous product name and are kept as
+written.
 
 ## Unreleased
+
+## v2.0.0
+
+- shoal is a product of its own: every installed name changed (the policy
+  block markers, the plugin and marketplace names, the autoroute gate script
+  and its hook projection, the install state file, backup and staging names,
+  the environment variables). The mapping is
+  `docs/specs/shoal-rebrand/RENAME.md`. Versions restart at 2.0.0; the policy
+  text only changes where it named the product.
+- The hook projection is a new, independent `shoal-autoroute-v1`. The
+  installer recognizes the earlier projections by their exact group bodies and
+  removes them.
+- `install/install.py` migrates an existing home before it installs: it
+  removes the earlier hook groups and gate script (a gate script you edited is
+  kept as `<name>.pre-shoal-<timestamp>` and unregistered), converts the
+  `AGENTS.md` marker block, renames the `config.toml` marketplace and plugin
+  tables that point at this repository, and archives the earlier install
+  state. Approve the new hook paths once with `/hooks` afterwards.
 
 ## v1.8.3
 

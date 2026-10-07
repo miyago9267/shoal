@@ -1,9 +1,9 @@
 ---
-name: pilotfish-orchestration
-description: Full Pilotfish orchestration workflow - interaction-shape routing, Plan and approval gates, dispatch brakes, named-role delegation, security separation, verification, recovery, outcome continuation, review intent, decision checkpoints, and blocked-task isolation. Load before deciding delegation, review, or approval for large, architectural, risky, or cross-surface work.
+name: shoal-orchestration
+description: Full shoal orchestration workflow - interaction-shape routing, Plan and approval gates, dispatch brakes, named-role delegation, security separation, verification, recovery, outcome continuation, review intent, decision checkpoints, and blocked-task isolation. Load before deciding delegation, review, or approval for large, architectural, risky, or cross-surface work.
 ---
-<!-- pilotfish-claude v1.4.2-claude.4 -->
+<!-- shoal-claude v2.0.0 -->
 
-# Pilotfish orchestration
+# Shoal orchestration
 
 {{role_body}}

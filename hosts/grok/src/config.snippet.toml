@@ -1,4 +1,4 @@
-# Pilotfish-grok owned keys. Merge into ~/.grok/config.toml.
+# Shoal-grok owned keys. Merge into ~/.grok/config.toml.
 # Do not force the main-session model or default_reasoning_effort —
 # those stay under the user's control.
 
@@ -7,11 +7,11 @@ enabled = true
 
 # Keep Claude Code user agents from shadowing Grok-native types. The installer
 # adds every Claude agent name found by `grok inspect`; Explore is the known
-# pilotfish collision and is kept here as the static baseline.
+# shoal collision and is kept here as the static baseline.
 [subagents.toggle]
 "Explore" = false
 
-# pilotfish-grok uses native Grok rules, roles, agents, and session state.
+# shoal-grok uses native Grok rules, roles, agents, and session state.
 # Disable every Claude compatibility cell so Grok does not import Claude Code
 # instructions, skills, MCPs, hooks, or future session scanners.
 [compat.claude]
@@ -39,4 +39,4 @@ sessions = false
 # executor = "grok-4.5"
 # verifier = "grok-4.5"
 # security-executor = "grok-4.5"
-# explore = "grok-4.5"   # built-in explore only; pilotfish-grok does not install an Explore agent
+# explore = "grok-4.5"   # built-in explore only; shoal-grok does not install an Explore agent

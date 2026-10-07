@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pilotfish scripted install bootstrap.
+# Shoal scripted install bootstrap.
 #
 # Local checkouts are preferred. When this file is streamed from a URL, the
 # installer is downloaded from the selected GitHub ref into a private temp
@@ -18,7 +18,7 @@ set -Eeuo pipefail
 # Pinned refs before shoal v1.0.0 (v1.8.1 and earlier) exist only in
 # miyago9267/pilotfish-codex; set REPO to miyago9267/pilotfish-codex to use them.
 REPO="miyago9267/shoal"
-REF="${PILOTFISH_REF:-main}"
+REF="${SHOAL_REF:-main}"
 FORWARDED_ARGS=()
 
 usage() {
@@ -35,7 +35,7 @@ include --dry-run, --roles-only, --codex-home, --follow-policy-symlink,
 --policy-root, --reconcile-current, --allow-plugin-downgrade,
 --replace-drifted-role, and --replace-drifted-roles.
 
-PILOTFISH_REF is used when --ref is not supplied; the default is main. A local
+SHOAL_REF is used when --ref is not supplied; the default is main. A local
 checkout containing install/install.py and templates/agents is always preferred
 over a remote download, so use the pinned raw script URL for a pinned remote
 install.
@@ -118,7 +118,7 @@ command -v codex >/dev/null 2>&1 || fail "codex CLI is required"
 command -v curl >/dev/null 2>&1 || fail "curl is required for a remote install"
 command -v tar >/dev/null 2>&1 || fail "tar is required for a remote install"
 
-workdir="$(mktemp -d "${TMPDIR:-/tmp}/pilotfish-install.XXXXXX")"
+workdir="$(mktemp -d "${TMPDIR:-/tmp}/shoal-install.XXXXXX")"
 cleanup() {
   if [[ -n "${workdir:-}" && -d "$workdir" ]]; then
     rm -rf -- "$workdir"
@@ -134,6 +134,6 @@ fi
 source_root="$(find "$workdir" -mindepth 1 -maxdepth 1 -type d -print -quit)"
 [[ -n "$source_root" && -f "$source_root/install/install.py" \
   && -d "$source_root/templates/agents" ]] \
-  || fail "downloaded archive does not look like pilotfish-codex (pinned refs before v1.0.0 live in miyago9267/pilotfish-codex)"
+  || fail "downloaded archive does not look like shoal-codex (pinned refs before v1.0.0 live in miyago9267/pilotfish-codex)"
 
 python3 "$source_root/install/install.py" "${FORWARDED_ARGS[@]}"

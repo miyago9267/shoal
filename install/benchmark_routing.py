@@ -1249,7 +1249,7 @@ def disposable_case_workspace(
     parent = parent_dir or Path(tempfile.gettempdir())
     if parent_dir is not None:
         _ensure_private_dir(parent)
-    workspace = Path(tempfile.mkdtemp(prefix="pilotfish-case-", dir=parent))
+    workspace = Path(tempfile.mkdtemp(prefix="shoal-case-", dir=parent))
     os.chmod(workspace, 0o700)
     try:
         fixture_bytes = fixture_path.read_bytes()
@@ -1518,7 +1518,7 @@ def temporary_trial_home(
     if parent_dir is not None:
         _ensure_private_dir(parent)
     cleanup_stale_run_dirs(parent)
-    run_root = Path(tempfile.mkdtemp(prefix="pilotfish-benchmark-", dir=parent))
+    run_root = Path(tempfile.mkdtemp(prefix="shoal-benchmark-", dir=parent))
     os.chmod(run_root, 0o700)
     _write_private(run_root / "pid", str(os.getpid()).encode("ascii"))
     home = run_root / "codex"
@@ -1898,7 +1898,7 @@ def cleanup_stale_run_dirs(parent: Path) -> int:
     removed = 0
     if not parent.is_dir():
         return removed
-    for path in parent.glob("pilotfish-benchmark-*"):
+    for path in parent.glob("shoal-benchmark-*"):
         if not path.is_dir():
             continue
         pid_file = path / "pid"

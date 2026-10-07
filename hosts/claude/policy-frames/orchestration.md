@@ -1,3 +1,3 @@
-# Pilotfish orchestration policy
+# Shoal orchestration policy
 
 {{role_body}}

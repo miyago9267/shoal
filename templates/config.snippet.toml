@@ -1,4 +1,4 @@
-# Pilotfish native Codex Multi-Agent configuration for Codex 0.147+.
+# Shoal native Codex Multi-Agent configuration for Codex 0.147+.
 # Merge these keys and tables into ~/.codex/config.toml.
 model = "gpt-6-luna"
 model_reasoning_effort = "max"

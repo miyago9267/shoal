@@ -1,7 +1,7 @@
 # Upstream Fable 5 Multi-Model Orchestration Research
 
 > Reference note: this document preserves the upstream research context behind
-> pilotfish. pilotfish-codex keeps this attribution intact and applies the
+> Nanako0129/pilotfish. shoal keeps this attribution intact and applies the
 > pattern to Codex CLI's agent configuration model.
 
 > 繁體中文原版：[research.zh-TW.md](./research.zh-TW.md)（this is a faithful English translation）
@@ -12,7 +12,7 @@ This document collects a sourced research pass from early July 2026 on "how to
 maximize the value of Claude Fable 5": Fable 5's real strengths versus Opus 4.8
 and the scenarios where it's wasteful, the quota economics of Claude
 subscriptions, the multi-model orchestration mechanisms Claude Code officially
-provides, and the community's measured numbers and patterns. pilotfish's
+provides, and the community's measured numbers and patterns. shoal's
 three-layer architecture (see [design.md](./design.md)) is the applied conclusion
 of this research. Method: four parallel research agents (official docs,
 community patterns, subscription economics, Claude Code mechanisms) plus a
@@ -21,7 +21,7 @@ as of 2026-07-09.
 
 > **2026-07-24 update:** This report remains a point-in-time record of the
 > original Fable 5 decision. [Opus 5](https://www.anthropic.com/news/claude-opus-5)
-> changed pilotfish's default-selection trade-off: new installs now propose the
+> changed shoal's default-selection trade-off: new installs now propose the
 > `opus` family alias, while Fable stays available through `/model fable`. The
 > alias configuration is documented in
 > [model configuration](https://code.claude.com/docs/en/model-config); the

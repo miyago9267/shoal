@@ -1,5 +1,5 @@
 # agy (Gemini / Antigravity) host binding：可用模型、存取等級對應的 tools、每個 role 的 description。
-# 數值等於 dotfile b65a243 的 plugins/pilotfish-agy/templates/ 現況。
+# 數值等於 dotfile b65a243 的 plugins/shoal-agy/templates/ 現況。
 # description 的換行與 agent.md 的 folded scalar（description: >）逐行對應。
 
 # role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。

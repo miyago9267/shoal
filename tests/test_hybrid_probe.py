@@ -16,7 +16,7 @@ class HybridProbeTests(unittest.TestCase):
             home = Path(directory) / "codex"
             home.mkdir()
             (home / "AGENTS.md").write_text(
-                "<!-- pilotfish-codex:begin -->\n<!-- pilotfish-codex:end -->\n"
+                "<!-- shoal-codex:begin -->\n<!-- shoal-codex:end -->\n"
             )
             with mock.patch.object(probe, "_plugin_is_installed", return_value=True):
                 with mock.patch.object(
@@ -28,7 +28,7 @@ class HybridProbeTests(unittest.TestCase):
             self.assertEqual(report["bootstrap"], "active")
             self.assertEqual(report["plugin"], "installed")
             self.assertEqual(report["skill"], "available")
-            self.assertEqual(report["pilotfish_behavior"], "verified")
+            self.assertEqual(report["shoal_behavior"], "verified")
             self.assertEqual(report["persona_recap"], "verified")
 
     def test_report_does_not_infer_skill_from_bootstrap_only(self) -> None:
@@ -36,7 +36,7 @@ class HybridProbeTests(unittest.TestCase):
             home = Path(directory) / "codex"
             home.mkdir()
             (home / "AGENTS.md").write_text(
-                "<!-- pilotfish-codex:begin -->\n<!-- pilotfish-codex:end -->\n"
+                "<!-- shoal-codex:begin -->\n<!-- shoal-codex:end -->\n"
             )
             with mock.patch.object(probe, "_plugin_is_installed", return_value=False):
                 report = probe.build_report(
@@ -45,7 +45,7 @@ class HybridProbeTests(unittest.TestCase):
             self.assertEqual(report["bootstrap"], "active")
             self.assertEqual(report["plugin"], "unavailable")
             self.assertEqual(report["skill"], "unavailable")
-            self.assertEqual(report["pilotfish_behavior"], "unverified")
+            self.assertEqual(report["shoal_behavior"], "unverified")
 
 
 if __name__ == "__main__":

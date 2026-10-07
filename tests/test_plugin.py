@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "plugin" / "plugins" / "pilotfish-codex"
+PLUGIN = ROOT / "plugin" / "plugins" / "shoal-codex"
 VERSION = (ROOT / "hosts" / "codex" / "VERSION").read_text(encoding="utf-8").strip()
 
 
@@ -15,13 +15,13 @@ class PluginPackageTests(unittest.TestCase):
         manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())
         entry = marketplace["plugins"][0]
         self.assertEqual(entry["name"], manifest["name"])
-        self.assertEqual(entry["source"]["path"], "./plugins/pilotfish-codex")
+        self.assertEqual(entry["source"]["path"], "./plugins/shoal-codex")
         self.assertEqual(manifest["version"], VERSION)
 
     def test_skill_is_complete_and_references_exist(self) -> None:
-        skill = PLUGIN / "skills" / "pilotfish-orchestration"
+        skill = PLUGIN / "skills" / "shoal-orchestration"
         text = (skill / "SKILL.md").read_text()
-        self.assertIn("pilotfish-orchestration", text)
+        self.assertIn("shoal-orchestration", text)
         self.assertNotIn("TODO", text)
         for reference in (
             "orchestration-policy.md",
@@ -39,18 +39,18 @@ class PluginPackageTests(unittest.TestCase):
         entry = next(
             plugin
             for plugin in marketplace["plugins"]
-            if plugin["name"] == "pilotfish-jev-router"
+            if plugin["name"] == "shoal-jev-router"
         )
         manifest_path = (
             ROOT
             / "plugin"
             / "plugins"
-            / "pilotfish-jev-router"
+            / "shoal-jev-router"
             / ".codex-plugin"
             / "plugin.json"
         )
         manifest = json.loads(manifest_path.read_text())
-        self.assertEqual(entry["source"]["path"], "./plugins/pilotfish-jev-router")
+        self.assertEqual(entry["source"]["path"], "./plugins/shoal-jev-router")
         self.assertEqual(entry["name"], manifest["name"])
         self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
 

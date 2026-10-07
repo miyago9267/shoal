@@ -188,11 +188,11 @@ class AstraMainSessionContractTests(unittest.TestCase):
         bootstrap = self._text("templates/agents-md.bootstrap.md")
         policy = self._text("templates/agents-md.orchestration.md")
         packaged = self._text(
-            "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/"
+            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/"
             "orchestration-policy.md"
         )
         prompt = self._text(
-            "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/agents/openai.yaml"
+            "plugin/plugins/shoal-codex/skills/shoal-orchestration/agents/openai.yaml"
         )
         for source in (bootstrap, policy, packaged, prompt):
             normalized = " ".join(source.split())
@@ -215,7 +215,7 @@ class AstraMainSessionContractTests(unittest.TestCase):
     def test_packaged_policy_is_kept_in_sync_and_receipt_schema_is_unchanged(self) -> None:
         template = self._text("templates/agents-md.orchestration.md")
         packaged = self._text(
-            "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/"
+            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/"
             "orchestration-policy.md"
         )
         self.assertEqual(packaged, template)
@@ -317,7 +317,7 @@ class AstraRoleRoutingTests(unittest.TestCase):
         policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
         bootstrap = (ROOT / "templates" / "agents-md.bootstrap.md").read_text(encoding="utf-8")
         role = (ROOT / "templates" / "agents" / "mech-executor.toml").read_text(encoding="utf-8")
-        skill = (ROOT / "plugin" / "plugins" / "pilotfish-codex" / "skills" / "pilotfish-orchestration" / "SKILL.md").read_text(encoding="utf-8")
+        skill = (ROOT / "plugin" / "plugins" / "shoal-codex" / "skills" / "shoal-orchestration" / "SKILL.md").read_text(encoding="utf-8")
         for source in (policy, bootstrap, role, skill):
             self.assertIn("mech-executor", source)
             self.assertIn("Astra", source)

@@ -438,7 +438,7 @@ GATE = {
     "hooks": [
         {
             "type": "command",
-            "command": '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/pilotfish_autoroute_gate.py"',
+            "command": '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/shoal_autoroute_gate.py"',
             "timeout": 10,
         }
     ]
@@ -493,7 +493,7 @@ class CodexTests(Case):
     def test_uninstall_restores_hooks_bytes_and_removes_only_the_script(self) -> None:
         path = self.write_hooks({"hooks": {"UserPromptSubmit": [GATE, FOREIGN_PROMPT], "Stop": [GATE]}})
         original = path.read_bytes()
-        gate_script = self.codex / "hooks" / "pilotfish_autoroute_gate.py"
+        gate_script = self.codex / "hooks" / "shoal_autoroute_gate.py"
         gate_script.parent.mkdir()
         gate_script.write_text("# my experiment\n", encoding="utf-8")
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
@@ -603,7 +603,7 @@ class CodexInstallPyInteropTests(Case):
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         self.assertEqual(self.install_py(), 0)
         self.assertEqual(len(self.guard_commands()), 2)  # UserPromptSubmit + PreToolUse
-        state = self.load(self.codex.with_name("codex-home.pilotfish-install-state.json"))
+        state = self.load(self.codex.with_name("codex-home.shoal-install-state.json"))
         self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
         self.assertIn("hooks/shoal_guard.py", state["target_fingerprints"])
         before = (self.codex / "hooks.json").read_bytes()

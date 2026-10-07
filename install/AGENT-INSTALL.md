@@ -1,7 +1,7 @@
-# Pilotfish-Codex native install runbook
+# Shoal-Codex native install runbook
 
 This runbook installs one native Codex Multi-Agent target plus the Hybrid
-Pilotfish bootstrap and Plugin/Skill package. It does not support an adapter
+shoal bootstrap and Plugin/Skill package. It does not support an adapter
 fallback.
 
 ## Preconditions
@@ -19,7 +19,7 @@ max_concurrent_threads_per_session = 3
 default_mode_request_user_input = true
 ```
 
-Pilotfish owns the orchestration contract, not the user's main-session model
+Shoal owns the orchestration contract, not the user's main-session model
 preference. Fresh homes default to GPT-6 Luna/max with xhigh Plan reasoning;
 existing model and effort choices are preserved and may be changed later.
 
@@ -29,7 +29,7 @@ existing model and effort choices are preserved and may be changed later.
 - The native manifest is exactly `executor`, `mech-executor`,
   `plan-verifier`, `scout`, `security-executor`, `security-reviewer`, and
   `verifier`. Role identity is each TOML `name`; filename equality is a local
-  Pilotfish validation rule.
+  shoal validation rule.
 
 ## Preflight and approval
 
@@ -42,10 +42,10 @@ existing model and effort choices are preserved and may be changed later.
    file while preserving bytes outside its marker block. It installs the full
    workflow through Codex's local marketplace and `codex plugin add` contract.
 3. Locate the sibling install state
-   `<CODEX_HOME>.pilotfish-install-state.json`. A `.pending` state or stale
+   `<CODEX_HOME>.shoal-install-state.json`. A `.pending` state or stale
    committed fingerprint stops the installation for operator resolution. The
    one explicit reconciliation path is `--reconcile-current`; it accepts only
-   current policy/config drift whose Pilotfish routing projection is unchanged
+   current policy/config drift whose shoal routing projection is unchanged
    and publishes state version 4 with preimage, identity, and rollback evidence.
 4. Present changed paths, timestamped backups, unowned legacy keys, and
    customized same-name roles. Valid extra user roles are preserved and do not
@@ -59,7 +59,7 @@ existing model and effort choices are preserved and may be changed later.
 The installer uses a pending sidecar, stages all target files, writes backups
 before replacement, validates the post-write fingerprint, then atomically
 commits the mode-`0600` state sidecar. A pending state is never ownership proof.
-The sidecar binds Pilotfish to its allowlisted, event-bound complete hook groups
+The sidecar binds shoal to its allowlisted, event-bound complete hook groups
 instead of claiming ownership of unrelated groups in `hooks.json`. Repeated
 identical installs are idempotent.
 
@@ -87,7 +87,7 @@ state version 4, including the previous sidecar digest, accepted target
 preimages/identities, post-merge fingerprints, and root-anchored backup
 manifests. An unavailable Plugin does not invalidate the native runtime, but
 the installer must not claim that the Skill is active. Plugin installation is
-allowed to update only Pilotfish's own `plugins`/`marketplaces` entries; any
+allowed to update only shoal's own `plugins`/`marketplaces` entries; any
 other config mutation aborts and remains visible for recovery.
 
 Release-pinned canonical v1.3.0 `plan-verifier` and `security-reviewer` bytes
@@ -188,25 +188,25 @@ enforces nothing:
 
 ```bash
 /usr/bin/env python3 \
-  "$ACTIVE_CODEX_HOME/hooks/pilotfish_autoroute_gate.py" --selftest
+  "$ACTIVE_CODEX_HOME/hooks/shoal_autoroute_gate.py" --selftest
 ```
 
-Require `pilotfish-autoroute-gate schema=<n> launchable`. On native Windows run
+Require `shoal-autoroute-gate schema=<n> launchable`. On native Windows run
 the probe through the `commandWindows` form instead; this uses
 `uv run --no-project python` because `python` is often the Store alias stub.
 Report the gate as unenforced on any other result rather than reporting a gated
 install; see
 [the installation playbook](../INSTALL.md#prove-the-hook-can-launch).
 
-After the installer adds the Pilotfish hook group, open an interactive Codex
+After the installer adds the shoal hook group, open an interactive Codex
 session and use `/hooks` to inspect and trust the group that runs
-`hooks/pilotfish_autoroute_gate.py`. An existing `hooks.json` can retain a
+`hooks/shoal_autoroute_gate.py`. An existing `hooks.json` can retain a
 user-owned top-level description, so trust the exact group rather than assuming
 one global label. If `/hooks` is unavailable, start a new interactive session
 and confirm the launch-time trust prompt. Codex records trust against the hook
 definition hash; repeat this one-time step only when that definition changes.
 Do not use the bypass flag for normal active-runtime work. Its `[hooks.state]`
-entry is expected and does not require reinstalling Pilotfish.
+entry is expected and does not require reinstalling shoal.
 
 ## Update, failure handling, and rollback
 
@@ -217,8 +217,8 @@ change`. Trust the hook again only when the prompt identifies a changed hook
 definition.
 
 The installer preserves structurally unrelated valid hook groups, but aborts
-rather than adopting an unproven current or historical Pilotfish group,
-repairing a changed/duplicated/moved Pilotfish group, replacing an unproven hook
+rather than adopting an unproven current or historical shoal group,
+repairing a changed/duplicated/moved shoal group, replacing an unproven hook
 script, replacing a customized same-name role, or accepting a stale sidecar. A
 script proven by the committed sidecar may upgrade to the selected source. Stop
 on other errors. Inspect the current file and its recorded ownership before
@@ -228,10 +228,10 @@ sidecar or rollback backup merely to make an install pass.
 On native Windows, the installer also prints a non-blocking compatibility
 warning for any preserved command hook that has no `commandWindows` field. The
 warning identifies the event and command so its owner can add a Windows form;
-Pilotfish does not delete, rewrite, or adopt that unrelated hook.
+shoal does not delete, rewrite, or adopt that unrelated hook.
 
 There is no automatic uninstall or rollback. Each replaced target has a
-timestamped sibling backup named `*.pilotfish-codex-<timestamp>`. If recovery
+timestamped sibling backup named `*.shoal-codex-<timestamp>`. If recovery
 is required, stop the installer, identify the exact affected target and backup,
 obtain separate approval, restore only that target, and then rerun the dry-run.
 Do not restore a whole Codex home or copy a backup over unrelated runtime state.
@@ -266,7 +266,7 @@ It then copies one effective policy, the seven-role manifest, source-owned
 `hooks.json` plus its hook script, and `auth.json`. All other active config
 keys remain untouched and are not selected for the smoke.
 Recognized
-`*.pilotfish-codex-*` rollback backups remain in the active home and are not
+`*.shoal-codex-*` rollback backups remain in the active home and are not
 staged input; they do not require pre-gate cleanup. It canonicalizes
 containment, rejects source symlink/TOCTOU changes, cleans temporary copies on
 failure, and publishes through an exclusive atomic no-replace operation. Any
@@ -290,7 +290,7 @@ lets the native evidence contract decide compatibility:
 
 ```bash
 cd "$SMOKE_DIR"
-LAUNCH_CAPTURE="$SMOKE_DIR/pilotfish-launch-capture.json"
+LAUNCH_CAPTURE="$SMOKE_DIR/shoal-launch-capture.json"
 printf '{"CODEX_HOME":"%s","CODEX_SQLITE_HOME":"%s","codex_cwd":"%s"}\n' \
   "$STAGED_CODEX_HOME" "$STAGED_CODEX_HOME" "$SMOKE_DIR" > "$LAUNCH_CAPTURE"
 CODEX_HOME="$STAGED_CODEX_HOME" CODEX_SQLITE_HOME="$STAGED_CODEX_HOME" \

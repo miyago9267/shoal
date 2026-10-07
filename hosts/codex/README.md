@@ -1,13 +1,13 @@
-# pilotfish-codex
+# shoal-codex
 
 > A Codex-native orchestration layer that chooses a realistic first move for
 > clear work, broad changes, and open-ended ideas.
 
 [繁體中文](../../docs/README.zh-TW.md) · [简体中文](../../docs/README.zh-CN.md)
 
-Pilotfish-Codex is an independent Codex CLI adaptation inspired by
-[Pilotfish](https://github.com/Nanako0129/pilotfish). It combines typed agent
-roles, explicit approval boundaries, adaptive intent routing, and
+Shoal-Codex is an independent Codex CLI adaptation inspired by
+[Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish). It combines
+typed agent roles, explicit approval boundaries, adaptive intent routing, and
 fresh-context outcome verification.
 
 ![Adaptive intent routing overview](../../docs/assets/adaptive-routing-overview-en.svg)
@@ -35,9 +35,9 @@ are documented in the [1.6.0 spec](../../docs/specs/intent-aware-review-routing-
 
 ## From intent to roles
 
-Intent routing chooses the interaction shape. The original Pilotfish role
-system then assigns bounded responsibilities inside that shape; a request does
-not need every role.
+Intent routing chooses the interaction shape. The upstream
+Nanako0129/pilotfish role system then assigns bounded responsibilities inside
+that shape; a request does not need every role.
 
 | Route | Typical role path | Purpose |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ general intelligence ranking. The historical benchmark and charts are in the
 
 Users who deliberately choose Astra for the root session can keep the
 expensive model focused on synthesis, planning, and difficult judgment while
-Pilotfish sends mechanical work to the existing Luna roles. Start a separate
+shoal sends mechanical work to the existing Luna roles. Start a separate
 session with launch-time overrides:
 
 ```bash
@@ -160,10 +160,10 @@ $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".c
 .\install\install.ps1 --codex-home $codexHome
 ```
 
-The installer preserves valid user-owned roles outside Pilotfish's seven names.
-If a Pilotfish role has the same name as a customized user role, the install
+The installer preserves valid user-owned roles outside shoal's seven names.
+If a shoal role has the same name as a customized user role, the install
 stops for explicit resolution. Add `--replace-drifted-role <role>` to both
-commands only after choosing the Pilotfish role; repeat the option for multiple
+commands only after choosing the shoal role; repeat the option for multiple
 roles. Use `--replace-drifted-roles` only when all same-name drifted roles are
 intentionally being aligned. Role validation and post-install fingerprint
 verification remain enabled.
@@ -180,12 +180,12 @@ bash install/install.sh --reconcile-current --codex-home "$ACTIVE_CODEX_HOME"
 
 For a dotfiles-managed policy symlink, also pass its contained canonical root:
 `--follow-policy-symlink --policy-root "$HOME/dotfile/config/ai"`. An installed
-Pilotfish Plugin newer than this checkout stops unless
+shoal Plugin newer than this checkout stops unless
 `--allow-plugin-downgrade` is explicitly selected.
 
-The installer adds the native Pilotfish role manifest and routing hook,
+The installer adds the native shoal role manifest and routing hook,
 integrates a short always-on bootstrap into the active root `AGENTS.md`, and
-installs the full `pilotfish-orchestration` workflow through Codex's supported
+installs the full `shoal-orchestration` workflow through Codex's supported
 local marketplace/Plugin mechanism while preserving user content outside the
 managed marker block. Symlinked or
 hard-linked policy files require explicit resolution. Trust the hook in a new
@@ -226,4 +226,4 @@ python3 install/validate_prompt_lock.py --base-ref HEAD
 python3 -m unittest discover -s tests -v
 ```
 
-MIT. The original Pilotfish attribution and permission notice are retained.
+MIT. The upstream Nanako0129/pilotfish attribution and permission notice are retained.

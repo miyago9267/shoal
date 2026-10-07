@@ -1,4 +1,4 @@
-# Pilotfish native Codex Multi-Agent configuration for Codex 0.147+.
+# Shoal native Codex Multi-Agent configuration for Codex 0.147+.
 # Merge these keys and tables into ~/.codex/config.toml.
 model = "{{model}}"
 model_reasoning_effort = "{{model_reasoning_effort}}"

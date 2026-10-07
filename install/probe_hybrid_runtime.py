@@ -12,17 +12,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from install import (  # noqa: E402
-    PILOTFISH_PLUGIN_NAME,
-    PILOTFISH_PLUGIN_VERSION,
+    SHOAL_PLUGIN_NAME,
+    SHOAL_PLUGIN_VERSION,
     _codex_cli,
     _plugin_is_installed,
     active_instruction_file,
 )
 
 
-MARKER_BEGIN = "<!-- pilotfish-codex:begin -->"
-MARKER_END = "<!-- pilotfish-codex:end -->"
-SESSION_SENTINEL = "PILOTFISH_HYBRID_SESSION_PROBE_7F3C"
+MARKER_BEGIN = "<!-- shoal-codex:begin -->"
+MARKER_END = "<!-- shoal-codex:end -->"
+SESSION_SENTINEL = "SHOAL_HYBRID_SESSION_PROBE_7F3C"
 
 
 def _bootstrap_status(codex_home: Path) -> str:
@@ -46,7 +46,7 @@ def _session_probe(
         token for token in (persona_token, recap_token) if token
     )
     prompt = (
-        "Use the active Pilotfish instructions without asking me to paste them. "
+        "Use the active shoal instructions without asking me to paste them. "
         f"If they are active, reply with {SESSION_SENTINEL}. "
         + (f"Also include these policy probe tokens: {requested_tokens}." if requested_tokens else "")
     )
@@ -83,16 +83,16 @@ def build_report(
         "bootstrap": _bootstrap_status(codex_home),
         "plugin": "installed" if plugin else "unavailable",
         "skill": "available" if plugin else "unavailable",
-        "plugin_name": PILOTFISH_PLUGIN_NAME,
-        "plugin_version": PILOTFISH_PLUGIN_VERSION,
-        "pilotfish_behavior": "unverified",
+        "plugin_name": SHOAL_PLUGIN_NAME,
+        "plugin_version": SHOAL_PLUGIN_VERSION,
+        "shoal_behavior": "unverified",
         "persona_recap": "unverified",
     }
     if run_session:
         behavior, persona_recap, exit_code = _session_probe(
             codex_home, project, persona_token, recap_token
         )
-        report["pilotfish_behavior"] = behavior
+        report["shoal_behavior"] = behavior
         report["persona_recap"] = persona_recap
         report["session_exit_code"] = exit_code
     return report

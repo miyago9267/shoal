@@ -1,4 +1,4 @@
-<!-- pilotfish v1.4.2-claude.4 -->
+<!-- shoal-claude v2.0.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -21,6 +21,6 @@ section, do the assigned task, never spawn subagents.
   Omit the `model` argument for named roles.
 - Ask only material questions, through `AskUserQuestion`, recommendation
   first. A blocked task does not block runnable siblings.
-- Load the `pilotfish-orchestration` Skill for the full policy before deciding
+- Load the `shoal-orchestration` Skill for the full policy before deciding
   delegation, review, or approval on large or risky work. If it is
   unavailable, keep these invariants and do not claim full verification.

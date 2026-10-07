@@ -1,0 +1,14 @@
+# user config
+model_provider = "user-provider"
+
+model = "gpt-6-luna"
+model_reasoning_effort = "max"
+plan_mode_reasoning_effort = "xhigh"
+[projects."/work/example"]
+trust_level = "trusted"
+
+[features]
+default_mode_request_user_input = true
+
+[agents]
+max_concurrent_threads_per_session = 3

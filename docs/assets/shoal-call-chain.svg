@@ -145,7 +145,7 @@
     <rect x="312" y="762" width="246" height="112" rx="14" class="soft-green"/>
     <text x="330" y="790" class="label fg">Codex CLI</text>
     <text x="330" y="816" class="tiny fg">UserPromptSubmit hook</text>
-    <text x="330" y="836" class="tiny fg">pilotfish_autoroute_gate</text>
+    <text x="330" y="836" class="tiny fg">shoal_autoroute_gate</text>
     <text x="330" y="856" class="tiny muted">依工作分流 Luna、Sol、Astra</text>
 
     <rect x="576" y="762" width="246" height="112" rx="14" class="soft-green"/>
@@ -161,7 +161,7 @@
 
     <rect x="1104" y="762" width="248" height="112" rx="14" class="soft-green"/>
     <text x="1122" y="790" class="label fg">OpenCode</text>
-    <text x="1122" y="816" class="tiny fg">plugin 註冊 pilotfish_route</text>
+    <text x="1122" y="816" class="tiny fg">plugin 註冊 shoal_route</text>
     <text x="1122" y="836" class="tiny fg">依 catalog / routing.json 選模</text>
   </g>
 </svg>

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Install the native Codex Pilotfish contract without a release lock.
+"""Install the native Codex shoal contract without a release lock.
 
 This route refuses malformed version output and ambiguous ownership. It never
 selects the retired adapter route. Existing user bytes are preserved unless a
-committed Pilotfish sidecar proves that a legacy path is installer-owned.
+committed shoal sidecar proves that a legacy path is installer-owned.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import legacy_codex
 from hook_registration import (
     CURRENT_PROJECTION_ID,
     GUARD_PROJECTION_ID,
@@ -49,8 +50,8 @@ from validate_agents import (
 )
 
 IS_WINDOWS = sys.platform == "win32"
-MARKER_BEGIN = "<!-- pilotfish-codex:begin -->"
-MARKER_END = "<!-- pilotfish-codex:end -->"
+MARKER_BEGIN = "<!-- shoal-codex:begin -->"
+MARKER_END = "<!-- shoal-codex:end -->"
 OLD_V2_KEYS = frozenset({"enabled", "max_concurrent_threads_per_session"})
 LEGACY_PATHS = frozenset({
     "features.multi_agent", "features.multi_agent_v2.tool_namespace",
@@ -104,11 +105,18 @@ class PolicyTargetIdentity:
 
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
-PILOTFISH_PLUGIN_NAME = "pilotfish-codex"
-PILOTFISH_PLUGIN_VERSION = "1.8.3"
+SHOAL_PLUGIN_NAME = "shoal-codex"
+SHOAL_PLUGIN_VERSION = "2.0.0"
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
+# Backups of config.toml an installer made: (name infix, pristine marker suffix, marker text).
+# The pre-2.0.0 spelling stays recognized so an old pristine backup still proves ownership.
+LEGACY_BACKUP_NAMING = (".pilotfish-codex-", ".pilotfish-v1.2-pristine", "pilotfish-codex-v1.2-adapter-pristine\n")
+BACKUP_NAMING = (
+    (".shoal-codex-", ".shoal-v1.2-pristine", "shoal-codex-v1.2-adapter-pristine\n"),
+    LEGACY_BACKUP_NAMING,
+)
 
 
 def codex_version_token(output: str) -> str | None:
@@ -453,7 +461,7 @@ def merge_config_text(
 def merge_instruction_text(text: str, block: str) -> tuple[str, str]:
     begins, ends = text.count(MARKER_BEGIN), text.count(MARKER_END)
     if begins != ends or begins > 1:
-        raise InstallAbort("instruction file has unmatched or multiple pilotfish-codex marker pairs")
+        raise InstallAbort("instruction file has unmatched or multiple shoal-codex marker pairs")
     block = block.rstrip("\n")
     if begins:
         start, end = text.index(MARKER_BEGIN), text.index(MARKER_END) + len(MARKER_END)
@@ -490,9 +498,9 @@ def _assert_active_instruction_file(home: Path, expected: Path) -> None:
         raise InstallAbort("active policy file changed while install was planned")
 
 
-def _policy_ownership(home: Path, user_policy: Path, pilotfish_policy: Path) -> dict[str, dict[str, str]]:
+def _policy_ownership(home: Path, user_policy: Path, shoal_policy: Path) -> dict[str, dict[str, str]]:
     user_bytes = user_policy.read_bytes() if user_policy.is_file() else None
-    pilotfish_bytes = pilotfish_policy.read_bytes() if pilotfish_policy.is_file() else None
+    shoal_bytes = shoal_policy.read_bytes() if shoal_policy.is_file() else None
     return {
         "user_policy": {
             "path": user_policy.relative_to(home).as_posix(),
@@ -500,11 +508,11 @@ def _policy_ownership(home: Path, user_policy: Path, pilotfish_policy: Path) -> 
             "status": "blocked-symlink" if user_policy.is_symlink() else "integrated",
             "sha256": _sha256_bytes(user_bytes) if user_bytes is not None else "",
         },
-        "pilotfish_policy": {
-            "path": pilotfish_policy.relative_to(home).as_posix(),
-            "owner": "pilotfish",
+        "shoal_policy": {
+            "path": shoal_policy.relative_to(home).as_posix(),
+            "owner": "shoal",
             "status": "integrated",
-            "sha256": _sha256_bytes(pilotfish_bytes) if pilotfish_bytes is not None else "",
+            "sha256": _sha256_bytes(shoal_bytes) if shoal_bytes is not None else "",
         },
     }
 
@@ -539,8 +547,8 @@ def _same_path(left: Path, right: Path) -> bool:
 def _plugin_descriptor(source_root: Path, status: str) -> dict[str, str]:
     plugin_root = source_root / "plugin"
     return {
-        "name": PILOTFISH_PLUGIN_NAME,
-        "version": PILOTFISH_PLUGIN_VERSION,
+        "name": SHOAL_PLUGIN_NAME,
+        "version": SHOAL_PLUGIN_VERSION,
         "status": status,
         "source_sha256": _plugin_source_digest(plugin_root)
         if plugin_root.is_dir() else "",
@@ -582,13 +590,13 @@ def _assert_plugin_not_newer(
     rows = _installed_plugin_rows(codex_home)
     if rows is None:
         return
-    source_version = _plugin_version_key(PILOTFISH_PLUGIN_VERSION)
+    source_version = _plugin_version_key(SHOAL_PLUGIN_VERSION)
     if source_version is None:
         raise InstallAbort("source plugin version is malformed")
     for row in rows:
         if (
-            row.get("name") != PILOTFISH_PLUGIN_NAME
-            or row.get("marketplaceName") != PILOTFISH_PLUGIN_NAME
+            row.get("name") != SHOAL_PLUGIN_NAME
+            or row.get("marketplaceName") != SHOAL_PLUGIN_NAME
         ):
             continue
         installed = row.get("version")
@@ -610,9 +618,9 @@ def _plugin_is_installed(*, source_root: Path, codex_home: Path) -> bool:
         return False
     return any(
         isinstance(item, dict)
-        and item.get("name") == PILOTFISH_PLUGIN_NAME
-        and item.get("marketplaceName") == PILOTFISH_PLUGIN_NAME
-        and item.get("version") == PILOTFISH_PLUGIN_VERSION
+        and item.get("name") == SHOAL_PLUGIN_NAME
+        and item.get("marketplaceName") == SHOAL_PLUGIN_NAME
+        and item.get("version") == SHOAL_PLUGIN_VERSION
         and item.get("enabled") is True
         and isinstance(item.get("marketplaceSource"), dict)
         and _same_path(Path(str(item["marketplaceSource"].get("source", ""))), plugin_root)
@@ -641,8 +649,8 @@ def _install_plugin(
     if not enabled:
         return _plugin_descriptor(source_root, "unavailable")
     result = {
-        "name": PILOTFISH_PLUGIN_NAME,
-        "version": PILOTFISH_PLUGIN_VERSION,
+        "name": SHOAL_PLUGIN_NAME,
+        "version": SHOAL_PLUGIN_VERSION,
         "status": "planned" if dry_run else "unavailable",
         "source_sha256": source_digest,
     }
@@ -665,14 +673,14 @@ def _install_plugin(
             marketplace_rows = []
         marketplace_available = any(
             isinstance(item, dict)
-            and item.get("name") == PILOTFISH_PLUGIN_NAME
+            and item.get("name") == SHOAL_PLUGIN_NAME
             and _same_path(Path(str(item.get("root", ""))), plugin_root)
             for item in marketplace_rows
         )
         if marketplaces.returncode != 0 or not marketplace_available:
             return result
         installed = subprocess.run(
-            [_codex_cli(), "plugin", "add", f"{PILOTFISH_PLUGIN_NAME}@{PILOTFISH_PLUGIN_NAME}", "--json"],
+            [_codex_cli(), "plugin", "add", f"{SHOAL_PLUGIN_NAME}@{SHOAL_PLUGIN_NAME}", "--json"],
             capture_output=True, text=True, check=False, env=environment,
         )
     except OSError:
@@ -689,7 +697,7 @@ def _remove_plugin(*, codex_home: Path) -> bool:
     environment["CODEX_HOME"] = str(codex_home)
     try:
         removed = subprocess.run(
-            [_codex_cli(), "plugin", "remove", f"{PILOTFISH_PLUGIN_NAME}@{PILOTFISH_PLUGIN_NAME}", "--json"],
+            [_codex_cli(), "plugin", "remove", f"{SHOAL_PLUGIN_NAME}@{SHOAL_PLUGIN_NAME}", "--json"],
             capture_output=True, text=True, check=False, env=environment,
         )
     except OSError:
@@ -698,7 +706,7 @@ def _remove_plugin(*, codex_home: Path) -> bool:
 
 
 def _state_path(home: Path) -> Path:
-    return home.with_name(f"{home.name}.pilotfish-install-state.json")
+    return home.with_name(f"{home.name}.shoal-install-state.json")
 
 
 def _load_state(home: Path) -> dict | None:
@@ -743,7 +751,7 @@ def _required_state_targets(
     }
     if include_hooks:
         targets.update(
-            {"hooks.json", "hooks/pilotfish_autoroute_gate.py", GUARD_SCRIPT_RELATIVE}
+            {"hooks.json", "hooks/shoal_autoroute_gate.py", GUARD_SCRIPT_RELATIVE}
         )
     return frozenset(targets)
 
@@ -762,9 +770,9 @@ def _config_value(config: dict, dotted: str) -> tuple[bool, object | None]:
 
 
 def _routing_projection(config: dict, owned_legacy: frozenset[str]) -> dict[str, object]:
-    """Return only config state whose ownership belongs to Pilotfish.
+    """Return only config state whose ownership belongs to shoal.
 
-    The main-session model and effort settings are user preferences. Pilotfish
+    The main-session model and effort settings are user preferences. Shoal
     supplies defaults when absent but does not claim ownership of them.
     """
     return {
@@ -786,13 +794,13 @@ def _decode_config(payload: bytes, *, source: str) -> tuple[str, dict]:
 
 
 def _config_without_plugin_owned(data: dict) -> dict:
-    """Drop only Pilotfish's marketplace/plugin entries for mutation checks."""
+    """Drop only shoal's marketplace/plugin entries for mutation checks."""
     result = copy.deepcopy(data)
     for table_name in ("plugins", "marketplaces", "marketplace"):
         table = result.get(table_name)
         if isinstance(table, dict):
-            table.pop(PILOTFISH_PLUGIN_NAME, None)
-            table.pop(f"{PILOTFISH_PLUGIN_NAME}@{PILOTFISH_PLUGIN_NAME}", None)
+            table.pop(SHOAL_PLUGIN_NAME, None)
+            table.pop(f"{SHOAL_PLUGIN_NAME}@{SHOAL_PLUGIN_NAME}", None)
             if not table:
                 result.pop(table_name, None)
         elif isinstance(table, list):
@@ -801,8 +809,8 @@ def _config_without_plugin_owned(data: dict) -> dict:
                 if not (
                     isinstance(entry, dict)
                     and entry.get("name") in {
-                        PILOTFISH_PLUGIN_NAME,
-                        f"{PILOTFISH_PLUGIN_NAME}@{PILOTFISH_PLUGIN_NAME}",
+                        SHOAL_PLUGIN_NAME,
+                        f"{SHOAL_PLUGIN_NAME}@{SHOAL_PLUGIN_NAME}",
                     }
                 )
             ]
@@ -865,7 +873,7 @@ def _validate_committed_state(
             "name", "version", "status", "source_sha256"
         } or not all(isinstance(value, str) for value in plugin.values()):
             raise InstallAbort("install state plugin status is malformed")
-        if plugin["name"] != PILOTFISH_PLUGIN_NAME or plugin["status"] not in {
+        if plugin["name"] != SHOAL_PLUGIN_NAME or plugin["status"] not in {
             "installed", "unavailable"
         } or (plugin["source_sha256"] and not re.fullmatch(r"[0-9a-f]{64}", plugin["source_sha256"])):
             raise InstallAbort("install state plugin status is malformed")
@@ -880,7 +888,7 @@ def _validate_committed_state(
             and isinstance(value["sha256"], str)
             and isinstance(value["target_sha256"], str)
             and not Path(value["path"]).is_absolute()
-            and ".pilotfish-codex-" in value["path"]
+            and ".shoal-codex-" in value["path"]
             for key, value in rollback_backups.items()
         ):
             raise InstallAbort("install state rollback backup manifest is malformed")
@@ -892,7 +900,7 @@ def _validate_committed_state(
             "name", "version", "status", "source_sha256"
         } or not all(isinstance(value, str) for value in plugin.values()):
             raise InstallAbort("install state plugin status is malformed")
-        if plugin["name"] != PILOTFISH_PLUGIN_NAME or plugin["status"] not in {
+        if plugin["name"] != SHOAL_PLUGIN_NAME or plugin["status"] not in {
             "installed", "unavailable"
         } or (plugin["source_sha256"] and not re.fullmatch(r"[0-9a-f]{64}", plugin["source_sha256"])):
             raise InstallAbort("install state plugin status is malformed")
@@ -904,7 +912,7 @@ def _validate_committed_state(
             and isinstance(value, str)
             and not Path(key).is_absolute()
             and Path(value).name == value
-            and ".pilotfish-codex-" in value
+            and ".shoal-codex-" in value
             for key, value in rollback_backups.items()
         ):
             raise InstallAbort("install state rollback backup manifest is malformed")
@@ -923,21 +931,21 @@ def _validate_committed_state(
                 and isinstance(value, str)
                 and not Path(key).is_absolute()
                 and Path(value).name == value
-                and ".pilotfish-codex-" in value
+                and ".shoal-codex-" in value
                 for key, value in rollback_backups.items()
             ):
                 raise InstallAbort("install state rollback backup manifest is malformed")
-        if plugin["name"] != PILOTFISH_PLUGIN_NAME or plugin["status"] not in {
+        if plugin["name"] != SHOAL_PLUGIN_NAME or plugin["status"] not in {
             "installed", "unavailable"
         } or (plugin["source_sha256"] and not re.fullmatch(r"[0-9a-f]{64}", plugin["source_sha256"])):
             raise InstallAbort("install state plugin status is malformed")
     if "policy_ownership" in state:
         policy_ownership = state["policy_ownership"]
         if not isinstance(policy_ownership, dict) or set(policy_ownership) != {
-            "user_policy", "pilotfish_policy"
+            "user_policy", "shoal_policy"
         }:
             raise InstallAbort("install state policy ownership is malformed")
-        for entry_name in ("user_policy", "pilotfish_policy"):
+        for entry_name in ("user_policy", "shoal_policy"):
             entry = policy_ownership[entry_name]
             if not isinstance(entry, dict) or set(entry) != {
                 "path", "owner", "status", "sha256"
@@ -1033,7 +1041,7 @@ def _validate_committed_state(
                 # in the planning pass; missing roles remain stale-state errors.
                 continue
             raise InstallAbort("committed install state is stale; operator resolution required")
-        if relative == "hooks/pilotfish_autoroute_gate.py":
+        if relative == "hooks/shoal_autoroute_gate.py":
             hook_script_fingerprint = fingerprint
     ownership = state.get("owned_legacy", {})
     if not isinstance(ownership, dict):
@@ -1137,7 +1145,7 @@ def _validate_committed_state(
             if (
                 not isinstance(backup_path, str)
                 or Path(backup_path).is_absolute()
-                or ".pilotfish-codex-" not in backup_path
+                or ".shoal-codex-" not in backup_path
                 or not isinstance(backup_sha256, str)
                 or not sha_re.fullmatch(backup_sha256)
             ):
@@ -1297,13 +1305,19 @@ def _backup_owned_legacy(home: Path, config_text: str) -> frozenset[str]:
     known_pristine_digests = frozenset({
         "2c78ed5bf224914829127bf5c3c6537cf6277f7602577a68d8497df4922bc269",
     })
-    candidates = sorted(home.glob("config.toml.pilotfish-codex-*"))
+    candidates = sorted(
+        path for pattern, _, _ in BACKUP_NAMING for path in home.glob(f"config.toml{pattern}*")
+    )
     for backup in candidates:
         try:
             backup_bytes = backup.read_bytes()
             digest_matches = _sha256_bytes(backup_bytes) in known_pristine_digests
-            legacy_marker = backup.with_name(f"{backup.name}.pilotfish-v1.2-pristine")
-            blank_legacy_matches = backup_bytes == b"" and legacy_marker.read_text(encoding="utf-8") == "pilotfish-codex-v1.2-adapter-pristine\n"
+            blank_legacy_matches = backup_bytes == b"" and any(
+                backup.name.startswith(f"config.toml{pattern}")
+                and backup.with_name(f"{backup.name}{suffix}").read_text(encoding="utf-8") == proof
+                for pattern, suffix, proof in BACKUP_NAMING
+                if backup.with_name(f"{backup.name}{suffix}").is_file()
+            )
             if not digest_matches and not blank_legacy_matches:
                 continue
         except OSError:
@@ -1373,7 +1387,7 @@ def _assert_hook_targets(codex_home: Path) -> None:
             raise InstallAbort("hooks root must be a non-symlink directory")
     for path in (
         codex_home / "hooks.json",
-        hooks_root / "pilotfish_autoroute_gate.py",
+        hooks_root / "shoal_autoroute_gate.py",
         hooks_root / "shoal_guard.py",
     ):
         if not path.exists() and not path.is_symlink():
@@ -1392,7 +1406,7 @@ def _stamp() -> str:
 
 def _atomic_write(path: Path, payload: bytes, mode: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix=f".{path.name}.pilotfish-", dir=path.parent)
+    fd, name = tempfile.mkstemp(prefix=f".{path.name}.shoal-", dir=path.parent)
     temp = Path(name)
     try:
         with os.fdopen(fd, "wb") as handle:
@@ -1522,9 +1536,9 @@ def _planned_backup_path(
 ) -> Path:
     destination = _write_destination(path, policy_identity)
     if policy_identity is not None and path == policy_identity.link_path and policy_identity.symlink:
-        backup = codex_home / f"{path.name}.pilotfish-codex-{stamp}"
+        backup = codex_home / f"{path.name}.shoal-codex-{stamp}"
     else:
-        backup = destination.with_name(f"{destination.name}.pilotfish-codex-{stamp}")
+        backup = destination.with_name(f"{destination.name}.shoal-codex-{stamp}")
     try:
         backup.relative_to(codex_home)
     except ValueError as exc:
@@ -1593,7 +1607,7 @@ def _commit(writes: list[tuple[Path, bytes, int, bytes | None]], stamp: str,
             dest = _write_destination(path, policy_identity)
             dest.parent.mkdir(parents=True, exist_ok=True)
             temp_dir = codex_home if is_role else dest.parent
-            fd, name = tempfile.mkstemp(prefix=f".{dest.name}.pilotfish-", dir=temp_dir)
+            fd, name = tempfile.mkstemp(prefix=f".{dest.name}.shoal-", dir=temp_dir)
             temp = Path(name)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(payload); handle.flush(); os.fsync(handle.fileno())
@@ -1735,7 +1749,7 @@ def _role_backup_path(target: Path, codex_home: Path, stamp: str) -> Path:
         target.relative_to(codex_home)
     except ValueError as exc:
         raise InstallAbort("role rollback backup escapes Codex home") from exc
-    return target.with_name(f"{target.name}.pilotfish-codex-{stamp}")
+    return target.with_name(f"{target.name}.shoal-codex-{stamp}")
 
 
 def _commit_role_writes(
@@ -1765,7 +1779,7 @@ def _commit_role_writes(
                     raise InstallAbort(f"rollback backup already exists: {backup}")
                 _copy_backup_no_follow(target, backup, original)
             fd, name = tempfile.mkstemp(
-                prefix=f".{target.name}.pilotfish-",
+                prefix=f".{target.name}.shoal-",
                 dir=codex_home,
             )
             temp = Path(name)
@@ -1930,6 +1944,20 @@ def install(
             codex_home=codex_home,
             allow_downgrade=allow_plugin_downgrade,
         )
+    # shoal 2.0.0 renamed every installed name; recognize and remove what an earlier
+    # release installed before planning (docs/specs/shoal-rebrand N5, N8).
+    try:
+        legacy = legacy_codex.detect(codex_home, source_root / "plugin")
+        if legacy.found and dry_run:
+            for line in legacy.plan():
+                print(f"legacy: would {line}")
+            print("legacy install found; the install plan is computed after the migration is applied")
+            return 0
+        if legacy.found:
+            for line in legacy_codex.apply(legacy):
+                print(f"note: legacy: {line}")
+    except legacy_codex.LegacyMigrationError as exc:
+        raise InstallAbort(str(exc)) from exc
     config_path = codex_home / "config.toml"
     config_snapshot = config_path.read_bytes() if config_path.is_file() else None
     config_text, parsed_config = _decode_config(
@@ -1993,6 +2021,9 @@ def install(
         # forms before reporting the missing provenance gate.
         merge_config_text(config_text, migration_proven=False)
         raise InstallAbort("legacy V2 migration requires a committed install state")
+    if proven_guard_script_fingerprint is None:
+        # The guard script a legacy install recorded (and that still matches) may be upgraded.
+        proven_guard_script_fingerprint = legacy.proven_guard_sha256
     new_config, notes = merge_config_text(
         config_text,
         owned_legacy=owned,
@@ -2003,7 +2034,7 @@ def install(
     policy_ownership = _policy_ownership(codex_home, user_policy_path, policy_path)
     if policy_identity is not None and policy_identity.symlink:
         policy_ownership["user_policy"]["status"] = "integrated-symlink-target"
-    policy_ownership["pilotfish_policy"]["sha256"] = _sha256_bytes(policy_payload)
+    policy_ownership["shoal_policy"]["sha256"] = _sha256_bytes(policy_payload)
     plugin = _probe_plugin(
         source_root=source_root,
         codex_home=codex_home,
@@ -2022,7 +2053,7 @@ def install(
         "integrated" if plugin["status"] == "installed"
         else "integrated-plugin-unavailable"
     )
-    notes.append(f"pilotfish plugin status: {plugin['status']}")
+    notes.append(f"shoal plugin status: {plugin['status']}")
     writes: list[tuple[Path, bytes, int, bytes | None]] = []
     if new_config != config_text:
         writes.append((config_path, new_config.encode(), 0o600, config_snapshot))
@@ -2050,7 +2081,7 @@ def install(
         writes.append((policy_path, policy_payload, 0o644, policy_bytes))
     hooks_registration = codex_home / "hooks.json"
     hooks_root = codex_home / "hooks"
-    hook_script = hooks_root / "pilotfish_autoroute_gate.py"
+    hook_script = hooks_root / "shoal_autoroute_gate.py"
     _assert_hook_targets(codex_home)
     source_registration = (source_root / "templates" / "hooks.json").read_bytes()
     current_registration = (
@@ -2084,7 +2115,7 @@ def install(
                 current_registration,
             )
         )
-    source_hook_script = source_root / "hooks" / "pilotfish_autoroute_gate.py"
+    source_hook_script = source_root / "hooks" / "shoal_autoroute_gate.py"
     hook_script_payload = source_hook_script.read_bytes()
     current_hook_script = hook_script.read_bytes() if hook_script.is_file() else None
     if current_hook_script is not None and current_hook_script != hook_script_payload:
@@ -2124,7 +2155,7 @@ def install(
             "agents/security-reviewer.toml",
             "agents/verifier.toml",
             "hooks.json",
-            "hooks/pilotfish_autoroute_gate.py",
+            "hooks/shoal_autoroute_gate.py",
             GUARD_SCRIPT_RELATIVE,
             policy_path.relative_to(codex_home).as_posix(),
         }
@@ -2283,7 +2314,7 @@ def install(
                     f"{backup.relative_to(codex_home).as_posix()}"
                 )
         if state_version == RECONCILIATION_STATE_VERSION and state_original is not None:
-            print(f"allowed transaction artifact: {state_path.name}.pilotfish-codex-<timestamp>")
+            print(f"allowed transaction artifact: {state_path.name}.shoal-codex-<timestamp>")
         return 0
     if writes or state_needs_publication:
         stamp = _stamp()
@@ -2343,7 +2374,7 @@ def install(
         previous_state_backup = None
         state_backup_path: Path | None = None
         if state_version == RECONCILIATION_STATE_VERSION and state_original is not None:
-            state_backup_path = state_path.parent / f"{state_path.name}.pilotfish-codex-{stamp}"
+            state_backup_path = state_path.parent / f"{state_path.name}.shoal-codex-{stamp}"
             if state_backup_path.exists() or state_backup_path.is_symlink():
                 raise InstallAbort(f"previous install state backup already exists: {state_backup_path}")
             previous_state_backup = {
@@ -2591,7 +2622,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--allow-plugin-downgrade",
         action="store_true",
-        help="explicitly permit replacing an installed newer Pilotfish plugin",
+        help="explicitly permit replacing an installed newer shoal plugin",
     )
     args = parser.parse_args(argv)
     try:

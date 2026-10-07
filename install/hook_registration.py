@@ -13,8 +13,7 @@ class HookRegistrationError(ValueError):
     """Hook registration or ownership evidence is malformed or ambiguous."""
 
 
-_LEGACY_PROJECTION_ID = "pilotfish-autoroute-v1"
-CURRENT_PROJECTION_ID = "pilotfish-autoroute-v2"
+CURRENT_PROJECTION_ID = "shoal-autoroute-v1"
 # Dispatch guard (docs/specs/dispatch-enforcement Decision 6): its own script and
 # projection ID, registered next to the autoroute gate.  The groups live here, not in
 # templates/hooks.json, which is a prompt-lock surface with a fixed change budget.
@@ -22,30 +21,14 @@ GUARD_PROJECTION_ID = "shoal-guard-v1"
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
-    'pilotfish_autoroute_gate.py"'
-)
-_LEGACY_WINDOWS_COMMAND = (
-    "python -c \"import os,runpy; from pathlib import Path; "
-    "runpy.run_path(str(Path(os.environ.get('CODEX_HOME', "
-    "Path.home()/'.codex'))/'hooks'/'pilotfish_autoroute_gate.py'), "
-    "run_name='__main__')\""
+    'shoal_autoroute_gate.py"'
 )
 _WINDOWS_COMMAND = (
     "uv run --no-project python -c \"import os,runpy; from pathlib import Path; "
     "runpy.run_path(str(Path(os.environ.get('CODEX_HOME', "
-    "Path.home()/'.codex'))/'hooks'/'pilotfish_autoroute_gate.py'), "
+    "Path.home()/'.codex'))/'hooks'/'shoal_autoroute_gate.py'), "
     "run_name='__main__')\""
 )
-_LEGACY_GROUP: dict[str, Any] = {
-    "hooks": [
-        {
-            "type": "command",
-            "command": _COMMAND,
-            "commandWindows": _LEGACY_WINDOWS_COMMAND,
-            "timeout": 10,
-        }
-    ]
-}
 _CURRENT_GROUP: dict[str, Any] = {
     "hooks": [
         {
@@ -85,10 +68,6 @@ _GUARD_TOOL_GROUP: dict[str, Any] = {
 # Registry entries are immutable trust anchors.  Future releases add a new
 # current entry and retain old entries here for migration/collision detection.
 TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
-    _LEGACY_PROJECTION_ID: {
-        "UserPromptSubmit": _LEGACY_GROUP,
-        "Stop": _LEGACY_GROUP,
-    },
     CURRENT_PROJECTION_ID: {
         "UserPromptSubmit": _CURRENT_GROUP,
         "Stop": _CURRENT_GROUP,
@@ -99,17 +78,57 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
     },
 }
 
+# ---- LEGACY_: pre-2.0.0 names, kept only so a migration can recognize and remove them ----
+# shoal 2.0.0 renamed the Codex autoroute gate and started a new, independent
+# projection (shoal-autoroute-v1).  The two earlier projection IDs, their group bodies
+# and canonical digests stay here so an installed home can be recognized exactly.
+LEGACY_PROJECTION_ID_V1 = "pilotfish-autoroute-v1"
+LEGACY_PROJECTION_ID_V2 = "pilotfish-autoroute-v2"
+LEGACY_GATE_SCRIPT = "pilotfish_autoroute_gate.py"
+LEGACY_COMMAND = '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/' + LEGACY_GATE_SCRIPT + '"'
+LEGACY_WINDOWS_COMMAND_V1 = "python -c \"import os,runpy; from pathlib import Path; runpy.run_path(str(Path(os.environ.get('CODEX_HOME', Path.home()/'.codex'))/'hooks'/'" + LEGACY_GATE_SCRIPT + "'), run_name='__main__')\""
+LEGACY_WINDOWS_COMMAND_V2 = "uv run --no-project python -c \"import os,runpy; from pathlib import Path; runpy.run_path(str(Path(os.environ.get('CODEX_HOME', Path.home()/'.codex'))/'hooks'/'" + LEGACY_GATE_SCRIPT + "'), run_name='__main__')\""
+LEGACY_GROUP_V1: dict[str, Any] = {
+    "hooks": [
+        {
+            "type": "command",
+            "command": LEGACY_COMMAND,
+            "commandWindows": LEGACY_WINDOWS_COMMAND_V1,
+            "timeout": 10,
+        }
+    ]
+}
+LEGACY_GROUP_V2: dict[str, Any] = {
+    "hooks": [
+        {
+            "type": "command",
+            "command": LEGACY_COMMAND,
+            "commandWindows": LEGACY_WINDOWS_COMMAND_V2,
+            "timeout": 10,
+        }
+    ]
+}
+LEGACY_TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
+    LEGACY_PROJECTION_ID_V1: {"UserPromptSubmit": LEGACY_GROUP_V1, "Stop": LEGACY_GROUP_V1},
+    LEGACY_PROJECTION_ID_V2: {"UserPromptSubmit": LEGACY_GROUP_V2, "Stop": LEGACY_GROUP_V2},
+}
+# sha256 of the canonical JSON of each legacy projection (see projection_digest).
+LEGACY_PROJECTION_DIGESTS: dict[str, str] = {
+    LEGACY_PROJECTION_ID_V1: "f65096409a6ceb3f675bb631bf8337c07b8192e886fe8f6b2f40f2dc6ea5eca5",
+    LEGACY_PROJECTION_ID_V2: "b4105b5adf9708b1aea315fd6313a574bca9ae0c9e3a2b8da6b1e4133fe8b5fa",
+}
+
 # Raw fingerprints are only a bridge from the exact pre-v2 installer schema.
-# Group bodies are still derived from TRUSTED_PROJECTIONS, never from state.
+# They name legacy projections, which the 2.0.0 installer removes instead of upgrading.
 LEGACY_RAW_REGISTRATIONS: dict[str, str] = {
     "a219000323daa83242acd03e1d23342b3cc19d04e36d8e53af1114f4f4f8ee56": (
-        _LEGACY_PROJECTION_ID
+        LEGACY_PROJECTION_ID_V1
     ),
     "eebb414251f5dc9630b2c7c0d8feec08f902f0102b2a45bbd45ef89229406af2": (
-        CURRENT_PROJECTION_ID
+        LEGACY_PROJECTION_ID_V2
     ),
     "f36c376a5d94055399c84cdcbb6e18509e5c7c97c16f06c3dd3a40d77dfcafcc": (
-        CURRENT_PROJECTION_ID
+        LEGACY_PROJECTION_ID_V2
     ),
 }
 
@@ -241,7 +260,7 @@ def windows_compatibility_warnings(document: dict[str, Any]) -> list[str]:
                     f"hooks.{event}[{index}].hooks[{handler_index}] "
                     f"matcher={matcher!r} has no commandWindows; "
                     f"Windows may run the Unix command and time out ({command!r}). "
-                    "Pilotfish preserved it and did not modify it."
+                    "Shoal preserved it and did not modify it."
                 )
     return warnings
 
@@ -327,13 +346,55 @@ def validate_owned_projection(document: dict[str, Any], projection_id: str) -> N
 
 def _contains_any_trusted_group(document: dict[str, Any]) -> bool:
     # The guard projection is excluded: tools/install_hooks.py --host codex writes
-    # it without install state, and merge_registration adopts it when exact.
-    return any(
+    # it without install state, and merge_registration adopts it when exact.  A legacy
+    # (pre-2.0.0) autoroute group still counts: it must be migrated, not duplicated.
+    return bool(legacy_autoroute_locations(document)) or any(
         _locations(document, group)
         for projection_id, projection in TRUSTED_PROJECTIONS.items()
         if projection_id != GUARD_PROJECTION_ID
         for group in projection.values()
     )
+
+
+def legacy_autoroute_locations(document: dict[str, Any]) -> list[tuple[str, int, str]]:
+    """(event, index, legacy projection id) of every group that exactly equals a legacy autoroute group."""
+    found: list[tuple[str, int, str]] = []
+    for projection_id, projection in LEGACY_TRUSTED_PROJECTIONS.items():
+        for event, group in projection.items():
+            for index, candidate in enumerate(document["hooks"].get(event, [])):
+                if _type_strict_equal(candidate, group):
+                    found.append((event, index, projection_id))
+    return found
+
+
+def remove_legacy_autoroute(document: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Drop every exact legacy autoroute group; return (new document, legacy projection ids found).
+
+    Only a group whose body equals a recorded legacy projection is shoal's.  Every other
+    group, key and event is kept in place; an event left without groups is removed.
+    """
+    out = copy.deepcopy(document)
+    found = legacy_autoroute_locations(out)
+    drop = {(event, index) for event, index, _ in found}
+    for event in list(out["hooks"]):
+        kept = [g for i, g in enumerate(out["hooks"][event]) if (event, i) not in drop]
+        if kept:
+            out["hooks"][event] = kept
+        elif any(e == event for e, _ in drop):
+            del out["hooks"][event]
+    return out, sorted({projection_id for _, _, projection_id in found})
+
+
+def legacy_projection_digest(projection_id: str) -> str:
+    """Canonical digest of a LEGACY_TRUSTED_PROJECTIONS entry (LEGACY_PROJECTION_DIGESTS pins it)."""
+    payload = json.dumps(
+        LEGACY_TRUSTED_PROJECTIONS[projection_id],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _guard_already_registered(document: dict[str, Any]) -> bool:
@@ -394,7 +455,7 @@ def merge_registration(
     owned_projection_id: str | None,
     owned_guard_projection_id: str | None = None,
 ) -> tuple[bytes, str, str]:
-    """Merge or upgrade only the exact event-bound Pilotfish matcher groups.
+    """Merge or upgrade only the exact event-bound shoal matcher groups.
 
     Returns (payload, autoroute projection id, guard projection id).  The guard
     groups are always added next to the autoroute groups; an already-installed home
@@ -425,7 +486,7 @@ def merge_registration(
             raise HookRegistrationError("guard is owned but the autoroute gate is not")
         if _contains_any_trusted_group(document):
             raise HookRegistrationError(
-                "unowned hooks.json contains a canonical Pilotfish group"
+                "unowned hooks.json contains a canonical shoal group"
             )
         for event, group in TRUSTED_PROJECTIONS[desired_id].items():
             merged["hooks"].setdefault(event, []).append(copy.deepcopy(group))

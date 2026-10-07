@@ -48,7 +48,7 @@ HASHED_TOP_LEVEL = frozenset({
 })
 REQUIRED_RUNTIME_FILES = frozenset({"auth.json"})
 PROJECTED_TOP_LEVEL = HASHED_TOP_LEVEL | REQUIRED_RUNTIME_FILES
-HOOK_SCRIPT = Path("hooks/pilotfish_autoroute_gate.py")
+HOOK_SCRIPT = Path("hooks/shoal_autoroute_gate.py")
 # Optional: present once the Codex installer has registered the dispatch guard.  The
 # smoke home registers only the autoroute gate, so the guard script is inert there.
 GUARD_SCRIPT = Path("hooks/shoal_guard.py")
@@ -231,7 +231,7 @@ def _read_proven_policy_symlink(
         relative not in {
             Path("AGENTS.md"),
             Path("AGENTS.override.md"),
-            Path("pilotfish/AGENTS.md"),
+            Path("shoal/AGENTS.md"),
         }
         or not stat.S_ISLNK(link_before.st_mode)
     ):
@@ -378,7 +378,7 @@ def _active_hook_state(
     tuple[Path, tuple[int, ...]] | None,
     dict[str, object] | None,
 ]:
-    state_path = active.with_name(f"{active.name}.pilotfish-install-state.json")
+    state_path = active.with_name(f"{active.name}.shoal-install-state.json")
     if not state_path.exists():
         source_hooks, _ = _read_stable_regular(SOURCE_HOOK_REGISTRATION)
         # A fresh install registers the autoroute template plus the guard groups.
@@ -486,10 +486,10 @@ def _stage_clean_hook_registration(
 
 def _rollback_backup(relative: Path) -> bool:
     name = relative.name
-    marker = ".pilotfish-v1.2-pristine"
+    marker = ".shoal-v1.2-pristine"
     if name.endswith(marker):
         name = name[: -len(marker)]
-    base, separator, stamp = name.rpartition(".pilotfish-codex-")
+    base, separator, stamp = name.rpartition(".shoal-codex-")
     if not separator or not (
         ROLLBACK_STAMP_RE.fullmatch(stamp)
         or (
@@ -585,14 +585,14 @@ def explicit_layout_error(
         for name in ("AGENTS.override.md", "AGENTS.md")
         if (root / name).is_file() and (root / name).read_text(encoding="utf-8").strip()
     ]
-    source_policy = root / "pilotfish" / "AGENTS.md"
+    source_policy = root / "shoal" / "AGENTS.md"
     if len(user_policies) > 1:
         return "both policy files are non-empty"
     if not user_policies and not source_policy.is_file():
         return "no effective or source-only policy file is available"
 
     top_files = (HASHED_TOP_LEVEL - {"agents", "hooks"}) | REQUIRED_RUNTIME_FILES
-    top_directories = {"agents", "hooks", "pilotfish"}
+    top_directories = {"agents", "hooks", "shoal"}
     nested_agent_directories: set[Path] = set()
     manifest_directories: set[Path] = set()
     hook_files: set[Path] = set()
@@ -655,8 +655,8 @@ def explicit_layout_error(
                 return f"unapproved entry: {relative.as_posix()}"
             hook_files.add(relative)
             continue
-        if relative.parts[0] == "pilotfish":
-            if relative != Path("pilotfish/AGENTS.md") or not is_file:
+        if relative.parts[0] == "shoal":
+            if relative != Path("shoal/AGENTS.md") or not is_file:
                 return f"unapproved entry: {relative.as_posix()}"
             continue
         if relative.parts[0] != "agents":
@@ -761,7 +761,7 @@ def _copy_inputs(
     ]
     if len(user_policies) > 1:
         raise StageError("both policy files are non-empty")
-    policy = user_policies[0] if user_policies else active / "pilotfish" / "AGENTS.md"
+    policy = user_policies[0] if user_policies else active / "shoal" / "AGENTS.md"
     if not policy.is_file():
         raise StageError("no effective or source-only policy file is available")
     policy_relative = policy.relative_to(active)
@@ -885,7 +885,7 @@ def _required_input_projection(root: Path) -> tuple[str, str, str, str, str, str
     policy_paths = (
         root / "AGENTS.override.md",
         root / "AGENTS.md",
-        root / "pilotfish" / "AGENTS.md",
+        root / "shoal" / "AGENTS.md",
     )
     policy_projection: list[tuple[Path, tuple[int, ...] | None]] = []
     for path in policy_paths:
@@ -1096,7 +1096,7 @@ def materialize(active_home: Path, staged_home: Path) -> Path:
     active, staged = canonical_home_pair(active_home, staged_home)
     temporary: Path | None = None
     try:
-        temporary = Path(tempfile.mkdtemp(prefix=f".{staged.name}.pilotfish-stage-", dir=staged.parent))
+        temporary = Path(tempfile.mkdtemp(prefix=f".{staged.name}.shoal-stage-", dir=staged.parent))
         source_snapshots, projection_snapshot = _copy_inputs(active, temporary)
         publish_no_replace(
             temporary,

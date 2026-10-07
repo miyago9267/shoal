@@ -1,12 +1,12 @@
-# pilotfish-codex
+# shoal-codex
 
 > Codex 原生的 orchestration layer，依照需求的明確程度與風險，選擇合適
 > 的第一步：直接執行、探索後規劃，或共同釐清。
 
 [English](../hosts/codex/README.md) · [简体中文](./README.zh-CN.md)
 
-Pilotfish-Codex 是受
-[Pilotfish](https://github.com/Nanako0129/pilotfish) 啟發的獨立 Codex CLI
+Shoal-Codex 是受
+[Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish) 啟發的獨立 Codex CLI
 版本。它整合 typed agent roles、明確的 approval boundaries、adaptive intent
 routing，以及使用 fresh context 的 outcome verification。
 
@@ -33,7 +33,7 @@ overhead、`default` 依照既有 risk policy、`strict` 擴大 review 與 verif
 
 ## 從意圖到 role
 
-Intent routing 決定互動形狀；原本 Pilotfish 的 role system 再把工作分配給
+Intent routing 決定互動形狀；上游 Nanako0129/pilotfish 的 role system 再把工作分配給
 各自有明確邊界的角色。一個需求不需要經過全部 role。
 
 | 路徑 | 常見 role path | 作用 |
@@ -141,7 +141,7 @@ py -3 install/install.py --dry-run --codex-home $codexHome
 py -3 install/install.py --codex-home $codexHome
 ```
 
-Installer 會加入 native seven-role manifest 與 Pilotfish routing hook。安裝
+Installer 會加入 native seven-role manifest 與 shoal routing hook。安裝
 後請在新的互動式 Codex session 中 trust 這個 hook。
 
 Remote installation 必須在 script URL 與 archive ref 使用同一個 release tag
@@ -174,4 +174,4 @@ python3 -m unittest discover -s tests -v
 
 ## License
 
-MIT。保留原 Pilotfish 的 attribution 與 permission notice。
+MIT。保留上游 Nanako0129/pilotfish 的 attribution 與 permission notice。

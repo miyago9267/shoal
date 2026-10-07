@@ -21,6 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
+import legacy_fixtures  # noqa: E402
 import sync_global  # noqa: E402
 
 FAKE_BUN = """#!/bin/sh
@@ -90,6 +92,10 @@ class Base(unittest.TestCase):
     def sync(
         self, *args: str, env: dict[str, str] | None = None
     ) -> tuple[int, list[str]]:
+        # grok、agy、opencode 的測試用 temp repo（由工作樹建立）：不看真實 repo 的 HEAD
+        repo = getattr(self, "repo", None)
+        if repo is not None and "--repo" not in args:
+            args = (*args, "--repo", str(repo))
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             code = sync_global.main(list(args), env or self.env())
@@ -180,9 +186,13 @@ class CodexTests(Base):
 
 @unittest.skipUnless(POSIX, "needs git")
 class GrokTests(Base):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = legacy_fixtures.worktree_repo(self.tmp / "repo")
+
     def install(self) -> None:
         subprocess.run(
-            [sys.executable, str(ROOT / "tools" / "install_grok.py"), "--apply"],
+            [sys.executable, str(ROOT / "tools" / "install_grok.py"), "--apply", "--repo", str(self.repo)],
             env=self.env(),
             check=True,
             capture_output=True,
@@ -212,11 +222,15 @@ class GrokTests(Base):
 
 @unittest.skipUnless(POSIX, "needs git")
 class AgyTests(Base):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = legacy_fixtures.worktree_repo(self.tmp / "repo")
+
     def links(self, skip: str | None = None) -> None:
         config = self.home / ".gemini" / "config"
         for kind in ("agents", "skills"):
             (config / kind).mkdir(parents=True, exist_ok=True)
-            for src in (ROOT / "hosts" / "agy" / "dist" / kind).iterdir():
+            for src in (self.repo / "hosts" / "agy" / "dist" / kind).iterdir():
                 if f"{kind}/{src.name}" != skip:
                     (config / kind / src.name).symlink_to(src)
 
@@ -246,6 +260,7 @@ class AgyTests(Base):
 class OpenCodeTests(Base):
     def setUp(self) -> None:
         super().setUp()
+        self.repo = legacy_fixtures.worktree_repo(self.tmp / "repo")
         self.config = self.tmp / "opencode"
         self.config.mkdir()
         self.fake_bin = self.tmp / "fakebin"
@@ -265,7 +280,7 @@ class OpenCodeTests(Base):
         subprocess.run(
             [
                 "sh",
-                str(ROOT / sync_global.OPENCODE_INSTALL),
+                str(self.repo / sync_global.OPENCODE_INSTALL),
                 "--global",
                 "--config-dir",
                 str(self.config),
@@ -277,7 +292,7 @@ class OpenCodeTests(Base):
         )
 
     def plugin(self) -> str:
-        return (self.config / "plugins" / "pilotfish-opencode.js").read_text()
+        return (self.config / "plugins" / "shoal-opencode.js").read_text()
 
     def test_missing_bun_is_skipped(self) -> None:
         empty = self.tmp / "empty"
@@ -308,13 +323,13 @@ class OpenCodeTests(Base):
         line = self.sync("--host", "opencode", env=env)[1][0]
         self.assertEqual(
             line,
-            "opencode: updated (plugins/pilotfish-opencode.js; harness copy differs) [dry-run]",
+            "opencode: updated (plugins/shoal-opencode.js; harness copy differs) [dry-run]",
         )
         self.assertEqual(snapshot(self.config, self.state), before)
 
         line = self.sync("--host", "opencode", "--apply", env=env)[1][0]
         self.assertTrue(
-            line.startswith("opencode: updated (plugins/pilotfish-opencode.js")
+            line.startswith("opencode: updated (plugins/shoal-opencode.js")
         )
         self.assertEqual(self.plugin(), "// bundle B\n")
         after = snapshot(self.config)
@@ -326,7 +341,7 @@ class OpenCodeTests(Base):
 
     def test_modified_installed_file_fails_without_writing(self) -> None:
         self.install()
-        plugin = self.config / "plugins" / "pilotfish-opencode.js"
+        plugin = self.config / "plugins" / "shoal-opencode.js"
         plugin.write_text("// user edit\n")
         code, lines = self.sync("--host", "opencode", "--apply", "--strict")
         self.assertEqual(code, 1)

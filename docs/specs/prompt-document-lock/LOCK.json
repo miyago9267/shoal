@@ -22,7 +22,11 @@
         "Phase updates do not require approval",
         "AUTO`/`ASK` only for explicit unattended continuation",
         "material approval, security, release, destructive, external, and irreversible gates"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "orchestration-template",
@@ -39,11 +43,15 @@
         "phase boundary is progress reporting",
         "presence gates for likely long unattended work",
         "material approval, security, release, destructive, external, or irreversible gates"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "packaged-orchestration-policy",
-      "path": "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/orchestration-policy.md",
+      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 700,
       "max_bytes": 43000,
@@ -56,11 +64,15 @@
         "phase boundary is progress reporting",
         "presence gates for likely long unattended work",
         "material approval, security, release, destructive, external, or irreversible gates"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "orchestration-skill",
-      "path": "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/SKILL.md",
+      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/SKILL.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 100,
       "max_bytes": 4700,
@@ -73,11 +85,15 @@
         "CONFIRMED",
         "REFUTED",
         "INCONCLUSIVE"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "plugin-agent-prompt",
-      "path": "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/agents/openai.yaml",
+      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/agents/openai.yaml",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 14,
       "max_bytes": 900,
@@ -85,14 +101,18 @@
       "max_changed_characters": 500,
       "max_change_ratio": 0.35,
       "required_fragments": [
-        "Use Pilotfish orchestration for this task",
+        "Use shoal orchestration for this task",
         "user explicitly started an Astra main session",
         "unchanged approval gates"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "plugin-manifest-description",
-      "path": "plugin/plugins/pilotfish-codex/.codex-plugin/plugin.json",
+      "path": "plugin/plugins/shoal-codex/.codex-plugin/plugin.json",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 35,
       "max_bytes": 2200,
@@ -100,11 +120,15 @@
       "max_changed_characters": 800,
       "max_change_ratio": 0.2,
       "required_fragments": [
-        "Hybrid Pilotfish orchestration",
-        "Pilotfish orchestration workflow",
+        "Hybrid shoal orchestration",
+        "Shoal orchestration workflow",
         "fresh-context verification",
-        "Apply Pilotfish orchestration to this task."
-      ]
+        "Apply shoal orchestration to this task."
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "executor-agent",
@@ -240,8 +264,12 @@
       "max_changed_characters": 500,
       "max_change_ratio": 0.25,
       "required_fragments": [
-        "Pilotfish automatic typed Plan-review gate."
-      ]
+        "Shoal automatic typed Plan-review gate."
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "install-prompt",
@@ -257,7 +285,11 @@
         "Stop for my explicit approval before writing the home",
         "Do not assume `main`",
         "Keep the installed default Luna/Sol policy unchanged"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "claude-executor-agent",
@@ -394,7 +426,7 @@
     },
     {
       "id": "claude-orchestration-skill",
-      "path": "hosts/claude/dist/skills/pilotfish-orchestration/SKILL.md",
+      "path": "hosts/claude/dist/skills/shoal-orchestration/SKILL.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 44,
       "max_bytes": 2100,
@@ -402,15 +434,19 @@
       "max_changed_characters": 900,
       "max_change_ratio": 0.2,
       "required_fragments": [
-        "name: pilotfish-orchestration",
+        "name: shoal-orchestration",
         "Apply risk triggers before size, then the phase gate and dispatch brake",
         "Read only the part needed for the current decision",
-        "do not claim full Pilotfish verification"
-      ]
+        "do not claim full shoal verification"
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "claude-orchestration-policy",
-      "path": "hosts/claude/dist/skills/pilotfish-orchestration/references/orchestration-policy.md",
+      "path": "hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 293,
       "max_bytes": 19600,
@@ -422,11 +458,15 @@
         "Main session owns framing, architecture, ambiguity, Plan synthesis, approval, integration, final judgment",
         "`explore_then_plan` boundary",
         "**CONFIRMED**, **REFUTED**, or **INCONCLUSIVE**"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     },
     {
       "id": "claude-workflow-extensions",
-      "path": "hosts/claude/dist/skills/pilotfish-orchestration/references/workflow-extensions.md",
+      "path": "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 180,
       "max_bytes": 9600,
@@ -438,13 +478,17 @@
         "Reporting a phase boundary is progress reporting, not a request for approval",
         "None of these rules expands approval, security, destructive, external, release, or spending authority",
         "When a rule here conflicts with that policy, the policy wins"
-      ]
+      ],
+      "migration": {
+        "migration_id": "shoal-rebrand-2-0-0",
+        "equivalence": "docs/specs/shoal-rebrand/RENAME.md"
+      }
     }
   ],
   "mirrors": [
     {
       "left": "templates/agents-md.orchestration.md",
-      "right": "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/orchestration-policy.md"
+      "right": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md"
     }
   ]
 }

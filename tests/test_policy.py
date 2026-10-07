@@ -10,7 +10,7 @@ class PolicyTests(unittest.TestCase):
     def test_stamp_and_roles_remain_consistent(self) -> None:
         policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
         version = (ROOT / "hosts" / "codex" / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertIn(f"<!-- pilotfish-codex v{version} -->", policy)
+        self.assertIn(f"<!-- shoal-codex v{version} -->", policy)
         for path in AGENTS.glob("*.toml"):
             self.assertEqual(tomllib.loads(path.read_text(encoding="utf-8"))["name"], path.stem)
             self.assertIn(f"`{path.stem}`", policy)
@@ -101,7 +101,7 @@ class PolicyTests(unittest.TestCase):
         )
         for phrase in (
             "General-mode decision checkpoint contract",
-            "pilotfish-decision-checkpoint-v1",
+            "shoal-decision-checkpoint-v1",
             "exactly two or three mutually exclusive options",
             "checkpoint_id",
             "current_interpretation",
@@ -117,7 +117,7 @@ class PolicyTests(unittest.TestCase):
             "card's implied authorization",
             "Optional MCP elicitation adapter",
             "native decision card is the default interaction surface",
-            "optional adapter, not a Pilotfish core dependency",
+            "optional adapter, not a shoal core dependency",
             "fall back to the native card or concise text checkpoint",
             "one concise, high-level decision",
             "one high-level question",

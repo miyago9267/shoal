@@ -366,7 +366,7 @@ export function validId(value: unknown, composed = false): boolean {
 
 /** Unset -> host default; an unrecognized value -> shadow (as the legacy guard did). */
 export function resolveMode(host: string, env: Env): string {
-  const raw = env.SHOAL_GUARD || env.PILOTFISH_GUARD || "";
+  const raw = env.SHOAL_GUARD || "";
   let mode: string;
   if (!raw) mode = HOST_DEFAULT_MODE[host] ?? "shadow";
   else mode = raw === "enforce" || raw === "shadow" || raw === "off" ? raw : "shadow";
@@ -376,7 +376,7 @@ export function resolveMode(host: string, env: Env): string {
 
 /** null when the configured value is not an integer (the guard then fails open). */
 function maxFiles(env: Env): number | null {
-  const raw = env.SHOAL_GUARD_MAX_FILES || env.PILOTFISH_GUARD_MAX_FILES || "2";
+  const raw = env.SHOAL_GUARD_MAX_FILES || "2";
   if (!/^\s*[+-]?\d+\s*$/.test(raw)) return null;
   return Math.max(0, Number.parseInt(raw, 10));
 }

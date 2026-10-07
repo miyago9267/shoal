@@ -14,7 +14,7 @@ class InstallerEntrypointTests(unittest.TestCase):
             self.assertIn("--dry-run", wrapper)
             self.assertIn("--roles-only", wrapper)
             self.assertIn("--ref", wrapper)
-            self.assertIn("pilotfish-codex", wrapper)
+            self.assertIn("shoal-codex", wrapper)
 
     def test_powershell_wrapper_has_local_and_remote_paths(self) -> None:
         powershell = (ROOT / "install" / "install.ps1").read_text()

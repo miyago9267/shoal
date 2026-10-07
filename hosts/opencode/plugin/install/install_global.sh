@@ -2,7 +2,7 @@
 # 把 shoal 的 OpenCode role、plugin 與控制檔安裝到全域 config dir。
 # 由 install.sh --global 呼叫（docs/specs/opencode-global，R2-R5）。
 #
-# 寫入 <config-dir>：agents/*.md、plugins/pilotfish-opencode.js、pilotfish/{catalog,routing}.json
+# 寫入 <config-dir>：agents/*.md、plugins/shoal-opencode.js、shoal/{catalog,routing}.json
 # manifest 與備份放在 <state-dir>（不進 config dir，避免落入 dotfile 追蹤目錄）：
 #   ${XDG_STATE_HOME:-$HOME/.local/state}/shoal/opencode-global
 
@@ -133,7 +133,7 @@ resolve_recorded_config() {
 
 if [ "$action" = "disable" ]; then
   if [ ! -f "$manifest" ]; then
-    printf '%s\n' "pilotfish-opencode is disabled: no install manifest"
+    printf '%s\n' "shoal-opencode is disabled: no install manifest"
     exit 0
   fi
   resolve_recorded_config
@@ -146,7 +146,7 @@ if [ "$action" = "disable" ]; then
   done < "$manifest"
   remove_created_dirs
   set_state disabled
-  printf '%s\n' "pilotfish-opencode disabled; rollback backup kept at $state_dir/$(manifest_value backup)"
+  printf '%s\n' "shoal-opencode disabled; rollback backup kept at $state_dir/$(manifest_value backup)"
   exit 0
 fi
 
@@ -170,7 +170,7 @@ if [ "$action" = "rollback" ]; then
   done < "$manifest"
   remove_created_dirs
   set_state rolled_back
-  printf '%s\n' "pilotfish-opencode rollback restored"
+  printf '%s\n' "shoal-opencode rollback restored"
   exit 0
 fi
 
@@ -179,10 +179,24 @@ fi
 [ -d "$config_input" ] || die "config directory does not exist: $config_input"
 config_dir=$(CDPATH=; cd -P -- "$config_input" && pwd)
 
+# ---- LEGACY_: 2.0.0 之前 manifest 記錄的相對路徑（docs/specs/shoal-rebrand N5） ----
+LEGACY_PLUGIN_ENTRY=plugins/pilotfish-opencode.js
+LEGACY_CONTROL_PREFIX=pilotfish/
+
+# 舊名安裝的 manifest 還在啟用中：照它自己的記錄 --disable（檔案被改過就整批不動並中止），再以新名安裝。
+manifest_has_legacy_entries() {
+  [ -f "$manifest" ] && awk -F'|' -v plugin="$LEGACY_PLUGIN_ENTRY" -v prefix="$LEGACY_CONTROL_PREFIX" '
+    $1 == "entry" && ($4 == plugin || index($4, prefix) == 1) { found = 1 }
+    END { exit !found }' "$manifest"
+}
+
 if [ -f "$manifest" ]; then
   state=$(manifest_value state)
-  if [ "$state" = "enabled" ]; then
-    printf '%s\n' "pilotfish-opencode already enabled; use --disable before reinstalling"
+  if [ "$state" = "enabled" ] && manifest_has_legacy_entries; then
+    printf '%s\n' "found a pre-2.0.0 install manifest; disabling it before installing the new names" >&2
+    sh "$script_dir/install_global.sh" --global --config-dir "$config_dir" --disable >&2
+  elif [ "$state" = "enabled" ]; then
+    printf '%s\n' "shoal-opencode already enabled; use --disable before reinstalling"
     exit 0
   fi
 fi
@@ -193,7 +207,7 @@ command -v git >/dev/null 2>&1 || die "git is required to read the committed dis
 repo_top=$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null) || \
   die "shoal repository not found (install.sh --global must run from a shoal checkout)"
 
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/pilotfish-opencode-global.XXXXXX")
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/shoal-opencode-global.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 # R4：只取 committed HEAD 的 hosts/opencode，不吃未 commit 的 WIP，也不在 repo 內留下 node_modules / dist。
@@ -207,10 +221,10 @@ src_root="$work_dir/hosts/opencode"
   CDPATH=
   cd -P -- "$src_root/plugin"
   bun install --frozen-lockfile >/dev/null
-  bun build src/plugin/pilotfish-opencode.ts --bundle --format esm --target bun \
-    --outfile "$work_dir/pilotfish-opencode.js" >/dev/null
+  bun build src/plugin/shoal-opencode.ts --bundle --format esm --target bun \
+    --outfile "$work_dir/shoal-opencode.js" >/dev/null
 ) || die "failed to build the OpenCode plugin from HEAD"
-[ -s "$work_dir/pilotfish-opencode.js" ] || die "plugin build produced no output"
+[ -s "$work_dir/shoal-opencode.js" ] || die "plugin build produced no output"
 
 # 安裝計畫：每行 "<相對 config dir 的路徑>|<來源檔>"。
 plan="$work_dir/plan"
@@ -219,9 +233,9 @@ for role_file in "$src_root"/dist/roles/*.md; do
   [ -f "$role_file" ] || continue
   printf 'agents/%s|%s\n' "$(basename -- "$role_file")" "$role_file" >> "$plan"
 done
-printf '%s\n' "plugins/pilotfish-opencode.js|$work_dir/pilotfish-opencode.js" >> "$plan"
-printf '%s\n' "pilotfish/catalog.json|$src_root/dist/catalog.json" >> "$plan"
-printf '%s\n' "pilotfish/routing.json|$src_root/dist/routing.json" >> "$plan"
+printf '%s\n' "plugins/shoal-opencode.js|$work_dir/shoal-opencode.js" >> "$plan"
+printf '%s\n' "shoal/catalog.json|$src_root/dist/catalog.json" >> "$plan"
+printf '%s\n' "shoal/routing.json|$src_root/dist/routing.json" >> "$plan"
 [ -f "$src_root/dist/catalog.json" ] && [ -f "$src_root/dist/routing.json" ] || \
   die "hosts/opencode/dist/catalog.json or routing.json is missing at HEAD"
 
@@ -277,7 +291,7 @@ mkdir -p -- "$backup_dir"
   printf 'backup|%s|\n' "$backup_relative"
 } > "$manifest"
 
-for created in agents plugins pilotfish; do
+for created in agents plugins shoal; do
   if [ ! -d "$config_dir/$created" ]; then
     mkdir -p -- "$config_dir/$created"
     printf 'mkdir|%s\n' "$created" >> "$manifest"
@@ -297,7 +311,7 @@ while IFS='|' read -r relative_path source_path; do
   mv -- "$installed_path.shoal-tmp" "$installed_path"
 done < "$plan"
 
-printf '%s\n' "pilotfish-opencode enabled globally in $config_dir (state: $state_dir)"
+printf '%s\n' "shoal-opencode enabled globally in $config_dir (state: $state_dir)"
 
 # R5：routing.json 的候選 provider 必須在 opencode.json 宣告（只比 key 名稱，不讀也不印任何值）。
 check_providers() {
@@ -310,7 +324,7 @@ check_providers() {
     warn "python3 not found; provider check skipped"
     return 0
   fi
-  python3 - "$opencode_json" "$config_dir/pilotfish/routing.json" <<'PY' >&2 || true
+  python3 - "$opencode_json" "$config_dir/shoal/routing.json" <<'PY' >&2 || true
 import json
 import sys
 
@@ -349,12 +363,12 @@ PY
 
 # R2a：專案已有 plugin 時，全域與專案兩份會同時載入；去重靠新版 plugin 的旗標，舊版專案 plugin 不保證。
 check_project_plugins() {
-  cwd_plugin="$PWD/.opencode/plugins/pilotfish-opencode.js"
+  cwd_plugin="$PWD/.opencode/plugins/shoal-opencode.js"
   [ -f "$cwd_plugin" ] && \
     warn "project plugin found at $cwd_plugin; it loads alongside the global plugin. Rebuild it from this version (dedup flag) or run: install.sh --target $PWD --disable"
   top=$(git rev-parse --show-toplevel 2>/dev/null || true)
-  if [ -n "$top" ] && [ "$top" != "$PWD" ] && [ -f "$top/.opencode/plugins/pilotfish-opencode.js" ]; then
-    warn "project plugin found at $top/.opencode/plugins/pilotfish-opencode.js; it loads alongside the global plugin. Rebuild it from this version (dedup flag) or run: install.sh --target $top --disable"
+  if [ -n "$top" ] && [ "$top" != "$PWD" ] && [ -f "$top/.opencode/plugins/shoal-opencode.js" ]; then
+    warn "project plugin found at $top/.opencode/plugins/shoal-opencode.js; it loads alongside the global plugin. Rebuild it from this version (dedup flag) or run: install.sh --target $top --disable"
   fi
   return 0
 }

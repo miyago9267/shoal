@@ -83,8 +83,8 @@ class CoOwnedHookStagingTests(unittest.TestCase):
             root = Path(directory)
             active = self._installed_home(root)
             backup = active / "hooks" / (
-                "pilotfish_autoroute_gate.py."
-                "pilotfish-codex-20260804-172335-358116"
+                "shoal_autoroute_gate.py."
+                "shoal-codex-20260804-172335-358116"
             )
             backup.write_bytes(b"previous hook script\n")
             staged = root / "staged"
@@ -102,7 +102,7 @@ class CoOwnedHookStagingTests(unittest.TestCase):
     def test_legacy_role_rollback_backup_date_shape_is_omitted_from_stage(self) -> None:
         self.assertTrue(
             stage_smoke_home._rollback_backup(
-                Path("agents/plan-verifier.toml.pilotfish-codex-20260807")
+                Path("agents/plan-verifier.toml.shoal-codex-20260807")
             )
         )
 
@@ -132,12 +132,12 @@ class CoOwnedHookStagingTests(unittest.TestCase):
 
     def test_other_hook_backup_shapes_remain_rejected(self) -> None:
         names = (
-            "other.py.pilotfish-codex-20260804-172335-358116",
-            "pilotfish_autoroute_gate.py.pilotfish-codex-20260804",
+            "other.py.shoal-codex-20260804-172335-358116",
+            "shoal_autoroute_gate.py.shoal-codex-20260804",
             (
-                "pilotfish_autoroute_gate.py."
-                "pilotfish-codex-20260804-172335-358116."
-                "pilotfish-v1.2-pristine"
+                "shoal_autoroute_gate.py."
+                "shoal-codex-20260804-172335-358116."
+                "shoal-v1.2-pristine"
             ),
         )
         for name in names:
@@ -157,8 +157,8 @@ class CoOwnedHookStagingTests(unittest.TestCase):
             target = root / "external-hook-backup.py"
             target.write_bytes(b"external hook backup\n")
             backup = active / "hooks" / (
-                "pilotfish_autoroute_gate.py."
-                "pilotfish-codex-20260804-172335-358116"
+                "shoal_autoroute_gate.py."
+                "shoal-codex-20260804-172335-358116"
             )
             backup.symlink_to(target)
 
@@ -271,7 +271,7 @@ class CoOwnedHookStagingTests(unittest.TestCase):
             policy.unlink()
             policy.symlink_to(target)
             active.with_name(
-                f"{active.name}.pilotfish-install-state.json"
+                f"{active.name}.shoal-install-state.json"
             ).unlink()
 
             with self.assertRaisesRegex(

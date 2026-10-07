@@ -78,7 +78,7 @@ def run_stage(
     timeout: int,
 ) -> dict[str, Any]:
     """Run one isolated dispatch stage and return its sanitized receipt."""
-    directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-{stage_id}-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"shoal-{stage_id}-"))
     try:
         root = directory
         home = root / "codex-home"
@@ -180,7 +180,7 @@ def run_repeats(
     for repeat in range(1, repeats + 1):
         run_id = f"R{repeat}"
         receipts: list[Path] = []
-        with tempfile.TemporaryDirectory(prefix=f"pilotfish-{run_id}-") as receipt_root:
+        with tempfile.TemporaryDirectory(prefix=f"shoal-{run_id}-") as receipt_root:
             for role in roles:
                 for stage_number in range(1, stages_per_role + 1):
                     stage_id = f"{run_id}-{role}-{stage_number}"

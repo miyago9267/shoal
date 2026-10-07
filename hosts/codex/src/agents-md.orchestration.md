@@ -1,5 +1,5 @@
-<!-- pilotfish-codex:begin -->
-<!-- pilotfish-codex v1.8.3 -->
+<!-- shoal-codex:begin -->
+<!-- shoal-codex v2.0.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -202,7 +202,7 @@ task's impact, reversibility, approval, or authority classification.
 
 The preference is turn-scoped. Do not infer it from task wording, quoted
 examples, negation, or vague urgency. Conflicting or ambiguous cues fall back
-to `default`. Pilotfish may emit a redacted, versioned advisory signal for
+to `default`. Shoal may emit a redacted, versioned advisory signal for
 `codex-auto-review`, but that scheduler owns optional child creation. A
 missing consumer never weakens mandatory controls.
 
@@ -283,7 +283,7 @@ identify the recommendation only when the decision is material. Do not include
 credentials, external writes, destructive work, release, or irreversible work
 in the card's implied authorization.
 
-The card schema is `pilotfish-decision-checkpoint-v1` and contains exactly:
+The card schema is `shoal-decision-checkpoint-v1` and contains exactly:
 `checkpoint_id`, `scope`, `current_interpretation`, `impact`,
 `recommended_option`, `options`, `excluded_scope`, `affected_task_ids`,
 `resume_point`, and `approval_boundary`. Each option contains an identifier,
@@ -305,7 +305,7 @@ scope.
 The native decision card is the default interaction surface. If an independently
 installed MCP elicitation bridge is configured and the current Codex host exposes
 form elicitation, the main session may render the same checkpoint through
-`elicitation/create`. This is an optional adapter, not a Pilotfish core
+`elicitation/create`. This is an optional adapter, not a shoal core
 dependency and not a substitute for Codex `request_user_input`.
 
 The adapter may transport only the existing checkpoint schema; it must not alter
@@ -623,7 +623,7 @@ Model routing is owned by the named agent definitions. Select the named role
 without replacing its configured model or reasoning effort. Use an ad-hoc model
 override only for a truly ad-hoc agent with no matching role definition.
 
-<!-- pilotfish-codex:spawn-transport:begin -->
+<!-- shoal-codex:spawn-transport:begin -->
 #### Native typed spawn policy
 
 Use Codex's native typed `spawn_agent` surface. The policy is deliberately
@@ -648,7 +648,7 @@ delegation unavailable.
 This is request-construction policy. Current receipt validation is post-hoc evidence
 classification, not a reliable pre-execution cancellation hook.
 `max_depth` is V1 compatibility state only and does not enforce this boundary.
-<!-- pilotfish-codex:spawn-transport:end -->
+<!-- shoal-codex:spawn-transport:end -->
 
 Brief each worker in one shot with the goal, constraints, done criteria,
 relevant paths, rationale, output format, budget, and verification expectation.
@@ -671,4 +671,4 @@ Never swap `plan-verifier` and `verifier`. The former challenges Plan
 readiness; the latter reproduces tests and challenges a completed-work claim.
 Neither role writes the Plan or fixes findings. Final judgment remains in the
 main session.
-<!-- pilotfish-codex:end -->
+<!-- shoal-codex:end -->

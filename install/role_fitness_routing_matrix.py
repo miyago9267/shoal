@@ -10,7 +10,7 @@ from typing import Any, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "hooks"))
-import pilotfish_autoroute_gate as gate  # noqa: E402
+import shoal_autoroute_gate as gate  # noqa: E402
 
 
 VERSION = "role-fitness-routing-matrix-v2"

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "pilotfish-codex-tooling",
+      "name": "shoal-codex-tooling",
       "devDependencies": {
         "markdownlint-cli2": "0.23.0",
         "roughjs": "^4.6.6",

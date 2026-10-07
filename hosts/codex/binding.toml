@@ -1,5 +1,5 @@
 # Codex host binding：可用模型、存取等級對應的 sandbox、每個 role 的 effort / description。
-# 數值等於 pilotfish-codex 61a411b 的 templates/ 現況；templates/ 就是 codex 的 dist。
+# 數值等於 shoal-codex 61a411b 的 templates/ 現況；templates/ 就是 codex 的 dist。
 
 # role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。

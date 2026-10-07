@@ -1,5 +1,5 @@
 # grok host binding：存取等級對應的 capability mode、每個 role 的 roles/*.toml（description、reasoning effort）。
-# 數值等於 dotfile b65a243 的 plugins/pilotfish-grok/templates/roles/（vendored 自
+# 數值等於 dotfile b65a243 的 plugins/shoal-grok/templates/roles/（vendored 自
 # Nanako0129/pilotfish-grok v1.0.6，見 upstream.lock）。
 # config.snippet.toml 逐字放在 src/，不經 render 改寫。agents/*.md 在 core 模式由
 # frames/（frontmatter、含 model: inherit）、core 條款與 addenda/ 產生；src/agents/

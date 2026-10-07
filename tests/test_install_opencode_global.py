@@ -20,6 +20,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SH = ROOT / "hosts" / "opencode" / "plugin" / "install" / "install.sh"
+sys.path.insert(0, str(ROOT / "tests"))
+import legacy_fixtures  # noqa: E402
 ROLES = ("scout", "executor", "verifier", "security-reviewer", "security-executor")
 FAKE_PLUGIN = "// fake plugin bundle\n"
 
@@ -159,11 +161,11 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
             )
         for name in ("catalog.json", "routing.json"):
             self.assertEqual(
-                (self.config / "pilotfish" / name).read_bytes(),
+                (self.config / "shoal" / name).read_bytes(),
                 head_bytes(f"hosts/opencode/dist/{name}"),
             )
         self.assertEqual(
-            (self.config / "plugins" / "pilotfish-opencode.js").read_text(
+            (self.config / "plugins" / "shoal-opencode.js").read_text(
                 encoding="utf-8"
             ),
             FAKE_PLUGIN,
@@ -231,7 +233,7 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
         self.assertIn("file changed after installation", result.stderr)
         self.assertEqual(self.snapshot(), before)
 
-    def test_rollback_removes_agents_plugins_and_pilotfish_json(self) -> None:
+    def test_rollback_removes_agents_plugins_and_shoal_json(self) -> None:
         self.assertEqual(self.run_installer("--enable").returncode, 0)
         self.assertTrue((self.config / "agents").is_dir())
 
@@ -240,7 +242,7 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
 
         # 全新的 config dir：檔案與 installer 建立的三個目錄都應該消失。
         self.assertEqual(self.installed_files(), [])
-        for name in ("agents", "plugins", "pilotfish"):
+        for name in ("agents", "plugins", "shoal"):
             self.assertFalse((self.config / name).exists(), name)
         self.assertIn("state|rolled_back", self.manifest.read_text(encoding="utf-8"))
 
@@ -254,7 +256,7 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
         self.assertEqual(
             self.installed_files(), [Path("agents/monika.md"), Path("plugins/mine.js")]
         )
-        self.assertFalse((self.config / "pilotfish").exists())
+        self.assertFalse((self.config / "shoal").exists())
 
     def test_rollback_without_manifest_fails(self) -> None:
         result = self.run_installer("--rollback")
@@ -286,7 +288,7 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
     def test_user_file_with_the_same_name_aborts_without_writing(self) -> None:
         user_scout = self.config / "agents" / "scout.md"
         write_text(user_scout, "my own scout\n")
-        write_text(self.config / "plugins" / "pilotfish-opencode.js", "// my plugin\n")
+        write_text(self.config / "plugins" / "shoal-opencode.js", "// my plugin\n")
         before = self.snapshot()
 
         result = self.run_installer("--enable")
@@ -294,10 +296,10 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("nothing was written", result.stderr)
         self.assertIn("agents/scout.md", result.stderr)
-        self.assertIn("plugins/pilotfish-opencode.js", result.stderr)
+        self.assertIn("plugins/shoal-opencode.js", result.stderr)
         self.assertEqual(self.snapshot(), before)
         # 完全不寫入：沒有新目錄、沒有 manifest、沒有 state dir。
-        self.assertFalse((self.config / "pilotfish").exists())
+        self.assertFalse((self.config / "shoal").exists())
         self.assertEqual(
             sorted(p.name for p in self.config.iterdir()), ["agents", "plugins"]
         )
@@ -415,7 +417,7 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
 
     def test_warns_when_cwd_project_already_has_the_plugin(self) -> None:
         write_text(
-            self.cwd / ".opencode" / "plugins" / "pilotfish-opencode.js", "// project\n"
+            self.cwd / ".opencode" / "plugins" / "shoal-opencode.js", "// project\n"
         )
 
         result = self.run_installer("--enable")
@@ -487,7 +489,7 @@ class InstallOpenCodeGlobalTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            "pilotfish-opencode is disabled: no install manifest", result.stdout
+            "shoal-opencode is disabled: no install manifest", result.stdout
         )
         self.assertFalse(self.state_home.exists())
 
@@ -519,6 +521,8 @@ class InstallOpenCodeGlobalRealBunTests(unittest.TestCase):
             config.mkdir()
             project = tmp / "project"
             project.mkdir()
+            # install.sh 讀「它所在 repo 的 HEAD」：用工作樹建的 temp repo，不看真實 repo 的 HEAD
+            repo = legacy_fixtures.worktree_repo(tmp / "repo")
             env = dict(os.environ)
             env.pop("OPENCODE_CONFIG_DIR", None)
             env["HOME"] = str(tmp / "home")
@@ -527,7 +531,7 @@ class InstallOpenCodeGlobalRealBunTests(unittest.TestCase):
             install = subprocess.run(
                 [
                     "sh",
-                    str(INSTALL_SH),
+                    str(repo / INSTALL_SH.relative_to(ROOT)),
                     "--global",
                     "--config-dir",
                     str(config),
@@ -541,7 +545,7 @@ class InstallOpenCodeGlobalRealBunTests(unittest.TestCase):
                 timeout=170,
             )
             self.assertEqual(install.returncode, 0, install.stderr)
-            plugin = config / "plugins" / "pilotfish-opencode.js"
+            plugin = config / "plugins" / "shoal-opencode.js"
             self.assertGreater(plugin.stat().st_size, 1000)
 
             script = (
@@ -550,7 +554,7 @@ class InstallOpenCodeGlobalRealBunTests(unittest.TestCase):
                 "const ctx = { directory: process.argv[2], worktree: process.argv[2],"
                 " sessionID: 's', messageID: 'm', agent: 'scout',"
                 " abort: new AbortController().signal, metadata() {}, ask: async () => {} };"
-                "const out = await hooks.tool.pilotfish_route.execute({ role: 'scout' }, ctx);"
+                "const out = await hooks.tool.shoal_route.execute({ role: 'scout' }, ctx);"
                 "console.log(JSON.stringify({ title: out.title, output: out.output }));"
             )
             env["OPENCODE_CONFIG_DIR"] = str(config)

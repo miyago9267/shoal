@@ -75,6 +75,6 @@ id = "bootstrap-load-skill"
 kind = "invariant"
 sep = "paragraph"
 text = '''
-- Load the `pilotfish-orchestration` {{skill_term}} for the full policy before deciding
+- Load the `shoal-orchestration` {{skill_term}} for the full policy before deciding
   delegation, review, or approval on large or risky work. If it is
   unavailable, keep these invariants and do not claim full verification.'''

@@ -5,8 +5,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const entry = resolve(import.meta.dir, "..", "src", "plugin", "pilotfish-opencode.ts");
-const workDir = mkdtempSync(join(tmpdir(), "pilotfish-entry-"));
+const entry = resolve(import.meta.dir, "..", "src", "plugin", "shoal-opencode.ts");
+const workDir = mkdtempSync(join(tmpdir(), "shoal-entry-"));
 afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 
 function assertAllFunctions(mod: Record<string, unknown>): void {
@@ -26,10 +26,10 @@ describe("plugin entry exports", () => {
       outdir: workDir,
       target: "bun",
       format: "esm",
-      naming: "pilotfish-opencode.js",
+      naming: "shoal-opencode.js",
     });
     expect(built.success).toBe(true);
-    const bundle = join(workDir, "pilotfish-opencode.js");
+    const bundle = join(workDir, "shoal-opencode.js");
     const mod = (await import(bundle)) as Record<string, unknown>;
     assertAllFunctions(mod);
     expect(typeof mod.default).toBe("function");

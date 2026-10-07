@@ -1044,7 +1044,7 @@ def parse_live_output(output: str, *, expected_case_id: str) -> dict[str, Any]:
 def build_live_command(*, codex_bin: str, repository_root: Path, case: dict[str, Any]) -> list[str]:
     """Build one read-only, no-tool live decision command for a single case."""
     prompt = (
-        "Classify this task using the Pilotfish behavioral routing policy. Do not "
+        "Classify this task using the shoal behavioral routing policy. Do not "
         "call tools, do not spawn agents, and do not delegate. Return exactly one "
         "JSON object with keys id, decision, role, rationale; no markdown or prose. "
         f"Case ID: {case['id']}\nTask: {case['prompt']}\n"

@@ -104,7 +104,7 @@ class HomeAndAuthTests(unittest.TestCase):
                     else:
                         self.assertEqual(content, (ROOT / "templates" / "agents" / f"{role}.toml").read_bytes())
                 self.assertTrue((trial.home / "agents" / "mech-executor.toml").exists())
-            self.assertFalse((root / "pilotfish-benchmark-codex").exists())
+            self.assertFalse((root / "shoal-benchmark-codex").exists())
             self.assertEqual(source.split(b"developer_instructions = ", 1)[1], (ROOT / "templates" / "agents" / "mech-executor.toml").read_bytes().split(b"developer_instructions = ", 1)[1])
 
     def test_live_trial_home_uses_current_native_v2_schema_only_when_requested(self) -> None:
@@ -478,7 +478,7 @@ class CliTests(unittest.TestCase):
 
     def test_case_prompt_matches_native_typed_dispatch_contract(self) -> None:
         case = benchmark.load_manifest()["cases"][0]
-        prompt = benchmark.build_case_prompt(case, Path("/tmp/pilotfish-case"))
+        prompt = benchmark.build_case_prompt(case, Path("/tmp/shoal-case"))
         self.assertIn("agent_type='mech-executor'", prompt)
         self.assertIn("task_name='model_probe_mech_executor'", prompt)
         self.assertIn("fork_turns='none'", prompt)
@@ -602,7 +602,7 @@ class CliTests(unittest.TestCase):
     def test_benchmark_command_uses_disposable_workspace_write_access(self) -> None:
         command = benchmark.build_benchmark_codex_command(
             codex_bin="codex",
-            cwd=Path("/tmp/pilotfish-benchmark"),
+            cwd=Path("/tmp/shoal-benchmark"),
             role="mech-executor",
             prompt="fixture benchmark",
         )
@@ -699,7 +699,7 @@ class CliTests(unittest.TestCase):
                     benchmark_yes=True,
                     environ={},
                     max_cost_usd=0.7,
-                    checkpoint_path=Path("/tmp/pilotfish-budget-checkpoint.json"),
+                    checkpoint_path=Path("/tmp/shoal-budget-checkpoint.json"),
                 )
         self.assertEqual(writer.call_args.args[1]["status"], "failed")
         self.assertEqual(len(writer.call_args.args[1]["trials"]), 2)
@@ -725,7 +725,7 @@ class CliTests(unittest.TestCase):
                 benchmark.write_result_report(destination, payload)
 
     def test_live_writes_a_checkpoint_after_each_completed_trial(self) -> None:
-        checkpoint = Path("/tmp/pilotfish-benchmark-checkpoint.json")
+        checkpoint = Path("/tmp/shoal-benchmark-checkpoint.json")
         with (
             mock.patch.object(benchmark, "validate_live_codex_binary"),
             mock.patch.object(
@@ -758,7 +758,7 @@ class CliTests(unittest.TestCase):
             "metrics": {"source": "native-rollout-proxy"},
             "model_wall_seconds": 2.5,
         }
-        checkpoint = Path("/tmp/pilotfish-benchmark-failed-checkpoint.json")
+        checkpoint = Path("/tmp/shoal-benchmark-failed-checkpoint.json")
         with (
             mock.patch.object(benchmark, "validate_live_codex_binary"),
             mock.patch.object(

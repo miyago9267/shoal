@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import re
+import sys
 import tomllib
 import unittest
 
 import render_helpers as rh
 from render_helpers import ROOT, render, run_render
+
+sys.path.insert(0, str(ROOT / "tools"))
+from check_rename import apply_rename  # noqa: E402
 
 UPSTREAM_RULES = ROOT / "tests" / "fixtures" / "grok" / "rules.pilotfish-grok.upstream-v1.0.6.txt"
 
@@ -28,14 +32,14 @@ class GrokRenderTests(rh.HostRenderCase):
 
     def test_guard_copy_is_generated_from_the_single_source(self) -> None:
         # dispatch-enforcement R1：判斷邏輯只有 hooks/shoal_guard.py 一份，dist 副本逐位元組相同。
-        rel = "hooks/pilotfish-grok/shoal_guard.py"
+        rel = "hooks/shoal-grok/shoal_guard.py"
         source = (ROOT / "hooks" / "shoal_guard.py").read_bytes()
         self.assertEqual(render.RENDERERS["grok"](ROOT)[rel], source)
         self.assertEqual((ROOT / "hosts" / "grok" / "dist" / rel).read_bytes(), source)
         self.assertFalse((ROOT / "hosts" / "grok" / "src" / rel).exists(), "src 不可放手抄副本")
 
     def test_hand_edited_guard_copy_fails_check(self) -> None:
-        rel = "hooks/pilotfish-grok/shoal_guard.py"
+        rel = "hooks/shoal-grok/shoal_guard.py"
         target = self.dist / rel
         target.write_bytes(target.read_bytes() + b"# drift\n")
         result = self.check()
@@ -56,25 +60,24 @@ class GrokRenderTests(rh.HostRenderCase):
     # --- G1：orchestration rules 與 grok host 版本（AC-GW-001 至 AC-GW-005）---
     def test_rules_marker_comes_from_host_version(self) -> None:  # AC-GW-001、AC-GW-002
         version = (ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip()
-        rules = render.RENDERERS["grok"](ROOT)["rules/pilotfish-grok.md"].decode("utf-8")
-        self.assertEqual(re.findall(r"(?m)^<!-- pilotfish-grok v.+ -->$", rules),
-                         [f"<!-- pilotfish-grok v{version} -->"])
-        self.assertEqual(version, "1.0.6-shoal.2")
+        rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
+        self.assertEqual(re.findall(r"(?m)^<!-- shoal-grok v.+ -->$", rules),
+                         [f"<!-- shoal-grok v{version} -->"])
+        self.assertEqual(version, "2.0.0")
 
-    def test_rules_equal_upstream_except_marker(self) -> None:  # AC-GW-003
-        upstream = UPSTREAM_RULES.read_text(encoding="utf-8").splitlines(keepends=True)
-        rules = render.RENDERERS["grok"](ROOT)["rules/pilotfish-grok.md"].decode("utf-8").splitlines(keepends=True)
-        self.assertEqual(len(rules), len(upstream))
-        differing = [(a, b) for a, b in zip(upstream, rules) if a != b]
-        self.assertEqual(differing, [("<!-- pilotfish-grok v1.0.6 -->\n", "<!-- pilotfish-grok v1.0.6-shoal.2 -->\n")])
+    def test_rules_equal_upstream_except_the_rename(self) -> None:  # AC-GW-003
+        # 2.0.0 起 rules 不再逐字等於上游：只差 docs/specs/shoal-rebrand/RENAME.md 的名稱替換與版本 marker。
+        upstream = apply_rename(UPSTREAM_RULES.read_text(encoding="utf-8"), "rules.md")
+        rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
+        self.assertEqual(rules, upstream)
 
     def test_changing_version_requires_rewriting_dist(self) -> None:  # AC-GW-002
-        (self.root / "hosts" / "grok" / "VERSION").write_text("1.0.6-shoal.3\n", encoding="utf-8", newline="\n")
+        (self.root / "hosts" / "grok" / "VERSION").write_text("2.0.1\n", encoding="utf-8", newline="\n")
         result = self.check()
         self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertIn("內容不同: rules/pilotfish-grok.md", result.stderr)
+        self.assertIn("內容不同: rules/shoal-grok.md", result.stderr)
         self.assertEqual(run_render("grok", self.root, "--write").returncode, 0)
-        self.assertIn(b"<!-- pilotfish-grok v1.0.6-shoal.3 -->", (self.dist / "rules" / "pilotfish-grok.md").read_bytes())
+        self.assertIn(b"<!-- shoal-grok v2.0.1 -->", (self.dist / "rules" / "shoal-grok.md").read_bytes())
         self.assertEqual(self.check().returncode, 0)
 
     def test_version_must_be_semver_like(self) -> None:  # AC-GW-005
@@ -86,9 +89,9 @@ class GrokRenderTests(rh.HostRenderCase):
         self.assert_rejected("VERSION")
 
     def test_rules_source_needs_exactly_one_marker(self) -> None:  # AC-GW-005
-        src = self.root / "hosts" / "grok" / "src" / "rules" / "pilotfish-grok.md"
+        src = self.root / "hosts" / "grok" / "src" / "rules" / "shoal-grok.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- pilotfish-grok v1.0.6-shoal.2 -->\n"
+        marker = "<!-- shoal-grok v2.0.0 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
@@ -155,7 +158,7 @@ class GrokDocsTests(unittest.TestCase):
         readme, install = self.read("README.md"), self.read("INSTALL.md")
         self.assertIn("https://github.com/Nanako0129/pilotfish-grok", readme)
         self.assertIn("tools/install_grok.py", readme)
-        self.assertIn("1.0.6-shoal.2", readme)
+        self.assertIn((ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip(), readme)
         self.assertIn("## Grok Build", install)
         for flag in ("--apply", "--fix-toggles", "--restore", "--uninstall"):
             self.assertIn(flag, install)

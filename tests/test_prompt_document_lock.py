@@ -60,10 +60,10 @@ class PromptDocumentLockTests(unittest.TestCase):
         self.assertIn("templates/agents-md.bootstrap.md", paths)
         self.assertIn("templates/agents-md.orchestration.md", paths)
         self.assertIn(
-            "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/orchestration-policy.md",
+            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
             paths,
         )
-        self.assertIn("plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/SKILL.md", paths)
+        self.assertIn("plugin/plugins/shoal-codex/skills/shoal-orchestration/SKILL.md", paths)
         self.assertIn("INSTALL_PROMPT.md", paths)
 
     def test_small_text_change_stays_within_a_surface_budget(self) -> None:
@@ -160,7 +160,7 @@ class PromptDocumentLockTests(unittest.TestCase):
 
     def test_mirrored_policy_drift_is_rejected(self) -> None:
         with self._git_repo_with_current_lock() as root:
-            policy = root / "plugin" / "plugins" / "pilotfish-codex" / "skills" / "pilotfish-orchestration" / "references" / "orchestration-policy.md"
+            policy = root / "plugin" / "plugins" / "shoal-codex" / "skills" / "shoal-orchestration" / "references" / "orchestration-policy.md"
             policy.write_text(policy.read_text(encoding="utf-8") + "\n", encoding="utf-8")
 
             with self.assertRaisesRegex(PromptLockError, "mirror"):
@@ -177,7 +177,7 @@ CLAUDE_AGENT_FILES = (
     "security-reviewer",
     "verifier",
 )
-CLAUDE_SKILL_DIR = "hosts/claude/dist/skills/pilotfish-orchestration"
+CLAUDE_SKILL_DIR = "hosts/claude/dist/skills/shoal-orchestration"
 LOCK_RELATIVE = "docs/specs/prompt-document-lock/LOCK.json"
 
 
@@ -557,8 +557,14 @@ class MigrationMarkerTests(unittest.TestCase):
                 with self.assertRaisesRegex(PromptLockError, "migration"):
                     load_lock(root)
 
-    def test_real_lock_carries_no_migration_marker(self) -> None:
-        self.assertTrue(all("migration" not in s for s in load_lock(ROOT)["surfaces"]))
+    def test_real_lock_markers_are_only_the_recorded_rebrand_renewal(self) -> None:
+        # 一次性的 marker 只允許 shoal-rebrand 的 lock renewal；之後的 renewal 要換 id，舊的在下一次改動移除。
+        expected = {
+            "migration_id": "shoal-rebrand-2-0-0",
+            "equivalence": "docs/specs/shoal-rebrand/RENAME.md",
+        }
+        for surface in load_lock(ROOT)["surfaces"]:
+            self.assertIn(surface.get("migration", expected), [expected], surface["id"])
 
 
 class RepoPathSemanticsTests(unittest.TestCase):

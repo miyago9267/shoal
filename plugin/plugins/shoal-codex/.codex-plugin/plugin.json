@@ -1,0 +1,18 @@
+{
+  "name": "shoal-codex",
+  "version": "2.0.0",
+  "description": "Hybrid shoal orchestration with an always-on policy bootstrap and detailed workflow Skill.",
+  "author": {
+    "name": "Miyago"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Shoal Codex",
+    "shortDescription": "Shoal orchestration workflow",
+    "longDescription": "Shoal provides bounded routing, approval, role delegation, security separation, and fresh-context verification.",
+    "developerName": "Miyago",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Apply shoal orchestration to this task."
+  }
+}

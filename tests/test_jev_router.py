@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-MODULE = Path(__file__).resolve().parents[1] / "plugin/plugins/pilotfish-jev-router/jev_router.py"
+MODULE = Path(__file__).resolve().parents[1] / "plugin/plugins/shoal-jev-router/jev_router.py"
 spec = importlib.util.spec_from_file_location("jev_router", MODULE)
 assert spec is not None and spec.loader is not None
 router = importlib.util.module_from_spec(spec)
@@ -59,9 +59,9 @@ class JevConfigTests(unittest.TestCase):
         (root / "jev_router.py").write_text("# test package\n", encoding="utf-8")
         manifest = root / ".codex-plugin/plugin.json"
         manifest.parent.mkdir()
-        manifest.write_text(json.dumps({"name": "pilotfish-jev-router", "version": version}), encoding="utf-8")
+        manifest.write_text(json.dumps({"name": "shoal-jev-router", "version": version}), encoding="utf-8")
         (self.home / "config.toml").write_text(
-            '[plugins."pilotfish-jev-router@pilotfish-codex"]\nenabled = true\n',
+            '[plugins."shoal-jev-router@shoal-codex"]\nenabled = true\n',
             encoding="utf-8",
         )
         return root
@@ -81,7 +81,7 @@ class JevConfigTests(unittest.TestCase):
         self.write_config({"mode": "active"})
         self.assertEqual(router.load_config(self.home), ("active", versioned))
         (self.home / "config.toml").write_text(
-            '[plugins."pilotfish-jev-router@pilotfish-codex"]\nenabled = false\n',
+            '[plugins."shoal-jev-router@shoal-codex"]\nenabled = false\n',
             encoding="utf-8",
         )
         self.assertEqual(router.load_config(self.home), ("off", None))
@@ -90,12 +90,12 @@ class JevConfigTests(unittest.TestCase):
         root = self.install_cache("0.1.0")
         self.write_config({"mode": "shadow"})
         (self.home / "config.toml").write_text(
-            '[plugins."another-plugin@pilotfish-codex"]\nenabled = true\n',
+            '[plugins."another-plugin@shoal-codex"]\nenabled = true\n',
             encoding="utf-8",
         )
         self.assertEqual(router.load_config(self.home), ("off", None))
         (self.home / "config.toml").write_text(
-            '[plugins."pilotfish-jev-router@pilotfish-codex"]\nenabled = true\n',
+            '[plugins."shoal-jev-router@shoal-codex"]\nenabled = true\n',
             encoding="utf-8",
         )
         (root / ".codex-plugin/plugin.json").write_text(
@@ -133,20 +133,20 @@ class JevConfigTests(unittest.TestCase):
     def test_environment_overrides_config_without_implicit_activation(self) -> None:
         local = self.install_cache("0.1.0")
         self.write_config({"mode": "active"})
-        with mock.patch.dict(os.environ, {"PILOTFISH_JEV_MODE": "off"}):
+        with mock.patch.dict(os.environ, {"SHOAL_JEV_MODE": "off"}):
             self.assertEqual(router.load_config(self.home), ("off", None))
-        with mock.patch.dict(os.environ, {"PILOTFISH_JEV_MODE": "shadow"}):
+        with mock.patch.dict(os.environ, {"SHOAL_JEV_MODE": "shadow"}):
             self.assertEqual(router.load_config(self.home), ("shadow", local))
-        with mock.patch.dict(os.environ, {"PILOTFISH_JEV_PLUGIN_ROOT": str(MODULE.parent)}):
+        with mock.patch.dict(os.environ, {"SHOAL_JEV_PLUGIN_ROOT": str(MODULE.parent)}):
             self.assertEqual(router.load_config(self.home), ("active", MODULE.parent))
-        with mock.patch.dict(os.environ, {"PILOTFISH_JEV_PLUGIN_ROOT": "relative/path"}):
+        with mock.patch.dict(os.environ, {"SHOAL_JEV_PLUGIN_ROOT": "relative/path"}):
             self.assertEqual(router.load_config(self.home), ("off", None))
         (self.home / router.CONFIG_FILE).unlink()
-        with mock.patch.dict(os.environ, {"PILOTFISH_JEV_PLUGIN_ROOT": str(MODULE.parent)}):
+        with mock.patch.dict(os.environ, {"SHOAL_JEV_PLUGIN_ROOT": str(MODULE.parent)}):
             self.assertEqual(router.load_config(self.home), ("off", None))
         with mock.patch.dict(os.environ, {
-            "PILOTFISH_JEV_MODE": "active",
-            "PILOTFISH_JEV_PLUGIN_ROOT": str(MODULE.parent),
+            "SHOAL_JEV_MODE": "active",
+            "SHOAL_JEV_PLUGIN_ROOT": str(MODULE.parent),
         }):
             self.assertEqual(router.load_config(self.home), ("active", MODULE.parent))
 

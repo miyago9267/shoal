@@ -1,9 +1,9 @@
 {
-  "name": "pilotfish-codex-tooling",
+  "name": "shoal-codex-tooling",
   "private": true,
   "packageManager": "bun@1.3.11",
   "scripts": {
-    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.ai\" \"#hosts/*/src\" \"#hosts/*/frames\" \"#hosts/*/policy-frames\" \"#hosts/*/dist\" \"#claude-plugin\" \"#tests/golden\" \"#hosts/opencode/plugin\"",
+    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.ai\" \"#hosts/*/src\" \"#hosts/*/frames\" \"#hosts/*/policy-frames\" \"#hosts/*/dist\" \"#claude-plugin\" \"#tests/golden\" \"#tests/fixtures/legacy_install\" \"#hosts/opencode/plugin\"",
     "charts:usage-routing": "bun tools/generate_usage_routing_charts.mjs"
   },
   "devDependencies": {

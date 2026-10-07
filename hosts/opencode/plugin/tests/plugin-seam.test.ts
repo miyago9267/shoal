@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  createPilotfishRouteTool,
-  PILOTFISH_REGISTRATION_KEY,
-  PilotfishOpenCodePlugin,
-} from "../src/plugin/pilotfish-plugin.ts";
+  createShoalRouteTool,
+  SHOAL_REGISTRATION_KEY,
+  ShoalOpenCodePlugin,
+} from "../src/plugin/shoal-plugin.ts";
 
 const catalog = {
   agents: { scout: { mode: "subagent", available: true } },
@@ -36,30 +36,30 @@ const routing = {
 describe("OpenCode plugin seam", () => {
   // 去重登記表在整個 bun test process 共用；每個 test 前清掉，避免互相影響。
   beforeEach(() => {
-    Reflect.deleteProperty(globalThis, PILOTFISH_REGISTRATION_KEY);
+    Reflect.deleteProperty(globalThis, SHOAL_REGISTRATION_KEY);
   });
 
   test("exposes the route tool and the guard hooks, and does not mutate model hooks", async () => {
-    const hooks = await PilotfishOpenCodePlugin({} as never);
+    const hooks = await ShoalOpenCodePlugin({} as never);
 
     expect(Object.keys(hooks).sort()).toEqual(["chat.message", "tool", "tool.execute.before"]);
-    expect(hooks.tool?.pilotfish_route).toBeDefined();
+    expect(hooks.tool?.shoal_route).toBeDefined();
   });
 
   test("reads customer-owned files and returns a redacted receipt", async () => {
-    const directory = join("/tmp", `pilotfish-opencode-${crypto.randomUUID()}`);
-    await mkdir(join(directory, ".opencode", "pilotfish"), { recursive: true });
+    const directory = join("/tmp", `shoal-opencode-${crypto.randomUUID()}`);
+    await mkdir(join(directory, ".opencode", "shoal"), { recursive: true });
     await Bun.write(
-      join(directory, ".opencode", "pilotfish", "catalog.json"),
+      join(directory, ".opencode", "shoal", "catalog.json"),
       JSON.stringify(catalog),
     );
     await Bun.write(
-      join(directory, ".opencode", "pilotfish", "routing.json"),
+      join(directory, ".opencode", "shoal", "routing.json"),
       JSON.stringify(routing),
     );
 
     try {
-      const routeTool = createPilotfishRouteTool();
+      const routeTool = createShoalRouteTool();
       const result = await routeTool.execute(
         { role: "scout" },
         {
@@ -85,10 +85,10 @@ describe("OpenCode plugin seam", () => {
   });
 
   test("uses native agent model metadata when the optional overlay is absent", async () => {
-    const directory = join("/tmp", `pilotfish-opencode-native-${crypto.randomUUID()}`);
-    await mkdir(join(directory, ".opencode", "pilotfish"), { recursive: true });
+    const directory = join("/tmp", `shoal-opencode-native-${crypto.randomUUID()}`);
+    await mkdir(join(directory, ".opencode", "shoal"), { recursive: true });
     await Bun.write(
-      join(directory, ".opencode", "pilotfish", "catalog.json"),
+      join(directory, ".opencode", "shoal", "catalog.json"),
       JSON.stringify({
         ...catalog,
         agents: {
@@ -102,7 +102,7 @@ describe("OpenCode plugin seam", () => {
     );
 
     try {
-      const routeTool = createPilotfishRouteTool();
+      const routeTool = createShoalRouteTool();
       const result = await routeTool.execute(
         { role: "scout" },
         {

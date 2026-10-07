@@ -513,7 +513,7 @@ def run_native_review_case(
         raise BenchmarkContractError("native content case is not a plan fixture")
     plan = (private_root / "fixtures" / f"{case_id}.md").read_text(encoding="utf-8")
     ledger = json.loads((private_root / "ledgers.json").read_text(encoding="utf-8"))[case_id]
-    directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-content-{case_id}-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"shoal-native-content-{case_id}-"))
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()
@@ -600,7 +600,7 @@ def run_native_mechanical_case(
     if not isinstance(case, dict) or case.get("cohort") != "mechanical_execution":
         raise BenchmarkContractError("native mechanical case is not in the fixture manifest")
     fixture = json.loads((private_root / "fixtures" / f"{case_id}.json").read_text(encoding="utf-8"))
-    directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-mechanical-{case_id}-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"shoal-native-mechanical-{case_id}-"))
     task_name = "role_fitness_mechanical_execution"
     message = (
         "Work only in the current isolated directory. Execute the fixture exactly. "
@@ -676,7 +676,7 @@ def run_native_verifier_case(
     case = next((item for item in manifest["cases"] if item.get("case_id") == case_id), None)
     if not isinstance(case, dict) or case.get("cohort") not in {"mechanical_execution", "split_workflow"}:
         raise BenchmarkContractError("native verifier case is not executable")
-    directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-verifier-{case_id}-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"shoal-native-verifier-{case_id}-"))
     task_name = "role_fitness_mechanical_verification"
     message = (
         "Contract: outcome_verification. The artifact is already present in the child "
@@ -756,7 +756,7 @@ def run_native_split_executor_case(
     host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     if handoff.get("scenario_id") != case_id:
         raise BenchmarkContractError("split executor handoff identity is invalid")
-    directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-split-executor-{case_id}-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"shoal-native-split-executor-{case_id}-"))
     task_name = "role_fitness_split_execution"
     message = (
         "Execute only the approved split handoff below in the current isolated directory. "
@@ -828,7 +828,7 @@ def run_review_case(
     ledger = json.loads((private_root / "ledgers.json").read_text(encoding="utf-8"))[case_id]
     model, effort = model_effort_override or CANDIDATES[candidate]
     prompt = prompt_override if prompt_override is not None else _review_prompt(plan)
-    directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-content-{case_id}-{candidate}-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"shoal-content-{case_id}-{candidate}-"))
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()

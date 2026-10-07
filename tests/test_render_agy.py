@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import re
 import unittest
 
 import render_helpers as rh
-from render_helpers import ROOT, render
+from render_helpers import ROOT, render, run_render
 
 
 class AgyRenderTests(rh.HostRenderCase):
@@ -11,7 +12,40 @@ class AgyRenderTests(rh.HostRenderCase):
     GOLDEN_COUNT = 9
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "agents/scout/agent.md"
-    SRC_FILE = "rules/pilotfish-agy.md"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
+    SRC_FILE = "rules/shoal-agy.md"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
+
+    # --- 2.0.0：agy 有自己的 VERSION，rules 的 marker 由它產生（同 grok） ---
+    def test_rules_marker_comes_from_host_version(self) -> None:
+        version = (ROOT / "hosts" / "agy" / "VERSION").read_text(encoding="utf-8").strip()
+        rules = render.RENDERERS["agy"](ROOT)["rules/shoal-agy.md"].decode("utf-8")
+        self.assertEqual(re.findall(r"(?m)^<!-- shoal-agy v.+ -->$", rules), [f"<!-- shoal-agy v{version} -->"])
+        self.assertEqual(version, "2.0.0")
+
+    def test_changing_version_requires_rewriting_dist(self) -> None:
+        (self.root / "hosts" / "agy" / "VERSION").write_text("2.0.1\n", encoding="utf-8", newline="\n")
+        result = self.check()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("內容不同: rules/shoal-agy.md", result.stderr)
+        self.assertEqual(run_render("agy", self.root, "--write").returncode, 0)
+        self.assertIn(b"<!-- shoal-agy v2.0.1 -->", (self.dist / "rules" / "shoal-agy.md").read_bytes())
+        self.assertEqual(self.check().returncode, 0)
+
+    def test_version_must_be_semver_like_and_present(self) -> None:
+        version = self.root / "hosts" / "agy" / "VERSION"
+        version.write_text("v1\n", encoding="utf-8", newline="\n")
+        self.assert_rejected("版本格式不合法")
+        version.unlink()
+        self.assert_rejected("VERSION")
+
+    def test_rules_source_needs_exactly_one_marker(self) -> None:
+        src = self.root / "hosts" / "agy" / "src" / "rules" / "shoal-agy.md"
+        text = src.read_text(encoding="utf-8")
+        marker = "<!-- shoal-agy v2.0.0 -->\n"
+        self.assertIn(marker, text)
+        src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
+        self.assert_rejected("marker")
+        src.write_text(text + marker, encoding="utf-8", newline="\n")
+        self.assert_rejected("marker")
 
     def test_effort_is_never_rendered(self) -> None:
         for rel, data in render.RENDERERS["agy"](ROOT).items():

@@ -176,7 +176,7 @@ class DryRunTests(InstallGrokCase):
         self.assertEqual(tree(self.home), before)
         self.assertFalse((self.home / "backups").exists())
         self.assertIn("[取代] agents/scout.md", out)
-        self.assertIn("[新增] rules/pilotfish-grok.md", out)
+        self.assertIn("[新增] rules/shoal-grok.md", out)
         self.assertIn("dry-run", out)
 
     def test_dry_run_on_missing_home_creates_nothing(self) -> None:  # AC-GW-030
@@ -220,16 +220,16 @@ class ApplyTests(InstallGrokCase):
         self.assertEqual(self.installed(), expected)
         self.assertEqual(len([k for k in expected if k.startswith("agents/")]), 7)
         self.assertEqual(len([k for k in expected if k.startswith("roles/")]), 7)
-        rules = (self.home / "rules" / "pilotfish-grok.md").read_text(encoding="utf-8")
-        self.assertIn(f"<!-- pilotfish-grok v{self.version} -->", rules)
-        for script in (self.home / "hooks" / "pilotfish-grok").glob("*.py"):
+        rules = (self.home / "rules" / "shoal-grok.md").read_text(encoding="utf-8")
+        self.assertIn(f"<!-- shoal-grok v{self.version} -->", rules)
+        for script in (self.home / "hooks" / "shoal-grok").glob("*.py"):
             self.assertTrue(os.access(script, os.X_OK), script.name)
         self.assertFalse((self.home / "config.snippet.toml").exists())
 
     def test_installed_hooks_are_runnable_from_the_grok_home(self) -> None:  # AC-GW-031
         self.run_cli("--apply")
         config = json.loads(
-            (self.home / "hooks" / "pilotfish-grok.json").read_text(encoding="utf-8")
+            (self.home / "hooks" / "shoal-grok.json").read_text(encoding="utf-8")
         )
         command = config["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         script = self.home / "hooks" / command  # 相對於 JSON 檔
@@ -247,16 +247,16 @@ class ApplyTests(InstallGrokCase):
 
     def test_installs_the_dispatch_guard_with_hash_and_exec_bit(self) -> None:  # dispatch-enforcement R7
         self.assertEqual(self.run_cli("--apply")[0], 0)
-        rel = "hooks/pilotfish-grok/shoal_guard.py"
+        rel = "hooks/shoal-grok/shoal_guard.py"
         script = self.home / rel
         self.assertEqual(sha(script), sha(self.dist / rel))
         self.assertTrue(os.access(script, os.X_OK))
         config = json.loads(
-            (self.home / "hooks" / "pilotfish-grok.json").read_text(encoding="utf-8")
+            (self.home / "hooks" / "shoal-grok.json").read_text(encoding="utf-8")
         )["hooks"]
         # the existing plan-mode guard stays first; the dispatch guard is added next to it
         self.assertEqual(
-            config["PreToolUse"][0]["hooks"][0]["command"], "pilotfish-grok/plan_mode_guard.py"
+            config["PreToolUse"][0]["hooks"][0]["command"], "shoal-grok/plan_mode_guard.py"
         )
         self.assertEqual(config["PreToolUse"][1]["matcher"], "^(search_replace|write|write_file|edit|multi_edit|create_file|spawn_subagent)$")
         self.assertEqual(len(config["UserPromptSubmit"]), 1)
@@ -269,7 +269,7 @@ class ApplyTests(InstallGrokCase):
     def test_installed_dispatch_guard_runs_from_the_grok_home(self) -> None:  # dispatch-enforcement R7
         self.run_cli("--apply")
         config = json.loads(
-            (self.home / "hooks" / "pilotfish-grok.json").read_text(encoding="utf-8")
+            (self.home / "hooks" / "shoal-grok.json").read_text(encoding="utf-8")
         )["hooks"]["PreToolUse"][1]["hooks"][0]
         script = self.home / "hooks" / config["command"]  # relative to the JSON file
         payload = {
@@ -290,8 +290,8 @@ class ApplyTests(InstallGrokCase):
     def test_uninstall_removes_the_dispatch_guard_too(self) -> None:  # dispatch-enforcement R7
         self.run_cli("--apply")
         self.assertEqual(self.run_cli("--uninstall", "--apply")[0], 0)
-        self.assertFalse((self.home / "hooks" / "pilotfish-grok" / "shoal_guard.py").exists())
-        self.assertFalse((self.home / "hooks" / "pilotfish-grok.json").exists())
+        self.assertFalse((self.home / "hooks" / "shoal-grok" / "shoal_guard.py").exists())
+        self.assertFalse((self.home / "hooks" / "shoal-grok.json").exists())
 
     def test_aborts_when_dist_guard_differs_from_committed_source(self) -> None:  # R1 single source
         (self.repo / "hooks").mkdir()
@@ -314,8 +314,8 @@ class ApplyTests(InstallGrokCase):
         (self.home / "agents").mkdir()
         (self.home / "agents" / "scout.md").write_bytes(b"old scout")
         (self.home / "rules").mkdir()
-        old_rules = f"{install_grok.BEGIN}\n<!-- pilotfish-grok v1.0.4 -->\nold\n{install_grok.END}\n".encode()
-        (self.home / "rules" / "pilotfish-grok.md").write_bytes(old_rules)
+        old_rules = f"{install_grok.BEGIN}\n<!-- shoal-grok v1.0.4 -->\nold\n{install_grok.END}\n".encode()
+        (self.home / "rules" / "shoal-grok.md").write_bytes(old_rules)
         self.assertEqual(self.run_cli("--apply")[0], 0)
         (backup,) = self.backups()
         self.assertRegex(backup.name, r"^shoal-\d{8}-\d{6}$")
@@ -324,7 +324,7 @@ class ApplyTests(InstallGrokCase):
             (backup / "files" / "agents" / "scout.md").read_bytes(), b"old scout"
         )
         self.assertEqual(
-            (backup / "files" / "rules" / "pilotfish-grok.md").read_bytes(), old_rules
+            (backup / "files" / "rules" / "shoal-grok.md").read_bytes(), old_rules
         )
         self.assertFalse(
             (backup / "files" / "agents" / "executor.md").exists()
@@ -371,7 +371,7 @@ class ApplyTests(InstallGrokCase):
         self,
     ) -> None:  # AC-GW-039
         (self.home / "rules").mkdir()
-        rules = self.home / "rules" / "pilotfish-grok.md"
+        rules = self.home / "rules" / "shoal-grok.md"
         for text in (
             f"{install_grok.BEGIN}\na\n{install_grok.END}\n{install_grok.BEGIN}\nb\n{install_grok.END}\n",
             f"{install_grok.BEGIN}\nno end\n",
@@ -382,7 +382,7 @@ class ApplyTests(InstallGrokCase):
             self.assertIn("marker", err)
             self.assertEqual(
                 tree(self.home),
-                {"rules/pilotfish-grok.md": hashlib.sha256(text.encode()).hexdigest()},
+                {"rules/shoal-grok.md": hashlib.sha256(text.encode()).hexdigest()},
             )
 
     def test_aborts_on_invalid_config_toml(self) -> None:
@@ -399,8 +399,8 @@ class ApplyTests(InstallGrokCase):
         (self.home / "agents" / "scout.md").write_text(
             "tampered", encoding="utf-8", newline="\n"
         )
-        (self.home / "rules" / "pilotfish-grok.md").write_text(
-            "<!-- pilotfish-grok v9.9.9 -->\n", encoding="utf-8", newline="\n"
+        (self.home / "rules" / "shoal-grok.md").write_text(
+            "<!-- shoal-grok v9.9.9 -->\n", encoding="utf-8", newline="\n"
         )
         problems = install_grok.verify(plan)
         self.assertIn("hash 不符: agents/scout.md", problems)
@@ -549,7 +549,7 @@ class UninstallTests(InstallGrokCase):
             "roles/mine.toml",
             "rules/other.md",
             "hooks/other.json",
-            "hooks/pilotfish-grok/notes.txt",
+            "hooks/shoal-grok/notes.txt",
         ):
             (self.home / rel).write_bytes(b"user file")
         user_files = {
@@ -559,7 +559,7 @@ class UninstallTests(InstallGrokCase):
                 "roles/mine.toml",
                 "rules/other.md",
                 "hooks/other.json",
-                "hooks/pilotfish-grok/notes.txt",
+                "hooks/shoal-grok/notes.txt",
             )
         }
         code, _, _ = self.run_cli("--uninstall", "--apply")
@@ -581,7 +581,7 @@ class UninstallTests(InstallGrokCase):
             k: v for k, v in tree(self.home).items() if not k.startswith("backups/")
         }
         self.run_cli("--uninstall", "--apply")
-        self.assertFalse((self.home / "hooks" / "pilotfish-grok").exists())
+        self.assertFalse((self.home / "hooks" / "shoal-grok").exists())
         backup = self.backups()[-1]
         self.assertEqual(self.run_cli("--restore", str(backup), "--apply")[0], 0)
         self.assertEqual(
@@ -594,7 +594,7 @@ class UninstallTests(InstallGrokCase):
         before = tree(self.home)
         code, out, _ = self.run_cli("--uninstall")
         self.assertEqual((code, tree(self.home)), (0, before))
-        self.assertIn("[移除] rules/pilotfish-grok.md", out)
+        self.assertIn("[移除] rules/shoal-grok.md", out)
 
 
 class CredentialIsolationTests(InstallGrokCase):

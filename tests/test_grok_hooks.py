@@ -17,13 +17,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "hosts" / "grok" / "dist"
 HOOKS = DIST / "hooks"
-GATE = HOOKS / "pilotfish-grok" / "subagent_stop_gate.py"
-GUARD = HOOKS / "pilotfish-grok" / "plan_mode_guard.py"
-SHOAL_GUARD = HOOKS / "pilotfish-grok" / "shoal_guard.py"
+GATE = HOOKS / "shoal-grok" / "subagent_stop_gate.py"
+GUARD = HOOKS / "shoal-grok" / "plan_mode_guard.py"
+SHOAL_GUARD = HOOKS / "shoal-grok" / "shoal_guard.py"
 
 
 def run(script: Path, stdin: str | bytes, *args: str, env: dict[str, str] | None = None) -> tuple[int, str]:
-    full_env = {k: v for k, v in os.environ.items() if k not in ("PILOTFISH_ROLE", "PILOTFISH_GROK_HOME", "GROK_HOME")}
+    full_env = {k: v for k, v in os.environ.items() if k not in ("SHOAL_ROLE", "SHOAL_GROK_HOME", "GROK_HOME")}
     full_env.update(env or {})
     data = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
     done = subprocess.run([sys.executable, str(script), *args], input=data, capture_output=True,
@@ -33,7 +33,7 @@ def run(script: Path, stdin: str | bytes, *args: str, env: dict[str, str] | None
 
 def gate(role: str, message: object, **extra: object) -> tuple[int, str]:
     payload = {"hookEventName": "subagent_stop", "stopHookActive": False, "lastAssistantMessage": message, **extra}
-    return run(GATE, json.dumps(payload), env={"PILOTFISH_ROLE": role})
+    return run(GATE, json.dumps(payload), env={"SHOAL_ROLE": role})
 
 
 def blocked(role: str, message: object) -> dict:
@@ -70,7 +70,7 @@ SECURITY_OK = {
 
 class HookConfigTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.config = json.loads((HOOKS / "pilotfish-grok.json").read_text(encoding="utf-8"))["hooks"]
+        self.config = json.loads((HOOKS / "shoal-grok.json").read_text(encoding="utf-8"))["hooks"]
 
     def test_subagent_stop_has_three_anchored_entries(self) -> None:  # AC-GW-010
         entries = self.config["SubagentStop"]
@@ -78,8 +78,8 @@ class HookConfigTests(unittest.TestCase):
         for entry, role in zip(entries, ("verifier", "plan-verifier", "security-reviewer")):
             (handler,) = entry["hooks"]
             self.assertEqual(handler["type"], "command")
-            self.assertEqual(handler["env"], {"PILOTFISH_ROLE": role})
-            self.assertEqual(handler["command"], "pilotfish-grok/subagent_stop_gate.py")
+            self.assertEqual(handler["env"], {"SHOAL_ROLE": role})
+            self.assertEqual(handler["command"], "shoal-grok/subagent_stop_gate.py")
             self.assertTrue((HOOKS / handler["command"]).is_file())
 
     def test_anchored_matchers_do_not_cross_match(self) -> None:  # AC-GW-010
@@ -91,7 +91,7 @@ class HookConfigTests(unittest.TestCase):
     def test_plan_mode_guard_entry_matches_only_spawn_subagent(self) -> None:  # AC-GW-027
         entry = self.config["PreToolUse"][0]
         self.assertEqual(entry["matcher"], "^spawn_subagent$")
-        self.assertEqual(entry["hooks"][0]["command"], "pilotfish-grok/plan_mode_guard.py")
+        self.assertEqual(entry["hooks"][0]["command"], "shoal-grok/plan_mode_guard.py")
         self.assertTrue((HOOKS / entry["hooks"][0]["command"]).is_file())
 
     def test_dispatch_guard_entries(self) -> None:  # dispatch-enforcement R7
@@ -102,7 +102,7 @@ class HookConfigTests(unittest.TestCase):
         self.assertNotIn("matcher", prompt)
         for entry in (tool, prompt):
             (handler,) = entry["hooks"]
-            self.assertEqual(handler["command"], "pilotfish-grok/shoal_guard.py")
+            self.assertEqual(handler["command"], "shoal-grok/shoal_guard.py")
             self.assertEqual(handler["env"], {"SHOAL_GUARD_HOST": "grok"})
             self.assertTrue((HOOKS / handler["command"]).is_file())
 
@@ -194,7 +194,7 @@ class FormatGateTests(unittest.TestCase):
                 self.assertEqual(gate(role, "nonsense", stopHookActive=True), (0, ""))
 
     def test_fails_open_on_unparseable_input(self) -> None:  # AC-GW-016
-        env = {"PILOTFISH_ROLE": "verifier"}
+        env = {"SHOAL_ROLE": "verifier"}
         for stdin in ("{not json", "", "[]", "null", '"text"', "{}", '{"lastAssistantMessage": 7}',
                       '{"lastAssistantMessage": null}', b"\xff\xfe\x00bad"):
             with self.subTest(stdin):
@@ -202,14 +202,14 @@ class FormatGateTests(unittest.TestCase):
 
     def test_fails_open_when_role_is_unknown_or_missing(self) -> None:  # AC-GW-016
         payload = json.dumps({"lastAssistantMessage": "nonsense"})
-        self.assertEqual(run(GATE, payload, env={"PILOTFISH_ROLE": "executor"}), (0, ""))
+        self.assertEqual(run(GATE, payload, env={"SHOAL_ROLE": "executor"}), (0, ""))
         self.assertEqual(run(GATE, payload), (0, ""))
         self.assertEqual(run(GATE, payload, "ghost"), (0, ""))
 
     def test_role_argument_overrides_environment(self) -> None:  # AC-GW-010
         payload = json.dumps({"lastAssistantMessage": "READY"})
-        self.assertEqual(run(GATE, payload, "plan-verifier", env={"PILOTFISH_ROLE": "verifier"}), (0, ""))
-        code, out = run(GATE, payload, "verifier", env={"PILOTFISH_ROLE": "plan-verifier"})
+        self.assertEqual(run(GATE, payload, "plan-verifier", env={"SHOAL_ROLE": "verifier"}), (0, ""))
+        code, out = run(GATE, payload, "verifier", env={"SHOAL_ROLE": "plan-verifier"})
         self.assertEqual((code, json.loads(out)["decision"]), (0, "block"))
 
     def test_gate_tokens_still_appear_in_agent_text(self) -> None:  # AC-GW-017
@@ -317,15 +317,15 @@ class PlanModeGuardTests(unittest.TestCase):
         (Path(other.name) / "roles").mkdir()
         (Path(other.name) / "roles" / "executor.toml").write_text('default_capability_mode = "read-only"\n', encoding="utf-8", newline="\n")
         stdin = spawn(None, "executor")
-        # 沒有參數時用環境變數；PILOTFISH_GROK_HOME 優先於 GROK_HOME
+        # 沒有參數時用環境變數；SHOAL_GROK_HOME 優先於 GROK_HOME
         self.assertEqual(run(GUARD, stdin, env={"GROK_HOME": other.name}), (0, ""))
-        self.assertEqual(run(GUARD, stdin, env={"GROK_HOME": str(self.home), "PILOTFISH_GROK_HOME": other.name}), (0, ""))
-        self.assertEqual(json.loads(run(GUARD, stdin, env={"PILOTFISH_GROK_HOME": str(self.home),
+        self.assertEqual(run(GUARD, stdin, env={"GROK_HOME": str(self.home), "SHOAL_GROK_HOME": other.name}), (0, ""))
+        self.assertEqual(json.loads(run(GUARD, stdin, env={"SHOAL_GROK_HOME": str(self.home),
                                                            "GROK_HOME": other.name})[1])["decision"], "deny")
         # --grok-home（含 = 寫法）優先於環境變數
         self.assertEqual(run(GUARD, stdin, f"--grok-home={other.name}", env={"GROK_HOME": str(self.home)}), (0, ""))
         self.assertEqual(json.loads(run(GUARD, stdin, "--grok-home", str(self.home),
-                                        env={"PILOTFISH_GROK_HOME": other.name})[1])["decision"], "deny")
+                                        env={"SHOAL_GROK_HOME": other.name})[1])["decision"], "deny")
 
     def test_default_home_is_dot_grok(self) -> None:  # AC-GW-025
         fake_home = tempfile.TemporaryDirectory()

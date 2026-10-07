@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and project Pilotfish's advisory review-intent signal."""
+"""Validate and project shoal's advisory review-intent signal."""
 
 from __future__ import annotations
 

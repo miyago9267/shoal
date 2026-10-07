@@ -637,8 +637,7 @@ class RobustnessTests(CliCase):
         self.assertEqual(guard.resolve_mode("codex", {"SHOAL_GUARD": "off"}), "off")
         self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "enforce"}), "shadow")
         self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "off"}), "off")
-        self.assertEqual(guard.resolve_mode("claude", {"PILOTFISH_GUARD": "shadow"}), "shadow")
-        self.assertEqual(guard.resolve_mode("claude", {"SHOAL_GUARD": "shadow", "PILOTFISH_GUARD": "off"}), "shadow")
+        self.assertEqual(guard.resolve_mode("claude", {"SHOAL_GUARD": "shadow"}), "shadow")
 
 
 if __name__ == "__main__":

@@ -9,17 +9,26 @@
   <host>: up-to-date | updated (<what>) | skipped (<reason>) | failed (<reason>)
 沒有 --apply 時 updated 行尾會加 [dry-run]（代表「會更新」）。exit 0，除非 --strict 且有 failed。
 
-只更新 shoal 自己安裝的內容，來源一律是 repo 的 committed HEAD（不是工作樹）：
+只更新 shoal 自己安裝的內容，來源一律是 repo 的 committed HEAD（不是工作樹）。
+shoal 2.0.0 把所有安裝出去的名稱都改了（docs/specs/shoal-rebrand）；每個 host 先辨識自己
+以舊名安裝的檔案，移除後以新名安裝，不是 shoal 安裝的舊名檔案一律不動並回報：
   codex     tools/install_hooks.py --host codex（dispatch guard 與 hook entry），加上
             templates/agents/*.toml 對 <CODEX_HOME 或 ~/.codex>/agents/ 的 role：已相同就略過；
             與 HEAD 不同但位元組等於該 template 的某個歷史版本才取代（temp file + rename）；
-            其他（使用者改過、未知來源、symlink）一律不動並回報 drift。不跑 install/install.py。
-  grok      tools/install_grok.py dry-run 回報有差異才 --apply（不帶 --fix-toggles，不動 config.toml）。
+            其他（使用者改過、未知來源、symlink）一律不動並回報 drift。平常不跑 install/install.py；
+            只有偵測到 2.0.0 之前的舊名安裝時才跑它（它先移除舊名：舊 hook 群組與 gate、AGENTS.md
+            舊 marker、install state、config.toml 的 marketplace／plugin key、plugin cache、
+            舊名的 jev 資料目錄，再以新名安裝並寫新的 state）。使用者自改的舊 gate 腳本改名成
+            .pre-shoal-<ts> 備份並取消註冊。這一步需要 codex CLI，工作樹在安裝用路徑上必須與 HEAD 相同。
+  grok      tools/install_grok.py dry-run 回報有差異才 --apply（不帶 --fix-toggles，不動 config.toml）；
+            舊名的 rules、hooks json、hooks 目錄（確認是 shoal 安裝的）由它一起移除。
   agy       tools/install_hooks.py --host agy；agents/skill 是指向 hosts/agy/dist 的 symlink，
-            只檢查 symlink 還指在那裡（回報，不修）。
+            只檢查 symlink 還指在那裡（回報，不修）；唯一例外是舊名的 skill symlink（指向本 repo 的
+            hosts/agy/dist）：移除並改指新名。
   opencode  需要 bun。用 install_global.sh 同樣的步驟建出 HEAD 的 bundle，與全域 config dir 的
-            plugin、roles、pilotfish/*.json 比對；有差異就 install.sh --global --disable 再 --enable。
+            plugin、roles、shoal/*.json 比對；有差異就 install.sh --global --disable 再 --enable。
             dotfile 裡的 harness copy 只回報是否相同，不寫入。
+            全域 manifest 若還記著舊名的相對路徑，照同樣的順序做：用舊 manifest --disable，再以新名 --enable。
             已停用（manifest 不是 enabled）或從未安裝就略過，不替使用者重新啟用。
 
 stdlib only；重複執行不會改變結果，沒有差異時不寫檔、不建備份。
@@ -40,10 +49,17 @@ from pathlib import Path
 from typing import Callable, Mapping, Optional
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "install"))
+import legacy_codex  # noqa: E402
 HOSTS = ("codex", "grok", "agy", "opencode")
 ROLE_DIR = "templates/agents"
 OPENCODE_INSTALL = "hosts/opencode/plugin/install/install.sh"
-DEFAULT_HARNESS = Path("dotfile/config/opencode-harness/plugins/pilotfish-opencode.js")
+DEFAULT_HARNESS = Path("dotfile/config/opencode-harness/plugins/shoal-opencode.js")
+
+# ---- LEGACY_: names shoal installed before 2.0.0 (docs/specs/shoal-rebrand N5) ----
+LEGACY_AGY_SKILL = "pilotfish-orchestration"
+LEGACY_OPENCODE_PLUGIN_ENTRY = "plugins/pilotfish-opencode.js"
+LEGACY_OPENCODE_DIR_PREFIX = "pilotfish/"
 
 Result = tuple[str, str]  # (status, detail)
 
@@ -120,8 +136,10 @@ def atomic_replace(path: Path, data: bytes, mode: int) -> None:
         raise
 
 
-def installer_changes(script: str, extra: list[str], ctx: Ctx) -> bool:
-    """跑 install_hooks / install_grok 的 --json 計畫；回傳寫入前是否有差異。"""
+def installer_changes(
+    script: str, extra: list[str], ctx: Ctx, plan: Optional[dict] = None
+) -> bool:
+    """跑 install_hooks / install_grok 的 --json 計畫；回傳寫入前是否有差異。plan 給呼叫端取完整的 JSON。"""
     cmd = [
         sys.executable,
         str(REPO / "tools" / script),
@@ -132,15 +150,18 @@ def installer_changes(script: str, extra: list[str], ctx: Ctx) -> bool:
         "--ref",
         ctx.ref,
     ]
-    plan = run(cmd, ctx)
-    if plan.returncode != 0:
+    plan_run = run(cmd, ctx)
+    if plan_run.returncode != 0:
         raise SyncError(
-            f"{script} exit {plan.returncode}: {one_line(plan.stderr or plan.stdout)}"
+            f"{script} exit {plan_run.returncode}: {one_line(plan_run.stderr or plan_run.stdout)}"
         )
     changes = None
-    for line in plan.stdout.splitlines():
+    for line in plan_run.stdout.splitlines():
         if line.startswith('{"changes"'):
-            changes = json.loads(line)["changes"]
+            parsed = json.loads(line)
+            changes = parsed["changes"]
+            if plan is not None:
+                plan.update(parsed)
     if changes is None:
         raise SyncError(f"{script} 沒有輸出 --json 計畫")
     changed = bool(changes)
@@ -202,11 +223,53 @@ def sync_codex_roles(ctx: Ctx, home: Path) -> tuple[list[str], list[str], list[s
     return updated, added, drift
 
 
+# 遷移後由正常的 installer 安裝的新名（只用在 dry-run 的計畫文字）。
+CODEX_INSTALL_NEW = (
+    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-guard-v1 hook groups, "
+    "shoal-codex AGENTS.md block, new install state"
+)
+
+
+def migrate_codex_legacy(ctx: Ctx, home: Path) -> Optional[str]:
+    """2.0.0 之前的舊名安裝：dry-run 回報計畫；--apply 先移除舊名再跑 install/install.py 以新名安裝。
+
+    回傳摘要片段；沒有舊名安裝時回 None。dry-run 之後的步驟不能在舊名還在的 home 上模擬，所以略過。
+    """
+    try:
+        legacy = legacy_codex.detect(home, ctx.repo / "plugin")
+    except legacy_codex.LegacyMigrationError as exc:
+        raise SyncError(f"legacy migration: {exc}") from exc
+    if not legacy.found:
+        return None
+    summary = "legacy migration: " + "; ".join(legacy.plan()) + "; install " + CODEX_INSTALL_NEW
+    if not ctx.apply:
+        return summary
+    commit = git(ctx, "rev-parse", "--verify", f"{ctx.ref}^{{commit}}").decode().strip()
+    head = git(ctx, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+    if commit != head:
+        raise SyncError("legacy migration runs install/install.py from the working tree; --ref must be HEAD")
+    dirty = git(ctx, "status", "--porcelain", "--", "install", "templates", "hooks", "plugin").decode().strip()
+    if dirty:
+        raise SyncError("legacy migration needs install/, templates/, hooks/ and plugin/ to match HEAD; commit or stash first")
+    done = run(
+        [sys.executable, str(ctx.repo / "install" / "install.py"), "--codex-home", str(home)],
+        ctx,
+    )
+    if done.returncode != 0:
+        raise SyncError(f"install/install.py exit {done.returncode}: {one_line(done.stderr or done.stdout)}")
+    return summary
+
+
 def sync_codex(ctx: Ctx) -> Result:
     home = codex_home(ctx)
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
     parts: list[str] = []
+    migrated = migrate_codex_legacy(ctx, home)
+    if migrated is not None:
+        parts.append(migrated)
+        if not ctx.apply:
+            return "updated", migrated
     if installer_changes("install_hooks.py", ["--host", "codex"], ctx):
         parts.append("guard hooks")
     updated, added, drift = sync_codex_roles(ctx, home)
@@ -225,7 +288,12 @@ def sync_grok(ctx: Ctx) -> Result:
     home = ctx.abs_env("GROK_HOME", ctx.home / ".grok")
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
-    if installer_changes("install_grok.py", [], ctx):
+    plan: dict = {}
+    if installer_changes("install_grok.py", [], ctx, plan):
+        legacy = plan.get("legacy") or []
+        if legacy:
+            installs = [c for c in plan["changes"] if c not in legacy]
+            return "updated", f"legacy migration: remove {', '.join(legacy)}; install {', '.join(installs)}"
         return "updated", "dist files"
     return "up-to-date", ""
 
@@ -251,15 +319,54 @@ def agy_link_problems(ctx: Ctx) -> list[str]:
     return problems
 
 
+def migrate_agy_skill_link(ctx: Ctx) -> tuple[Optional[str], list[str], str]:
+    """舊名的 skill symlink（指向本 repo 的 hosts/agy/dist/skills）改指新名。
+
+    回傳 (摘要片段 或 None, 留下沒動的原因, 新名)。不是 symlink、或指向別處的舊名一律不動。
+    """
+    skills = ctx.home / ".gemini" / "config" / "skills"
+    old = skills / LEGACY_AGY_SKILL
+    if not old.is_symlink():
+        return None, [], ""
+    dist_skills = ctx.repo / "hosts" / "agy" / "dist" / "skills"
+    target = Path(os.readlink(old))
+    if not target.is_absolute():
+        target = old.parent / target
+    if target.name != LEGACY_AGY_SKILL or os.path.realpath(target.parent) != os.path.realpath(dist_skills):
+        return None, [f"skills/{LEGACY_AGY_SKILL} 不指向本 repo 的 hosts/agy/dist，未動"], ""
+    names = [
+        Path(p).name
+        for p in git(ctx, "ls-tree", "--name-only", ctx.ref, "hosts/agy/dist/skills/").decode().split()
+    ]
+    if not names:
+        return None, [], ""
+    name = names[0]
+    new = skills / name
+    if (new.exists() or new.is_symlink()) and not (
+        new.is_symlink() and os.path.realpath(new) == os.path.realpath(dist_skills / name)
+    ):
+        return None, [f"skills/{name} 已存在但不是指向 hosts/agy/dist 的 symlink，未動"], ""
+    if ctx.apply:
+        old.unlink()
+        if not new.is_symlink():
+            new.symlink_to(dist_skills / name)
+    return f"legacy migration: relink skills/{LEGACY_AGY_SKILL} -> skills/{name}", [], name
+
+
 def sync_agy(ctx: Ctx) -> Result:
     home = ctx.home / ".gemini"
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
+    migrated, kept, relinked = migrate_agy_skill_link(ctx)
     changed = installer_changes("install_hooks.py", ["--host", "agy"], ctx)
     problems = agy_link_problems(ctx)
+    if migrated and not ctx.apply:  # dry-run：新名的 link 還沒建，不算 drift
+        problems = [p for p in problems if not p.startswith(f"skills/{relinked}")]
+    problems += kept
     note = ("symlink drift: " + ", ".join(problems)) if problems else "symlinks ok"
-    if changed:
-        return "updated", f"guard hooks; {note}"
+    parts = [p for p in (migrated, "guard hooks" if changed else None) if p]
+    if parts:
+        return "updated", f"{'; '.join(parts)}; {note}"
     return "up-to-date", note
 
 
@@ -282,6 +389,21 @@ def manifest_state(manifest: Path) -> Optional[str]:
     except OSError:
         pass
     return None
+
+
+def legacy_opencode_entries(manifest: Path) -> list[str]:
+    """manifest 裡還記著 2.0.0 之前舊名的相對路徑（安裝時記錄，--disable 會照它移除）。"""
+    found: list[str] = []
+    try:
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            fields = line.split("|")
+            if fields[0] == "entry" and len(fields) >= 4:
+                rel = fields[3]
+                if rel == LEGACY_OPENCODE_PLUGIN_ENTRY or rel.startswith(LEGACY_OPENCODE_DIR_PREFIX):
+                    found.append(rel)
+    except OSError:
+        pass
+    return found
 
 
 def build_opencode(ctx: Ctx, work: Path, bun: str) -> dict[str, Path]:
@@ -309,14 +431,14 @@ def build_opencode(ctx: Ctx, work: Path, bun: str) -> dict[str, Path]:
     dist = src / "dist"
     if not (dist / "roles").is_dir():
         raise SyncError("HEAD 沒有 hosts/opencode/dist/roles")
-    bundle = work / "pilotfish-opencode.js"
+    bundle = work / "shoal-opencode.js"
     plugin = src / "plugin"
     for step in (
         [bun, "install", "--frozen-lockfile"],
         [
             bun,
             "build",
-            "src/plugin/pilotfish-opencode.ts",
+            "src/plugin/shoal-opencode.ts",
             "--bundle",
             "--format",
             "esm",
@@ -333,13 +455,13 @@ def build_opencode(ctx: Ctx, work: Path, bun: str) -> dict[str, Path]:
             )
     if not bundle.is_file() or bundle.stat().st_size == 0:
         raise SyncError("plugin build 沒有輸出")
-    expected = {"plugins/pilotfish-opencode.js": bundle}
+    expected = {"plugins/shoal-opencode.js": bundle}
     for role in sorted((dist / "roles").glob("*.md")):
         expected[f"agents/{role.name}"] = role
     for name in ("catalog.json", "routing.json"):
         if not (dist / name).is_file():
             raise SyncError(f"HEAD 沒有 hosts/opencode/dist/{name}")
-        expected[f"pilotfish/{name}"] = dist / name
+        expected[f"shoal/{name}"] = dist / name
     return expected
 
 
@@ -374,11 +496,14 @@ def sync_opencode(ctx: Ctx) -> Result:
         harness = ctx.abs_env("OPENCODE_HARNESS_PLUGIN", ctx.home / DEFAULT_HARNESS)
         note = ""
         if harness.is_file():
-            same = digest(harness) == digest(expected["plugins/pilotfish-opencode.js"])
+            same = digest(harness) == digest(expected["plugins/shoal-opencode.js"])
             note = f"harness copy {'matches' if same else 'differs'}"
         if not diffs:
             return "up-to-date", note
         what = ", ".join(diffs)
+        legacy = legacy_opencode_entries(opencode_manifest(ctx))
+        if legacy:
+            what = f"legacy migration: remove {', '.join(legacy)}; install {what}"
         if ctx.apply:
             base = ["sh", str(install_sh), "--global", "--config-dir", str(config)]
             for action in ("--disable", "--enable"):

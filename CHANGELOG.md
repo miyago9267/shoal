@@ -3,6 +3,63 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v2.0.0
+
+shoal 成為獨立產品：安裝出去的名稱全部換新，版本重新起算。設計與對照表在
+`docs/specs/shoal-rebrand/`（`RENAME.md` 是唯一的對照來源）。
+
+### Breaking changes
+
+- 名稱：skill `shoal-orchestration`；Codex plugin 與 marketplace `shoal-codex`、
+  `shoal-jev-router`（資料目錄 `shoal-jev/`）；Codex hook `shoal_autoroute_gate.py`，
+  projection 是新的獨立 `shoal-autoroute-v1`；marker `<!-- shoal-claude v… -->`、
+  `<!-- shoal-codex:begin -->` 等；Grok `shoal-grok`、agy `shoal-agy`、OpenCode
+  `shoal-opencode`（tool `shoal_route`，設定目錄 `shoal/`）；install state
+  `.shoal-install-state.json`；備份與暫存檔名 `.shoal-codex-<ts>`、`.shoal-stage-`。
+- 環境變數前綴一律是 `SHOAL_`（例：`SHOAL_REF`、`SHOAL_TARGET_HOME`、`SHOAL_GROK_HOME`、
+  `SHOAL_ROOT`）。不留相容層：舊前綴不再被讀取，dispatch guard 的舊別名
+  也一併移除（`SHOAL_GUARD`、`SHOAL_GUARD_MAX_FILES` 本來就是主名稱）。
+- 不改的：role 名稱、選模、權限與 guard 規則。
+
+### 版本
+
+- 產品與各 host 版本一律從 2.0.0 起算，不再沿用上游衍生的版本號：根目錄 `VERSION`、
+  `hosts/{claude,codex,grok}/VERSION`、新增的 `hosts/agy/VERSION`（render 以它產生
+  `<!-- shoal-agy v… -->`）、OpenCode plugin 的 `package.json`。`upstream.lock` 的
+  `marker_version` 同步，上游版本仍只記在 `upstream.lock`。
+
+### 遷移
+
+installer 與 `tools/sync_global.py` 會辨識自己先前以舊名安裝的檔案（marker、hash 或安裝紀錄），
+移除後以新名安裝；不是 shoal 安裝的舊名檔案一律不動並回報。
+
+- Codex：`install/install.py` 先移除舊 hook 群組與 gate 腳本、轉換 `AGENTS.md` 的 marker 區塊、
+  改名 `config.toml` 裡指向本 repo `plugin/` 的 marketplace 與 plugin table、移除過期的
+  plugin cache、改名 jev 資料目錄、封存舊 install state，再以新名安裝並寫新的 state。
+  你自己改過的舊 gate 腳本改名為 `<name>.pre-shoal-<時間>` 備份，不再註冊。新的 hook 路徑
+  要在互動式 Codex 用 `/hooks` 再核准一次。
+- Grok：`tools/install_grok.py` 確認舊名的 rules、hooks json 與 hooks 目錄是 shoal 安裝的
+  （marker 帶 `-shoal.N`，或有 shoal 專屬的 guard 腳本）才移除，並一起備份。
+- agy：`tools/sync_global.py` 把指向本 repo `hosts/agy/dist` 的舊 skill symlink 改指新名。
+- OpenCode：`install.sh` 以舊 manifest 先 `--disable`，再以新名 `--enable`（`--global` 與
+  `--target` 都是）；檔案被改過就整批不動。
+- `tools/sync_global.py` 的 dry-run 只列「移除舊名」與「安裝新名」。
+
+### Lock
+
+- prompt lock 做一次 renewal：`LOCK.json` 的路徑、mirrors 與
+  `required_fragments` 更新，內容變動的 surface 帶 `migration`
+  （`shoal-rebrand-2-0-0`，`equivalence` 指向 `RENAME.md`）。路徑改名的
+  surface 在 validator 走「新增」分支，所以另用 `tools/check_rename.py`
+  證明等價：base 的舊內容套用 RENAME 的替換與版本號後，必須與新檔逐位元組
+  相同。
+
+### Tooling
+
+- 新增 `tools/check_rename.py`（rename-aware lock 檢查）與 `tools/scan_legacy_names.py`
+  （產品面舊名掃描，RENAME「掃描範圍」）。
+- 移除 `tools/guard_parity.py`：它對照的舊 guard 已不存在。
+
 ## v1.5.0
 
 ### Features

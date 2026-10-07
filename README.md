@@ -23,7 +23,7 @@ role 只寫 tier，不寫模型。resolver 在每個 host 的模型目錄裡排�
 main session 先判斷互動形態與風險，小而局部的工作直接做；有風險或大型工作
 才走五道關卡，依階段派唯讀、審查或寫入的 role。完整規則在各 host 的
 orchestration policy（例如
-`hosts/claude/dist/skills/pilotfish-orchestration/references/orchestration-policy.md`）。
+`hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md`）。
 
 ![呼叫鏈：互動形態、風險判斷、五道關卡與各 host 的執行時機制](./docs/assets/shoal-call-chain.svg)
 
@@ -96,14 +96,15 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 1.5.0 |
-| codex host | 1.8.3（`hosts/codex/VERSION`） |
-| claude host | 1.4.2-claude.4（`hosts/claude/VERSION`） |
-| agy host | 0.1.0 |
-| grok host | 1.0.6-shoal.2（`hosts/grok/VERSION`，衍生自上游 v1.0.6） |
-| opencode host | 以 `hosts/opencode/plugin/package.json` 為準 |
+| shoal（產品） | 2.0.0 |
+| codex host | 2.0.0（`hosts/codex/VERSION`） |
+| claude host | 2.0.0（`hosts/claude/VERSION`） |
+| agy host | 2.0.0（`hosts/agy/VERSION`） |
+| grok host | 2.0.0（`hosts/grok/VERSION`） |
+| opencode host | 2.0.0（`hosts/opencode/plugin/package.json`） |
 
-產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。
+產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
+shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。
 
 ## 驗證
 

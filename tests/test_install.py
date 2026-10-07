@@ -54,7 +54,7 @@ GUARD_SCRIPT = "hooks/shoal_guard.py"
 
 
 def _state_path(home: Path) -> Path:
-    return home.with_name(f"{home.name}.pilotfish-install-state.json")
+    return home.with_name(f"{home.name}.shoal-install-state.json")
 
 
 def _make_pre_guard(home: Path) -> None:
@@ -333,7 +333,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(policy_target.read_bytes(), policy_original)
             self.assertEqual(config.read_bytes(), config_original)
             self.assertFalse(
-                home.with_name(f"{home.name}.pilotfish-install-state.json").exists()
+                home.with_name(f"{home.name}.shoal-install-state.json").exists()
             )
 
     def test_roles_only_dry_run_does_not_create_runtime_artifacts(self) -> None:
@@ -354,7 +354,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertIn("would change primary: agents/", output.getvalue())
             self.assertFalse((home / "agents").exists())
             self.assertFalse(
-                home.with_name(f"{home.name}.pilotfish-install-state.json").exists()
+                home.with_name(f"{home.name}.shoal-install-state.json").exists()
             )
 
     def test_roles_only_requires_explicit_approval_for_custom_same_name_role(self) -> None:
@@ -380,7 +380,7 @@ class NativeInstallTests(unittest.TestCase):
                 role.read_bytes(),
                 (ROOT / "templates" / "agents" / "executor.toml").read_bytes(),
             )
-            backups = list(agents.glob("executor.toml.pilotfish-codex-*"))
+            backups = list(agents.glob("executor.toml.shoal-codex-*"))
             self.assertEqual(len(backups), 1)
             self.assertEqual(backups[0].read_bytes(), before)
 
@@ -394,7 +394,7 @@ class NativeInstallTests(unittest.TestCase):
             'max_concurrent_threads_per_session = 4\n'
         )
         config.write_text(legacy)
-        state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+        state_path = home.with_name(f"{home.name}.shoal-install-state.json")
         state = json.loads(state_path.read_text())
         state["target_fingerprints"]["config.toml"] = hashlib.sha256(legacy.encode()).hexdigest()
         state["original_targets"]["config.toml"] = {
@@ -458,7 +458,7 @@ class NativeInstallTests(unittest.TestCase):
             config = tomllib.loads((home / "config.toml").read_text())
             self.assertEqual(config["agents"]["max_concurrent_threads_per_session"], 3)
             self.assertEqual({p.stem for p in (home / "agents").glob("*.toml")}, {"executor", "mech-executor", "plan-verifier", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier"})
-            state = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state = home.with_name(f"{home.name}.shoal-install-state.json")
             recorded = json.loads(state.read_text())
             self.assertEqual(recorded["status"], "committed")
             self.assertIn("config.toml", recorded["target_fingerprints"])
@@ -472,8 +472,8 @@ class NativeInstallTests(unittest.TestCase):
                 )[0],
             )
             self.assertEqual(
-                (home / "hooks" / "pilotfish_autoroute_gate.py").read_bytes(),
-                (ROOT / "hooks" / "pilotfish_autoroute_gate.py").read_bytes(),
+                (home / "hooks" / "shoal_autoroute_gate.py").read_bytes(),
+                (ROOT / "hooks" / "shoal_autoroute_gate.py").read_bytes(),
             )
             self.assertEqual(
                 (home / GUARD_SCRIPT).read_bytes(),
@@ -484,7 +484,7 @@ class NativeInstallTests(unittest.TestCase):
             )
             self.assertIn(GUARD_SCRIPT, recorded["target_fingerprints"])
             self.assertEqual(recorded["state_version"], 3)
-            self.assertEqual(recorded["plugin"]["name"], "pilotfish-codex")
+            self.assertEqual(recorded["plugin"]["name"], "shoal-codex")
             self.assertEqual(recorded["plugin"]["status"], "unavailable")
             self.assertTrue(recorded["plugin"]["source_sha256"])
             self.assertEqual(recorded["runtime_status"], "integrated-plugin-unavailable")
@@ -498,7 +498,7 @@ class NativeInstallTests(unittest.TestCase):
                 projection_digest(CURRENT_PROJECTION_ID),
             )
             self.assertIn(
-                "hooks/pilotfish_autoroute_gate.py",
+                "hooks/shoal_autoroute_gate.py",
                 recorded["target_fingerprints"],
             )
             self.assertIn("config.toml", recorded["original_targets"])
@@ -513,7 +513,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             config = home / "config.toml"
             config.write_bytes(config.read_bytes() + b'\n[plugins."local-extra"]\nenabled = true\n')
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text())
             state["target_fingerprints"]["config.toml"] = hashlib.sha256(
                 config.read_bytes()
@@ -568,9 +568,9 @@ class NativeInstallTests(unittest.TestCase):
 
             installed = policy.read_bytes()
             self.assertTrue(installed.startswith(original))
-            self.assertIn(b"<!-- pilotfish-codex:begin -->", installed)
-            self.assertFalse((home / "pilotfish" / "AGENTS.md").exists())
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            self.assertIn(b"<!-- shoal-codex:begin -->", installed)
+            self.assertFalse((home / "shoal" / "AGENTS.md").exists())
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(
                 state["policy_ownership"],
@@ -581,9 +581,9 @@ class NativeInstallTests(unittest.TestCase):
                         "status": "integrated",
                         "sha256": hashlib.sha256(original).hexdigest(),
                     },
-                    "pilotfish_policy": {
+                    "shoal_policy": {
                         "path": "AGENTS.md",
-                        "owner": "pilotfish",
+                        "owner": "shoal",
                         "status": "integrated",
                         "sha256": hashlib.sha256(installed).hexdigest(),
                     },
@@ -616,7 +616,7 @@ class NativeInstallTests(unittest.TestCase):
             )
             installed = target.read_bytes()
             self.assertTrue(installed.startswith(original))
-            self.assertIn(b"<!-- pilotfish-codex:begin -->", installed)
+            self.assertIn(b"<!-- shoal-codex:begin -->", installed)
             self.assertTrue((home / "AGENTS.md").is_symlink())
 
     def test_existing_full_policy_marker_migrates_to_bootstrap_without_touching_user_bytes(self) -> None:
@@ -634,7 +634,7 @@ class NativeInstallTests(unittest.TestCase):
             installed = policy.read_bytes()
             self.assertTrue(installed.startswith(prefix))
             self.assertTrue(installed.endswith(suffix))
-            self.assertIn(b"### Pilotfish always-on bootstrap", installed)
+            self.assertIn(b"### Shoal always-on bootstrap", installed)
             self.assertNotIn(b"#### Native typed spawn policy", installed)
 
     def test_plugin_adapter_uses_codex_marketplace_contract(self) -> None:
@@ -646,7 +646,7 @@ class NativeInstallTests(unittest.TestCase):
                     returncode=0,
                     stdout=json.dumps({
                         "marketplaces": [{
-                            "name": "pilotfish-codex",
+                            "name": "shoal-codex",
                             "root": str(ROOT / "plugin"),
                         }]
                     }),
@@ -661,9 +661,9 @@ class NativeInstallTests(unittest.TestCase):
                     returncode=0,
                     stdout=json.dumps({
                         "installed": [{
-                            "name": "pilotfish-codex",
-                            "marketplaceName": "pilotfish-codex",
-                            "version": installer.PILOTFISH_PLUGIN_VERSION,
+                            "name": "shoal-codex",
+                            "marketplaceName": "shoal-codex",
+                            "version": installer.SHOAL_PLUGIN_VERSION,
                             "enabled": True,
                             "marketplaceSource": {"source": str(ROOT / "plugin")},
                         }]
@@ -687,7 +687,7 @@ class NativeInstallTests(unittest.TestCase):
                 "codex", "plugin", "marketplace", "list", "--json",
             ])
             self.assertEqual(run.call_args_list[2].args[0][0:4], [
-                "codex", "plugin", "add", "pilotfish-codex@pilotfish-codex",
+                "codex", "plugin", "add", "shoal-codex@shoal-codex",
             ])
             self.assertEqual(run.call_args_list[3].args[0], [
                 "codex", "plugin", "list", "--json",
@@ -698,8 +698,8 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             unavailable = {
-                "name": "pilotfish-codex",
-                            "version": installer.PILOTFISH_PLUGIN_VERSION,
+                "name": "shoal-codex",
+                            "version": installer.SHOAL_PLUGIN_VERSION,
                 "status": "unavailable",
                 "source_sha256": installer._plugin_source_digest(ROOT / "plugin"),
             }
@@ -719,7 +719,7 @@ class NativeInstallTests(unittest.TestCase):
                     0,
                 )
             state = json.loads(
-                home.with_name(f"{home.name}.pilotfish-install-state.json").read_text()
+                home.with_name(f"{home.name}.shoal-install-state.json").read_text()
             )
             self.assertEqual(state["runtime_status"], "integrated-plugin-unavailable")
             self.assertEqual(state["plugin"]["status"], "unavailable")
@@ -733,7 +733,7 @@ class NativeInstallTests(unittest.TestCase):
             config = home / "config.toml"
             config.write_bytes(
                 config.read_bytes()
-                + b'\n[hooks.state]\npilotfish_autoroute_gate = "trusted"\n'
+                + b'\n[hooks.state]\nshoal_autoroute_gate = "trusted"\n'
             )
             expected = config.read_bytes()
 
@@ -757,7 +757,7 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             previous_state = state_path.read_bytes()
             policy = home / "AGENTS.md"
             policy.write_bytes(policy.read_bytes() + b"\n# User-owned current rule\n")
@@ -770,7 +770,7 @@ class NativeInstallTests(unittest.TestCase):
 
             installed = policy.read_bytes()
             self.assertIn(b"# User-owned current rule", installed)
-            self.assertIn(b"<!-- pilotfish-codex:begin -->", installed)
+            self.assertIn(b"<!-- shoal-codex:begin -->", installed)
             state = json.loads(state_path.read_text())
             self.assertEqual(state["state_version"], 4)
             reconciliation = state["reconciliation"]
@@ -820,7 +820,7 @@ class NativeInstallTests(unittest.TestCase):
             policy = home / "AGENTS.md"
             policy.write_bytes(policy.read_bytes() + b"\n# current\n")
             self.assertEqual(self.run_install(home, reconcile_current=True), 0)
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state_before = state_path.read_bytes()
             files_before = {
                 path.relative_to(home): path.read_bytes()
@@ -870,7 +870,7 @@ class NativeInstallTests(unittest.TestCase):
                 0,
             )
             state = json.loads(
-                home.with_name(f"{home.name}.pilotfish-install-state.json").read_text()
+                home.with_name(f"{home.name}.shoal-install-state.json").read_text()
             )
             self.assertEqual(state["state_version"], 4)
             backup = state["rollback_backups"]["AGENTS.md"]
@@ -889,16 +889,16 @@ class NativeInstallTests(unittest.TestCase):
             _make_pre_guard(home)
             hooks_path = home / "hooks.json"
             hooks = json.loads(hooks_path.read_text())
-            legacy = TRUSTED_PROJECTIONS["pilotfish-autoroute-v1"]
+            legacy = TRUSTED_PROJECTIONS["shoal-autoroute-v1"]
             for event in ("UserPromptSubmit", "Stop"):
                 hooks["hooks"][event] = [legacy[event]]
             hooks_path.write_text(json.dumps(hooks, indent=2) + "\n")
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text())
             state["hook_registration"] = {
                 "version": 1,
-                "projection_id": "pilotfish-autoroute-v1",
-                "projection_sha256": projection_digest("pilotfish-autoroute-v1"),
+                "projection_id": "shoal-autoroute-v1",
+                "projection_sha256": projection_digest("shoal-autoroute-v1"),
             }
             state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
             policy = home / "AGENTS.md"
@@ -985,7 +985,7 @@ class NativeInstallTests(unittest.TestCase):
 
             def capture_backup(*args: object, **kwargs: object) -> Path:
                 backup = original_planner(*args, **kwargs)
-                if backup.name.startswith("AGENTS.md.pilotfish-codex-"):
+                if backup.name.startswith("AGENTS.md.shoal-codex-"):
                     captured["path"] = backup
                 return backup
 
@@ -1015,7 +1015,7 @@ class NativeInstallTests(unittest.TestCase):
             policy = home / "AGENTS.md"
             policy.write_bytes(policy.read_bytes() + b"\n# current\n")
             self.assertEqual(self.run_install(home, reconcile_current=True), 0)
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text())
             self.assertEqual(state["state_version"], 4)
             state["rollback_backups"] = {}
@@ -1030,7 +1030,7 @@ class NativeInstallTests(unittest.TestCase):
             policy = home / "AGENTS.md"
             policy.write_bytes(policy.read_bytes() + b"\n# current\n")
             self.assertEqual(self.run_install(home, reconcile_current=True), 0)
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text())
             preimage = state["reconciliation"]["accepted_preimages"]["AGENTS.md"]
             preimage["target_path"] = str(home.parent / "outside-policy.md")
@@ -1059,9 +1059,9 @@ class NativeInstallTests(unittest.TestCase):
                 {
                     "installed": [
                         {
-                            "name": "pilotfish-codex",
-                            "marketplaceName": "pilotfish-codex",
-                            "version": "1.8.4",
+                            "name": "shoal-codex",
+                            "marketplaceName": "shoal-codex",
+                            "version": "2.0.1",
                             "enabled": True,
                         }
                     ]
@@ -1089,8 +1089,8 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             unavailable = {
-                "name": "pilotfish-codex",
-                "version": installer.PILOTFISH_PLUGIN_VERSION,
+                "name": "shoal-codex",
+                "version": installer.SHOAL_PLUGIN_VERSION,
                 "status": "unavailable",
                 "source_sha256": installer._plugin_source_digest(ROOT / "plugin"),
             }
@@ -1117,7 +1117,7 @@ class NativeInstallTests(unittest.TestCase):
                         check_codex=True,
                     )
             self.assertIn(b"[foreign]", (home / "config.toml").read_bytes())
-            pending = home.with_name(f"{home.name}.pilotfish-install-state.json.pending")
+            pending = home.with_name(f"{home.name}.shoal-install-state.json.pending")
             self.assertTrue(pending.is_file())
             self.assertEqual(json.loads(pending.read_text())["status"], "aborted")
 
@@ -1151,7 +1151,7 @@ class NativeInstallTests(unittest.TestCase):
                 }
                 self.assertEqual(after, before)
                 self.assertFalse(
-                    home.with_name(f"{home.name}.pilotfish-install-state.json.pending").exists()
+                    home.with_name(f"{home.name}.shoal-install-state.json.pending").exists()
                 )
 
     def test_config_snapshot_change_during_state_validation_aborts_before_write(self) -> None:
@@ -1182,7 +1182,7 @@ class NativeInstallTests(unittest.TestCase):
             }
             self.assertEqual(after, before)
             self.assertFalse(
-                home.with_name(f"{home.name}.pilotfish-install-state.json.pending").exists()
+                home.with_name(f"{home.name}.shoal-install-state.json.pending").exists()
             )
 
     def test_legacy_v2_provenance_allows_hooks_state_but_rejects_legacy_deviation(self) -> None:
@@ -1243,14 +1243,14 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
-            script = home / "hooks" / "pilotfish_autoroute_gate.py"
+            script = home / "hooks" / "shoal_autoroute_gate.py"
             script.write_bytes(script.read_bytes() + b"\n")
             before = {
                 path.relative_to(home): path.read_bytes()
                 for path in home.rglob("*")
                 if path.is_file()
             }
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state_before = state_path.read_bytes()
             with self.assertRaisesRegex(InstallAbort, "committed install state is stale"):
                 self.run_install(home)
@@ -1268,16 +1268,16 @@ class NativeInstallTests(unittest.TestCase):
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
             _make_pre_guard(home)
-            script = home / "hooks" / "pilotfish_autoroute_gate.py"
+            script = home / "hooks" / "shoal_autoroute_gate.py"
             previous_payload = b"# previously installed trusted hook payload\n"
             script.write_bytes(previous_payload)
 
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text())
             state.pop("state_version")
             state.pop("hook_registration")
             state["target_fingerprints"][
-                "hooks/pilotfish_autoroute_gate.py"
+                "hooks/shoal_autoroute_gate.py"
             ] = hashlib.sha256(previous_payload).hexdigest()
             registration_payload = (ROOT / "templates" / "hooks.json").read_bytes()
             state["target_fingerprints"]["hooks.json"] = hashlib.sha256(
@@ -1290,16 +1290,20 @@ class NativeInstallTests(unittest.TestCase):
             }
             state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
 
-            self.assertEqual(self.run_install(home), 0)
+            # pre-v2 raw-fingerprint states only ever named legacy projections; map this
+            # fixture's raw fingerprint to the current one to exercise the upgrade path.
+            raw = {hashlib.sha256(registration_payload).hexdigest(): CURRENT_PROJECTION_ID}
+            with mock.patch.dict(hook_registration.LEGACY_RAW_REGISTRATIONS, raw):
+                self.assertEqual(self.run_install(home), 0)
             selected_payload = (
-                ROOT / "hooks" / "pilotfish_autoroute_gate.py"
+                ROOT / "hooks" / "shoal_autoroute_gate.py"
             ).read_bytes()
             self.assertEqual(script.read_bytes(), selected_payload)
             committed = json.loads(state_path.read_text())
             self.assertEqual(committed["state_version"], 3)
             self.assertEqual(
                 committed["target_fingerprints"][
-                    "hooks/pilotfish_autoroute_gate.py"
+                    "hooks/shoal_autoroute_gate.py"
                 ],
                 hashlib.sha256(selected_payload).hexdigest(),
             )
@@ -1344,7 +1348,7 @@ class NativeInstallTests(unittest.TestCase):
             foreign = _foreign_group("/keep-me")
             document["hooks"].setdefault("PreToolUse", []).append(foreign)
             _write_registration(hooks, document)
-            gate_before = (home / "hooks" / "pilotfish_autoroute_gate.py").read_bytes()
+            gate_before = (home / "hooks" / "shoal_autoroute_gate.py").read_bytes()
 
             self.assertEqual(self.run_install(home), 0)
             installed = json.loads(hooks.read_text())
@@ -1358,7 +1362,7 @@ class NativeInstallTests(unittest.TestCase):
                 (ROOT / "hooks" / "shoal_guard.py").read_bytes(),
             )
             self.assertEqual(
-                (home / "hooks" / "pilotfish_autoroute_gate.py").read_bytes(), gate_before
+                (home / "hooks" / "shoal_autoroute_gate.py").read_bytes(), gate_before
             )
             state = json.loads(_state_path(home).read_text())
             self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
@@ -1439,8 +1443,8 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
-            script = home / "hooks" / "pilotfish_autoroute_gate.py"
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            script = home / "hooks" / "shoal_autoroute_gate.py"
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state_before = state_path.read_bytes()
             mutated_payload = b"# concurrent custom hook payload\n"
             original_validate = installer._validate_committed_state
@@ -1528,7 +1532,7 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             raw = state_path.read_text()
             state_path.write_text('{"status":"committed",' + raw.lstrip()[1:])
             with self.assertRaisesRegex(InstallAbort, "install state is invalid"):
@@ -1537,7 +1541,7 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             self.assertEqual(self.run_install(home), 0)
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text())
             state["hook_registration"]["groups"] = json.loads(
                 (ROOT / "templates" / "hooks.json").read_text()
@@ -1557,7 +1561,7 @@ class NativeInstallTests(unittest.TestCase):
             document["hooks"]["Stop"].insert(0, foreign)
             _write_registration(hooks, document)
 
-            state_path = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
             state = json.loads(state_path.read_text())
             state.pop("state_version")
             state.pop("hook_registration")
@@ -1572,7 +1576,9 @@ class NativeInstallTests(unittest.TestCase):
             }
             state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
 
-            self.assertEqual(self.run_install(home), 0)
+            raw = {hashlib.sha256(source_payload).hexdigest(): CURRENT_PROJECTION_ID}
+            with mock.patch.dict(hook_registration.LEGACY_RAW_REGISTRATIONS, raw):
+                self.assertEqual(self.run_install(home), 0)
             installed = json.loads(hooks.read_text())
             # the foreign group and the autoroute groups survive; the guard is added
             self.assertEqual(installed["hooks"]["Stop"][0], foreign)
@@ -1613,7 +1619,7 @@ class NativeInstallTests(unittest.TestCase):
                     self.run_install(home)
             self.assertTrue(injected)
             self.assertIn("/concurrent", hooks.read_text())
-            pending = home.with_name(f"{home.name}.pilotfish-install-state.json.pending")
+            pending = home.with_name(f"{home.name}.shoal-install-state.json.pending")
             self.assertEqual(json.loads(pending.read_text())["status"], "aborted")
 
     def test_transaction_preserves_foreign_hook_race_after_replacement(self) -> None:
@@ -1635,8 +1641,8 @@ class NativeInstallTests(unittest.TestCase):
                 with self.assertRaisesRegex(InstallAbort, "post-write transaction"):
                     self.run_install(home)
             self.assertIn("/concurrent", hooks.read_text())
-            self.assertFalse(home.with_name(f"{home.name}.pilotfish-install-state.json").exists())
-            pending = home.with_name(f"{home.name}.pilotfish-install-state.json.pending")
+            self.assertFalse(home.with_name(f"{home.name}.shoal-install-state.json").exists())
+            pending = home.with_name(f"{home.name}.shoal-install-state.json.pending")
             self.assertEqual(json.loads(pending.read_text())["status"], "aborted")
 
     def test_staged_layout_requires_exact_owned_hook_artifacts(self) -> None:
@@ -1668,7 +1674,7 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             home.mkdir()
-            pending = home.with_name(f"{home.name}.pilotfish-install-state.json.pending")
+            pending = home.with_name(f"{home.name}.shoal-install-state.json.pending")
             pending.write_text("{}")
             with self.assertRaises(InstallAbort):
                 self.run_install(home)
@@ -1691,7 +1697,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(config.read_text(), original)
             self.assertFalse((home / "agents").exists())
             self.assertFalse((home / "AGENTS.md").exists())
-            self.assertFalse(home.with_name(f"{home.name}.pilotfish-install-state.json").exists())
+            self.assertFalse(home.with_name(f"{home.name}.shoal-install-state.json").exists())
 
     def test_release_pinned_v130_roles_upgrade_but_custom_bytes_abort(self) -> None:
         previous = ROOT / "install" / "previous" / "v1.3.0" / "agents"
@@ -1773,7 +1779,7 @@ class NativeInstallTests(unittest.TestCase):
                 for path in home.rglob("*")
                 if path.is_file()
             }
-            state = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            state = home.with_name(f"{home.name}.shoal-install-state.json")
             pending = state.with_suffix(".json.pending")
             self.assertFalse(state.exists())
             self.assertFalse(pending.exists())
@@ -1881,7 +1887,7 @@ class NativeInstallTests(unittest.TestCase):
                 (ROOT / "templates" / "agents" / "security-executor.toml").read_bytes(),
             )
             state = json.loads(
-                home.with_name(f"{home.name}.pilotfish-install-state.json").read_text()
+                home.with_name(f"{home.name}.shoal-install-state.json").read_text()
             )
             self.assertEqual(
                 state["target_fingerprints"]["agents/security-executor.toml"],
@@ -1951,8 +1957,8 @@ class NativeInstallTests(unittest.TestCase):
             home.mkdir()
             agents_policy = home / "AGENTS.md"
             override_policy = home / "AGENTS.override.md"
-            pending = home.with_name(f"{home.name}.pilotfish-install-state.json.pending")
-            state = home.with_name(f"{home.name}.pilotfish-install-state.json")
+            pending = home.with_name(f"{home.name}.shoal-install-state.json.pending")
+            state = home.with_name(f"{home.name}.shoal-install-state.json")
             agents_policy.write_bytes(b"primary policy\n")
             original_atomic_write = installer._atomic_write
             injected = False

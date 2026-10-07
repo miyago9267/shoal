@@ -6,7 +6,7 @@ id = "skill-intro"
 kind = "invariant"
 sep = "newline"
 text = '''
-This {{skill_term}} is the detailed procedure behind the always-on Pilotfish bootstrap.'''
+This {{skill_term}} is the detailed procedure behind the always-on shoal bootstrap.'''
 
 [[clause]]
 id = "skill-bootstrap-authority"
@@ -75,4 +75,4 @@ kind = "invariant"
 sep = "paragraph"
 text = '''
 If a reference is unavailable, keep the bootstrap invariants, work fail-soft,
-and do not claim full Pilotfish verification.'''
+and do not claim full shoal verification.'''

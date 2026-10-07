@@ -454,7 +454,7 @@ class PolicyRenderCase(unittest.TestCase):
         self.omit(("baton-dispatch", "this host has no baton skill"))
         files = render.render_host(self.root, "claude")
         policy = files[
-            "skills/pilotfish-orchestration/references/orchestration-policy.md"
+            "skills/shoal-orchestration/references/orchestration-policy.md"
         ].decode("utf-8")
         self.assertNotIn("baton-dispatch", policy)
         self.assertNotIn("inspect available skills", policy)
@@ -515,7 +515,7 @@ class PolicyRenderCase(unittest.TestCase):
             addendum("my-baton", "replace:baton-dispatch", "- Host baton rule."),
         )
         text = render.render_host(self.root, "claude")[
-            "skills/pilotfish-orchestration/references/orchestration-policy.md"
+            "skills/shoal-orchestration/references/orchestration-policy.md"
         ].decode("utf-8")
         self.assertIn("- Host baton rule.", text)
         self.assertNotIn("baton-dispatch", text)

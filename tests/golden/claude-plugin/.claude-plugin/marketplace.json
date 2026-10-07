@@ -9,8 +9,8 @@
     {
       "name": "shoal",
       "source": "./claude-plugin",
-      "version": "1.5.0",
-      "description": "Pilotfish orchestration roles, skill, dispatch guard and policy bootstrap.",
+      "version": "2.0.0",
+      "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap.",
       "category": "productivity",
       "tags": [
         "orchestration",

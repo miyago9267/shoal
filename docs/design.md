@@ -1,6 +1,6 @@
-# Pilotfish-Codex design rationale
+# Shoal-Codex design rationale
 
-Pilotfish-Codex preserves Pilotfish's role routing, approval boundaries, leaf
+Shoal-Codex preserves shoal's role routing, approval boundaries, leaf
 workers, and fresh-context verification while using Codex-native TOML roles and
 global `AGENTS.md` policy. Claude-specific worktrees, task dashboards, agent
 IDs, resume commands, and `Explore` shadowing are not Codex runtime claims.
@@ -23,7 +23,7 @@ The value is child concurrency, so three permits the root plus three children.
 The native decision-card feature is enabled so Default mode can expose the
 same bounded `request_user_input` interaction used by Plan mode.
 The root model, reasoning effort, and Plan-mode effort are user preferences:
-Pilotfish defaults them for a fresh install but does not claim ownership, so a
+Shoal defaults them for a fresh install but does not claim ownership, so a
 user may temporarily switch the main session to another compatible model.
 Role TOMLs retain model and reasoning-effort precedence. The retired V2 feature
 table is migratable only with exact installer provenance; the active contract
@@ -52,7 +52,7 @@ all approval, security, release, and fresh-verifier boundaries remain intact.
 This slice adds no main-session typed-dispatch receipt field; existing child
 receipt schemas remain unchanged.
 
-The role manifest is seven recursively discovered TOMLs. Pilotfish validates a
+The role manifest is seven recursively discovered TOMLs. Shoal validates a
 single approved staged manifest and rejects duplicate names, filename/name
 mismatches, extra roles, path escape, and role drift. Only release-pinned prior
 canonical bytes may upgrade automatically; customized same-name roles still
@@ -131,7 +131,7 @@ direction resumes and reaches a new material boundary.
 The native card is the default interaction surface. An independently maintained
 MCP elicitation bridge may be installed as an optional structured transport for
 the same checkpoint when the Codex host exposes form elicitation. It is not a
-Pilotfish core dependency, does not replace `request_user_input`, and must
+shoal core dependency, does not replace `request_user_input`, and must
 preserve the card schema, affected scope, exclusions, approval boundary, and
 resume point. Unsupported, cancelled, timed-out, or invalid MCP responses fall
 back to the native card or concise text checkpoint.

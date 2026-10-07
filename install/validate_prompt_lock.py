@@ -22,10 +22,10 @@ REQUIRED_SURFACE_PATHS = frozenset(
     {
         "templates/agents-md.bootstrap.md",
         "templates/agents-md.orchestration.md",
-        "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/orchestration-policy.md",
-        "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/SKILL.md",
-        "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/agents/openai.yaml",
-        "plugin/plugins/pilotfish-codex/.codex-plugin/plugin.json",
+        "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
+        "plugin/plugins/shoal-codex/skills/shoal-orchestration/SKILL.md",
+        "plugin/plugins/shoal-codex/skills/shoal-orchestration/agents/openai.yaml",
+        "plugin/plugins/shoal-codex/.codex-plugin/plugin.json",
         "templates/agents/executor.toml",
         "templates/agents/mech-executor.toml",
         "templates/agents/plan-verifier.toml",
@@ -44,9 +44,9 @@ REQUIRED_SURFACE_PATHS = frozenset(
         "hosts/claude/dist/agents/security-executor.md",
         "hosts/claude/dist/agents/security-reviewer.md",
         "hosts/claude/dist/agents/verifier.md",
-        "hosts/claude/dist/skills/pilotfish-orchestration/SKILL.md",
-        "hosts/claude/dist/skills/pilotfish-orchestration/references/orchestration-policy.md",
-        "hosts/claude/dist/skills/pilotfish-orchestration/references/workflow-extensions.md",
+        "hosts/claude/dist/skills/shoal-orchestration/SKILL.md",
+        "hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md",
+        "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md",
     }
 )
 HARD_MAX_CHANGED_LINES = 32

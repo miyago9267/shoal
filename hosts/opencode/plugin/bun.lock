@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "pilotfish-opencode",
+      "name": "shoal-opencode",
       "dependencies": {
         "@opencode-ai/plugin": "1.18.19",
       },

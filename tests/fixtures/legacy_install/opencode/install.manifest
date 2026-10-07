@@ -1,0 +1,15 @@
+version|1
+state|enabled
+config|__CONFIG__
+backup|backups/20261001-000000|
+mkdir|agents
+mkdir|plugins
+mkdir|pilotfish
+entry|0|86f9a7237831f788e2cb1985450943d4fed1609138a0b11e7be3c9cbd9e64455|agents/executor.md
+entry|0|55a1d7ee7ad1fb392e50a663260a6f461e3d28c202440b09f25092d17daaf85a|agents/scout.md
+entry|0|8e96e60c9c91bf6521ee7d37203ee35891c54c45c4ca05bf6d9f4fde1b264a18|agents/security-executor.md
+entry|0|10e3c274ad6ec9bbe682bfd14dc65065e046b710644b91ea07d4916f68bd5f46|agents/security-reviewer.md
+entry|0|bb7469ec6a68dd4c29222a56f4f5840268f6eaadcabb5436986147265d910e0b|agents/verifier.md
+entry|0|45aa43df12854f11d2ed70b0880c0aabca95341ee30e0c56d48c838f2265a4d5|plugins/pilotfish-opencode.js
+entry|0|3f13495ef6f71720d44f6c6acc337e548e98bbde557fea2f19f454008e8d83b0|pilotfish/catalog.json
+entry|0|ec2cd48b8b376c1d5b26ff93693aab9c1d6f20e75b9d80e7b01ff27c22833525|pilotfish/routing.json

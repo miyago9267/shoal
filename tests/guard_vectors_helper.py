@@ -1,6 +1,6 @@
 """Replay tests/fixtures/guard_vectors.json against hooks/shoal_guard.py.
 
-Shared by tests/test_shoal_guard.py and tools/guard_parity.py.  The vectors are at the
+Shared by tests/test_shoal_guard.py.  The vectors are at the
 normalized-event level so another implementation (OpenCode TypeScript) can replay them.
 """
 

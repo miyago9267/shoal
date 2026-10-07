@@ -17,8 +17,10 @@
           shoal-guard-v1 projection 逐位元組相同的群組（UserPromptSubmit，以及 matcher
           ^(apply_patch|spawn_agent|collaborationspawn_agent)$ 的 PreToolUse，含 commandWindows），
           腳本裝到 <home>/hooks/shoal_guard.py（0600）。這是不能跑 install.py 時的窄路徑：
-          不碰 pilotfish_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
+          不碰 shoal_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
           裝完要在互動式 Codex 用 /hooks 核准一次。install.py 之後會收編這些 entry。
+          hooks.json 若還有 2.0.0 之前（舊名）的 autoroute 群組只提醒，不動；遷移由 install.py 或
+          tools/sync_global.py 做。
 設定檔若是 symlink 就寫進它指向的檔案。只有 command 含 "shoal_guard.py --host" 的 handler
 算 shoal 的；其他 hook、其他 key、key 順序與 2 空格縮排的 JSON 都原樣保留。重複執行不會改變
 結果；寫入前把原檔備份到 ${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/
@@ -47,7 +49,14 @@ from typing import Any, Mapping, Optional
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "install"))
-from hook_registration import GUARD_PROJECTION_ID, TRUSTED_PROJECTIONS  # noqa: E402
+from hook_registration import (  # noqa: E402
+    GUARD_PROJECTION_ID,
+    TRUSTED_PROJECTIONS,
+    HookRegistrationError,
+    legacy_autoroute_locations,
+    load_registration,
+)
+from legacy_codex import legacy_state_path  # noqa: E402
 GUARD_SOURCE = "hooks/shoal_guard.py"
 CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
 AGY_GROUP = "shoal-guard"
@@ -337,11 +346,31 @@ def owned_entries(host: str, data: dict[str, Any]) -> int:
 
 def install_state_owns_guard(codex_home: Path) -> bool:
     """install.py 的 state 是否已記錄 guard（有就不能繞過它移除 entry）。"""
-    state = codex_home.with_name(f"{codex_home.name}.pilotfish-install-state.json")
+    # 2.0.0 之前的 state 檔名（legacy_codex.LEGACY_STATE_SUFFIX）也算：它同樣記錄 guard。
+    for state in (
+        codex_home.with_name(f"{codex_home.name}.shoal-install-state.json"),
+        legacy_state_path(codex_home),
+    ):
+        try:
+            if "guard_registration" in json.loads(state.read_text(encoding="utf-8")):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def legacy_autoroute_note(current: dict[str, Any]) -> Optional[str]:
+    """hooks.json 仍有 2.0.0 之前的 autoroute 群組時的提醒（這條窄路徑不碰它；遷移由 install.py／sync_global.py 做）。"""
     try:
-        return "guard_registration" in json.loads(state.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
+        document = load_registration(json.dumps(current).encode("utf-8"), source="hooks.json")
+    except HookRegistrationError:
+        return None
+    if not legacy_autoroute_locations(document):
+        return None
+    return (
+        "注意：hooks.json 仍有 2.0.0 之前的 autoroute 註冊（舊名 gate）；"
+        "請用 tools/sync_global.py --apply 或 install/install.py 遷移，這個工具不動它"
+    )
 
 
 # ---- 主流程 ----
@@ -400,6 +429,9 @@ def run(
         )
 
     print(f"host: {host}  設定檔: {target}" + (f" -> {real}" if real != target else ""))
+    note = legacy_autoroute_note(current) if codex else None
+    if note:
+        print(note)
     if codex and uninstall:
         print(f"  [{script_state}] {script}")
     if guard is not None:

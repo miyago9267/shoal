@@ -1,6 +1,6 @@
 # OpenCode host binding：可用的 provider/model、每個 role 的 fallback 與必要能力，
 # 以及 catalog.json 的 provider 清單。render 產生 dist/catalog.json 與 dist/routing.json。
-# 數值等於 dotfile b65a243 的 .opencode/pilotfish/{catalog,routing}.json 現況。
+# 數值等於 dotfile b65a243 的 .opencode/shoal/{catalog,routing}.json 現況。
 # pi-routing.json 由 dotfile 擁有，不在這裡產生。
 
 # role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。

@@ -3,19 +3,19 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const liveTest = process.env.PILOTFISH_CLIPROXYAPI_LIVE === "1" ? test : test.skip;
+const liveTest = process.env.SHOAL_CLIPROXYAPI_LIVE === "1" ? test : test.skip;
 const repository = join(import.meta.dir, "../..");
 const installer = join(repository, "install", "install.sh");
 
 describe("CLIProxyAPI custom-provider smoke", () => {
   liveTest("runs a role session through the configured local endpoint", async () => {
-    const apiKey = process.env.PILOTFISH_CLIPROXYAPI_KEY;
+    const apiKey = process.env.SHOAL_CLIPROXYAPI_KEY;
     if (apiKey === undefined || apiKey.length === 0) {
-      throw new Error("PILOTFISH_CLIPROXYAPI_KEY is required for this live smoke");
+      throw new Error("SHOAL_CLIPROXYAPI_KEY is required for this live smoke");
     }
 
     const baseURL = (
-      process.env.PILOTFISH_CLIPROXYAPI_URL ?? "http://127.0.0.1:8317/v1"
+      process.env.SHOAL_CLIPROXYAPI_URL ?? "http://127.0.0.1:8317/v1"
     ).replace(/\/$/, "");
     const modelsResponse = await fetch(`${baseURL}/models`, {
       headers: { authorization: `Bearer ${apiKey}` },
@@ -26,7 +26,7 @@ describe("CLIProxyAPI custom-provider smoke", () => {
     const models = (await modelsResponse.json()) as {
       data?: Array<{ id?: string }>;
     };
-    const model = process.env.PILOTFISH_CLIPROXYAPI_MODEL ?? models.data?.[0]?.id;
+    const model = process.env.SHOAL_CLIPROXYAPI_MODEL ?? models.data?.[0]?.id;
     if (
       model === undefined ||
       model.length === 0 ||
@@ -36,10 +36,10 @@ describe("CLIProxyAPI custom-provider smoke", () => {
       throw new Error("CLIProxyAPI returned no usable model ID");
     }
 
-    const target = await mkdtemp(join(tmpdir(), "pilotfish-opencode-cliproxyapi-"));
-    const home = await mkdtemp(join(tmpdir(), "pilotfish-opencode-cliproxyapi-home-"));
+    const target = await mkdtemp(join(tmpdir(), "shoal-opencode-cliproxyapi-"));
+    const home = await mkdtemp(join(tmpdir(), "shoal-opencode-cliproxyapi-home-"));
     try {
-      await mkdir(join(target, ".opencode", "pilotfish"), { recursive: true });
+      await mkdir(join(target, ".opencode", "shoal"), { recursive: true });
       await Bun.write(
         join(target, ".opencode", "opencode.json"),
         JSON.stringify({
@@ -48,7 +48,7 @@ describe("CLIProxyAPI custom-provider smoke", () => {
               npm: "@ai-sdk/openai-compatible",
               options: {
                 baseURL,
-                apiKey: "{env:PILOTFISH_CLIPROXYAPI_KEY}",
+                apiKey: "{env:SHOAL_CLIPROXYAPI_KEY}",
               },
               models: { [model]: { name: "CLIProxyAPI live model" } },
             },
@@ -56,7 +56,7 @@ describe("CLIProxyAPI custom-provider smoke", () => {
         }),
       );
       await Bun.write(
-        join(target, ".opencode", "pilotfish", "catalog.json"),
+        join(target, ".opencode", "shoal", "catalog.json"),
         JSON.stringify({
           agents: {
             scout: {
@@ -106,7 +106,7 @@ describe("CLIProxyAPI custom-provider smoke", () => {
             XDG_DATA_HOME: join(home, ".local", "share"),
             XDG_CACHE_HOME: join(home, ".cache"),
             NO_COLOR: "1",
-            PILOTFISH_CLIPROXYAPI_KEY: apiKey,
+            SHOAL_CLIPROXYAPI_KEY: apiKey,
           },
           stdout: "ignore",
           stderr: "ignore",

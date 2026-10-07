@@ -61,7 +61,7 @@ text = '''
   invoke before dispatch brake/direct-vs-delegated choice; never pre-screen it
   away. Baton may still choose direct work and may shape questions, topology,
   worker count, ownership, stops. If absent, apply this policy without
-  searching/installing. pilotfish and Baton compose; neither bypasses the
+  searching/installing. shoal and Baton compose; neither bypasses the
   other's named-role, model-routing, leaf, approval, or verification boundaries.'''
 
 [[clause]]

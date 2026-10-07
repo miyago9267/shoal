@@ -92,8 +92,8 @@ class RefreshGoldenTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             sha1 = make_repo(base / "oc", {"roles/scout.md": b"scout\n"})
-            sha2 = make_repo(base / "dot", {".opencode/pilotfish/catalog.json": b"{}\n", ".opencode/pilotfish/routing.json": b"[]\n",
-                                            ".opencode/pilotfish/pi-routing.json": b"pi\n"})
+            sha2 = make_repo(base / "dot", {".opencode/shoal/catalog.json": b"{}\n", ".opencode/shoal/routing.json": b"[]\n",
+                                            ".opencode/shoal/pi-routing.json": b"pi\n"})
             args = [sys.executable, str(ROOT / "tools" / "refresh_golden.py"), "--host", "opencode",
                     "--from", str(base / "oc"), "--ref", sha1, "--root", str(base / "root")]
             self.assertEqual(subprocess.run(args, capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"}).returncode, 2)  # 缺 --extra-*

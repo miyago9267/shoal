@@ -1,11 +1,11 @@
 {
-  "name": "pilotfish-codex",
+  "name": "shoal-codex",
   "plugins": [
     {
-      "name": "pilotfish-codex",
+      "name": "shoal-codex",
       "source": {
         "source": "local",
-        "path": "./plugins/pilotfish-codex"
+        "path": "./plugins/shoal-codex"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -14,10 +14,10 @@
       "category": "Productivity"
     },
     {
-      "name": "pilotfish-jev-router",
+      "name": "shoal-jev-router",
       "source": {
         "source": "local",
-        "path": "./plugins/pilotfish-jev-router"
+        "path": "./plugins/shoal-jev-router"
       },
       "policy": {
         "installation": "AVAILABLE",

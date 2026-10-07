@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" role="img" aria-labelledby="title desc">
-  <title id="title">Pilotfish-Codex v1.3.3 routing evidence</title>
+  <title id="title">Shoal-Codex v1.3.3 routing evidence</title>
   <desc id="desc">A clean routing map showing model allocation and a verified evidence snapshot for release v1.3.3.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -43,7 +43,7 @@
 
   <rect width="1200" height="540" class="bg"/>
 
-  <text x="44" y="42" class="kicker muted">PILOTFISH-CODEX / TRANSPORT PROBE</text>
+  <text x="44" y="42" class="kicker muted">SHOAL-CODEX / TRANSPORT PROBE</text>
   <text x="44" y="82" class="title fg">Dispatch transport probe</text>
   <text x="44" y="108" class="small muted">v1.3.2 → v1.3.3 · verifier role · n=3 each · Codex 0.145.0</text>
 

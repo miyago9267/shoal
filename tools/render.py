@@ -537,7 +537,7 @@ def _frontmatter(name: str, spec: dict, perm: Permission, model: str) -> str:
 
 
 def render_claude(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
-    """回傳 {相對於 dist 的路徑: bytes}，結構等於舊 pilotfish-claude 的 templates/。"""
+    """回傳 {相對於 dist 的路徑: bytes}，結構等於舊 shoal-claude 的 templates/。"""
     perms = validate_claude(core, binding)
     out: dict[str, bytes] = {}
 
@@ -657,8 +657,39 @@ def _bound_roles(core: dict, binding: dict) -> list[str]:
     return [n for n in core["roles"] if n in binding["roles"]]
 
 
+# ---- host 版本與 rules marker（grok、agy 共用）----
+HOST_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+
+
+def host_version(host_dir: Path) -> str:
+    """hosts/<host>/VERSION 的內容（R2）；格式是 semver，可帶 -shoal.N 之類的後綴。"""
+    path = host_dir / "VERSION"
+    try:
+        version = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {path}: {exc}") from exc
+    if not HOST_VERSION.match(version):
+        raise RenderError(f"{path}: 版本格式不合法: {version!r}")
+    return version
+
+
+def _versioned_rules(src: Path, rel: str, tag: str) -> bytes:
+    """src/<rel> 逐字輸出，只有 `<!-- <tag> v<版本> -->` 那一行改成 hosts/<host>/VERSION 的版本。"""
+    path = src / rel
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {path}: {exc}") from exc
+    pattern = re.compile(rb"^<!-- " + re.escape(tag.encode()) + rb" v\S+ -->$", re.MULTILINE)
+    if len(pattern.findall(data)) != 1:
+        raise RenderError(f"{path} 必須恰有一行 '<!-- {tag} v<版本> -->' marker")
+    marker = f"<!-- {tag} v{host_version(src.parent)} -->".encode("utf-8")
+    return pattern.sub(lambda _m: marker, data, count=1)
+
+
 # ---- agy（Gemini / Antigravity）----
 AGY_MODELS = {"flash", "pro", "inherit"}
+AGY_RULES_PATH = "rules/shoal-agy.md"
 AGY_READ_ONLY_FORBIDDEN_TOOLS = {"run_command"}
 
 
@@ -692,14 +723,15 @@ def _agy_frontmatter(name: str, spec: dict, perm: Permission, model: str) -> str
 
 
 def render_agy(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
-    """回傳 {相對於 dist 的路徑: bytes}，結構等於 dotfile plugins/pilotfish-agy/templates/。"""
+    """回傳 {相對於 dist 的路徑: bytes}，結構等於 dotfile plugins/shoal-agy/templates/。"""
     perms = validate_agy(core, binding)
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):
         body = role_body(name, core, binding, src, lambda n=name: _legacy_body(src, "agents", n))
         model = resolve_model(name, core, binding)
         out[f"agents/{name}/agent.md"] = _agy_frontmatter(name, binding["roles"][name], perms[name], model).encode("utf-8") + body
-    _passthrough(src, out, {"agents"})
+    _passthrough(src, out, {"agents", "rules"})
+    out[AGY_RULES_PATH] = _versioned_rules(src, AGY_RULES_PATH, "shoal-agy")
     return out
 
 
@@ -730,35 +762,13 @@ def _grok_role_toml(name: str, spec: dict, perm: Permission) -> bytes:
     return data.encode("utf-8")
 
 
-GROK_RULES_PATH = "rules/pilotfish-grok.md"
-GROK_GUARD_PATH = "hooks/pilotfish-grok/shoal_guard.py"
-GROK_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
-GROK_MARKER = re.compile(rb"^<!-- pilotfish-grok v\S+ -->$", re.MULTILINE)
-
-
-def grok_version(host_dir: Path) -> str:
-    """hosts/grok/VERSION 的內容（R2）；格式是 semver，可帶 -shoal.N 之類的後綴。"""
-    path = host_dir / "VERSION"
-    try:
-        version = path.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise RenderError(f"無法讀取 {path}: {exc}") from exc
-    if not GROK_VERSION.match(version):
-        raise RenderError(f"{path}: 版本格式不合法: {version!r}")
-    return version
+GROK_RULES_PATH = "rules/shoal-grok.md"
+GROK_GUARD_PATH = "hooks/shoal-grok/shoal_guard.py"
 
 
 def _grok_rules(src: Path) -> bytes:
-    """rules 取自 src/rules/pilotfish-grok.md（上游 v1.0.6 逐字）；只有 version marker 由 hosts/grok/VERSION 產生（R1、R2）。"""
-    path = src / GROK_RULES_PATH
-    try:
-        data = path.read_bytes()
-    except OSError as exc:
-        raise RenderError(f"無法讀取 {path}: {exc}") from exc
-    if len(GROK_MARKER.findall(data)) != 1:
-        raise RenderError(f"{path} 必須恰有一行 '<!-- pilotfish-grok v<版本> -->' marker")
-    marker = f"<!-- pilotfish-grok v{grok_version(src.parent)} -->".encode("utf-8")
-    return GROK_MARKER.sub(lambda _m: marker, data, count=1)
+    """rules 取自 src/rules/shoal-grok.md（上游 v1.0.6 逐字）；只有 version marker 由 hosts/grok/VERSION 產生（R1、R2）。"""
+    return _versioned_rules(src, GROK_RULES_PATH, "shoal-grok")
 
 
 def _guard_script(root: Path) -> bytes:
@@ -1147,7 +1157,7 @@ def dist_dir(host: str) -> str:
 MIRRORS = {
     "codex": {
         "agents-md.orchestration.md":
-            "plugin/plugins/pilotfish-codex/skills/pilotfish-orchestration/references/orchestration-policy.md",
+            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
     },
 }
 
@@ -1251,7 +1261,7 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
     out[f"{CLAUDE_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
         "name": "shoal",
         "version": version,
-        "description": "Pilotfish orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
+        "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
         "author": CLAUDE_PLUGIN_AUTHOR,
         "repository": CLAUDE_PLUGIN_REPO,
         "license": "MIT",
@@ -1265,7 +1275,7 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
             "name": "shoal",
             "source": f"./{CLAUDE_PLUGIN}",
             "version": version,
-            "description": "Pilotfish orchestration roles, skill, dispatch guard and policy bootstrap.",
+            "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap.",
             "category": "productivity",
             "tags": ["orchestration", "subagents", "delegation"],
         }],

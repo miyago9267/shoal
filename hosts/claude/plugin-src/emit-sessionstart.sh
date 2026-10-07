@@ -29,8 +29,8 @@ if [ -f "$global_guard" ] && [ -f "$settings" ] &&
     printf '%s\n' "shoal plugin note: a global shoal guard from install_hooks.py is registered in settings.json; the plugin copy of the guard defers to it, so every event is judged once."
 fi
 
-if [ -f "$claude_md" ] && grep -F -q '<!-- pilotfish v' "$claude_md" 2>/dev/null; then
-    printf '%s\n' "shoal plugin note: the global CLAUDE.md already carries the pilotfish bootstrap; the plugin does not inject it again."
+if [ -f "$claude_md" ] && grep -F -q '<!-- shoal-claude v' "$claude_md" 2>/dev/null; then
+    printf '%s\n' "shoal plugin note: the global CLAUDE.md already carries the shoal bootstrap; the plugin does not inject it again."
     exit 0
 fi
 

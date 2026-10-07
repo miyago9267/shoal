@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""由 shoal 安裝 Grok Build 的 pilotfish-grok（docs/specs/grok-workflow，R4 至 R9）。
+"""由 shoal 安裝 Grok Build 的 shoal-grok（docs/specs/grok-workflow，R4 至 R9）。
 
 用法：
   python3 tools/install_grok.py [--grok-home DIR]                 dry-run（預設），不寫入
@@ -8,8 +8,8 @@
   python3 tools/install_grok.py --uninstall --apply               只移除 shoal 安裝的檔案
 
 來源是 repo 的 committed HEAD（git archive hosts/grok/dist 與 hosts/grok/VERSION），
-不是工作樹。安裝 agents/、roles/、rules/pilotfish-grok.md、hooks/pilotfish-grok.json 與
-hooks/pilotfish-grok/（含 dispatch guard 的 shoal_guard.py，由 render 從 hooks/shoal_guard.py 產生；
+不是工作樹。安裝 agents/、roles/、rules/shoal-grok.md、hooks/shoal-grok.json 與
+hooks/shoal-grok/（含 dispatch guard 的 shoal_guard.py，由 render 從 hooks/shoal_guard.py 產生；
 dist 副本與同一 commit 的來源不同時中止）；config.snippet.toml 只是 config 合併的參考，不安裝。
 所有會寫入的動作（安裝、--restore、--uninstall）都要 --apply；寫入前把要被取代或移除的
 檔案與 config.toml 備份到 <grok-home>/backups/shoal-<timestamp>/。
@@ -41,13 +41,21 @@ REPO = Path(__file__).resolve().parents[1]
 DIST = "hosts/grok/dist"
 VERSION_PATH = "hosts/grok/VERSION"
 INSTALL_TOPS = ("agents", "roles", "rules", "hooks")
-RULES = "rules/pilotfish-grok.md"
-HOOK_DIR = "hooks/pilotfish-grok"
-GUARD_DIST = "hooks/pilotfish-grok/shoal_guard.py"
+RULES = "rules/shoal-grok.md"
+HOOK_DIR = "hooks/shoal-grok"
+GUARD_DIST = "hooks/shoal-grok/shoal_guard.py"
 GUARD_SOURCE = "hooks/shoal_guard.py"
-BEGIN = "<!-- pilotfish-grok:begin -->"
-END = "<!-- pilotfish-grok:end -->"
+BEGIN = "<!-- shoal-grok:begin -->"
+END = "<!-- shoal-grok:end -->"
 CONFIG = "config.toml"
+
+# ---- LEGACY_: what shoal installed before 2.0.0 (docs/specs/shoal-rebrand N5) ----
+LEGACY_RULES = "rules/pilotfish-grok.md"
+LEGACY_HOOKS_JSON = "hooks/pilotfish-grok.json"
+LEGACY_HOOK_DIR = "hooks/pilotfish-grok"
+LEGACY_HOOK_FILES = ("plan_mode_guard.py", "shoal_guard.py", "subagent_stop_gate.py")
+LEGACY_SHOAL_MARKER = re.compile(r"<!-- pilotfish-grok v\S*-shoal\.\d+ -->")
+LEGACY_SHOAL_ONLY_FILE = LEGACY_HOOK_DIR + "/shoal_guard.py"
 
 
 class InstallError(Exception):
@@ -195,6 +203,38 @@ def remove_toggle_keys(raw: bytes, keys: list[str]) -> bytes:
     return new.encode("utf-8")
 
 
+def find_legacy(home: Path) -> tuple[dict[str, bytes], list[str]]:
+    """2.0.0 之前 shoal 以舊名安裝的檔案 {rel: bytes}，以及舊名目錄裡不是 shoal 安裝的檔案（不動、只回報）。
+
+    只有 rules 的 marker 帶 -shoal.N（shoal 的 build，上游原版沒有），或 hooks 目錄裡有只有 shoal
+    才會裝的 shoal_guard.py，才算 shoal 安裝的；否則整組舊名檔案都不動。
+    """
+    rules, guard = home / LEGACY_RULES, home / LEGACY_SHOAL_ONLY_FILE
+    marked = rules.is_file() and bool(
+        LEGACY_SHOAL_MARKER.search(rules.read_text(encoding="utf-8", errors="replace"))
+    )
+    if not (marked or (guard.is_file() and (home / LEGACY_HOOKS_JSON).is_file())):
+        return {}, []
+    owned = {
+        rel: (home / rel).read_bytes()
+        for rel in (
+            LEGACY_RULES,
+            LEGACY_HOOKS_JSON,
+            *(f"{LEGACY_HOOK_DIR}/{name}" for name in LEGACY_HOOK_FILES),
+        )
+        if (home / rel).is_file() and not (home / rel).is_symlink()
+    }
+    leftovers = []
+    hook_dir = home / LEGACY_HOOK_DIR
+    if hook_dir.is_dir():
+        leftovers = sorted(
+            p.relative_to(home).as_posix()
+            for p in hook_dir.rglob("*")
+            if p.relative_to(home).as_posix() not in owned and (p.is_file() or p.is_symlink())
+        )
+    return owned, leftovers
+
+
 # ---- 計畫 ----
 class Plan:
     def __init__(
@@ -216,6 +256,7 @@ class Plan:
             else:
                 self.actions[rel] = "add"
         self.check_rules_markers()
+        self.legacy, self.legacy_foreign = find_legacy(home)
         self.config_raw, parsed = read_config(home)
         self.flagged = flagged_toggles(parsed, shoal_roles(files))
         self.new_config = None
@@ -237,6 +278,10 @@ class Plan:
     def changes(self) -> list[str]:
         return [rel for rel, act in self.actions.items() if act != "skip"]
 
+    def removals(self) -> list[str]:
+        """舊名（2.0.0 之前）且確認是 shoal 安裝的檔案；安裝新名時一起移除。"""
+        return sorted(self.legacy)
+
 
 def describe(plan: Plan, fix_toggles: bool) -> list[str]:
     label = {"add": "新增", "replace": "取代", "skip": "略過（已與 dist 相同）"}
@@ -245,6 +290,8 @@ def describe(plan: Plan, fix_toggles: bool) -> list[str]:
         f"來源: committed {plan.commit[:7]}，hosts/grok/VERSION {plan.version}",
     ]
     out += [f"  [{label[act]}] {rel}" for rel, act in sorted(plan.actions.items())]
+    out += [f"  [移除舊名] {rel}" for rel in plan.removals()]
+    out += [f"  注意：{rel} 不是 shoal 安裝的，不動" for rel in plan.legacy_foreign]
     old = plan.existing.get(RULES)
     if old is not None and plan.actions[RULES] == "replace":
         outside = old.decode("utf-8", "replace")
@@ -331,10 +378,11 @@ def make_backup(
 
 
 def prune_hook_dir(home: Path) -> None:
-    try:
-        (home / HOOK_DIR).rmdir()  # 只在空的時候成功
-    except OSError:
-        pass
+    for rel in (HOOK_DIR, LEGACY_HOOK_DIR):
+        try:
+            (home / rel).rmdir()  # 只在空的時候成功
+        except OSError:
+            pass
 
 
 def verify(plan: Plan) -> list[str]:
@@ -346,14 +394,15 @@ def verify(plan: Plan) -> list[str]:
             problems.append(f"hash 不符: {rel}")
         elif is_hook_script(rel) and not os.access(path, os.X_OK):
             problems.append(f"hook 腳本不可執行: {rel}")
+    problems += [f"舊名檔案沒有被移除: {rel}" for rel in plan.removals() if (plan.home / rel).exists()]
     rules = (
         (plan.home / RULES).read_text(encoding="utf-8")
         if (plan.home / RULES).is_file()
         else ""
     )
     if (
-        rules.count(f"<!-- pilotfish-grok v{plan.version} -->") != 1
-        or len(re.findall(r"<!-- pilotfish-grok v\S+ -->", rules)) != 1
+        rules.count(f"<!-- shoal-grok v{plan.version} -->") != 1
+        or len(re.findall(r"<!-- shoal-grok v\S+ -->", rules)) != 1
     ):
         problems.append(
             f"{RULES} 的 marker 與 hosts/grok/VERSION（{plan.version}）不一致"
@@ -365,12 +414,12 @@ def do_install(
     plan: Plan, apply: bool, fix_toggles: bool, emit_json: bool = False
 ) -> int:
     print("\n".join(describe(plan, fix_toggles)))
-    changes = plan.changes()
+    changes = plan.changes() + plan.removals()
     if plan.new_config is not None:
         changes.append(CONFIG)
     if emit_json:
         # 給 tools/sync_global.py：單獨一行 {"changes": [...]}，反映寫入前的差異
-        print(json.dumps({"changes": changes}, ensure_ascii=False))
+        print(json.dumps({"changes": changes, "legacy": plan.removals()}, ensure_ascii=False))
     if not apply:
         print("dry-run：沒有寫入任何檔案；加 --apply 才會寫入")
         return 0
@@ -380,17 +429,22 @@ def do_install(
         saved = {
             rel: plan.existing[rel] for rel in plan.changes() if rel in plan.existing
         }
+        saved.update(plan.legacy)
         created = [rel for rel in plan.changes() if rel not in plan.existing]
         backup = make_backup(
             plan.home, saved, created, plan.config_raw, plan.commit, "install"
         )
         print(f"備份: {backup}")
+        for rel in plan.removals():
+            (plan.home / rel).unlink()
         for rel in plan.changes():
             write_file(plan.home / rel, plan.files[rel], is_hook_script(rel))
+        prune_hook_dir(plan.home)
         if plan.new_config is not None:
             write_file(plan.home / CONFIG, plan.new_config)
         print(
             f"已寫入 {len(plan.changes())} 個檔案"
+            + (f"，移除 {len(plan.removals())} 個舊名檔案" if plan.removals() else "")
             + ("，並移除 toggle" if plan.new_config is not None else "")
         )
     problems = verify(plan)

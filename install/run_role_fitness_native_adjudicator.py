@@ -55,7 +55,7 @@ def _native_case(*, private_root: Path, active_home: Path, codex_bin: str, case_
     manifest = json.loads((private_root / "manifest.json").read_text(encoding="utf-8"))
     plan = (private_root / "fixtures" / f"{case_id}.md").read_text(encoding="utf-8")
     ledger = json.loads((private_root / "ledgers.json").read_text(encoding="utf-8"))[case_id]
-    directory = Path(tempfile.mkdtemp(prefix=f"pilotfish-native-adjudicator-{case_id}-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"shoal-native-adjudicator-{case_id}-"))
     try:
         home = directory / "codex-home"
         cwd = directory / "clean-cwd"

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const liveTest = process.env.PILOTFISH_OPENCODE_LIVE === "1" ? test : test.skip;
+const liveTest = process.env.SHOAL_OPENCODE_LIVE === "1" ? test : test.skip;
 const repository = join(import.meta.dir, "../..");
 const installer = join(repository, "install", "install.sh");
 
@@ -40,12 +40,12 @@ describe("OpenCode direct-provider smoke", () => {
           };
           if (typeof payload.model === "string") modelIds.push(payload.model);
           const hasRouteTool = payload.tools?.some(
-            (item) => item.function?.name === "pilotfish_route",
+            (item) => item.function?.name === "shoal_route",
           ) ?? false;
           routeToolSeen ||= hasRouteTool;
           if (!hasRouteTool) {
             return Response.json({
-              id: "chatcmpl-pilotfish-title",
+              id: "chatcmpl-shoal-title",
               object: "chat.completion",
               created: 1,
               model: "scout",
@@ -61,24 +61,24 @@ describe("OpenCode direct-provider smoke", () => {
           if (!routeCallIssued) {
             routeCallIssued = true;
             const toolCall = {
-              id: "call_pilotfish_route",
+              id: "call_shoal_route",
               type: "function",
               function: {
-                name: "pilotfish_route",
+                name: "shoal_route",
                 arguments: JSON.stringify({ role: "scout" }),
               },
             };
             if (payload.stream === true) {
               return streamResponse([
                 {
-                  id: "chatcmpl-pilotfish-route",
+                  id: "chatcmpl-shoal-route",
                   object: "chat.completion.chunk",
                   created: 1,
                   model: "scout",
                   choices: [{ index: 0, delta: { role: "assistant", tool_calls: [{ index: 0, ...toolCall }] }, finish_reason: null }],
                 },
                 {
-                  id: "chatcmpl-pilotfish-route",
+                  id: "chatcmpl-shoal-route",
                   object: "chat.completion.chunk",
                   created: 1,
                   model: "scout",
@@ -87,7 +87,7 @@ describe("OpenCode direct-provider smoke", () => {
               ]);
             }
             return Response.json({
-              id: "chatcmpl-pilotfish-route",
+              id: "chatcmpl-shoal-route",
               object: "chat.completion",
               created: 1,
               model: "scout",
@@ -108,7 +108,7 @@ describe("OpenCode direct-provider smoke", () => {
           routeReceiptSeen =
             serializedPayload.includes("source") && serializedPayload.includes("agent_config");
           return Response.json({
-            id: "chatcmpl-pilotfish-fixture",
+            id: "chatcmpl-shoal-fixture",
             object: "chat.completion",
             created: 1,
             model: "scout",
@@ -126,11 +126,11 @@ describe("OpenCode direct-provider smoke", () => {
       },
     });
 
-    const target = await mkdtemp(join(tmpdir(), "pilotfish-opencode-live-"));
-    const home = await mkdtemp(join(tmpdir(), "pilotfish-opencode-live-home-"));
+    const target = await mkdtemp(join(tmpdir(), "shoal-opencode-live-"));
+    const home = await mkdtemp(join(tmpdir(), "shoal-opencode-live-home-"));
     let opencodeServer: Bun.Subprocess | undefined;
     try {
-      await mkdir(join(target, ".opencode", "pilotfish"), { recursive: true });
+      await mkdir(join(target, ".opencode", "shoal"), { recursive: true });
       await Bun.write(
         join(target, ".opencode", "opencode.json"),
         JSON.stringify({
@@ -147,7 +147,7 @@ describe("OpenCode direct-provider smoke", () => {
         }),
       );
       await Bun.write(
-        join(target, ".opencode", "pilotfish", "catalog.json"),
+        join(target, ".opencode", "shoal", "catalog.json"),
         JSON.stringify({
           agents: {
             scout: {

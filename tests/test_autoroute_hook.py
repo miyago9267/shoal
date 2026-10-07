@@ -17,7 +17,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "hooks"))
 
-import pilotfish_autoroute_gate as gate  # noqa: E402
+import shoal_autoroute_gate as gate  # noqa: E402
 
 
 SESSION = "019f-parent-session"
@@ -141,18 +141,18 @@ class AutorouteHookTests(unittest.TestCase):
     def test_installed_plugin_config_drives_canonical_route_without_live_network(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "codex-home"
-            package = ROOT / "plugin/plugins/pilotfish-jev-router"
+            package = ROOT / "plugin/plugins/shoal-jev-router"
             installed = (
                 home
-                / "plugins/cache/pilotfish-codex/pilotfish-jev-router/0.1.0"
+                / "plugins/cache/shoal-codex/shoal-jev-router/0.1.0"
             )
             installed.parent.mkdir(parents=True)
             shutil.copytree(package, installed)
             (home / "config.toml").write_text(
-                '[plugins."pilotfish-jev-router@pilotfish-codex"]\nenabled = true\n',
+                '[plugins."shoal-jev-router@shoal-codex"]\nenabled = true\n',
                 encoding="utf-8",
             )
-            config = home / "pilotfish-jev/config.json"
+            config = home / "shoal-jev/config.json"
             config.parent.mkdir(parents=True)
             config.write_text('{"mode":"active"}', encoding="utf-8")
 
@@ -175,8 +175,8 @@ class AutorouteHookTests(unittest.TestCase):
             response.read.return_value = json.dumps(result_body).encode("utf-8")
             environment = dict(os.environ)
             for key in (
-                "PILOTFISH_JEV_MODE",
-                "PILOTFISH_JEV_PLUGIN_ROOT",
+                "SHOAL_JEV_MODE",
+                "SHOAL_JEV_PLUGIN_ROOT",
                 "TYPESAFE_API_KEY",
             ):
                 environment.pop(key, None)
@@ -267,7 +267,7 @@ class AutorouteHookTests(unittest.TestCase):
             self.assertIn('"route":"guarded"', context)
             self.assertNotIn('"required_role":"mech-executor"', context)
             self.assertIsNone(gate._load_route_marker(home, SESSION))
-            log = home / "pilotfish-jev" / "shadow-decisions.jsonl"
+            log = home / "shoal-jev" / "shadow-decisions.jsonl"
             record = json.loads(log.read_text(encoding="utf-8"))
             self.assertEqual(record["base_route"], "guarded")
             self.assertEqual(record["jev_route"], "mechanical")
@@ -1383,7 +1383,7 @@ class LaunchProbeTests(unittest.TestCase):
 
     def test_selftest_reports_a_launchable_gate(self) -> None:
         completed = subprocess.run(
-            [sys.executable, str(ROOT / "hooks" / "pilotfish_autoroute_gate.py"), "--selftest"],
+            [sys.executable, str(ROOT / "hooks" / "shoal_autoroute_gate.py"), "--selftest"],
             capture_output=True,
             text=True,
             check=True,

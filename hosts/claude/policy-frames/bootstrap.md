@@ -1,4 +1,4 @@
-<!-- pilotfish v1.4.2-claude.4 -->
+<!-- shoal-claude v2.0.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 

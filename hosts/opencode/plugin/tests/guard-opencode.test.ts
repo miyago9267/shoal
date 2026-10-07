@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { createOpenCodeGuard, editPaths } from "../src/guard/opencode.ts";
 
 const PLUGIN_ROOT = resolve(import.meta.dir, "..");
-const ENV_KEYS = ["HOME", "XDG_STATE_HOME", "TMPDIR", "SHOAL_GUARD", "PILOTFISH_GUARD", "SHOAL_GUARD_DIRECT", "SHOAL_GUARD_LANG", "SHOAL_GUARD_MAX_FILES", "PILOTFISH_GUARD_MAX_FILES"];
+const ENV_KEYS = ["HOME", "XDG_STATE_HOME", "TMPDIR", "SHOAL_GUARD", "SHOAL_GUARD_DIRECT", "SHOAL_GUARD_LANG", "SHOAL_GUARD_MAX_FILES"];
 
 type Sessions = Record<string, { id: string; parentID?: string | null; agent?: string }>;
 

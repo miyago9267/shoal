@@ -26,11 +26,11 @@ from render import DIST_DIRS  # noqa: E402
 SOURCES = {
     "claude": [("primary", ["templates"], "templates")],
     "codex": [("primary", ["templates"], "templates")],
-    "agy": [("primary", ["plugins/pilotfish-agy/templates"], "plugins/pilotfish-agy/templates")],
-    "grok": [("primary", ["plugins/pilotfish-grok/templates"], "plugins/pilotfish-grok/templates")],
+    "agy": [("primary", ["plugins/shoal-agy/templates"], "plugins/shoal-agy/templates")],
+    "grok": [("primary", ["plugins/shoal-grok/templates"], "plugins/shoal-grok/templates")],
     "opencode": [
         ("primary", ["roles"], ""),
-        ("extra", [".opencode/pilotfish/catalog.json", ".opencode/pilotfish/routing.json"], ".opencode/pilotfish"),
+        ("extra", [".opencode/shoal/catalog.json", ".opencode/shoal/routing.json"], ".opencode/shoal"),
     ],
 }
 

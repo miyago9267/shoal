@@ -1,6 +1,6 @@
 """Fail-closed static validation for the native Codex role contract.
 
-The validator intentionally validates Pilotfish's staged single-layer contract;
+The validator intentionally validates shoal's staged single-layer contract;
 it does not claim to reproduce Codex's layered role loader.
 """
 
@@ -160,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
     if errors:
         print("\n".join(errors), file=os.sys.stderr)
         return 1
-    print("all native Pilotfish config and agent TOMLs valid")
+    print("all native shoal config and agent TOMLs valid")
     return 0
 
 

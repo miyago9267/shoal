@@ -107,7 +107,7 @@ def build_matrix() -> dict[str, Any]:
                 )
     return {
         "version": VERSION,
-        "description": "Pilotfish 1.6.0 review-intent and hard-gate preservation Matrix.",
+        "description": "Shoal 1.6.0 review-intent and hard-gate preservation Matrix.",
         "question": "Can explicit turn-scoped intent change optional review without changing task mode or mandatory authority gates?",
         "dimensions": {
             "scenario_families": [scenario["id"] for scenario in SCENARIOS],

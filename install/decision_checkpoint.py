@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 
-SCHEMA = "pilotfish-decision-checkpoint-v1"
+SCHEMA = "shoal-decision-checkpoint-v1"
 CHECKPOINT_STATUSES = frozenset({"PENDING", "CONFIRMED", "REJECTED", "AMBIGUOUS"})
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 

@@ -189,8 +189,8 @@ def make_home(path: Path) -> None:
     shutil.copy2(ROOT / "templates" / "hooks.json", path / "hooks.json")
     (path / "hooks").mkdir()
     shutil.copy2(
-        ROOT / "hooks" / "pilotfish_autoroute_gate.py",
-        path / "hooks" / "pilotfish_autoroute_gate.py",
+        ROOT / "hooks" / "shoal_autoroute_gate.py",
+        path / "hooks" / "shoal_autoroute_gate.py",
     )
 
 
@@ -272,7 +272,7 @@ class ActivePolicySymlinkVerifierTests(unittest.TestCase):
                 make_installed_home(active)
                 replace_policy_with_symlink(active, root / "owned-policy.md")
                 state_path = active.with_name(
-                    f"{active.name}.pilotfish-install-state.json"
+                    f"{active.name}.shoal-install-state.json"
                 )
                 if scenario == "missing":
                     state_path.unlink()
@@ -320,7 +320,7 @@ class ActivePolicySymlinkVerifierTests(unittest.TestCase):
             make_installed_home(active)
             replace_policy_with_symlink(active, root / "owned-policy.md")
             state_path = active.with_name(
-                f"{active.name}.pilotfish-install-state.json"
+                f"{active.name}.shoal-install-state.json"
             )
             original = verify_dispatch._role_manifest
 
@@ -1365,7 +1365,7 @@ class StageSmokeHomeTests(unittest.TestCase):
             Path("AGENTS.md"),
             Path("agents/scout.toml"),
             Path("hooks.json"),
-            Path("hooks/pilotfish_autoroute_gate.py"),
+            Path("hooks/shoal_autoroute_gate.py"),
             Path("auth.json"),
         )
         replacements = [
@@ -1406,7 +1406,7 @@ class StageSmokeHomeTests(unittest.TestCase):
             Path("AGENTS.md"),
             Path("agents/scout.toml"),
             Path("hooks.json"),
-            Path("hooks/pilotfish_autoroute_gate.py"),
+            Path("hooks/shoal_autoroute_gate.py"),
             Path("auth.json"),
         )
         for relative in relative_inputs:
@@ -1437,7 +1437,7 @@ class StageSmokeHomeTests(unittest.TestCase):
             Path("AGENTS.md"),
             Path("agents/scout.toml"),
             Path("hooks.json"),
-            Path("hooks/pilotfish_autoroute_gate.py"),
+            Path("hooks/shoal_autoroute_gate.py"),
             Path("auth.json"),
         )
         for relative in relative_inputs:
@@ -1476,7 +1476,7 @@ class StageSmokeHomeTests(unittest.TestCase):
                 self.assertTrue(mutated)
                 self.assertFalse((root / "staged").exists())
                 self.assertEqual(
-                    list(root.glob(".staged.pilotfish-stage-*")),
+                    list(root.glob(".staged.shoal-stage-*")),
                     [],
                 )
 
@@ -1503,7 +1503,7 @@ class StageSmokeHomeTests(unittest.TestCase):
                     materialize(active, root / "staged")
 
             self.assertFalse((root / "staged").exists())
-            self.assertEqual(list(root.glob(".staged.pilotfish-stage-*")), [])
+            self.assertEqual(list(root.glob(".staged.shoal-stage-*")), [])
 
     def test_required_role_mutation_at_publication_seam_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1533,7 +1533,7 @@ class StageSmokeHomeTests(unittest.TestCase):
 
             self.assertTrue(mutated)
             self.assertFalse((root / "staged").exists())
-            self.assertEqual(list(root.glob(".staged.pilotfish-stage-*")), [])
+            self.assertEqual(list(root.glob(".staged.shoal-stage-*")), [])
 
     def test_required_input_appearance_before_publication_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1557,15 +1557,15 @@ class StageSmokeHomeTests(unittest.TestCase):
                     materialize(active, root / "staged")
 
             self.assertFalse((root / "staged").exists())
-            self.assertEqual(list(root.glob(".staged.pilotfish-stage-*")), [])
+            self.assertEqual(list(root.glob(".staged.shoal-stage-*")), [])
 
     def test_staging_copies_only_allowlisted_inputs_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); active = root / "active"; staged = root / "staged"
             make_home(active); (active / "auth.json").write_text("credential")
             stamp = "20260716-001307"
-            (active / f"config.toml.pilotfish-codex-{stamp}").write_text("previous")
-            (active / "agents" / f"scout.toml.pilotfish-codex-{stamp}").write_text("previous")
+            (active / f"config.toml.shoal-codex-{stamp}").write_text("previous")
+            (active / "agents" / f"scout.toml.shoal-codex-{stamp}").write_text("previous")
             result = materialize(active, staged)
             self.assertEqual(result, staged.resolve())
             self.assertTrue((staged / "auth.json").exists())
@@ -1611,7 +1611,7 @@ class StageSmokeHomeTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(StageError, "publication blocked"):
                     materialize(active, root / "staged")
-            self.assertEqual(list(root.glob(".staged.pilotfish-stage-*")), [])
+            self.assertEqual(list(root.glob(".staged.shoal-stage-*")), [])
 
 
 if __name__ == "__main__":

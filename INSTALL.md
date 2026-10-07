@@ -1,6 +1,6 @@
-# Pilotfish-Codex installation playbook（shoal 的 Codex host 安裝說明）
+# Shoal-Codex installation playbook（shoal 的 Codex host 安裝說明）
 
-This playbook is for an AI agent installing the native Pilotfish-Codex target.
+This playbook is for an AI agent installing the native Shoal-Codex target.
 Read it completely before running an installation command. The detailed
 ownership and migration rules are in
 [`install/AGENT-INSTALL.md`](install/AGENT-INSTALL.md); this playbook does not
@@ -11,9 +11,9 @@ replace that runbook.
 The installer changes one Codex home. The default is `~/.codex`; set the
 `CODEX_HOME` environment variable or pass `--codex-home` to select another
 home. It installs the
-native Pilotfish roles, the active bootstrap block in the selected root
-`AGENTS.md`, the `pilotfish-codex` Plugin/Skill through Codex's local
-marketplace contract, native config, and the Pilotfish hook registration and
+native shoal roles, the active bootstrap block in the selected root
+`AGENTS.md`, the `shoal-codex` Plugin/Skill through Codex's local
+marketplace contract, native config, and the shoal hook registration and
 script. It does not install an
 adapter, change shell startup files, manage credentials, or use `sudo`.
 
@@ -75,7 +75,7 @@ targets the selected home. Show the user:
 - every `would change primary:` path;
 - the policy and hook changes;
 - existing files that will receive a timestamped
-  `*.pilotfish-codex-<timestamp>` backup; and
+  `*.shoal-codex-<timestamp>` backup; and
 - any role drift, extra role, pending transaction, or unresolved hook
   registration ownership that caused an abort.
 
@@ -105,25 +105,25 @@ Check the prerequisites and select the target home without changing it:
 ```bash
 python3 --version
 codex --version
-PILOTFISH_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
-printf 'target home=%s\n' "$PILOTFISH_TARGET_HOME"
+SHOAL_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
+printf 'target home=%s\n' "$SHOAL_TARGET_HOME"
 ```
 
 Inspect only the managed inputs. Preserve unrelated config and custom role
 files; do not read credentials:
 
 ```bash
-if [ -f "$PILOTFISH_TARGET_HOME/config.toml" ]; then
-  sed -n '1,240p' "$PILOTFISH_TARGET_HOME/config.toml"
+if [ -f "$SHOAL_TARGET_HOME/config.toml" ]; then
+  sed -n '1,240p' "$SHOAL_TARGET_HOME/config.toml"
 fi
-for policy in "$PILOTFISH_TARGET_HOME/AGENTS.md" "$PILOTFISH_TARGET_HOME/AGENTS.override.md"; do
+for policy in "$SHOAL_TARGET_HOME/AGENTS.md" "$SHOAL_TARGET_HOME/AGENTS.override.md"; do
   if [ -s "$policy" ]; then
     printf '\n--- %s ---\n' "$policy"
     sed -n '1,260p' "$policy"
   fi
 done
-if [ -d "$PILOTFISH_TARGET_HOME/agents" ]; then
-  find "$PILOTFISH_TARGET_HOME/agents" -maxdepth 1 -type f -name '*.toml' -print
+if [ -d "$SHOAL_TARGET_HOME/agents" ]; then
+  find "$SHOAL_TARGET_HOME/agents" -maxdepth 1 -type f -name '*.toml' -print
 fi
 ```
 
@@ -139,27 +139,27 @@ when the shell script is executed from a valid checkout.
 Local checkout:
 
 ```bash
-PILOTFISH_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
-bash install/install.sh --dry-run --codex-home "$PILOTFISH_TARGET_HOME"
+SHOAL_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
+bash install/install.sh --dry-run --codex-home "$SHOAL_TARGET_HOME"
 ```
 
 Native Windows PowerShell:
 
 ```powershell
-$pilotfishHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
-.\install\install.ps1 --dry-run --codex-home $pilotfishHome
+$shoalHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+.\install\install.ps1 --dry-run --codex-home $shoalHome
 ```
 
 Pinned remote source (replace the placeholder with an exact published tag or
 full commit SHA; do not run the placeholder itself):
 
 ```bash
-PILOTFISH_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
-PILOTFISH_REF='<release-tag-or-commit-sha>'
+SHOAL_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
+SHOAL_REF='<release-tag-or-commit-sha>'
 curl -fsSL \
-  "https://raw.githubusercontent.com/miyago9267/shoal/${PILOTFISH_REF}/install/install.sh" \
-  | bash -s -- --ref "$PILOTFISH_REF" --dry-run \
-    --codex-home "$PILOTFISH_TARGET_HOME"
+  "https://raw.githubusercontent.com/miyago9267/shoal/${SHOAL_REF}/install/install.sh" \
+  | bash -s -- --ref "$SHOAL_REF" --dry-run \
+    --codex-home "$SHOAL_TARGET_HOME"
 ```
 
 Note: pinned refs before v1.0.0 (v1.8.1 and earlier) exist only in
@@ -171,9 +171,9 @@ full target:
 
 ```bash
 bash install/install.sh --dry-run --roles-only \
-  --codex-home "$PILOTFISH_TARGET_HOME"
+  --codex-home "$SHOAL_TARGET_HOME"
 bash install/install.sh --roles-only \
-  --codex-home "$PILOTFISH_TARGET_HOME"
+  --codex-home "$SHOAL_TARGET_HOME"
 ```
 
 `--roles-only` writes only the seven `agents/*.toml` files. It leaves policy,
@@ -181,7 +181,7 @@ config, hooks, Plugin, and installer state untouched; existing same-name role
 customizations still require an explicit replacement option.
 
 `--ref=<release-tag-or-commit-sha>` is equivalent to the two-argument form.
-Keep the raw script URL ref and the archive ref identical. `PILOTFISH_REF` is
+Keep the raw script URL ref and the archive ref identical. `SHOAL_REF` is
 only the wrapper fallback when `--ref` is omitted. The wrapper prints
 `selected source:` and `selected ref:` before a remote fetch.
 
@@ -201,26 +201,26 @@ source and ref without `--dry-run`.
 Local checkout:
 
 ```bash
-PILOTFISH_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
-bash install/install.sh --codex-home "$PILOTFISH_TARGET_HOME"
+SHOAL_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
+bash install/install.sh --codex-home "$SHOAL_TARGET_HOME"
 ```
 
 Native Windows PowerShell:
 
 ```powershell
-$pilotfishHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
-.\install\install.ps1 --codex-home $pilotfishHome
+$shoalHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+.\install\install.ps1 --codex-home $shoalHome
 ```
 
 Pinned remote source:
 
 ```bash
-PILOTFISH_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
-PILOTFISH_REF='<release-tag-or-commit-sha>'
+SHOAL_TARGET_HOME="${CODEX_HOME:-$HOME/.codex}"
+SHOAL_REF='<release-tag-or-commit-sha>'
 curl -fsSL \
-  "https://raw.githubusercontent.com/miyago9267/shoal/${PILOTFISH_REF}/install/install.sh" \
-  | bash -s -- --ref "$PILOTFISH_REF" \
-    --codex-home "$PILOTFISH_TARGET_HOME"
+  "https://raw.githubusercontent.com/miyago9267/shoal/${SHOAL_REF}/install/install.sh" \
+  | bash -s -- --ref "$SHOAL_REF" \
+    --codex-home "$SHOAL_TARGET_HOME"
 ```
 
 The wrapper forwards only installer arguments such as `--dry-run`,
@@ -245,19 +245,19 @@ When a checkout is available, validate the installed config and role manifest:
 
 ```bash
 python3 install/validate_agents.py \
-  --config "$PILOTFISH_TARGET_HOME/config.toml" "$PILOTFISH_TARGET_HOME/agents"
+  --config "$SHOAL_TARGET_HOME/config.toml" "$SHOAL_TARGET_HOME/agents"
 ```
 
 The expected result is:
-`all native Pilotfish config and agent TOMLs valid`.
+`all native shoal config and agent TOMLs valid`.
 Also confirm that these managed hook files exist, without printing secrets:
 
 ```bash
-test -f "$PILOTFISH_TARGET_HOME/hooks.json"
-test -f "$PILOTFISH_TARGET_HOME/hooks/pilotfish_autoroute_gate.py"
-test -f "$PILOTFISH_TARGET_HOME/hooks/shoal_guard.py"
-grep -F 'Pilotfish automatic typed Plan-review gate.' \
-  "$PILOTFISH_TARGET_HOME/hooks.json"
+test -f "$SHOAL_TARGET_HOME/hooks.json"
+test -f "$SHOAL_TARGET_HOME/hooks/shoal_autoroute_gate.py"
+test -f "$SHOAL_TARGET_HOME/hooks/shoal_guard.py"
+grep -F 'Shoal automatic typed Plan-review gate.' \
+  "$SHOAL_TARGET_HOME/hooks.json"
 ```
 
 ### Dispatch guard
@@ -284,13 +284,13 @@ Without that approval Codex does not run it. A launch probe (must exit 0, prints
 nothing):
 
 ```bash
-echo '{}' | /usr/bin/env python3 "$PILOTFISH_TARGET_HOME/hooks/shoal_guard.py" --host codex
+echo '{}' | /usr/bin/env python3 "$SHOAL_TARGET_HOME/hooks/shoal_guard.py" --host codex
 ```
 
 #### Guard only, without running the installer
 
 When `install/install.py` cannot be reconciled with the Codex home (for
-example a locally modified `pilotfish_autoroute_gate.py` that the installer
+example a locally modified `shoal_autoroute_gate.py` that the installer
 would replace), `tools/install_hooks.py --host codex` manages only the guard.
 It writes the same `shoal-guard-v1` groups (including `commandWindows`) into
 `<codex-home>/hooks.json` and the committed-`HEAD` script to
@@ -324,7 +324,7 @@ On macOS and Linux:
 
 ```bash
 /usr/bin/env python3 \
-  "$PILOTFISH_TARGET_HOME/hooks/pilotfish_autoroute_gate.py" --selftest
+  "$SHOAL_TARGET_HOME/hooks/shoal_autoroute_gate.py" --selftest
 ```
 
 On native Windows, `python` is frequently the Microsoft Store alias stub, which
@@ -332,16 +332,16 @@ opens the Store instead of running the script. Run the probe through the same
 command the `commandWindows` entry uses and require real output:
 
 ```powershell
-uv run --no-project python -c "import os,runpy; from pathlib import Path; runpy.run_path(str(Path(os.environ.get('CODEX_HOME', Path.home()/'.codex'))/'hooks'/'pilotfish_autoroute_gate.py'), run_name='__main__')" --selftest
+uv run --no-project python -c "import os,runpy; from pathlib import Path; runpy.run_path(str(Path(os.environ.get('CODEX_HOME', Path.home()/'.codex'))/'hooks'/'shoal_autoroute_gate.py'), run_name='__main__')" --selftest
 ```
 
-Both must print `pilotfish-autoroute-gate schema=<n> launchable`. Any other
+Both must print `shoal-autoroute-gate schema=<n> launchable`. Any other
 result — no output, a Store window, `ModuleNotFoundError` — means the gate is
 not enforcing anything on this machine. Fix the interpreter or record the gate
 as unenforced; do not report the install as gated.
 
-Trust the Pilotfish registration once in an interactive Codex session. Inspect
-the groups that run `hooks/pilotfish_autoroute_gate.py` and `hooks/shoal_guard.py`,
+Trust the shoal registration once in an interactive Codex session. Inspect
+the groups that run `hooks/shoal_autoroute_gate.py` and `hooks/shoal_guard.py`,
 start Codex, and use
 `/hooks` to review and trust it. A pre-existing user-level `hooks.json` can
 have its own top-level description, so do not rely on one global description as
@@ -353,7 +353,7 @@ If the UI exposes trust only as a prompt while a session is starting, close
 that session and start a fresh one. Approve the exact hook at session start,
 then run `/hooks` in that session (or the next fresh session) to confirm the
 trusted state. The resulting `[hooks.state]` entry is expected and does not
-require reinstalling Pilotfish.
+require reinstalling shoal.
 
 For a remote-only install with no checkout, validate the same files from a
 checkout or source archive at the exact installed ref. Do not fetch an
@@ -363,22 +363,22 @@ un-pinned validator or claim validation from a different ref.
 
 Rerunning the same command at the same ref is intended to be idempotent. It
 preserves unrelated config, custom same-name role bytes, user files, and
-complete unrelated native hook groups. Pilotfish only owns its exact,
-event-bound hook groups and its script. A sidecar-proven Pilotfish script can
+complete unrelated native hook groups. Shoal only owns its exact,
+event-bound hook groups and its script. A sidecar-proven shoal script can
 upgrade to the selected source; a changed, missing, duplicated, or unproven
-Pilotfish group or script stops the update. Run a new dry-run and obtain
+shoal group or script stops the update. Run a new dry-run and obtain
 approval again before changing to another visible tag or commit. Review every
 changed role, policy, hook, and backup path before the real update.
 
 The installer fails closed for customized role drift, malformed or ambiguous
-hook registration, an unproven current or historical Pilotfish group, extra
+hook registration, an unproven current or historical shoal group, extra
 roles, malformed config, or stale transaction evidence. Do not force those
 cases by deleting state or passing an unsupported option to `install.py`.
 
 ## Recovery and rollback
 
 If an install aborts, stop. Preserve the error output, the pending or aborted
-state sidecar, and every `*.pilotfish-codex-<timestamp>` backup. Do not rerun
+state sidecar, and every `*.shoal-codex-<timestamp>` backup. Do not rerun
 over a pending transaction, delete unknown roles, or restore the whole home
 blindly. After separate operator approval, copy the affected managed files and
 state evidence to an explicitly chosen recovery directory; exclude credentials
@@ -386,12 +386,12 @@ unless the operator deliberately handles them.
 
 The installer stages writes, creates backups before replacement, verifies
 post-write fingerprints, and records committed ownership in a mode-`0600`
-sidecar. Its isolated smoke candidate uses the clean Pilotfish registration,
+sidecar. Its isolated smoke candidate uses the clean shoal registration,
 not any unrelated active-home hook group. If a concurrent edit is detected, the
 installer preserves that content and leaves an aborted sidecar for operator
 resolution. Use those records and
 [`install/AGENT-INSTALL.md`](install/AGENT-INSTALL.md) to decide a targeted
-restoration. A customized same-name role or an unproven Pilotfish hook group
+restoration. A customized same-name role or an unproven shoal hook group
 requires an explicit operator decision; this playbook does not authorize
 deletion or an uninstall shortcut.
 
@@ -413,8 +413,8 @@ Report all of the following in the agent's completion message:
 
 The Grok Build host is installed by `tools/install_grok.py`, not by the Codex
 installer above. It installs what is committed at `HEAD` of a shoal checkout:
-`agents/`, `roles/`, `rules/pilotfish-grok.md`, and the native hooks
-(`hooks/pilotfish-grok.json` plus `hooks/pilotfish-grok/`) under the Grok home.
+`agents/`, `roles/`, `rules/shoal-grok.md`, and the native hooks
+(`hooks/shoal-grok.json` plus `hooks/shoal-grok/`) under the Grok home.
 The default home is `$GROK_HOME`, else `~/.grok`; pass `--grok-home DIR` to
 select another. The installer is Python 3.11 or newer and needs `git`.
 
@@ -454,7 +454,7 @@ installer; merge them by hand.
 The hooks add a `SubagentStop` format gate for `verifier`, `plan-verifier` and
 `security-reviewer`, and a `PreToolUse` guard that denies write-capable
 `spawn_subagent` calls while Grok is in plan mode. They also install the shoal
-dispatch guard (`hooks/pilotfish-grok/shoal_guard.py`) with a `UserPromptSubmit`
+dispatch guard (`hooks/shoal-grok/shoal_guard.py`) with a `UserPromptSubmit`
 entry and a `PreToolUse` entry (matcher `^(search_replace|spawn_subagent)$`), shadow
 mode by default; the existing plan-mode guard entry is kept. The copy in
 `hosts/grok/dist` is generated from `hooks/shoal_guard.py` by
@@ -505,7 +505,7 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 ## Claude Code plugin
 
 Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容（8 個 role、
-`pilotfish-orchestration` skill、dispatch guard、policy bootstrap）全部由
+`shoal-orchestration` skill、dispatch guard、policy bootstrap）全部由
 `python3 tools/render.py --host claude-plugin --write` 從 `hosts/claude/dist`、
 `hooks/shoal_guard.py` 與根目錄 `VERSION` 產生，輸出在 `claude-plugin/` 與
 `.claude-plugin/marketplace.json`；`--check` 與 golden 擋住手改。Codex 的
@@ -513,12 +513,12 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 
 ```bash
 # 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v1.5.0
+claude plugin marketplace add miyago9267/shoal#v2.0.0
 claude plugin install shoal@shoal
 
 # 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v1.5.0
+claude plugin marketplace add miyago9267/shoal#v2.0.0
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -533,16 +533,16 @@ claude --plugin-dir ./claude-plugin
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
   `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
   `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v1.5.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  上面的 `#v2.0.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是
   `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin`，
   路徑加引號，安裝路徑含空白也能跑；SessionStart 的 `emit-sessionstart.sh` 自己固定
   `PATH=/usr/bin:/bin`，把 `claude-plugin/policy/claude-md.bootstrap.md` 注入 session。
-  如果全域 `CLAUDE.md` 已經有 pilotfish bootstrap，就不再注入。
+  如果全域 `CLAUDE.md` 已經有 shoal bootstrap，就不再注入。
 - namespace：plugin 的 agent 名稱是 `shoal:<role>`（例如 `shoal:executor`），skill 是
-  `shoal:pilotfish-orchestration`。實測 hook payload 的 `agent_type` 與 Agent 工具的
+  `shoal:shoal-orchestration`。實測 hook payload 的 `agent_type` 與 Agent 工具的
   `subagent_type` 都是 `shoal:executor`；guard 只認裸名稱與 `shoal:` 前綴。
 - 與全域安裝共存：已經用 `tools/install_hooks.py --host claude` 裝過全域 guard 時，
   plugin 的 hook 帶 `--plugin`，只在 user `settings.json`（`CLAUDE_CONFIG_DIR` 或
@@ -583,8 +583,8 @@ sh hosts/opencode/plugin/install/install.sh --global --rollback
 ```
 
 `--global` 安裝 shoal committed `HEAD` 的內容：五個 role 到 `<config-dir>/agents/`，
-plugin 到 `<config-dir>/plugins/pilotfish-opencode.js`，`catalog.json` 與
-`routing.json` 到 `<config-dir>/pilotfish/`。plugin 是在暫存目錄用
+plugin 到 `<config-dir>/plugins/shoal-opencode.js`，`catalog.json` 與
+`routing.json` 到 `<config-dir>/shoal/`。plugin 是在暫存目錄用
 `git archive HEAD hosts/opencode`、`bun install --frozen-lockfile` 與 `bun build`
 產生，不吃未 commit 的修改。`<config-dir>` 依序取 `--config-dir`、
 `OPENCODE_CONFIG_DIR`、`~/.config/opencode`，必須已存在。
@@ -595,16 +595,16 @@ plugin 到 `<config-dir>/plugins/pilotfish-opencode.js`，`catalog.json` 與
   hash 不符）時中止並列出衝突，完全不寫入。
 - `--disable`、`--rollback` 只在每個檔案的 hash 都與 manifest 相符時動作，否則整批
   不動；config dir 以 manifest 記錄的為準。`--rollback` 之後 installer 新增的檔案與
-  它建立的 `agents/`、`plugins/`、`pilotfish/` 目錄都會消失。
+  它建立的 `agents/`、`plugins/`、`shoal/` 目錄都會消失。
 - 安裝後檢查 `routing.json` 的候選 provider 是否出現在
   `<config-dir>/opencode.json` 的 `provider` keys 或 `enabled_providers`，沒有就
   警告（不中止）；只比對 key 名稱，auth 或環境變數型 provider 無法在這裡驗證。
-- 目前目錄（或其 git root）已有專案的 `.opencode/plugins/pilotfish-opencode.js`
+- 目前目錄（或其 git root）已有專案的 `.opencode/plugins/shoal-opencode.js`
   時警告：全域與專案兩份 plugin 會同時載入。新版 plugin 以 `globalThis` 登記表避免
-  重複註冊 `pilotfish_route`，舊版專案 plugin 沒有這個保護。
+  重複註冊 `shoal_route`，舊版專案 plugin 沒有這個保護。
 
-plugin 查找設定時，專案的 `.opencode/pilotfish/catalog.json` 存在就只用專案層，
-否則改用全域 `<config-dir>/pilotfish/`（同一層內 `routing.json` 可省略，缺少時回退
+plugin 查找設定時，專案的 `.opencode/shoal/catalog.json` 存在就只用專案層，
+否則改用全域 `<config-dir>/shoal/`（同一層內 `routing.json` 可省略，缺少時回退
 native routing）。從 shoal 以外的目錄執行時，installer 需要在 shoal checkout 內
 （它用 `git` 讀取 HEAD）。安裝後重新啟動 OpenCode。
 
@@ -626,10 +626,27 @@ dry-run 的 `updated` 行尾有 `[dry-run]`。exit 0，只有 `--strict` 且有 
 
 | Host | 做什麼 |
 | --- | --- |
-| codex | `install_hooks.py --host codex`（guard 與 hook entry）。`templates/agents/*.toml` 對 `<CODEX_HOME 或 ~/.codex>/agents/`：相同就略過；與 HEAD 不同但位元組等於該 template 的歷史版本才取代（temp file 加 rename，保留 mode）；其他情況（自己改過、來源不明、symlink）不動並回報 `drift`。不跑 `install/install.py`。 |
-| grok | `install_grok.py` dry-run 有差異才 `--apply`；不帶 `--fix-toggles`，不動 `config.toml`。 |
-| agy | `install_hooks.py --host agy`；`~/.gemini/config/agents`、`skills` 是指向 `hosts/agy/dist` 的 symlink，只檢查沒有斷掉或改指（回報，不修）。 |
-| opencode | 需要 `bun`（沒有就 `skipped`）。照 `install_global.sh` 的步驟建出 HEAD 的 bundle，與全域 config dir 的 plugin、roles、`pilotfish/*.json` 逐位元組比對，有差異才 `install.sh --global --disable` 再 `--enable`。全域安裝尚未啟用或已停用就 `skipped`，不替使用者重新啟用。dotfile 的 harness copy（`OPENCODE_HARNESS_PLUGIN`，預設 `~/dotfile/config/opencode-harness/plugins/pilotfish-opencode.js`）只回報 `matches` 或 `differs`，不寫入。 |
+| codex | `install_hooks.py --host codex`（guard 與 hook entry）。`templates/agents/*.toml` 對 `<CODEX_HOME 或 ~/.codex>/agents/`：相同就略過；與 HEAD 不同但位元組等於該 template 的歷史版本才取代（temp file 加 rename，保留 mode）；其他情況（自己改過、來源不明、symlink）不動並回報 `drift`。平常不跑 `install/install.py`；偵測到 2.0.0 之前的舊名安裝才跑（見下方「從舊名升級」）。 |
+| grok | `install_grok.py` dry-run 有差異才 `--apply`；不帶 `--fix-toggles`，不動 `config.toml`。舊名的 rules、hooks 檔案（確認是 shoal 安裝的）會一起移除。 |
+| agy | `install_hooks.py --host agy`；`~/.gemini/config/agents`、`skills` 是指向 `hosts/agy/dist` 的 symlink，只檢查沒有斷掉或改指（回報，不修）；唯一例外是指向本 repo 的舊名 skill symlink，會移除並改指新名。 |
+| opencode | 需要 `bun`（沒有就 `skipped`）。照 `install_global.sh` 的步驟建出 HEAD 的 bundle，與全域 config dir 的 plugin、roles、`shoal/*.json` 逐位元組比對，有差異才 `install.sh --global --disable` 再 `--enable`。全域安裝尚未啟用或已停用就 `skipped`，不替使用者重新啟用。dotfile 的 harness copy（`OPENCODE_HARNESS_PLUGIN`，預設 `~/dotfile/config/opencode-harness/plugins/shoal-opencode.js`）只回報 `matches` 或 `differs`，不寫入。 |
 
 `install_hooks.py` 與 `install_grok.py` 的 `--json` 會多印一行 `{"changes": ...}`
 （寫入前是否有差異），這是 `sync_global.py` 判斷是否需要 `--apply` 的依據。
+
+## 從舊名升級
+
+2.0.0 把安裝出去的名稱全部換新（對照表：`docs/specs/shoal-rebrand/RENAME.md`）。installer
+與 `sync_global.py` 會辨識自己以舊名安裝的檔案，移除後以新名安裝；不是 shoal 安裝的
+舊名檔案不動，只回報。dry-run 的計畫只會有「移除舊名」與「安裝新名」兩類。
+
+| Host | 辨識與移除 | 保留 |
+| --- | --- | --- |
+| codex | 與舊 projection 逐位元組相同的 hooks.json 群組、舊 gate 腳本（hash 等於舊 install state 的紀錄）、`AGENTS.md` 的舊 marker 區塊（換成新 marker）、舊 install state（封存成 `.pre-shoal-<時間>`）、`config.toml` 中指向本 repo `plugin/` 的舊 marketplace 與 plugin table（改名）、同一條件下的 plugin cache 與 jev 資料目錄（cache 移除，jev 目錄改名） | 你自己改過的舊 gate 腳本改名為 `.pre-shoal-<時間>` 備份並取消註冊；不指向本 repo 的 table、有 pending 的舊交易（要先處理，installer 會中止） |
+| grok | `rules/`、`hooks/` 底下舊名檔案，且 rules marker 帶 `-shoal.N` 或有 shoal 專屬的 guard 腳本 | 舊名目錄裡其他檔案、沒有 shoal 記號的舊名檔案 |
+| agy | 指向本 repo `hosts/agy/dist` 的舊 skill symlink（改指新名） | 指向別處或不是 symlink 的 |
+| opencode | 舊 manifest 記錄的 plugin 與舊名控制目錄裡的檔案，用舊 manifest `--disable` 後再 `--enable`；專案層的 `.opencode/` 同理 | 被改過的檔案（整批不動） |
+
+Codex 遷移後，新的 hook 路徑要在互動式 Codex 用 `/hooks` 再核准一次；plugin cache 由
+`install/install.py` 的 `codex plugin add` 重建。Claude Code 的 plugin 更新到 2.0.0 後 skill
+名稱自動換成 `shoal-orchestration`。

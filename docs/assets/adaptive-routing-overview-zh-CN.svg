@@ -29,7 +29,7 @@
   </defs>
 
   <rect width="1400" height="760" class="bg"/>
-  <text x="48" y="45" class="kicker muted">PILOTFISH-CODEX / ADAPTIVE ROUTING</text>
+  <text x="48" y="45" class="kicker muted">SHOAL-CODEX / ADAPTIVE ROUTING</text>
   <text x="48" y="88" class="title fg">自适应意图路由</text>
   <text x="48" y="118" class="small muted">根据确定程度、影响范围与可逆性选择第一步。</text>
   <line x1="48" y1="145" x2="1352" y2="145" class="line"/>

@@ -16,13 +16,13 @@ function runInstaller(target: string, action: string) {
 
 describe("opt-in installer", () => {
   test("supports idempotent enable, disable, and rollback in a fresh target", async () => {
-    const target = await mkdtemp(join(tmpdir(), "pilotfish-opencode-installer-"));
+    const target = await mkdtemp(join(tmpdir(), "shoal-opencode-installer-"));
 
     try {
       expect(runInstaller(target, "--enable").exitCode).toBe(0);
       expect(await Bun.file(join(target, ".opencode", "agents", "scout.md")).exists()).toBe(true);
       expect(
-        await Bun.file(join(target, ".opencode", "plugins", "pilotfish-opencode.js")).exists(),
+        await Bun.file(join(target, ".opencode", "plugins", "shoal-opencode.js")).exists(),
       ).toBe(true);
 
       const repeat = runInstaller(target, "--enable");
@@ -34,14 +34,14 @@ describe("opt-in installer", () => {
       expect(runInstaller(target, "--disable").exitCode).toBe(0);
       expect(await Bun.file(join(target, ".opencode", "agents", "scout.md")).exists()).toBe(false);
       expect(await Bun.file(nativeConfig).text()).toBe(nativeConfigContent);
-      expect((await readFile(join(target, ".opencode", "pilotfish", "install.manifest"), "utf8"))).toContain(
+      expect((await readFile(join(target, ".opencode", "shoal", "install.manifest"), "utf8"))).toContain(
         "state|disabled",
       );
 
       expect(runInstaller(target, "--rollback").exitCode).toBe(0);
       expect(await Bun.file(join(target, ".opencode", "agents", "scout.md")).exists()).toBe(false);
       expect(await Bun.file(nativeConfig).text()).toBe(nativeConfigContent);
-      expect((await readFile(join(target, ".opencode", "pilotfish", "install.manifest"), "utf8"))).toContain(
+      expect((await readFile(join(target, ".opencode", "shoal", "install.manifest"), "utf8"))).toContain(
         "state|rolled_back",
       );
     } finally {

@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "hooks"))
 sys.path.insert(0, str(ROOT / "install"))
 
-import pilotfish_autoroute_gate as gate  # noqa: E402
+import shoal_autoroute_gate as gate  # noqa: E402
 from intent_review_matrix import validate_matrix  # noqa: E402
 from review_intent_contract import validate_signal  # noqa: E402
 
@@ -37,7 +37,7 @@ def _invoke_hook(case: dict[str, Any]) -> dict[str, Any] | None:
     with tempfile.TemporaryDirectory(prefix="intent-hook-matrix-") as home:
         environment["CODEX_HOME"] = home
         completed = subprocess.run(
-            [sys.executable, str(ROOT / "hooks" / "pilotfish_autoroute_gate.py")],
+            [sys.executable, str(ROOT / "hooks" / "shoal_autoroute_gate.py")],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -66,8 +66,8 @@ def _signal_from_output(case: dict[str, Any], output: dict[str, Any] | None) -> 
         raise ValueError(f"case {case['id']} hook signal shape is invalid") from exc
     if not isinstance(context, str):
         raise ValueError(f"case {case['id']} hook signal context is invalid")
-    if "Pilotfish review intent signal: " not in context:
-        route_prefix = "Pilotfish automatic model route: "
+    if "Shoal review intent signal: " not in context:
+        route_prefix = "Shoal automatic model route: "
         if route_prefix not in context:
             raise ValueError(f"case {case['id']} hook signal context is invalid")
         encoded_route = context.split(route_prefix, 1)[1].split("\n", 1)[0]
@@ -75,7 +75,7 @@ def _signal_from_output(case: dict[str, Any], output: dict[str, Any] | None) -> 
         if not isinstance(route, dict) or route.get("turn_id") != case["id"]:
             raise ValueError(f"case {case['id']} automatic route context is invalid")
         return None
-    encoded = context.split("Pilotfish review intent signal: ", 1)[1].split("\n", 1)[0]
+    encoded = context.split("Shoal review intent signal: ", 1)[1].split("\n", 1)[0]
     return validate_signal(json.loads(encoded))
 
 
@@ -96,7 +96,7 @@ def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
         expected_categories = tuple(expected["risk_categories"])
         category_ok = categories == expected_categories
         context = output.get("hookSpecificOutput", {}).get("additionalContext", "") if output else ""
-        route_signal_present = isinstance(context, str) and "Pilotfish automatic model route: " in context
+        route_signal_present = isinstance(context, str) and "Shoal automatic model route: " in context
         signal_ok = (signal is None and actual_intent is None and route_signal_present) or (
             signal is not None
             and signal["turn_id"] == case["id"]

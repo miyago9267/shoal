@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <##
 .SYNOPSIS
-  Cross-platform PowerShell bootstrap for Pilotfish-Codex.
+  Cross-platform PowerShell bootstrap for Shoal-Codex.
 
 .DESCRIPTION
   Uses the same install.py as install.sh. Local checkouts are preferred; when
@@ -18,7 +18,7 @@ $ErrorActionPreference = "Stop"
 # Pinned refs before shoal v1.0.0 (v1.8.1 and earlier) exist only in
 # miyago9267/pilotfish-codex; set $Repository to miyago9267/pilotfish-codex to use them.
 $Repository = "miyago9267/shoal"
-$Ref = if ($env:PILOTFISH_REF) { $env:PILOTFISH_REF } else { "main" }
+$Ref = if ($env:SHOAL_REF) { $env:SHOAL_REF } else { "main" }
 $ForwardedArgs = [System.Collections.Generic.List[string]]::new()
 
 function Fail([string] $Message) {
@@ -80,7 +80,7 @@ Installer options are forwarded unchanged to install.py, including
 --dry-run, --roles-only, --codex-home, --follow-policy-symlink, --policy-root,
 --reconcile-current, --allow-plugin-downgrade, --replace-drifted-role,
 and --replace-drifted-roles.
-PILOTFISH_REF is used when --ref is not supplied; the default is main.
+SHOAL_REF is used when --ref is not supplied; the default is main.
 "@ | Write-Output
     exit 0
   }
@@ -118,7 +118,7 @@ if ($LocalRoot) {
 $ArchiveUrl = "https://codeload.github.com/$Repository/tar.gz/$Ref"
 [Console]::Error.WriteLine("selected source: $ArchiveUrl")
 [Console]::Error.WriteLine("selected ref: $Ref")
-$TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("pilotfish-install." + [guid]::NewGuid().ToString("N"))
+$TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("shoal-install." + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $TempRoot | Out-Null
 try {
   $Archive = Join-Path $TempRoot "source.tar.gz"
@@ -130,7 +130,7 @@ try {
   $SourceRoot = Get-ChildItem -LiteralPath $TempRoot -Directory |
     Where-Object { Test-Path (Join-Path $_.FullName "install/install.py") } |
     Select-Object -First 1
-  if ($null -eq $SourceRoot) { Fail "downloaded archive does not look like pilotfish-codex (pinned refs before v1.0.0 live in miyago9267/pilotfish-codex)" }
+  if ($null -eq $SourceRoot) { Fail "downloaded archive does not look like shoal-codex (pinned refs before v1.0.0 live in miyago9267/pilotfish-codex)" }
   Invoke-Python (Join-Path $SourceRoot.FullName "install/install.py") $ForwardedArgs.ToArray()
 } finally {
   if (Test-Path -LiteralPath $TempRoot) {

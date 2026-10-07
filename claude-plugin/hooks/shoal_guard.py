@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shoal dispatch guard: host-neutral PreToolUse guard for Pilotfish dispatch rules.
+"""Shoal dispatch guard: host-neutral PreToolUse guard for shoal dispatch rules.
 
 One script serves claude, codex, grok and agy.  Each host gets a small adapter that
 normalizes the hook payload into an event; the core decides on the event only, so a
@@ -17,7 +17,7 @@ directly and sets it through the hook's env map).
 Always exits 0 and fails open: any exception means "no opinion".  The guard is a
 policy nudge, not a security boundary (see docs/specs/dispatch-enforcement/SPEC.md).
 
-Modes (SHOAL_GUARD, alias PILOTFISH_GUARD): enforce | shadow | off.  Only the hard rules (LEAF,
+Modes (SHOAL_GUARD): enforce | shadow | off.  Only the hard rules (LEAF,
 VERIFY_EDIT) deny; the main-session rules R1/R2 decide `advise` and, on claude/codex in enforce,
 print a one-per-turn `additionalContext` reminder.
 """
@@ -321,7 +321,7 @@ def role_access(role: Any) -> Optional[str]:
 
 def resolve_mode(host: str, env: Dict[str, str]) -> str:
     """Unset -> host default; an unrecognized value -> shadow (as the legacy guard did)."""
-    raw = env.get("SHOAL_GUARD") or env.get("PILOTFISH_GUARD") or ""
+    raw = env.get("SHOAL_GUARD") or ""
     if not raw:
         mode = HOST_DEFAULT_MODE.get(host, "shadow")
     else:
@@ -333,9 +333,7 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
 
 def _max_files(env: Dict[str, str]) -> Optional[int]:
     """None when the configured value is not an integer (the guard then fails open)."""
-    raw = (
-        env.get("SHOAL_GUARD_MAX_FILES") or env.get("PILOTFISH_GUARD_MAX_FILES") or "2"
-    )
+    raw = env.get("SHOAL_GUARD_MAX_FILES") or "2"
     try:
         return max(0, int(raw))
     except ValueError:
