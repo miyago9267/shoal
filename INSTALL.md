@@ -607,3 +607,29 @@ plugin 查找設定時，專案的 `.opencode/pilotfish/catalog.json` 存在就�
 否則改用全域 `<config-dir>/pilotfish/`（同一層內 `routing.json` 可省略，缺少時回退
 native routing）。從 shoal 以外的目錄執行時，installer 需要在 shoal checkout 內
 （它用 `git` 讀取 HEAD）。安裝後重新啟動 OpenCode。
+
+## 每日同步
+
+`tools/sync_global.py` 把 committed HEAD 同步到 Codex、Grok、agy、OpenCode 的全域
+安裝。dotfile 的 SessionStart hook（`agent-stack-auto-update.sh`，每個日曆日一次）
+在 Claude 的步驟之後以 `--apply` 呼叫它。只用 Python stdlib；沒有差異時不寫檔、不建
+備份，重複執行結果相同。
+
+```bash
+python3 tools/sync_global.py                      # dry-run，四個 host 各印一行
+python3 tools/sync_global.py --apply              # 實際更新
+python3 tools/sync_global.py --apply --host codex grok --strict
+```
+
+每個 host 一行：`<host>: up-to-date | updated (<內容>) | skipped (<原因>) | failed (<原因>)`；
+dry-run 的 `updated` 行尾有 `[dry-run]`。exit 0，只有 `--strict` 且有 `failed` 才是 1。
+
+| Host | 做什麼 |
+| --- | --- |
+| codex | `install_hooks.py --host codex`（guard 與 hook entry）。`templates/agents/*.toml` 對 `<CODEX_HOME 或 ~/.codex>/agents/`：相同就略過；與 HEAD 不同但位元組等於該 template 的歷史版本才取代（temp file 加 rename，保留 mode）；其他情況（自己改過、來源不明、symlink）不動並回報 `drift`。不跑 `install/install.py`。 |
+| grok | `install_grok.py` dry-run 有差異才 `--apply`；不帶 `--fix-toggles`，不動 `config.toml`。 |
+| agy | `install_hooks.py --host agy`；`~/.gemini/config/agents`、`skills` 是指向 `hosts/agy/dist` 的 symlink，只檢查沒有斷掉或改指（回報，不修）。 |
+| opencode | 需要 `bun`（沒有就 `skipped`）。照 `install_global.sh` 的步驟建出 HEAD 的 bundle，與全域 config dir 的 plugin、roles、`pilotfish/*.json` 逐位元組比對，有差異才 `install.sh --global --disable` 再 `--enable`。全域安裝尚未啟用或已停用就 `skipped`，不替使用者重新啟用。dotfile 的 harness copy（`OPENCODE_HARNESS_PLUGIN`，預設 `~/dotfile/config/opencode-harness/plugins/pilotfish-opencode.js`）只回報 `matches` 或 `differs`，不寫入。 |
+
+`install_hooks.py` 與 `install_grok.py` 的 `--json` 會多印一行 `{"changes": ...}`
+（寫入前是否有差異），這是 `sync_global.py` 判斷是否需要 `--apply` 的依據。

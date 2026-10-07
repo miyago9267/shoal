@@ -89,6 +89,9 @@ main session 的直接編輯只會被提醒：R1、R2 不擋（Claude、Codex �
 `additionalContext`，其餘 host 只記 log，`SHOAL_GUARD_DIRECT=1` 關閉提醒），只有
 subagent 的 LEAF、VERIFY_EDIT 會擋。
 
+Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
+每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [INSTALL.md](./INSTALL.md#每日同步)。
+
 ## 版本
 
 | 項目 | 版本 |

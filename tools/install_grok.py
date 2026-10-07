@@ -361,11 +361,16 @@ def verify(plan: Plan) -> list[str]:
     return problems
 
 
-def do_install(plan: Plan, apply: bool, fix_toggles: bool) -> int:
+def do_install(
+    plan: Plan, apply: bool, fix_toggles: bool, emit_json: bool = False
+) -> int:
     print("\n".join(describe(plan, fix_toggles)))
     changes = plan.changes()
     if plan.new_config is not None:
         changes.append(CONFIG)
+    if emit_json:
+        # 給 tools/sync_global.py：單獨一行 {"changes": [...]}，反映寫入前的差異
+        print(json.dumps({"changes": changes}, ensure_ascii=False))
     if not apply:
         print("dry-run：沒有寫入任何檔案；加 --apply 才會寫入")
         return 0
@@ -491,6 +496,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="只移除 shoal 安裝的檔案，不改 config.toml",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="安裝模式：在 plan 之後多印一行 JSON {\"changes\": [...]}，給 sync_global.py 判斷",
+    )
     parser.add_argument("--repo", type=Path, default=REPO, help="shoal repo（測試用）")
     parser.add_argument("--ref", default="HEAD", help="要安裝的 ref，預設 HEAD")
     args = parser.parse_args(argv)
@@ -518,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
             Plan(home, files, version, commit, args.fix_toggles),
             args.apply,
             args.fix_toggles,
+            args.json,
         )
     except InstallError as exc:
         print(f"中止: {exc}", file=sys.stderr)

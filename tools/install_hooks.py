@@ -354,6 +354,7 @@ def run(
     repo: Path,
     ref: str,
     env: Mapping[str, str],
+    emit_json: bool = False,
 ) -> int:
     codex = host == "codex"
     apply_fn = {"claude": apply_claude, "agy": apply_agy, "codex": apply_codex}[host]
@@ -413,6 +414,9 @@ def run(
             else f"目前有 {owned_entries(host, current)} 個 shoal handler"
         )
     )
+    if emit_json:
+        # 給 tools/sync_global.py：單獨一行，反映寫入前的差異
+        print(json.dumps({"changes": bool(config_changes or script_changes)}))
     if not apply:
         print("dry-run：沒有寫入任何檔案；加 --apply 才會寫入")
         return 0
@@ -503,6 +507,11 @@ def main(
         type=Path,
         help="claude 預設 $CLAUDE_CONFIG_DIR 或 ~/.claude；agy 預設 ~/.gemini；codex 預設 $CODEX_HOME 或 ~/.codex",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help='多印一行 JSON {"changes": bool}（寫入前是否有差異），給 sync_global.py 判斷',
+    )
     parser.add_argument("--repo", type=Path, default=REPO, help="shoal repo（測試用）")
     parser.add_argument("--ref", default="HEAD", help="要安裝的 ref，預設 HEAD")
     args = parser.parse_args(argv)
@@ -515,6 +524,7 @@ def main(
             repo=args.repo,
             ref=args.ref,
             env=os.environ if env is None else env,
+            emit_json=args.json,
         )
     except InstallError as exc:
         print(f"中止: {exc}", file=sys.stderr)
