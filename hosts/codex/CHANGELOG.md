@@ -9,6 +9,11 @@ written.
 
 ## Unreleased
 
+## v2.1.1
+
+- Cost-unbounded continuation: an opt-in paragraph after the direction
+  check (`docs/specs/milestone-direction-check`, M2b).
+
 ## v2.1.0
 
 - Milestone direction check: the `direction_checkpoint` paragraph is replaced

@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v2.1.0 -->
+<!-- shoal-codex v2.1.1 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -332,6 +332,18 @@ deviation or `ROLLBACK`, stop new writes and report it with a recommendation
 rolling back is the user's decision. Executor design decisions beyond the
 brief (mechanism, interface, naming, omission) are unreviewed: accept or
 reject each and record it before merging.
+
+Cost-unbounded continuation applies only when the user explicitly selects it
+(in `/goal`, the prompt, or the AUTO/ASK choice). Within approved scope,
+continue to acceptance without stopping or asking because of cost, tokens,
+time, slice count, discovery budget, or whether to continue. The AUTO stop
+list and the milestone direction check stay in force, and the mode grants no
+extra authority. At the two-`REVISE` cap, disposition, narrow, or split as
+usual, then continue as user-directed continuation; every pass still needs a
+material change, otherwise `PAUSED_VERIFICATION`. Escalate only to a higher
+executor tier or main-session takeover; an unresolved P1 outside approved
+scope still stops. A `PIVOT` re-plans only within approved scope; beyond it,
+stop at `decision`.
 
 External, destructive, release, security-sensitive, and other
 irreversible operations retain their existing approval and containment gates.
