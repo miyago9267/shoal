@@ -93,6 +93,9 @@ class MigrationCase(unittest.TestCase):
         return lines[0]
 
 
+FAKE_CODEX_VERSION = "codex-cli 0.160.1"
+
+
 @unittest.skipUnless(POSIX, "needs git and sh")
 class CodexMigrationTests(MigrationCase):
     def setUp(self) -> None:
@@ -112,6 +115,32 @@ class CodexMigrationTests(MigrationCase):
             "hooks/notify.py": b"# user hook\n",
             "prompts/mine.md": b"# user prompt\n",
         }
+
+        # 絕不呼叫真的 codex：PATH 最前面放 fake，記錄 argv 並建立 plugin cache
+        bindir = self.tmp / "fakebin"
+        bindir.mkdir()
+        self.codex_log = self.tmp / "codex-argv.log"
+        cache = self.codex / "plugins/cache/shoal-codex/shoal-jev-router"
+        fake = bindir / "codex"
+        fake.write_text(
+            '#!/bin/sh\n'
+            f'[ "$1" = "--version" ] && {{ echo "{FAKE_CODEX_VERSION}"; exit 0; }}\n'
+            f'echo "$@" >> "{self.codex_log}"\n'
+            f'[ "$1 $2" = "plugin add" ] && mkdir -p "{cache}"\nexit 0\n'
+        )
+        fake.chmod(0o755)
+        self.fake_bin = bindir
+
+    def env(self, **extra: str) -> dict[str, str]:
+        base = super().env(**extra)
+        base["PATH"] = f"{self.fake_bin}{os.pathsep}{base.get('PATH', '')}"
+        return base
+
+    def codex_calls(self) -> list[str]:
+        if not self.codex_log.exists():
+            return []
+        lines = self.codex_log.read_text().splitlines()
+        return [ln for ln in lines if ln.startswith("plugin add")]
 
     def sync_codex(self, *extra: str) -> str:
         return self.one("--host", "codex", *extra)
@@ -138,6 +167,9 @@ class CodexMigrationTests(MigrationCase):
     def test_apply_leaves_only_new_names_and_second_run_is_up_to_date(self) -> None:
         line = self.sync_codex("--apply")
         self.assertTrue(line.startswith("codex: updated (legacy migration:"), line)
+        self.assertEqual(
+            self.codex_calls(), ["plugin add shoal-jev-router@shoal-codex"]
+        )
 
         # hooks.json：只剩 shoal-autoroute-v1 與 shoal-guard-v1 兩個 projection，使用者的 Stop group 還在
         document = json.loads((self.codex / "hooks.json").read_text())
@@ -208,6 +240,7 @@ class CodexMigrationTests(MigrationCase):
         # 再跑一次：沒有變更
         before = lf.tree(self.codex), self.new_state.read_bytes()
         self.assertEqual(self.sync_codex("--apply"), "codex: up-to-date")
+        self.assertEqual(len(self.codex_calls()), 1)
         self.assertEqual((lf.tree(self.codex), self.new_state.read_bytes()), before)
 
     def test_user_modified_gate_is_kept_as_backup_and_unregistered(self) -> None:

@@ -179,6 +179,61 @@ class CodexTests(Base):
         self.assertTrue((self.agents / "a.toml").is_symlink())
         self.assertEqual(elsewhere.read_text(), "v1\n")
 
+    def jev_setup(self, enabled: bool = True, table: bool = True) -> Path:
+        (self.agents / "a.toml").write_text("v1\n")
+        if table:
+            (self.codex / "config.toml").write_text(
+                '[plugins."shoal-jev-router@shoal-codex"]\n'
+                f"enabled = {'true' if enabled else 'false'}\n"
+            )
+        bindir = self.tmp / "bin"
+        bindir.mkdir()
+        log = self.tmp / "codex.log"
+        cache = self.codex / "plugins/cache/shoal-codex/shoal-jev-router"
+        fake = bindir / "codex"
+        fake.write_text(
+            f'#!/bin/sh\necho "$@" >> "{log}"\nmkdir -p "{cache}"\n'
+        )
+        fake.chmod(0o755)
+        self.jev_log, self.jev_cache = log, cache
+        return bindir
+
+    def jev_env(self, bindir: Path) -> dict[str, str]:
+        return self.env(PATH=f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}")
+
+    def jev_calls(self) -> list[str]:
+        return self.jev_log.read_text().splitlines() if self.jev_log.exists() else []
+
+    def test_jev_router_reinstalled_once_on_apply(self) -> None:
+        env = self.jev_env(self.jev_setup())
+        code, lines = self.sync("--host", "codex", "--apply", env=env)
+        self.assertEqual(code, 0)
+        self.assertIn("jev router", lines[0])
+        self.assertEqual(
+            self.jev_calls(), ["plugin add shoal-jev-router@shoal-codex"]
+        )
+        self.sync("--host", "codex", "--apply", env=env)
+        self.assertEqual(len(self.jev_calls()), 1)
+
+    def test_jev_router_present_not_invoked(self) -> None:
+        env = self.jev_env(self.jev_setup())
+        self.jev_cache.mkdir(parents=True)
+        self.sync("--host", "codex", "--apply", env=env)
+        self.assertEqual(self.jev_calls(), [])
+
+    def test_jev_router_disabled_or_absent_not_invoked(self) -> None:
+        env = self.jev_env(self.jev_setup(enabled=False))
+        self.sync("--host", "codex", "--apply", env=env)
+        (self.codex / "config.toml").write_text("[other]\nx = 1\n")
+        self.sync("--host", "codex", "--apply", env=env)
+        self.assertEqual(self.jev_calls(), [])
+
+    def test_jev_router_dry_run_reports_only(self) -> None:
+        env = self.jev_env(self.jev_setup())
+        _, lines = self.sync("--host", "codex", env=env)
+        self.assertIn("jev router reinstall", lines[0])
+        self.assertEqual(self.jev_calls(), [])
+
     def test_missing_codex_home_is_skipped(self) -> None:
         shutil.rmtree(self.codex)
         self.assertEqual(self.codex_sync(), [f"codex: skipped ({self.codex} 不存在)"])
@@ -353,6 +408,15 @@ class CliTests(Base):
     def test_unknown_host_rejected(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             sync_global.main(["--host", "claude"], self.env())
+
+    def test_host_accepts_both_forms(self) -> None:
+        original = dict(sync_global.RUNNERS)
+        self.addCleanup(sync_global.RUNNERS.update, original)
+        for host in sync_global.RUNNERS:
+            sync_global.RUNNERS[host] = lambda ctx: ("up-to-date", "")
+        want = (0, ["codex: up-to-date", "grok: up-to-date"])
+        self.assertEqual(self.sync("--host", "codex", "grok"), want)
+        self.assertEqual(self.sync("--host", "codex", "--host", "grok"), want)
 
     def test_failure_is_isolated_and_strict_sets_exit(self) -> None:
         def boom(ctx: sync_global.Ctx) -> sync_global.Result:

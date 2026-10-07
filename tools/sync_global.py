@@ -260,6 +260,25 @@ def migrate_codex_legacy(ctx: Ctx, home: Path) -> Optional[str]:
     return summary
 
 
+JEV_PLUGIN = "shoal-jev-router@shoal-codex"
+
+
+def jev_router_missing(ctx: Ctx, home: Path) -> bool:
+    """config 啟用 Jev router 但 plugin cache 不見時為 True；缺 tomllib/config 靜默略過。"""
+    try:
+        import tomllib
+    except ImportError:
+        return False
+    try:
+        cfg = tomllib.loads((home / "config.toml").read_text())
+    except (OSError, ValueError):
+        return False
+    entry = (cfg.get("plugins") or {}).get(JEV_PLUGIN)
+    if not isinstance(entry, dict) or entry.get("enabled") is not True:
+        return False
+    return not (home / "plugins/cache/shoal-codex/shoal-jev-router").exists()
+
+
 def sync_codex(ctx: Ctx) -> Result:
     home = codex_home(ctx)
     if not home.is_dir():
@@ -272,6 +291,23 @@ def sync_codex(ctx: Ctx) -> Result:
             return "updated", migrated
     if installer_changes("install_hooks.py", ["--host", "codex"], ctx):
         parts.append("guard hooks")
+    if jev_router_missing(ctx, home):
+        if not ctx.apply:
+            parts.append("jev router reinstall")
+        else:
+            codex_bin = shutil.which("codex", path=ctx.env.get("PATH", os.defpath))
+            if codex_bin is None:
+                parts.append("jev router reinstall skipped: codex not on PATH")
+            else:
+                proc = subprocess.run(
+                    [codex_bin, "plugin", "add", JEV_PLUGIN],
+                    env=ctx.env, capture_output=True, text=True, timeout=600,
+                )
+                if proc.returncode != 0:
+                    raise SyncError(
+                        "jev router reinstall: " + one_line(proc.stderr or proc.stdout)
+                    )
+                parts.append("jev router")
     updated, added, drift = sync_codex_roles(ctx, home)
     if updated:
         parts.append("roles: " + ", ".join(updated))
@@ -542,7 +578,7 @@ def main(
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0], allow_abbrev=False
     )
-    parser.add_argument("--host", nargs="+", choices=HOSTS, help="預設四個 host 全跑")
+    parser.add_argument("--host", action="extend", nargs="+", choices=HOSTS, help="預設四個 host 全跑")
     parser.add_argument(
         "--apply", action="store_true", help="實際更新；沒有這個旗標一律 dry-run"
     )
