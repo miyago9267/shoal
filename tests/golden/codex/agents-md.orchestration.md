@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v2.0.0 -->
+<!-- shoal-codex v2.1.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -316,19 +316,24 @@ native card or concise text checkpoint. Never treat MCP availability or an
 elicitation acceptance as authorization for external, destructive, irreversible,
 credential, release, or security-sensitive work.
 
-At each stable slice boundary, the existing `verifier` may receive the
-explicit `direction_checkpoint` contract. It compares the original outcome,
-non-negotiable constraints, slice acceptance, and current evidence, then
-returns one disposition:
+At multi-slice milestone closes the main session sends the `verifier` a
+`direction_checkpoint` brief: the original request, the approved spec's
+non-goals and decisions, the declared design invariants
+(`docs/DESIGN-INVARIANTS.md` or equivalent), and current evidence. It returns
+`CONTINUE`, `PIVOT` (outcome stands; bounded re-plan within approved scope),
+or `ROLLBACK` (an invariant or acceptance condition is broken); insufficient
+evidence stays `INCONCLUSIVE`. Required when one objective reaches its third
+slice (a new spec continuing it counts) and at every later milestone close:
+once per milestone, separate from outcome verification, not skipped by `fast`
+review intent. Before closing a single-slice spec or dispatching architecture
+or design work, main runs the same comparison itself; otherwise optional. On
+deviation or `ROLLBACK`, stop new writes and report it with a recommendation
+(`stop_condition=decision`, or `PAUSED_NEEDS_USER` without interaction);
+rolling back is the user's decision. Executor design decisions beyond the
+brief (mechanism, interface, naming, omission) are unreviewed: accept or
+reject each and record it before merging.
 
-- `CONTINUE`: the evidence supports the intent and next slice.
-- `PIVOT`: the outcome still stands, but the path or assumption must change;
-  preserve useful evidence and require a bounded re-plan.
-- `ROLLBACK`: an invariant or acceptance condition is broken; stop new writes
-  and return to the latest verified good checkpoint.
-
-Insufficient evidence remains `INCONCLUSIVE` under the verifier's calibrated
-contract. External, destructive, release, security-sensitive, and other
+External, destructive, release, security-sensitive, and other
 irreversible operations retain their existing approval and containment gates.
 
 Independent review is risk-triggered, not a synonym for non-trivial. Use it

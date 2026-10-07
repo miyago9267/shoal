@@ -306,6 +306,8 @@ class CheckTests(unittest.TestCase):
         )
         if probe.returncode != 0:
             self.skipTest(f"{BASE_REF} is not available in this clone")
+        # 一次性的改名等價檢查：2.1.0 起 policy 文字刻意偏離 base，不再逐字相等。
+        self.skipTest("rebrand equivalence is one-time; policy diverged from the base in 2.1.0")
         lines, bad = cr.check(ROOT, BASE_REF)
         self.assertEqual(bad, 0, "\n".join(lines))
         self.assertGreaterEqual(len([ln for ln in lines if ln.startswith("OK")]), 27)

@@ -9,6 +9,12 @@ written.
 
 ## Unreleased
 
+## v2.1.0
+
+- Milestone direction check: the `direction_checkpoint` paragraph is replaced
+  by the required-at-milestone contract
+  (`docs/specs/milestone-direction-check`).
+
 ## v2.0.0
 
 - shoal is a product of its own: every installed name changed (the policy

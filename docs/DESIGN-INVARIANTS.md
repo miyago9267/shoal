@@ -1,7 +1,7 @@
 # shoal 設計不變式
 
 方向檢查（`docs/specs/milestone-direction-check/`）的比較基準之一。來源是
-2026-10-06 與 pilotfish v1.4.2 的設計對照，以及 Miyago 2026-10-07 的目標
+2026-10-06 與 上游原始設計（v1.4.2） 的設計對照，以及 Miyago 2026-10-07 的目標
 （要有品質、不要有隧道視野）。修改本檔屬於設計變更，需要 spec 與核准。
 
 1. **main 負責判斷**：framing、架構、Plan、整合與最終判斷由 main session 做；
@@ -19,4 +19,4 @@
 6. **驗證邊界不省略**：有風險的工作，核准前的 plan review 與完成後的 outcome
    verification 不因使用便宜的 executor 而省略；verdict 是證據，不是授權。
 7. **單一來源**：role、條款、模型目錄與安裝都以 shoal 的 committed HEAD 為準；
-   本機環境只用 shoal，pilotfish 只保留 credit 與上游協作。
+   本機環境只用 shoal，上游專案只保留 credit 與協作。

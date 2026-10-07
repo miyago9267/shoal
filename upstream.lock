@@ -20,7 +20,7 @@ upstream = "Nanako0129/pilotfish"
 version = "v1.4.2"
 source = "pilotfish-claude 1ea9841 templates（1.4.2-claude.1，另移植 codex 1.8.1 的 7 段規則）"
 path = "hosts/claude/src"
-marker_version = "2.0.0"  # <!-- shoal-claude v... --> 的版本（R8）；等於 hosts/claude/VERSION
+marker_version = "2.1.0"  # <!-- shoal-claude v... --> 的版本（R8）；等於 hosts/claude/VERSION
 
 [codex]
 kind = "compare-base"
