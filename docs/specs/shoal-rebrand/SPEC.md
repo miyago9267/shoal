@@ -1,6 +1,6 @@
 ---
 title: shoal 獨立成新產品（去除 pilotfish 命名）
-status: approved
+status: completed
 approved_by: Miyago
 created: 2026-10-07
 updated: 2026-10-07
@@ -86,6 +86,16 @@ pilotfish 只保留 credit 給原作。現況（main `5c2a7d1` 查證）：
 | R1 | 同一個 commit：repo 改名、版本 2.0.0、lock renewal 與 migration、installer 與 `sync_global.py` 的遷移 | 六個 render `--check`、全套測試、`validate_prompt_lock --allow-lock-update` ok；rename-aware 檢查對 7 個改路徑的 surface 為 0 diff；產品面舊名掃描（RENAME「掃描範圍」）為 0；N3 範圍未變；temp home 預置舊名安裝，對該 commit 跑 `sync_global.py` 的計畫只含「移除舊名＋安裝新名」，無重複 hook 群組或 plugin；套用後只剩新名、非 shoal 檔案不動、再跑一次無變更 |
 | R2 | 本機遷移與 dotfile 更新 | 五個 host 實際遷移；`sync_global.py` 回報 up-to-date；dotfile 產品面不再引用舊名（備份檔與歷史除外） |
 | R3 | 發布 v2.0.0 | CI 綠；tag 與 release；Plugin 以 `#v2.0.0` 安裝驗證 |
+
+## 完結狀態（2026-10-07）
+
+- R1（`4388e55`，lock renewal）：repo 改名、版本 2.0.0、installer 與 sync_global 遷移；
+  `check_rename` 0 diff、`scan_legacy_names` 0 hit。
+- R2：本機五個 host 遷移完成；dotfile `cb2eb30`（skill、auto-update、setup_codex 帶入
+  shoal-codex 區塊、harness、Jev route、Pi routing、generated 規則檔）。Codex 使用者自改的
+  gate 保留為 `pilotfish_autoroute_gate.py.pre-shoal-20261007-152242`。
+- R3：v2.0.0 發布，Plugin 以 `#v2.0.0` 安裝驗證通過。
+- 待使用者：Codex 新 hook 路徑需在互動 session 以 `/hooks` 核准一次。
 
 ## Rollback
 
