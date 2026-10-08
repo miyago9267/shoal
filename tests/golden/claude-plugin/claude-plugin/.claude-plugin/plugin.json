@@ -1,6 +1,6 @@
 {
   "name": "shoal",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
   "author": {
     "name": "Miyago",

@@ -1,6 +1,6 @@
 ---
 title: Milestone 方向檢查（防止隧道視野）
-status: approved
+status: completed
 approved_by: Miyago
 created: 2026-10-07
 updated: 2026-10-07
@@ -105,3 +105,11 @@ host 被同質化），直到 Miyago 指出才停下。
 ## Rollback
 
 revert M2 的 commit；`docs/DESIGN-INVARIANTS.md` 可保留（文件不影響行為）。
+
+## 完結狀態
+
+- M1：0141e06
+- M2：77883f7
+- M2b：efa4231
+- M3：CONTINUE
+- M4：v2.1.0

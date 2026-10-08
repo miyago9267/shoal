@@ -3,6 +3,24 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v2.1.0
+
+milestone 完成時的方向檢查成為必做，並新增使用者明確選擇才啟用的不計代價模式。
+設計在 `docs/specs/milestone-direction-check/`。
+
+### Features
+
+- milestone 方向檢查成為必做：多切片 milestone 由 verifier 以原始需求、spec
+  non-goals 與 `docs/DESIGN-INVARIANTS.md` 比對；單切片 spec 收尾與派出設計工作前
+  由 main 自查；偏離即停；executor 在 brief 外的設計決定逐項審查。
+- 不計代價模式：使用者明確選擇時，在已核准範圍內推進到 acceptance，不因花費、
+  token、時間、切片數停下；AUTO 停止清單與方向檢查照常，不授予額外權限。
+- 新增 `docs/DESIGN-INVARIANTS.md`，記錄 shoal 的設計不變式。
+
+### 版本
+
+- 產品 2.1.0；host 版本 claude、codex 為 2.1.1。
+
 ## v2.0.0
 
 shoal 成為獨立產品：安裝出去的名稱全部換新，版本重新起算。設計與對照表在
