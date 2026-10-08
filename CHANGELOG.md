@@ -9,11 +9,13 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ### Fixes
 
-- `tools/install_hooks.py`：claude 的 `settings.json` 與 agy 的 `hooks.json` 改寫可攜的
-  command（`python3 "${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py"
-  --host <host>`），不再寫入含家目錄的絕對路徑（設定檔進版控、跨機器共用時會失效）。舊的絕對路徑 entry 視為
-  shoal 的，重跑會就地換成可攜形式，重複執行結果不變。
-- `hooks/shoal_guard.py`：`--plugin` 的全域 guard 判斷（K4）也認得可攜 command。
+- `tools/install_hooks.py`：claude 的 `settings.json` 與 agy 的 `hooks.json` 改寫可攜、
+  且腳本不存在就 exit 0 的 command（`f="${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py";
+  [ -f "$f" ] || exit 0; exec python3 "$f" --host <host>`），不再寫入含家目錄的絕對路徑
+  （設定檔進版控、跨機器共用時會失效）；沒裝 shoal 的機器不會因 python3 找不到檔案 exit 2
+  而擋掉每個 PreToolUse。舊的絕對路徑與未防護的可攜 entry 視為 shoal 的，重跑就地換成這個，
+  重複執行結果不變。
+- `hooks/shoal_guard.py`：`--plugin` 的全域 guard 判斷（K4）也認得可攜與防護形式的 command（仍只在腳本存在時讓出）。
 - `tools/sync_global.py` agy：skills、agents 目錄中 2.0.0 之前舊名的 symlink，不論指向哪裡
   （舊 dist 以外的目標，例如 dotfile 時代的安裝，或斷掉的連結）都視為舊安裝，`--apply` 移除、
   dry-run 回報；只 unlink 連結，一般檔案與非舊名不動。

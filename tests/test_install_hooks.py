@@ -123,9 +123,14 @@ UNRELATED = {
 
 
 PORTABLE_CLAUDE = (
-    'python3 "${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py" --host claude'
+    'f="${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py"; '
+    '[ -f "$f" ] || exit 0; exec python3 "$f" --host claude'
 )
 PORTABLE_AGY = PORTABLE_CLAUDE.replace("--host claude", "--host agy")
+# 300bc1d 寫的形式：腳本不存在時 python3 exit 2
+UNGUARDED_PORTABLE_CLAUDE = (
+    'python3 "${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py" --host claude'
+)
 
 
 @unittest.skipIf(sys.platform == "win32", "POSIX shell, symlinks and file modes")
@@ -277,6 +282,7 @@ class ClaudeTests(Case):
             install_hooks.command_for(self.script, "claude"),
             install_hooks.command_for(Path(quoted), "claude"),
             "python3 /Users/miyago/.local/share/shoal/guard/shoal_guard.py --host claude",
+            UNGUARDED_PORTABLE_CLAUDE,
         ):
             with self.subTest(old=old):
                 self.assertTrue(install_hooks.is_owned({"command": old}))
@@ -301,6 +307,34 @@ class ClaudeTests(Case):
                 once = path.read_bytes()
                 self.assertEqual(self.cli("claude", "--apply")[0], 0)
                 self.assertEqual(path.read_bytes(), once)
+
+    def run_command(self, command: str, data_home: Path | None, stdin: bytes = b"{}"):
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(self.base / "home")}
+        if data_home is not None:
+            env["XDG_DATA_HOME"] = str(data_home)
+        return subprocess.run(
+            ["/bin/sh", "-c", command], input=stdin, capture_output=True, env=env, timeout=30
+        )
+
+    def test_guarded_command_exits_0_silently_when_the_script_is_missing(self) -> None:
+        for data_home in (self.base / "nothing-here", None):
+            with self.subTest(data_home=data_home):
+                proc = self.run_command(PORTABLE_CLAUDE, data_home)
+                self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, b"", b""))
+        # the unguarded 300bc1d form is the one that would block every Edit
+        proc = self.run_command(UNGUARDED_PORTABLE_CLAUDE, self.base / "nothing-here")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_guarded_command_runs_the_script_when_it_exists(self) -> None:
+        script = self.base / "data" / "shoal" / "guard" / "shoal_guard.py"
+        script.parent.mkdir(parents=True)
+        script.write_text(
+            "import sys\nsys.stdout.write('ran ' + ' '.join(sys.argv[1:]) + '\\n')\nsys.exit(3)\n"
+        )
+        proc = self.run_command(PORTABLE_CLAUDE, self.base / "data")
+        self.assertEqual((proc.returncode, proc.stdout), (3, b"ran --host claude\n"))
+        proc = self.run_command(PORTABLE_AGY, self.base / "data")
+        self.assertEqual(proc.stdout, b"ran --host agy\n")
 
     def test_dry_run_shows_the_portable_command(self) -> None:
         self.settings({})

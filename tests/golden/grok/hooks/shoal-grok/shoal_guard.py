@@ -910,14 +910,25 @@ def _matcher_covers(matcher: Any, tool: Optional[str]) -> bool:
         return False
 
 
+# install_hooks.portable_command_for: f="<path>"; [ -f "$f" ] || exit 0; exec python3 "$f" --host <host>
+_GUARDED_COMMAND = re.compile(
+    r'f="([^"]+)";\s*\[ -f "\$f" \]\s*\|\|\s*exit 0;\s*exec python3 "\$f"\s+--host\s+(\S+)\s*'
+)
+
+
 def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_dir: Optional[Path] = None) -> bool:
     """`command` invokes the install_hooks.py script (same resolved path) with `--host <host>`.
 
-    The script token may be absolute (older installs) or the portable `${XDG_DATA_HOME:-$HOME/.local/share}`
-    form; `data_dir` is what that variable resolves to for this process.
+    The script token may be absolute (older installs), the portable `${XDG_DATA_HOME:-$HOME/.local/share}`
+    form, or that path inside the guarded `f=...; [ -f "$f" ] || exit 0; exec python3 "$f"` form.
+    `data_dir` is what the XDG variable resolves to for this process.
     """
     if not isinstance(command, str):
         return False
+    guarded = _GUARDED_COMMAND.fullmatch(command.strip())
+    if guarded is not None:
+        path, command_host = guarded.groups()
+        return command_host == host and os.path.realpath(_expand_home(path, home, data_dir)) == script
     try:
         tokens = shlex.split(command)
     except ValueError:

@@ -21,8 +21,9 @@
           裝完要在互動式 Codex 用 /hooks 核准一次。install.py 之後會收編這些 entry。
           hooks.json 若還有 2.0.0 之前（舊名）的 autoroute 群組只提醒，不動；遷移由 install.py 或
           tools/sync_global.py 做。
-claude 與 agy 的 command 是可跨機器的形式 python3 "${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py"
---host <host>（不含家目錄絕對路徑；2.1.0 之前寫的絕對路徑形式視為 shoal 的，重跑會換成這個）。
+claude 與 agy 的 command 是可跨機器、腳本不存在就 exit 0 的形式：
+f="${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py"; [ -f "$f" ] || exit 0;
+exec python3 "$f" --host <host>。絕對路徑形式與先前的可攜形式都視為 shoal 的，重跑會換成這個。
 設定檔若是 symlink 就寫進它指向的檔案。只有 command 含 "shoal_guard.py --host" 的 handler
 算 shoal 的；其他 hook、其他 key、key 順序與 2 空格縮排的 JSON 都原樣保留。重複執行不會改變
 結果；寫入前把原檔備份到 ${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/
@@ -65,6 +66,8 @@ AGY_GROUP = "shoal-guard"
 TIMEOUT = 10
 # 標記是 "shoal_guard.py --host"；路徑被引號包住時 "shoal_guard.py'" 後面才接空白與 --host。
 OWNED = re.compile(r"shoal_guard\.py[\"']?\s+--host\b")
+# 受保護形式（portable_command_for）：變數 f 指向 shoal_guard.py，最後 exec python3 "$f" --host。
+OWNED_GUARDED = re.compile(r"shoal_guard\.py.*\bexec python3 \"\$f\"\s+--host\b", re.DOTALL)
 
 
 class InstallError(Exception):
@@ -136,11 +139,16 @@ def command_for(script: Path, host: str) -> str:
 
 # settings.json 與 agy hooks.json 常被版控、跨機器共用，所以寫不含使用者家目錄的形式；
 # hook 經 shell 執行，${XDG_DATA_HOME:-$HOME/.local/share} 在執行時展開，與 data_script_path 同義。
+# 腳本不存在（這台機器有設定檔但沒裝 shoal）時 exit 0：PreToolUse 的 exit 2 會被當成 block，
+# 直接跑 python3 會讓每個 Edit 都被擋。
 PORTABLE_SCRIPT = '"${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py"'
 
 
 def portable_command_for(host: str) -> str:
-    return f"python3 {PORTABLE_SCRIPT} --host {host}"
+    return (
+        f"f={PORTABLE_SCRIPT}; "
+        f'[ -f "$f" ] || exit 0; exec python3 "$f" --host {host}'
+    )
 
 
 def _handler(command: str) -> dict[str, Any]:
@@ -151,7 +159,8 @@ def is_owned(handler: Any) -> bool:
     return (
         isinstance(handler, dict)
         and isinstance(handler.get("command"), str)
-        and OWNED.search(handler["command"]) is not None
+        and (OWNED.search(handler["command"]) or OWNED_GUARDED.search(handler["command"]))
+        is not None
     )
 
 

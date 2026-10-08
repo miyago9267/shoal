@@ -587,6 +587,16 @@ class PluginDeferralTests(unittest.TestCase):
             self.assertTrue(
                 guard.global_guard_covers("claude", "UserPromptSubmit", None, env, self.home)
             )
+        # the unguarded form 300bc1d wrote is recognised too
+        self.write_settings(
+            install_hooks.apply_claude(
+                {},
+                'python3 "${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py" --host claude',
+            )
+        )
+        self.assertTrue(
+            guard.global_guard_covers("claude", "PreToolUse", "Edit", self.env(), self.home)
+        )
         # the host in the command still has to match
         self.write_settings(
             install_hooks.apply_claude({}, install_hooks.portable_command_for("agy"))
