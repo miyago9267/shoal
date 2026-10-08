@@ -23,8 +23,9 @@ shoal 2.0.0 把所有安裝出去的名稱都改了（docs/specs/shoal-rebrand�
   grok      tools/install_grok.py dry-run 回報有差異才 --apply（不帶 --fix-toggles，不動 config.toml）；
             舊名的 rules、hooks json、hooks 目錄（確認是 shoal 安裝的）由它一起移除。
   agy       tools/install_hooks.py --host agy；agents/skill 是指向 hosts/agy/dist 的 symlink，
-            只檢查 symlink 還指在那裡（回報，不修）；唯一例外是舊名的 skill symlink（指向本 repo 的
-            hosts/agy/dist）：移除並改指新名。
+            只檢查 symlink 還指在那裡（回報，不修）；唯一例外是舊名（LEGACY_AGY_NAME_PREFIX 開頭）的 symlink：
+            指向本 repo 的 hosts/agy/dist 的 skill 移除並改指新名；其他舊名 symlink（例如指向
+            dotfile 的舊安裝或斷掉的連結）直接移除（dry-run 只回報）。一般檔案與非舊名一律不動。
   opencode  需要 bun。用 install_global.sh 同樣的步驟建出 HEAD 的 bundle，與全域 config dir 的
             plugin、roles、shoal/*.json 比對；有差異就 install.sh --global --disable 再 --enable。
             dotfile 裡的 harness copy 只回報是否相同，不寫入。
@@ -58,6 +59,7 @@ DEFAULT_HARNESS = Path("dotfile/config/opencode-harness/plugins/shoal-opencode.j
 
 # ---- LEGACY_: names shoal installed before 2.0.0 (docs/specs/shoal-rebrand N5) ----
 LEGACY_AGY_SKILL = "pilotfish-orchestration"
+LEGACY_AGY_NAME_PREFIX = "pilotfish"  # skill 與 agent symlink 的舊名都以此開頭
 LEGACY_OPENCODE_PLUGIN_ENTRY = "plugins/pilotfish-opencode.js"
 LEGACY_OPENCODE_DIR_PREFIX = "pilotfish/"
 
@@ -358,7 +360,7 @@ def agy_link_problems(ctx: Ctx) -> list[str]:
 def migrate_agy_skill_link(ctx: Ctx) -> tuple[Optional[str], list[str], str]:
     """舊名的 skill symlink（指向本 repo 的 hosts/agy/dist/skills）改指新名。
 
-    回傳 (摘要片段 或 None, 留下沒動的原因, 新名)。不是 symlink、或指向別處的舊名一律不動。
+    回傳 (摘要片段 或 None, 留下沒動的原因, 新名)。不是 symlink、或指向別處的舊名不在這裡處理。
     """
     skills = ctx.home / ".gemini" / "config" / "skills"
     old = skills / LEGACY_AGY_SKILL
@@ -369,7 +371,7 @@ def migrate_agy_skill_link(ctx: Ctx) -> tuple[Optional[str], list[str], str]:
     if not target.is_absolute():
         target = old.parent / target
     if target.name != LEGACY_AGY_SKILL or os.path.realpath(target.parent) != os.path.realpath(dist_skills):
-        return None, [f"skills/{LEGACY_AGY_SKILL} 不指向本 repo 的 hosts/agy/dist，未動"], ""
+        return None, [], ""  # 指向別處：交給 remove_legacy_agy_links
     names = [
         Path(p).name
         for p in git(ctx, "ls-tree", "--name-only", ctx.ref, "hosts/agy/dist/skills/").decode().split()
@@ -389,18 +391,44 @@ def migrate_agy_skill_link(ctx: Ctx) -> tuple[Optional[str], list[str], str]:
     return f"legacy migration: relink skills/{LEGACY_AGY_SKILL} -> skills/{name}", [], name
 
 
+def remove_legacy_agy_links(ctx: Ctx, skip: str = "") -> Optional[str]:
+    """skills、agents 目錄裡舊名（LEGACY_AGY_NAME_PREFIX 開頭）的 symlink 一律視為舊安裝：--apply 移除，dry-run 回報。
+
+    不管指向哪裡（舊 dist、dotfile 時代的目標、斷掉的連結）；只 unlink 連結本身。
+    一般檔案、目錄與非舊名不動。skip 是 migrate_agy_skill_link 已處理的 "kind/name"。
+    """
+    config = ctx.home / ".gemini" / "config"
+    removed: list[str] = []
+    for kind in ("skills", "agents"):
+        directory = config / kind
+        if not directory.is_dir():
+            continue
+        for link in sorted(directory.iterdir()):
+            if (
+                not link.name.startswith(LEGACY_AGY_NAME_PREFIX)
+                or not link.is_symlink()
+                or f"{kind}/{link.name}" == skip
+            ):
+                continue
+            removed.append(f"{kind}/{link.name}")
+            if ctx.apply:
+                link.unlink()
+    return f"legacy migration: remove {', '.join(removed)}" if removed else None
+
+
 def sync_agy(ctx: Ctx) -> Result:
     home = ctx.home / ".gemini"
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
     migrated, kept, relinked = migrate_agy_skill_link(ctx)
+    removed = remove_legacy_agy_links(ctx, f"skills/{LEGACY_AGY_SKILL}" if migrated else "")
     changed = installer_changes("install_hooks.py", ["--host", "agy"], ctx)
     problems = agy_link_problems(ctx)
     if migrated and not ctx.apply:  # dry-run：新名的 link 還沒建，不算 drift
         problems = [p for p in problems if not p.startswith(f"skills/{relinked}")]
     problems += kept
     note = ("symlink drift: " + ", ".join(problems)) if problems else "symlinks ok"
-    parts = [p for p in (migrated, "guard hooks" if changed else None) if p]
+    parts = [p for p in (migrated, removed, "guard hooks" if changed else None) if p]
     if parts:
         return "updated", f"{'; '.join(parts)}; {note}"
     return "up-to-date", note

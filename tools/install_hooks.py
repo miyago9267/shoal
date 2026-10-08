@@ -21,6 +21,8 @@
           裝完要在互動式 Codex 用 /hooks 核准一次。install.py 之後會收編這些 entry。
           hooks.json 若還有 2.0.0 之前（舊名）的 autoroute 群組只提醒，不動；遷移由 install.py 或
           tools/sync_global.py 做。
+claude 與 agy 的 command 是可跨機器的形式 python3 "${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py"
+--host <host>（不含家目錄絕對路徑；2.1.0 之前寫的絕對路徑形式視為 shoal 的，重跑會換成這個）。
 設定檔若是 symlink 就寫進它指向的檔案。只有 command 含 "shoal_guard.py --host" 的 handler
 算 shoal 的；其他 hook、其他 key、key 順序與 2 空格縮排的 JSON 都原樣保留。重複執行不會改變
 結果；寫入前把原檔備份到 ${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/
@@ -128,7 +130,17 @@ def load_guard(repo: Path, ref: str) -> tuple[bytes, str]:
 
 # ---- 設定檔內容 ----
 def command_for(script: Path, host: str) -> str:
+    """絕對路徑形式（2.1.0 之前 claude／agy 寫的；測試與手寫情境仍用）。"""
     return f"python3 {shlex.quote(str(script))} --host {host}"
+
+
+# settings.json 與 agy hooks.json 常被版控、跨機器共用，所以寫不含使用者家目錄的形式；
+# hook 經 shell 執行，${XDG_DATA_HOME:-$HOME/.local/share} 在執行時展開，與 data_script_path 同義。
+PORTABLE_SCRIPT = '"${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py"'
+
+
+def portable_command_for(host: str) -> str:
+    return f"python3 {PORTABLE_SCRIPT} --host {host}"
 
 
 def _handler(command: str) -> dict[str, Any]:
@@ -405,7 +417,7 @@ def run(
         if uninstall
         else TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["UserPromptSubmit"]["hooks"][0]["command"]
         if codex
-        else command_for(script, host)
+        else portable_command_for(host)
     )
     desired = apply_fn(current, command)
     new_bytes = render_json(desired, original)

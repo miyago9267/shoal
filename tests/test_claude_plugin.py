@@ -565,6 +565,36 @@ class PluginDeferralTests(unittest.TestCase):
             )
         )
 
+    def test_portable_command_from_install_hooks_is_recognised(self) -> None:
+        self.install_global()
+        self.write_settings(
+            install_hooks.apply_claude({}, install_hooks.portable_command_for("claude"))
+        )
+        # XDG_DATA_HOME set: the command follows it
+        self.assertTrue(
+            guard.global_guard_covers("claude", "PreToolUse", "Edit", self.env(), self.home)
+        )
+        # unset or empty: ~/.local/share, which has no script yet
+        unset = {k: v for k, v in self.env().items() if k != "XDG_DATA_HOME"}
+        for env in (unset, {**unset, "XDG_DATA_HOME": ""}):
+            self.assertFalse(
+                guard.global_guard_covers("claude", "UserPromptSubmit", None, env, self.home)
+            )
+        default = self.home / ".local" / "share" / "shoal" / "guard" / "shoal_guard.py"
+        default.parent.mkdir(parents=True)
+        shutil.copy(GUARD, default)
+        for env in (unset, {**unset, "XDG_DATA_HOME": ""}):
+            self.assertTrue(
+                guard.global_guard_covers("claude", "UserPromptSubmit", None, env, self.home)
+            )
+        # the host in the command still has to match
+        self.write_settings(
+            install_hooks.apply_claude({}, install_hooks.portable_command_for("agy"))
+        )
+        self.assertFalse(
+            guard.global_guard_covers("claude", "UserPromptSubmit", None, unset, self.home)
+        )
+
     def test_home_spelling_in_a_hand_written_command(self) -> None:
         script = self.home / ".local" / "share" / "shoal" / "guard" / "shoal_guard.py"
         script.parent.mkdir(parents=True)

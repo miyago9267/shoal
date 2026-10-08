@@ -887,8 +887,13 @@ def _abs_env_dir(env: Dict[str, str], key: str, default: Path) -> Path:
     return Path(value) if value and os.path.isabs(value) else default
 
 
-def _expand_home(token: str, home: Path) -> str:
-    """The `~` and `$HOME` spellings a hand-written hook command may use for the script path."""
+PORTABLE_DATA_DIR = "${XDG_DATA_HOME:-$HOME/.local/share}"  # what install_hooks.py writes into settings
+
+
+def _expand_home(token: str, home: Path, data_dir: Optional[Path] = None) -> str:
+    """The `~`, `$HOME` and portable XDG spellings a hook command may use for the script path."""
+    if data_dir is not None and token.startswith(PORTABLE_DATA_DIR + "/"):
+        token = str(data_dir) + token[len(PORTABLE_DATA_DIR):]
     if token == "~" or token.startswith("~/"):
         token = str(home) + token[1:]
     return token.replace("${HOME}", str(home)).replace("$HOME", str(home))
@@ -905,8 +910,12 @@ def _matcher_covers(matcher: Any, tool: Optional[str]) -> bool:
         return False
 
 
-def _runs_global_guard(command: Any, script: str, host: str, home: Path) -> bool:
-    """`command` invokes the install_hooks.py script (same resolved path) with `--host <host>`."""
+def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_dir: Optional[Path] = None) -> bool:
+    """`command` invokes the install_hooks.py script (same resolved path) with `--host <host>`.
+
+    The script token may be absolute (older installs) or the portable `${XDG_DATA_HOME:-$HOME/.local/share}`
+    form; `data_dir` is what that variable resolves to for this process.
+    """
     if not isinstance(command, str):
         return False
     try:
@@ -918,7 +927,7 @@ def _runs_global_guard(command: Any, script: str, host: str, home: Path) -> bool
             continue
         if tokens[index + 1:index + 3] != ["--host", host]:
             continue
-        if os.path.realpath(_expand_home(token, home)) == script:
+        if os.path.realpath(_expand_home(token, home, data_dir)) == script:
             return True
     return False
 
@@ -932,7 +941,8 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
     """
     if not isinstance(name, str):
         return False
-    script = _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share") / "shoal" / "guard" / "shoal_guard.py"
+    data_dir = _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share")
+    script = data_dir / "shoal" / "guard" / "shoal_guard.py"
     script = Path(os.path.realpath(str(script)))
     if not script.is_file():
         return False
@@ -956,7 +966,7 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
             continue
         handlers = group.get("hooks")
         for handler in handlers if isinstance(handlers, list) else []:
-            if _runs_global_guard(_dict(handler).get("command"), str(script), host, home):
+            if _runs_global_guard(_dict(handler).get("command"), str(script), host, home, data_dir):
                 return True
     return False
 

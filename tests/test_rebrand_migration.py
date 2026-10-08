@@ -568,15 +568,37 @@ class AgyMigrationTests(MigrationCase):
             self.one("--host", "agy", "--apply"), "agy: up-to-date (symlinks ok)"
         )
 
-    def test_symlink_that_points_elsewhere_is_reported_not_changed(self) -> None:
+    def test_legacy_symlink_pointing_elsewhere_is_removed(self) -> None:
         self.old_link.unlink()
-        elsewhere = self.tmp / "elsewhere" / lf.LEGACY_AGY_SKILL
+        elsewhere = self.tmp / "dotfile" / "plugins" / "dotfile-plugin" / lf.LEGACY_AGY_SKILL
         elsewhere.mkdir(parents=True)
+        (elsewhere / "SKILL.md").write_text("# old\n")
         self.old_link.symlink_to(elsewhere)
-        line = self.one("--host", "agy", "--apply")
-        self.assertNotIn("legacy migration", line)
-        self.assertIn("不指向本 repo 的 hosts/agy/dist，未動", line)
-        self.assertEqual(self.old_link.resolve(), elsewhere.resolve())
+        legacy_name = f"{lf.LEGACY_NAME_TOKENS[0]}-scout"
+        legacy_agent = self.config / "agents" / legacy_name
+        legacy_agent.symlink_to(elsewhere)
+        line = self.one("--host", "agy")
+        self.assertIn(
+            f"legacy migration: remove skills/{lf.LEGACY_AGY_SKILL}, agents/{legacy_name}",
+            line,
+        )
+        self.assertTrue(self.old_link.is_symlink())  # dry-run
+        self.one("--host", "agy", "--apply")
+        self.assertFalse(self.old_link.is_symlink())
+        self.assertFalse(legacy_agent.is_symlink())
+        self.assertTrue((elsewhere / "SKILL.md").is_file())  # 只移除連結，不碰目標
+        self.assertTrue((self.config / "agents" / "scout").is_symlink())
+
+    def test_regular_files_and_current_names_are_not_touched(self) -> None:
+        self.old_link.unlink()
+        regular = self.config / "skills" / lf.LEGACY_AGY_SKILL
+        regular.mkdir()
+        (regular / "SKILL.md").write_text("mine\n")
+        other = self.config / "skills" / "my-own"
+        other.symlink_to(self.tmp)
+        self.one("--host", "agy", "--apply")
+        self.assertTrue(regular.is_dir() and not regular.is_symlink())
+        self.assertTrue(other.is_symlink())
 
 
 @unittest.skipUnless(POSIX, "needs git")

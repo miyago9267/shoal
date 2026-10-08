@@ -122,6 +122,12 @@ UNRELATED = {
 }
 
 
+PORTABLE_CLAUDE = (
+    'python3 "${XDG_DATA_HOME:-$HOME/.local/share}/shoal/guard/shoal_guard.py" --host claude'
+)
+PORTABLE_AGY = PORTABLE_CLAUDE.replace("--host claude", "--host agy")
+
+
 @unittest.skipIf(sys.platform == "win32", "POSIX shell, symlinks and file modes")
 class ClaudeTests(Case):
     def test_dry_run_writes_nothing(self) -> None:
@@ -155,8 +161,8 @@ class ClaudeTests(Case):
         )
         for group in (prompt[1], tool[1]):
             (handler,) = group["hooks"]
-            self.assertIn("shoal_guard.py --host claude", handler["command"])
-            self.assertIn(str(self.script), handler["command"])
+            self.assertEqual(handler["command"], PORTABLE_CLAUDE)
+            self.assertNotIn(str(self.base), handler["command"])
         # 2-space JSON with a final newline, like the original
         self.assertEqual(
             path.read_text(encoding="utf-8"), json.dumps(data, indent=2) + "\n"
@@ -242,7 +248,7 @@ class ClaudeTests(Case):
         self.assertEqual(
             groups[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
         )
-        self.assertIn(str(self.script), groups[1]["hooks"][0]["command"])
+        self.assertEqual(groups[1]["hooks"][0]["command"], PORTABLE_CLAUDE)
         # the neighbour that shared the stale group stays, as its own group
         self.assertEqual(
             groups[2],
@@ -255,15 +261,52 @@ class ClaudeTests(Case):
             sum("shoal_guard.py" in h["command"] for g in groups for h in g["hooks"]), 1
         )
 
-    def test_path_with_spaces_is_quoted_and_still_owned(self) -> None:
+    def test_custom_data_home_with_spaces_still_writes_the_portable_command(self) -> None:
         self.env["XDG_DATA_HOME"] = str(self.base / "data dir")
         path = self.settings({})
         self.assertEqual(self.cli("claude", "--apply")[0], 0)
         command = self.load(path)["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-        self.assertIn("'", command)
-        self.assertTrue(install_hooks.is_owned({"command": command}))
+        self.assertEqual(command, PORTABLE_CLAUDE)
+        self.assertTrue((self.base / "data dir" / "shoal" / "guard" / "shoal_guard.py").is_file())
         self.assertEqual(self.cli("claude", "--apply")[0], 0)
         self.assertEqual(len(self.load(path)["hooks"]["PreToolUse"]), 1)
+
+    def test_old_absolute_entries_are_owned_and_replaced_by_the_portable_one(self) -> None:
+        quoted = str(self.base / "data dir" / "shoal" / "guard" / "shoal_guard.py")
+        for old in (
+            install_hooks.command_for(self.script, "claude"),
+            install_hooks.command_for(Path(quoted), "claude"),
+            "python3 /Users/miyago/.local/share/shoal/guard/shoal_guard.py --host claude",
+        ):
+            with self.subTest(old=old):
+                self.assertTrue(install_hooks.is_owned({"command": old}))
+                self.assertTrue(install_hooks.is_owned({"command": PORTABLE_CLAUDE}))
+                handler = {"type": "command", "command": old, "timeout": 10}
+                path = self.settings(
+                    {
+                        "hooks": {
+                            "UserPromptSubmit": [{"hooks": [handler]}],
+                            "PreToolUse": [
+                                {"matcher": install_hooks.CLAUDE_MATCHER, "hooks": [handler]}
+                            ],
+                        }
+                    }
+                )
+                self.assertEqual(self.cli("claude", "--apply")[0], 0)
+                hooks = self.load(path)["hooks"]
+                commands = [
+                    h["command"] for e in hooks.values() for g in e for h in g["hooks"]
+                ]
+                self.assertEqual(commands, [PORTABLE_CLAUDE, PORTABLE_CLAUDE])
+                once = path.read_bytes()
+                self.assertEqual(self.cli("claude", "--apply")[0], 0)
+                self.assertEqual(path.read_bytes(), once)
+
+    def test_dry_run_shows_the_portable_command(self) -> None:
+        self.settings({})
+        code, out, _ = self.cli("claude")
+        self.assertEqual(code, 0)
+        self.assertIn(PORTABLE_CLAUDE, out)
 
     def test_refuses_when_head_has_no_guard_and_ignores_the_working_tree(self) -> None:
         run_git(self.repo, "rm", "-q", "hooks/shoal_guard.py")
@@ -372,9 +415,9 @@ class AgyTests(Case):
         group = data["shoal-guard"]
         (tool,) = group["PreToolUse"]
         self.assertEqual(tool["matcher"], "*")
-        self.assertIn("shoal_guard.py --host agy", tool["hooks"][0]["command"])
+        self.assertEqual(tool["hooks"][0]["command"], PORTABLE_AGY)
         (invocation,) = group["PreInvocation"]
-        self.assertIn("shoal_guard.py --host agy", invocation["command"])
+        self.assertEqual(invocation["command"], PORTABLE_AGY)
         self.assertEqual(stat.S_IMODE(self.script.stat().st_mode), 0o755)
         (backup,) = self.backups.iterdir()
         self.assertEqual((backup / "hooks.json").read_bytes(), original)
