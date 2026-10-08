@@ -96,7 +96,7 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 2.1.0 |
+| shoal（產品） | 2.1.1 |
 | codex host | 2.1.1（`hosts/codex/VERSION`） |
 | claude host | 2.1.1（`hosts/claude/VERSION`） |
 | agy host | 2.0.0（`hosts/agy/VERSION`） |

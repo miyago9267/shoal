@@ -3,7 +3,7 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
-## Unreleased
+## v2.1.1
 
 跨機器共用設定檔時的三個修正。
 

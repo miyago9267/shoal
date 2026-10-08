@@ -513,12 +513,12 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 
 ```bash
 # 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v2.1.0
+claude plugin marketplace add miyago9267/shoal#v2.1.1
 claude plugin install shoal@shoal
 
 # 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v2.1.0
+claude plugin marketplace add miyago9267/shoal#v2.1.1
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -533,7 +533,7 @@ claude --plugin-dir ./claude-plugin
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
   `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
   `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v2.1.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  上面的 `#v2.1.1` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是
