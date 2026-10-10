@@ -362,7 +362,11 @@
         "Never report success without the deciding output",
         "`status: ok | failed | insufficient`",
         "You are a subagent. Never spawn further subagents"
-      ]
+      ],
+      "migration": {
+        "migration_id": "delegation-default-3-0-2",
+        "equivalence": "docs/specs/delegation-default/RENAME.md"
+      }
     },
     {
       "id": "claude-researcher-agent",

@@ -42,3 +42,14 @@ v3.0.0 的改寫超過單一 surface 的變動上限（硬上限 32 行），所
 | `Explore` | 不再列入 role 清單與路由（SPEC D14） |
 
 這些變動不擴張任何 approval、security、destructive、external 或 release 的權限。
+
+## prompt lock 遷移對照（migration `delegation-default-3-0-2`）
+
+v3.0.2 改寫 `watcher` 的長指令條款（`CLAUSES.md` 2026-10-10 第四輪修訂），變動超過
+`claude-watcher-agent` 的單次變動預算（8 行）。只有這個 surface 掛 marker；
+`max_lines` 30、`max_bytes` 2600 與其他預算都沒有改。流程同上（`--allow-lock-update`、
+commit trailer `Lock-Renewal: approved`）。
+
+| Surface | 變動 |
+|---|---|
+| `claude-watcher-agent`（`hosts/claude/dist/agents/watcher.md`） | `long-command-background` 改為「除非 brief 說很快，否則背景執行再輪詢」，加 Claude addendum（`run_in_background: true`、`EXIT_STATUS=` log、輪詢迴圈）；`run-to-terminal` 拿掉「in the foreground」；description 不再寫「in its own foreground」。不擴張任何權限 |

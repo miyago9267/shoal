@@ -8,6 +8,15 @@ text = '''
 The Agent and Workflow tools are disabled for this role by design.'''
 
 [[addendum]]
+id = "long-command-background-claude"
+at = "after:long-command-background"
+sep = "space"
+text = '''
+Claude Code: Bash `run_in_background: true` running
+`( <command> ) > <log> 2>&1; echo "EXIT_STATUS=$?" >> <log>`, then repeat
+`for i in $(seq 1 25); do grep -q '^EXIT_STATUS=' <log> && break; sleep 20; done; tail -n 40 <log>`.'''
+
+[[addendum]]
 id = "final-message-channel"
 at = "after:suggest-only"
 text = '''

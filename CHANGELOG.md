@@ -3,6 +3,34 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.0.2
+
+`watcher` 對不知道要跑多久的指令，一律改成背景執行再輪詢。第四輪 live gate 中，
+`watcher` 把一個約 11 分鐘的指令放在前景呼叫，到 shell 時限被中斷，結果遺失；
+原條款要它先猜指令多久，實際上它不會猜。條款原文在
+`docs/specs/delegation-default/CLAUSES.md` 的 2026-10-10 第四輪修訂。
+
+### Features
+
+- `watcher` 的 `long-command-background`：除非 brief 說明指令幾分鐘內就會結束，
+  否則啟動背景指令，輸出與 exit status 寫進 log，再用短的前景呼叫輪詢 log，
+  直到出現 exit status。
+- Claude：用 `run_in_background: true` 啟動，log 末行寫 `EXIT_STATUS=<code>`，
+  以每次遠低於前景時限的迴圈等待該行。
+- 調度政策的 `watcher-long-commands` 加一句：已知指令預計多久時，在 brief 寫明；
+  並把「`watcher` 在自己的前景執行」改成「執行並等待」，watcher 的 description 同步。
+- prompt lock：`claude-watcher-agent` 掛 migration `delegation-default-3-0-2`
+  （只免這個 surface 的單次變動預算，絕對上限 30 行、2600 bytes 不變）。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.0.2。
+
+### 升級
+
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.0.2`
+  加回並更新。
+
 ## v3.0.1
 
 dispatch guard 補上 shell 寫檔的缺口。條款原文是

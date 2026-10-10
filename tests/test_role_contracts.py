@@ -124,7 +124,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
             "background-note",
             "do-not-start",
         ],
-        "watcher": ["tools-disabled", "final-message-channel"],
+        "watcher": ["tools-disabled", "long-command-background-claude", "final-message-channel"],
         "researcher": ["final-message-channel"],
     },
     "opencode": {

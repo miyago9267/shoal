@@ -48,11 +48,26 @@ unittest 1479 個全過、六個 render 檢查、lock、舊名掃描、lint 都�
 `agents/applier`、`agents/plan-critic` 不是 symlink，OpenCode 回報 harness 副本不同
 （兩者未處理）。
 
+## 第四輪 live gate 與 v3.0.2（2026-10-10）
+
+真實設定下 6 次（`results-pass4.json`）加 1 次補測與 1 次互動式對照：
+
+- R1 對 Edit、Write 的 deny：兩次都觀察到（各擋三次後 main 改派 `shoal:applier`）。
+- reviewer 下限：`shoal:verifier` 以 effort medium 派出一次，model 為 Opus 5.5。
+- 長指令：main 兩次都直接派背景 `watcher`，沒有自己開背景 shell，所以 G4 的 deny 沒有
+  機會觸發。
+- 小功能派工 3 次過 2 次；沒過的那次 Jev 沒有分類，guard 不介入。
+- `watcher` 盯 11 分鐘指令：v3.0.1 失敗（單次前景呼叫在時限被中斷）。v3.0.2 改成指令
+  多久不確定時一律背景執行再輪詢；headless 補測中 `watcher` 有照做，但 session 在約
+  10 分鐘時結束；互動式對照通過。`watcher` 檔 30 行、2573 bytes，在既有上限內，lock
+  以 `delegation-default-3-0-2` 標記更新（Miyago 2026-10-10 核准）。
+
 ## 尚未驗證
 
-- R1 對 Edit／Write 在真實 session 的 deny（真實 session 只觀察到 shell 寫檔被擋）。
-- `watcher` 的背景 shell 條款與背景 role 遇到權限提示時的行為。
-- reviewer 類 role 的 effort 下限（實測中沒有派出 reviewer）；各 case 的重複性。
-- G4 在真實 session 的 deny（只有單元測試、向量與手動實測）。
-- Jev 的風險字篩選會跳過分類，那類回合 R1 與 G5 不觸發。
+- G4 在真實 session 的 deny（main 沒有嘗試開背景 shell）；`plan-critic` 與
+  `security-reviewer` 的 effort 下限（實測中沒有被派出）。
+- Plugin 的 `shoal:watcher` 在互動式 session 盯長指令（對照用的是一般 agent 加角色
+  本文）；背景 role 遇到權限提示時的行為。
+- 各 case 的重複性：多數只有 1 次。
+- Jev 不給分類的回合（風險字、信心不足）R1 與 G5 不觸發，小功能會由 main 自己做。
 - 其他 host 綁定新 role 與同一組條款：第二階段，另開 spec。

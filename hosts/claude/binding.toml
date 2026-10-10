@@ -96,7 +96,7 @@ description = "Security-sensitive implementation after approval - authentication
 effort = "low"
 # pin：fast tier 的規則選不到 haiku（capability 1 低於門檻 2）；watcher 只跑指令、不改檔、回摘要，所以手動指定。
 model = "haiku"
-description = "Background watcher for long-running commands - test suites, builds, CI runs, measurements. It runs the assigned command or follows the CI run in its own foreground until it reaches a terminal state, never edits files, and returns the exact command, exit status, and the output lines that decide success or failure, ending with status and suggested_next. Dispatch it with run_in_background so the main session never starts a background shell itself."
+description = "Background watcher for long-running commands - test suites, builds, CI runs, measurements. It runs the assigned command or follows the CI run until it reaches a terminal state, never edits files, and returns the exact command, exit status, and the output lines that decide success or failure, ending with status and suggested_next. Dispatch it with run_in_background so the main session never starts a background shell itself."
 
 [roles.researcher]
 effort = "high"

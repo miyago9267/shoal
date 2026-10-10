@@ -9,6 +9,12 @@ written.
 
 ## Unreleased
 
+## v3.0.2
+
+- No Codex behavior change. The watcher contract changed for Claude only
+  (`docs/specs/delegation-default/CLAUSES.md`); the Codex policy text gains one
+  sentence in `watcher-long-commands` and the marker.
+
 ## v3.0.1
 
 - No Codex behavior change. The shared guard script gained a Claude-only rule

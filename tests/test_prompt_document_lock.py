@@ -559,21 +559,21 @@ class MigrationMarkerTests(unittest.TestCase):
                 with self.assertRaisesRegex(PromptLockError, "migration"):
                     load_lock(root)
 
-    def test_real_lock_markers_are_only_the_recorded_delegation_default_renewal(self) -> None:
-        # 一次性的 marker 只允許最近一次核准的 renewal（delegation-default 3.0.0）；
-        # 之後的 renewal 要換 id，這一批在下一次改動移除（shoal-rebrand 2.0.0 的 marker 已在這次移除）。
+    def test_real_lock_markers_are_only_the_recorded_delegation_default_renewals(self) -> None:
+        # 一次性的 marker 只允許已記錄的 renewal：3.0.0 的三個 surface（已在 base，marker 為 inert），
+        # 以及 3.0.2 只有 claude-watcher-agent；之後的 renewal 要換 id。
+        equivalence = "docs/specs/delegation-default/RENAME.md"
         expected = {
-            "migration_id": "delegation-default-3-0-0",
-            "equivalence": "docs/specs/delegation-default/RENAME.md",
+            "orchestration-template": "delegation-default-3-0-0",
+            "packaged-orchestration-policy": "delegation-default-3-0-0",
+            "claude-orchestration-policy": "delegation-default-3-0-0",
+            "claude-watcher-agent": "delegation-default-3-0-2",
         }
-        marked = {s["id"] for s in load_lock(ROOT)["surfaces"] if "migration" in s}
-        self.assertEqual(
-            marked,
-            {"orchestration-template", "packaged-orchestration-policy", "claude-orchestration-policy"},
-        )
-        for surface in load_lock(ROOT)["surfaces"]:
-            self.assertIn(surface.get("migration", expected), [expected], surface["id"])
-        self.assertTrue((ROOT / expected["equivalence"]).read_text(encoding="utf-8").strip())
+        marked = {s["id"]: s["migration"] for s in load_lock(ROOT)["surfaces"] if "migration" in s}
+        self.assertEqual({k: v["migration_id"] for k, v in marked.items()}, expected)
+        for marker in marked.values():
+            self.assertEqual(marker["equivalence"], equivalence)
+        self.assertTrue((ROOT / equivalence).read_text(encoding="utf-8").strip())
 
 
 class RepoPathSemanticsTests(unittest.TestCase):

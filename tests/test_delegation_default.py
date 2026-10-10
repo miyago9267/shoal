@@ -282,18 +282,31 @@ class PolicyClauseTests(unittest.TestCase):
         self.assertEqual(ids[ids.index("bootstrap-ownership") + 1], "bootstrap-delegate-default")
         self.assertEqual(ids[ids.index("bootstrap-dispatch-brake") + 1], "bootstrap-collect")
 
-    def test_watcher_may_background_a_command_that_outlasts_the_foreground_limit(self) -> None:
+    def test_watcher_backgrounds_then_polls_unless_the_brief_says_the_command_is_short(self) -> None:
         text = " ".join(self.files["agents/watcher.md"].decode("utf-8").split())
-        self.assertIn(
-            "If the command may outlast the foreground time limit of your shell tool, start it as a background "
-            "shell command yourself and keep waiting on its output until it reaches a terminal state. "
+        for wanted in (
+            "Unless the brief says the command finishes within a few minutes, start it in the background "
+            "with output and exit status captured to a log, then poll the log in short foreground calls "
+            "until the exit status appears; a foreground call cut off at the time limit loses the result. "
             "Never return while it is still running.",
-            text,
-        )
-        for forbidden in ("Never detach", "nohup"):
-            self.assertNotIn(forbidden, text)
+            "Claude Code: Bash `run_in_background: true` running",
+            '`( <command> ) > <log> 2>&1; echo "EXIT_STATUS=$?" >> <log>`',
+            "`for i in $(seq 1 25); do grep -q '^EXIT_STATUS=' <log> && break; sleep 20; done; tail -n 40 <log>`",
+        ):
+            with self.subTest(wanted=wanted[:40]):
+                self.assertIn(wanted, text)
+        # 不再讓「要不要背景」取決於猜指令多久；也不能回到前景直跑的敘述。
+        for forbidden in ("may outlast", "in the foreground until", "in its own foreground", "Never detach", "nohup"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, text)
         ids = [c.id for c in render.load_core(ROOT)["contracts"]["watcher"]]
         self.assertEqual(ids[ids.index("run-to-terminal") + 1], "long-command-background")
+
+    def test_orchestration_policy_tells_main_to_state_the_expected_duration(self) -> None:
+        text = " ".join(
+            self.files["skills/shoal-orchestration/references/orchestration-policy.md"].decode("utf-8").split()
+        )
+        self.assertIn("State in the brief how long the command is expected to take when you know.", text)
 
     def test_core_policy_and_contract_clauses_name_no_model_and_no_number_threshold(self) -> None:
         core = render.load_core(ROOT)

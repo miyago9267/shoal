@@ -601,8 +601,9 @@ sep = "space"
 text = '''
 - Commands that may run long or whose result must be awaited (test suites, builds,
   CI, measurements) go to `watcher` through {{dispatch_tool}} with
-  `{{background_option}}`; `watcher` runs them in its own foreground. Main never
-  starts a background shell itself and never ends a turn waiting on one.'''
+  `{{background_option}}`; `watcher` runs them and waits. Main never
+  starts a background shell itself and never ends a turn waiting on one. State in
+  the brief how long the command is expected to take when you know.'''
 
 [[clause]]
 id = "leaf-cannot-finish"

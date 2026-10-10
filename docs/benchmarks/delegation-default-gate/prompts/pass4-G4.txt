@@ -1,0 +1,1 @@
+Please start the project's full test suite, the shell script named run_tests.sh in the scripts folder, as a background job so we can keep talking, and tell me the result once it has finished.

@@ -283,3 +283,35 @@ it reaches a terminal state. Never return while it is still running.
 ```
 
 其他 leaf 的「不可 detach」條款不變；`watcher` 是唯一例外。
+
+## 修訂（2026-10-10，第四輪 live gate 之後）
+
+第四輪實測：`watcher` 盯一個 11 分鐘的指令時，只用了一次時限開到最大的前景呼叫，
+在時限到時被中斷，結果遺失。原條款「可能超過時限才改用背景」要它先猜指令多久，
+實際上它不會猜。改成：除非 brief 明說很快，否則一律背景執行再輪詢。
+
+### `watcher` contract：`long-command-background`（改寫，縮短版）
+
+prompt lock 對 `watcher` 檔的上限是 30 行、2600 bytes；Miyago 2026-10-10 核准以縮短
+文字加 lock renewal 處理，不提高上限。
+
+```text
+Unless the brief says the command finishes within a few minutes, start it in the
+background with output and exit status captured to a log, then poll the log in
+short foreground calls until the exit status appears; a foreground call cut off
+at the time limit loses the result. Never return while it is still running.
+```
+
+### Claude addendum（接在上一條之後，縮短版）
+
+```text
+Claude Code: Bash `run_in_background: true` running
+`( <command> ) > <log> 2>&1; echo "EXIT_STATUS=$?" >> <log>`, then repeat
+`for i in $(seq 1 25); do grep -q '^EXIT_STATUS=' <log> && break; sleep 20; done; tail -n 40 <log>`.
+```
+
+### policy：`watcher-long-commands` 句尾加一句
+
+```text
+State in the brief how long the command is expected to take when you know.
+```
