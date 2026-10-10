@@ -33,9 +33,9 @@ sessions = false
 #
 # [subagents.models]
 # scout = "grok-4.5"
-# plan-verifier = "grok-4.5"
+# plan-critic = "grok-4.5"
 # security-reviewer = "grok-4.5"
-# mech-executor = "grok-4.5"
+# applier = "grok-4.5"
 # executor = "grok-4.5"
 # verifier = "grok-4.5"
 # security-executor = "grok-4.5"

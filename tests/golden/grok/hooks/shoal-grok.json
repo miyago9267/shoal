@@ -13,13 +13,13 @@
         ]
       },
       {
-        "matcher": "^plan-verifier$",
+        "matcher": "^plan-critic$",
         "hooks": [
           {
             "type": "command",
             "command": "shoal-grok/subagent_stop_gate.py",
             "timeout": 10,
-            "env": { "SHOAL_ROLE": "plan-verifier" }
+            "env": { "SHOAL_ROLE": "plan-critic" }
           }
         ]
       },

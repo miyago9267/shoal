@@ -22,10 +22,10 @@ ROUTE_REQUIRED_TASK = "automatic_model_route"
 SOL_EXECUTOR_ROLE = "sol-executor"
 ASTRA_EXECUTOR_ROLE = "executor"
 AUTOMATIC_ROUTE_ROLES = frozenset(
-    {"mech-executor", "scout", SOL_EXECUTOR_ROLE, ASTRA_EXECUTOR_ROLE}
+    {"applier", "scout", SOL_EXECUTOR_ROLE, ASTRA_EXECUTOR_ROLE}
 )
 AUTOMATIC_ROUTE_BY_ROLE = {
-    "mech-executor": "mechanical",
+    "applier": "mechanical",
     "scout": "exploration",
     SOL_EXECUTOR_ROLE: "judgment",
     ASTRA_EXECUTOR_ROLE: "deep_judgment",
@@ -54,7 +54,7 @@ TASK_NAME_RE = re.compile(r"^[a-z0-9_]+$")
 BLOCK_REASON = (
     "Status: WAITING_FOR_REVIEW. Required independent Plan review is missing. "
     "This is an internal review dependency, not a user decision. Call the "
-    "typed plan-verifier role now, wait for its result, and then continue "
+    "typed plan-critic role now, wait for its result, and then continue "
     "from the review gate. Until a valid result arrives, allow only "
     "read-only local inspection or preparation; do not create, rotate, or "
     "revoke credentials, modify secrets or variables, push, deploy, or make "
@@ -320,7 +320,7 @@ def _route_signal(
         escalate_on = list(ROUTE_ESCALATION_EVENTS)
     elif route in {"mechanical", "exploration", "judgment"}:
         required_role = {
-            "mechanical": "mech-executor",
+            "mechanical": "applier",
             "exploration": "scout",
             "judgment": SOL_EXECUTOR_ROLE,
         }[route]
@@ -984,7 +984,7 @@ def _linked_child_status(
     session_event = linked[0]
     session = session_event["payload"]
     role = session.get("agent_role")
-    if role != "plan-verifier":
+    if role != "plan-critic":
         return 0 if isinstance(role, str) and role else -1
     child_id = session.get("id")
     if not _valid_identifier(child_id) or child_id == parent_id:
@@ -1384,7 +1384,7 @@ def _direct_child_filter(
     *,
     session_id: str,
     turn_id: str,
-    required_role: str = "plan-verifier",
+    required_role: str = "plan-critic",
     required_task: str = REQUIRED_TASK,
 ) -> tuple[bool, str | None]:
     sessions = [

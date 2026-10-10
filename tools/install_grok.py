@@ -11,6 +11,8 @@
 不是工作樹。安裝 agents/、roles/、rules/shoal-grok.md、hooks/shoal-grok.json 與
 hooks/shoal-grok/（含 dispatch guard 的 shoal_guard.py，由 render 從 hooks/shoal_guard.py 產生；
 dist 副本與同一 commit 的來源不同時中止）；config.snippet.toml 只是 config 合併的參考，不安裝。
+role 改名（mech-executor -> applier、plan-verifier -> plan-critic）後，agents/、roles/ 裡舊名且位元組
+等於歷史 dist 版本的檔案視為 shoal 安裝的，隨安裝移除；內容不同的不動、只回報。
 所有會寫入的動作（安裝、--restore、--uninstall）都要 --apply；寫入前把要被取代或移除的
 檔案與 config.toml 備份到 <grok-home>/backups/shoal-<timestamp>/。
 只開啟明確列出的路徑，不掃描 grok home，不讀 credential、session、history 檔案。
@@ -56,6 +58,13 @@ LEGACY_HOOK_DIR = "hooks/pilotfish-grok"
 LEGACY_HOOK_FILES = ("plan_mode_guard.py", "shoal_guard.py", "subagent_stop_gate.py")
 LEGACY_SHOAL_MARKER = re.compile(r"<!-- pilotfish-grok v\S*-shoal\.\d+ -->")
 LEGACY_SHOAL_ONLY_FILE = LEGACY_HOOK_DIR + "/shoal_guard.py"
+
+# ---- RENAMED_: role 改名前的檔案（docs/specs/delegation-default/RENAME.md）----
+RENAMED_ROLE_FILES = tuple(
+    f"{top}/{old}.{ext}"
+    for old in ("mech-executor", "plan-verifier")
+    for top, ext in (("agents", "md"), ("roles", "toml"))
+)
 
 
 class InstallError(Exception):
@@ -235,6 +244,43 @@ def find_legacy(home: Path) -> tuple[dict[str, bytes], list[str]]:
     return owned, leftovers
 
 
+def released_blobs(repo: Path, commit: str, path: str) -> set[bytes]:
+    """該路徑在 commit 以前每個版本的內容；已被刪除或改名的 commit 沒有內容，略過。"""
+    try:
+        revs = git(repo, "rev-list", commit, "--", path).decode().split()
+    except InstallError:
+        return set()
+    out: set[bytes] = set()
+    for rev in revs:
+        shown = subprocess.run(
+            ["git", "-c", "core.autocrlf=false", "-C", str(repo), "show", f"{rev}:{path}"],
+            capture_output=True,
+            timeout=60,
+        )
+        if shown.returncode == 0:
+            out.add(shown.stdout)
+    return out
+
+
+def find_renamed_roles(
+    home: Path, repo: Path, commit: str
+) -> tuple[dict[str, bytes], list[str]]:
+    """role 改名前的舊名檔案：位元組等於某個已發行 dist 版本的是 shoal 安裝的 {rel: bytes}；其餘不動、只回報。"""
+    owned: dict[str, bytes] = {}
+    foreign: list[str] = []
+    for rel in RENAMED_ROLE_FILES:
+        path = home / rel
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            foreign.append(rel)
+        elif path.is_file():
+            data = path.read_bytes()
+            if data in released_blobs(repo, commit, f"{DIST}/{rel}"):
+                owned[rel] = data
+            else:
+                foreign.append(rel)
+    return owned, foreign
+
+
 # ---- 計畫 ----
 class Plan:
     def __init__(
@@ -244,6 +290,7 @@ class Plan:
         version: str,
         commit: str,
         fix_toggles: bool,
+        repo: Path | None = None,
     ) -> None:
         self.home, self.files, self.version, self.commit = home, files, version, commit
         self.actions: dict[str, str] = {}  # rel -> add | replace | skip
@@ -257,6 +304,10 @@ class Plan:
                 self.actions[rel] = "add"
         self.check_rules_markers()
         self.legacy, self.legacy_foreign = find_legacy(home)
+        if repo is not None:
+            renamed, renamed_foreign = find_renamed_roles(home, repo, commit)
+            self.legacy.update(renamed)
+            self.legacy_foreign += renamed_foreign
         self.config_raw, parsed = read_config(home)
         self.flagged = flagged_toggles(parsed, shoal_roles(files))
         self.new_config = None
@@ -279,7 +330,7 @@ class Plan:
         return [rel for rel, act in self.actions.items() if act != "skip"]
 
     def removals(self) -> list[str]:
-        """舊名（2.0.0 之前）且確認是 shoal 安裝的檔案；安裝新名時一起移除。"""
+        """舊名（2.0.0 之前，或 role 改名前）且確認是 shoal 安裝的檔案；安裝新名時一起移除。"""
         return sorted(self.legacy)
 
 
@@ -579,7 +630,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.uninstall:
             return do_uninstall(home, files, commit, args.apply)
         return do_install(
-            Plan(home, files, version, commit, args.fix_toggles),
+            Plan(home, files, version, commit, args.fix_toggles, args.repo),
             args.apply,
             args.fix_toggles,
             args.json,

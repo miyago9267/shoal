@@ -1,4 +1,4 @@
-<!-- shoal-agy v2.0.0 -->
+<!-- shoal-agy v3.0.0 -->
 <!-- shoal-agy:begin -->
 ## Shoal orchestration (agy only)
 
@@ -10,9 +10,9 @@ without delegating.
 | Role | Boundary |
 |---|---|
 | `scout` | Read-only reconnaissance; file:line findings |
-| `plan-verifier` | Pre-approval Plan challenge; `READY` or `REVISE` |
+| `plan-critic` | Pre-approval Plan challenge; `READY` or `REVISE` |
 | `security-reviewer` | Pre-approval read-only security evidence |
-| `mech-executor` | Fully specified mechanical implementation |
+| `applier` | Fully specified mechanical implementation |
 | `executor` | Bounded implementation requiring local judgment |
 | `verifier` | Completed-work challenge; `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` |
 | `security-executor` | Approved security-sensitive implementation |
@@ -26,10 +26,10 @@ it. For those tasks only (not small, local edits), these gates hold even
 without the skill:
 
 - No source writes before Miyago explicitly approves a Plan that a fresh
-  `plan-verifier` returned `READY` on. Auto-approved tool permissions are not
+  `plan-critic` returned `READY` on. Auto-approved tool permissions are not
   Plan approval.
 - Invoke named roles by name only; tier and tools come from their definitions.
-- Children never delegate. Never swap `plan-verifier` and `verifier`.
+- Children never delegate. Never swap `plan-critic` and `verifier`.
 - After integration, a fresh `verifier` checks the exact claim before you
   report `完成`.
 <!-- shoal-agy:end -->

@@ -189,11 +189,11 @@ def claude_dispatch_prompt(*, role: str, task_name: str, message: str) -> str:
 
 
 def claude_native_review_prompt(plan: str) -> str:
-    """Claude form of the native plan-verifier review; the inner message matches Codex."""
+    """Claude form of the native plan-critic review; the inner message matches Codex."""
     from run_role_fitness_content import _native_review_message
 
     return claude_dispatch_prompt(
-        role="plan-verifier",
+        role="plan-critic",
         task_name="role_fitness_plan_review",
         message=_native_review_message(plan),
     )

@@ -74,8 +74,8 @@ class HookConfigTests(unittest.TestCase):
 
     def test_subagent_stop_has_three_anchored_entries(self) -> None:  # AC-GW-010
         entries = self.config["SubagentStop"]
-        self.assertEqual([e["matcher"] for e in entries], ["^verifier$", "^plan-verifier$", "^security-reviewer$"])
-        for entry, role in zip(entries, ("verifier", "plan-verifier", "security-reviewer")):
+        self.assertEqual([e["matcher"] for e in entries], ["^verifier$", "^plan-critic$", "^security-reviewer$"])
+        for entry, role in zip(entries, ("verifier", "plan-critic", "security-reviewer")):
             (handler,) = entry["hooks"]
             self.assertEqual(handler["type"], "command")
             self.assertEqual(handler["env"], {"SHOAL_ROLE": role})
@@ -85,8 +85,8 @@ class HookConfigTests(unittest.TestCase):
     def test_anchored_matchers_do_not_cross_match(self) -> None:  # AC-GW-010
         import re
         matchers = [e["matcher"] for e in self.config["SubagentStop"]]
-        hits = {name: [m for m in matchers if re.search(m, name)] for name in ("verifier", "plan-verifier")}
-        self.assertEqual(hits, {"verifier": ["^verifier$"], "plan-verifier": ["^plan-verifier$"]})
+        hits = {name: [m for m in matchers if re.search(m, name)] for name in ("verifier", "plan-critic")}
+        self.assertEqual(hits, {"verifier": ["^verifier$"], "plan-critic": ["^plan-critic$"]})
 
     def test_plan_mode_guard_entry_matches_only_spawn_subagent(self) -> None:  # AC-GW-027
         entry = self.config["PreToolUse"][0]
@@ -143,7 +143,7 @@ class FormatGateTests(unittest.TestCase):
                 for token in ("CONFIRMED", "REFUTED", "INCONCLUSIVE", "CONTINUE", "PIVOT", "ROLLBACK"):
                     self.assertIn(token, reason)
 
-    def test_plan_verifier_accepts_ready_and_complete_revise(self) -> None:  # AC-GW-013
+    def test_plan_critic_accepts_ready_and_complete_revise(self) -> None:  # AC-GW-013
         samples = {
             "bare-ready": "READY",
             "ready-with-newline": "READY\n",
@@ -156,18 +156,18 @@ class FormatGateTests(unittest.TestCase):
         }
         for label, message in samples.items():
             with self.subTest(label):
-                self.assertEqual(gate("plan-verifier", message), (0, ""))
+                self.assertEqual(gate("plan-critic", message), (0, ""))
 
-    def test_plan_verifier_blocks_prose_and_incomplete_revise(self) -> None:  # AC-GW-013
-        reason = blocked("plan-verifier", "The plan looks reasonable overall.")["reason"]
+    def test_plan_critic_blocks_prose_and_incomplete_revise(self) -> None:  # AC-GW-013
+        reason = blocked("plan-critic", "The plan looks reasonable overall.")["reason"]
         self.assertIn("READY", reason)
-        self.assertIn("no 'Blocker:' block", blocked("plan-verifier", "REVISE")["reason"])
+        self.assertIn("no 'Blocker:' block", blocked("plan-critic", "REVISE")["reason"])
         for field in ("Evidence", "Minimum revision", "Acceptance check"):
             partial = "\n".join(line for line in REVISE_BLOCK.splitlines() if not line.startswith(field))
-            reason = blocked("plan-verifier", "REVISE\n" + partial)["reason"]
+            reason = blocked("plan-critic", "REVISE\n" + partial)["reason"]
             self.assertIn(f"missing: {field}", reason)
         second_partial = REVISE_BLOCK + "\n\nBlocker: another\nEvidence: gap"
-        reason = blocked("plan-verifier", "REVISE\n" + second_partial)["reason"]
+        reason = blocked("plan-critic", "REVISE\n" + second_partial)["reason"]
         self.assertIn("block 2 is missing: Minimum revision, Acceptance check", reason)
         self.assertNotIn("block 1", reason)
 
@@ -189,7 +189,7 @@ class FormatGateTests(unittest.TestCase):
                 self.assertIn(expected, blocked("security-reviewer", message)["reason"])
 
     def test_stop_hook_active_always_allows(self) -> None:  # AC-GW-015
-        for role in ("verifier", "plan-verifier", "security-reviewer"):
+        for role in ("verifier", "plan-critic", "security-reviewer"):
             with self.subTest(role):
                 self.assertEqual(gate(role, "nonsense", stopHookActive=True), (0, ""))
 
@@ -208,17 +208,17 @@ class FormatGateTests(unittest.TestCase):
 
     def test_role_argument_overrides_environment(self) -> None:  # AC-GW-010
         payload = json.dumps({"lastAssistantMessage": "READY"})
-        self.assertEqual(run(GATE, payload, "plan-verifier", env={"SHOAL_ROLE": "verifier"}), (0, ""))
-        code, out = run(GATE, payload, "verifier", env={"SHOAL_ROLE": "plan-verifier"})
+        self.assertEqual(run(GATE, payload, "plan-critic", env={"SHOAL_ROLE": "verifier"}), (0, ""))
+        code, out = run(GATE, payload, "verifier", env={"SHOAL_ROLE": "plan-critic"})
         self.assertEqual((code, json.loads(out)["decision"]), (0, "block"))
 
     def test_gate_tokens_still_appear_in_agent_text(self) -> None:  # AC-GW-017
         agents = {n: " ".join((DIST / "agents" / f"{n}.md").read_text(encoding="utf-8").split())  # 折行不影響比對
-                  for n in ("verifier", "plan-verifier", "security-reviewer")}
+                  for n in ("verifier", "plan-critic", "security-reviewer")}
         for token in ("CONFIRMED", "REFUTED", "INCONCLUSIVE", "CONTINUE", "PIVOT", "ROLLBACK", "direction_checkpoint"):
             self.assertIn(token, agents["verifier"], token)
         for token in ("READY", "REVISE", "Blocker:", "Evidence:", "Minimum revision:", "Acceptance check:"):
-            self.assertIn(token, agents["plan-verifier"], token)
+            self.assertIn(token, agents["plan-critic"], token)
         for token in ("severity", "file:line", "evidence gap"):
             self.assertIn(token, agents["security-reviewer"], token)
 
@@ -262,13 +262,13 @@ class PlanModeGuardTests(unittest.TestCase):
         self.assertEqual(self.call(spawn("read-only", "executor")), (0, ""))  # 即使 role 預設可寫入
         self.assertEqual(self.call(spawn("execute", "executor")), (0, ""))
         self.assert_denied(spawn("read-write", "scout"))  # 即使 role 預設唯讀
-        self.assert_denied(spawn("all", "plan-verifier"))
+        self.assert_denied(spawn("all", "plan-critic"))
 
     def test_role_default_capability_mode_is_used_without_override(self) -> None:  # AC-GW-022
-        for role in ("scout", "plan-verifier", "security-reviewer", "verifier"):
+        for role in ("scout", "plan-critic", "security-reviewer", "verifier"):
             with self.subTest(role):
                 self.assertEqual(self.call(spawn(None, role)), (0, ""))
-        for role in ("executor", "mech-executor", "security-executor"):
+        for role in ("executor", "applier", "security-executor"):
             with self.subTest(role):
                 self.assertIn("default_capability_mode=", self.assert_denied(spawn(None, role))["reason"])
 

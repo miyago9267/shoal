@@ -1,11 +1,11 @@
 <!-- shoal-grok:begin -->
-<!-- shoal-grok v2.0.0 -->
+<!-- shoal-grok v3.0.0 -->
 ## Orchestration
 
 ### Non-negotiable native Plan gate
 
 For every large, ambiguous, architectural, risky, or explicitly plan-first
-task, native Grok Plan Mode and a fresh `plan-verifier` readiness pass are
+task, native Grok Plan Mode and a fresh `plan-critic` readiness pass are
 mandatory. If Plan Mode is not already active, the first tool call MUST be
 `enter_plan_mode`, before repository discovery or implementation. If the user
 already activated Plan Mode with `/plan`, continue there; the verifier gate
@@ -14,7 +14,7 @@ source writes or implementation tools and ask the user to enter Plan Mode.
 
 Inside Plan Mode, discovery is read-only and the only permitted write is the
 session `plan.md`. The main session must synthesize the complete Plan, then
-spawn a fresh `plan-verifier` with `background: false`, the exact target
+spawn a fresh `plan-critic` with `background: false`, the exact target
 readiness-unit ID and kind, the full Plan text, and relevant evidence paths.
 Format the target as a `## Target readiness unit` block with `- ID:` and
 `- Kind:` (`program envelope` or `execution slice`). The child must use its
@@ -38,7 +38,7 @@ executable slice; keep later slices to stable IDs, outcomes, and prerequisites
 until they become current.
 
 On `REVISE`, the main session materially revises that unit and sends it to a
-fresh `plan-verifier`. After two automatic `REVISE` verdicts for the same unit,
+fresh `plan-critic`. After two automatic `REVISE` verdicts for the same unit,
 pause it and ask the user how to proceed. The cap is not `READY`, cosmetic
 splitting cannot reset it, and user-directed continuation remains allowed.
 Only `READY` verdicts for every required readiness unit—the envelope and
@@ -68,7 +68,7 @@ implementation attempts fail, stop or retask through `security-executor`;
 neither the main session nor another role may take over the slice.
 
 Main-session policy for Grok Build. If you are running as a subagent role
-(`scout`, `plan-verifier`, `security-reviewer`, `mech-executor`, `executor`,
+(`scout`, `plan-critic`, `security-reviewer`, `applier`, `executor`,
 `verifier`, or `security-executor`), ignore this section and complete the task
 yourself without further delegation.
 
@@ -80,9 +80,9 @@ Complete small, local, already-stable work directly.
 | Role | Boundary |
 |---|---|
 | `scout` | Broad or focused read-only repository reconnaissance |
-| `plan-verifier` | Pre-approval Plan challenge; `READY` or `REVISE` |
+| `plan-critic` | Pre-approval Plan challenge; `READY` or `REVISE` |
 | `security-reviewer` | Pre-approval read-only security evidence |
-| `mech-executor` | Fully specified mechanical implementation |
+| `applier` | Fully specified mechanical implementation |
 | `executor` | Bounded implementation requiring local judgment |
 | `verifier` | Calibrated completed-work challenge; `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` |
 | `security-executor` | Approved security-sensitive implementation |
@@ -97,9 +97,9 @@ this lifecycle:
 | Phase | Gate | Eligible delegation |
 |---|---|---|
 | Discovery | Enter native Plan Mode first for gated work, then stabilize the question, allowed scope, evidence format, and stop condition with read-only discovery. The final implementation may remain unknown. | Bounded read-only `scout` work on disjoint evidence surfaces. |
-| Plan | The main session writes one `plan.md` containing outcome, non-goals, scope, a program envelope, and independent slices. | Mandatory fresh read-only `plan-verifier` reviews the envelope, then the next executable slice; structured `REVISE` returns ownership to the main session. |
+| Plan | The main session writes one `plan.md` containing outcome, non-goals, scope, a program envelope, and independent slices. | Mandatory fresh read-only `plan-critic` reviews the envelope, then the next executable slice; structured `REVISE` returns ownership to the main session. |
 | Approval | `READY` for the envelope and current slice unlocks `exit_plan_mode` to present that scope and wait for explicit user approval. | Read-only clarification only; do not send an implementation brief or edit source before required approval. Parent Plan Mode does **not** replace read-only capability on child agents. |
-| Execution | The authorized contract has stable scope, exclusive ownership, constraints, done criteria, integration, and verification. | `mech-executor`, `executor`, or `security-executor`, chosen by the contract and trust boundary. |
+| Execution | The authorized contract has stable scope, exclusive ownership, constraints, done criteria, integration, and verification. | `applier`, `executor`, or `security-executor`, chosen by the contract and trust boundary. |
 | Verification | The integrated result has an exact claim and acceptance concrete enough to test. | A fresh `verifier` returns only `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. |
 
 ### Dispatch
@@ -119,7 +119,7 @@ even when the user does not mention agents:
 - MUST spawn `scout` before repository search for an unknown file or symbol,
   including an exact-text lookup whose file path is unknown and broad or
   cross-file discovery.
-- MUST spawn `mech-executor` before fully specified multi-file mechanical work.
+- MUST spawn `applier` before fully specified multi-file mechanical work.
 - MUST spawn `executor` before bounded non-security implementation requiring
   local judgment.
 
@@ -127,7 +127,7 @@ The direct-work and single-unknown-bug exceptions here still apply. The dispatch
 brake may serialize a matching unit but must not silently convert it to
 main-session work. Other delegation remains optional.
 
-The mandatory `plan-verifier` readiness gate is not an optional delegation
+The mandatory `plan-critic` readiness gate is not an optional delegation
 choice and is not waived by the dispatch brake or coordination-cost heuristic.
 
 A delegation-planning layer may shape discovery questions, execution topology,
@@ -181,7 +181,7 @@ required environment, input paths, and completion criterion so the orchestrator
 can run them with `run_terminal_command` (`background: true` when needed) and
 re-task the leaf with the captured result.
 
-Never swap `plan-verifier` and `verifier`. The former challenges Plan readiness
+Never swap `plan-critic` and `verifier`. The former challenges Plan readiness
 with `READY` / `REVISE`; the latter independently tests an exact
 completed-work claim and acceptance with `CONFIRMED` / `REFUTED` /
 `INCONCLUSIVE`. Neither role writes the Plan or fixes findings.

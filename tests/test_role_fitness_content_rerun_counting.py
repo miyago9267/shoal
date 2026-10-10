@@ -32,7 +32,7 @@ def _review_fail(case_id: str, attempt: int = 1) -> dict[str, Any]:
 
 def _review_ok(case_id: str, attempt: int, rerun_of: str) -> dict[str, Any]:
     return {
-        "case_id": case_id, "status": "accepted", "native_role": "plan-verifier",
+        "case_id": case_id, "status": "accepted", "native_role": "plan-critic",
         "dispatch_status": "NATIVE_OK", "false_escalation": False, "attempt": attempt,
         "rerun_of": rerun_of, "quality_score": 80.0,
         "score": {"expected_decision": "READY", "risk_coverage": 1.0},
@@ -68,7 +68,7 @@ class RerunCountingTests(unittest.TestCase):
         self.assertEqual(self._taxonomy(stages), {"content.executor_no_artifact": 1})
 
     def test_timeout_then_rerun_is_counted(self) -> None:
-        timeout = {"case_id": "plan-review-02", "status": "inconclusive", "reason": "timeout", "native_role": "plan-verifier", "attempt": 1}
+        timeout = {"case_id": "plan-review-02", "status": "inconclusive", "reason": "timeout", "native_role": "plan-critic", "attempt": 1}
         stages = [timeout, _review_ok("plan-review-02", 2, "plan-review-02#1")]
         self.assertEqual(scorecard.classify_content_stages(stages), ["unclassified", None])
         self.assertEqual(self._taxonomy(stages), {"content.unclassified": 1})

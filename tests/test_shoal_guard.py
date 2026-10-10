@@ -191,25 +191,74 @@ class ClaudeAdapterTests(CliCase):
         self.write_turn("sess-1", "p-1", "judgment")
         out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=cwd))
         body = json.loads(out)["hookSpecificOutput"]
-        self.assertEqual(set(body), {"hookEventName", "additionalContext"})  # advise: no permissionDecision
-        self.assertEqual(body["hookEventName"], "PreToolUse")
-        self.assertIn("dispatch brake", body["additionalContext"])
-        self.assertIn("`mech-executor` / `executor`", body["additionalContext"])
-        self.assertNotIn("SHOAL_GUARD_DIRECT", body["additionalContext"])
+        self.assertEqual(set(body), {"hookEventName", "permissionDecision", "permissionDecisionReason"})
+        self.assertEqual((body["hookEventName"], body["permissionDecision"]), ("PreToolUse", "deny"))
+        self.assertIn("classified as implementation work", body["permissionDecisionReason"])
+        self.assertIn("#direct", body["permissionDecisionReason"])
         self.assertEqual(self.run_guard("claude", claude_tool("Agent", {"subagent_type": "scout"}, cwd=cwd)), "")
-        self.assertEqual(self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)), "")  # same turn
+        self.assertIn("deny", self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)))
+        for role in ("watcher", "researcher"):
+            self.assertEqual(self.run_guard("claude", claude_tool("Agent", {"subagent_type": role}, cwd=cwd)), "")
+        self.assertIn("deny", self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)))
         self.assertEqual(self.run_guard("claude", claude_tool("Agent", {"subagent_type": "executor"}, cwd=cwd)), "")
         self.assertEqual(self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)), "")
         decisions = [(r.get("decision"), r.get("rule")) for r in self.log_records()]
-        self.assertEqual(decisions, [("state", None), ("advise", "R1"), ("allow", "dispatch"), ("advise", "R1"),
+        self.assertEqual(decisions, [("state", None), ("deny", "R1"), ("allow", "dispatch"), ("deny", "R1"),
+                                     ("allow", "dispatch"), ("allow", "dispatch"), ("deny", "R1"),
                                      ("allow", "dispatch"), ("allow", "dispatched")])
 
-    def test_prompt_direct_marker_is_not_honored(self) -> None:
-        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct fix it"))
-        self.write_turn("sess-1", "p-1", "mechanical")
-        out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work))
+    def test_r1_stays_advise_on_codex_and_never_prints_a_deny(self) -> None:
+        payload = {"session_id": "sess-1", "turn_id": "t-1", "cwd": self.work, "hook_event_name": "UserPromptSubmit"}
+        self.run_guard("codex", payload)
+        self.write_turn("sess-1", "t-1", "judgment")
+        edit = {"session_id": "sess-1", "turn_id": "t-1", "cwd": self.work, "hook_event_name": "PreToolUse",
+                "tool_name": "apply_patch", "tool_input": {"command": "*** Update File: a.py\n"}}
+        out = self.run_guard("codex", edit)
         self.assertIn("additionalContext", out)
         self.assertNotIn("permissionDecision", out)
+        self.assertEqual(self.log_records()[-1]["decision"], "advise")
+
+    def test_prompt_direct_marker_releases_r1_for_that_turn_only(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="please #direct fix it"))
+        self.write_turn("sess-1", "p-1", "mechanical")
+        self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)), "")
+        self.assertEqual(self.log_records()[-1]["rule"], "direct")
+        state = json.loads(Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8"))
+        self.assertIs(state["direct"], True)
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt_id="p-2", prompt="next one"))
+        self.write_turn("sess-1", "p-2", "mechanical")
+        state = json.loads(Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8"))
+        self.assertIs(state["direct"], False)
+        out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2"))
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_direct_token_must_stand_alone(self) -> None:
+        def flag(prompt):
+            return guard.adapt_claude(claude_prompt(prompt=prompt))["direct"]
+
+        for text in ("#direct", "do it #direct", "#direct do it", "(#direct)", "fix it, #direct.", "請 #direct 修",
+                     "修好#direct吧", "line one\n#direct"):
+            self.assertTrue(flag(text), text)
+        for text in ("#directory", "x#direct", "##direct", "#direct-ly", "#direct_mode", "#directs", "# direct",
+                     "direct", "#Direct", "", None, 7):
+            self.assertFalse(flag(text), text)
+        self.assertFalse(guard.adapt_claude(claude_prompt())["direct"])  # no token in the default prompt
+
+    def test_direct_flag_is_recorded_but_the_prompt_text_never_is(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct SECRET-DIRECT-PROMPT"))
+        blob = ""
+        for dirpath, _, names in os.walk(self.guard_dir):
+            for name in names:
+                blob += Path(dirpath, name).read_text(encoding="utf-8")
+        self.assertNotIn("SECRET-DIRECT-PROMPT", blob)
+        self.assertIn('"direct": true', blob)
+
+    def test_direct_marker_only_comes_from_claude_prompts(self) -> None:
+        for adapted in (guard.adapt_codex({"hook_event_name": "UserPromptSubmit", "session_id": "s", "turn_id": "t",
+                                           "prompt": "#direct"}),
+                        guard.adapt_grok({"hookEventName": "user_prompt_submit", "sessionId": "s", "promptId": "p",
+                                          "prompt": "#direct"})):
+            self.assertFalse(adapted["direct"])
 
     def test_direct_env_suppresses_advise(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_DIRECT="1")
@@ -221,30 +270,43 @@ class ClaudeAdapterTests(CliCase):
 
     def test_advise_once_per_turn_and_rearms_on_new_turn(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work))
-        self.write_turn("sess-1", "p-1", "judgment")
-        first = self.run_guard("claude", claude_tool("Edit", {"file_path": "a"}, cwd=self.work))
+        for name in ("a", "b"):
+            self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": name}, cwd=self.work)), "")
+        first = self.run_guard("claude", claude_tool("Edit", {"file_path": "c"}, cwd=self.work))
         self.assertIn("additionalContext", first)
-        for name in ("b", "c"):
+        for name in ("d", "e"):
             self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": name}, cwd=self.work)), "")
         advised = [r for r in self.log_records() if r["decision"] == "advise"]
-        self.assertEqual(len(advised), 3)  # R1 fires on every edit; only the first one prints
+        self.assertEqual(len(advised), 3)  # R2 fires on every new file past the limit; only the first one prints
         state = json.loads(Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8"))
         self.assertTrue(state["advised"])
         self.run_guard("claude", claude_prompt(cwd=self.work, prompt_id="p-2"))
         state = json.loads(Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8"))
         self.assertFalse(state["advised"])
-        self.write_turn("sess-1", "p-2", "judgment")
-        again = self.run_guard("claude", claude_tool("Edit", {"file_path": "d"}, cwd=self.work, prompt_id="p-2"))
+        for name in ("a", "b"):
+            self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": name}, cwd=self.work, prompt_id="p-2")), "")
+        again = self.run_guard("claude", claude_tool("Edit", {"file_path": "c"}, cwd=self.work, prompt_id="p-2"))
         self.assertIn("additionalContext", again)
 
     def test_zh_tw_message(self) -> None:
-        self.run_guard("claude", claude_prompt(cwd=self.work))
-        self.write_turn("sess-1", "p-1", "mechanical")
-        out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work), SHOAL_GUARD_LANG="zh-TW")
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_LANG="zh-TW")
+        for name in ("a", "b"):
+            self.run_guard("claude", claude_tool("Edit", {"file_path": name}, cwd=self.work), SHOAL_GUARD_LANG="zh-TW")
+        out = self.run_guard("claude", claude_tool("Edit", {"file_path": "c"}, cwd=self.work), SHOAL_GUARD_LANG="zh-TW")
         reason = json.loads(out)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("提醒", reason)
-        self.assertIn("1 個檔案", reason)
-        self.assertIn("mech-executor", reason)
+        self.assertIn("3 個檔案", reason)
+        self.assertIn("applier", reason)
+
+    def test_zh_tw_deny_messages(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_LANG="zh-TW")
+        self.write_turn("sess-1", "p-1", "mechanical")
+        out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work), SHOAL_GUARD_LANG="zh-TW")
+        self.assertIn("已被分類為實作工作", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
+        out = self.run_guard("claude", claude_tool("Bash", {"command": "sleep 9", "run_in_background": True}, cwd=self.work),
+                             SHOAL_GUARD_LANG="zh-TW")
+        self.assertIn("watcher", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertIn("背景 shell", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
 
     def test_r2_message_counts_files(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work))
@@ -254,12 +316,16 @@ class ClaudeAdapterTests(CliCase):
             "hookSpecificOutput"]["additionalContext"]
         self.assertIn("edited 3 files", reason)
 
-    def test_shadow_outputs_nothing_and_logs_advise(self) -> None:
+    def test_shadow_outputs_nothing_and_logs_would_deny(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD="shadow")
         self.write_turn("sess-1", "p-1", "judgment")
         out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work), SHOAL_GUARD="shadow")
         self.assertEqual(out, "")
-        self.assertEqual(self.log_records()[-1]["decision"], "advise")
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("would_deny", "R1"))
+        out = self.run_guard("claude", claude_tool("Bash", {"command": "x", "run_in_background": True}, cwd=self.work),
+                             SHOAL_GUARD="shadow")
+        self.assertEqual(out, "")
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("would_deny", "G4"))
 
     def test_subagent_leaf_and_verify_edit(self) -> None:
         out = self.run_guard("claude", claude_tool("Agent", {"subagent_type": "scout"}, agent_id="a1", agent_type="executor"))
@@ -466,7 +532,7 @@ class GrokAdapterTests(CliCase):
         self.write_turn("gs-1", "gp-1", "judgment")
         self.assertEqual(self.run_guard("grok", self.tool("search_replace", {"file_path": "a.py"}, cwd=self.work), **env), "")
         self.assertEqual(self.log_records()[-1]["decision"], "advise")
-        self.assertEqual(self.run_guard("grok", self.tool("spawn_subagent", {"subagent_type": "mech-executor"}, cwd=self.work), **env), "")
+        self.assertEqual(self.run_guard("grok", self.tool("spawn_subagent", {"subagent_type": "applier"}, cwd=self.work), **env), "")
         self.assertEqual(self.run_guard("grok", self.tool("search_replace", {"file_path": "a.py"}, cwd=self.work), **env), "")
 
     def test_default_is_shadow(self) -> None:
@@ -546,10 +612,10 @@ class AgyAdapterTests(CliCase):
         self.assertEqual((write["kind"], write["tool_kind"], write["paths"], write["turn_id"]), ("tool", "edit", ["/r/a"], None))
         replace = guard.adapt_agy(self.tool("multi_replace_file_content", {"TargetFile": "/r/b"}))
         self.assertEqual((replace["tool_kind"], replace["paths"]), ("edit", ["/r/b"]))
-        self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", self.subagents("mech-executor")))["dispatched_role"], "mech-executor")
+        self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", self.subagents("applier")))["dispatched_role"], "applier")
         self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", {"Subagents": [{"Role": "executor"}]}))["dispatched_role"], "executor")
         self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", self.subagents("executor", "scout")))["dispatched_role"], "scout")
-        self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", self.subagents("executor", "mech-executor")))["dispatched_role"], "executor")
+        self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", self.subagents("executor", "applier")))["dispatched_role"], "executor")
         self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", {}))["dispatched_role"], None)
         self.assertEqual(guard.adapt_agy(self.tool("invoke_subagent", {"Subagents": []}))["dispatched_role"], None)
         self.assertEqual(guard.adapt_agy(self.tool("run_command", {}))["tool_kind"], "other")
@@ -574,7 +640,7 @@ class AgyAdapterTests(CliCase):
 
     def test_dispatch_unlocks_within_invocation(self) -> None:
         self.run_guard("agy", self.pre_invocation(0))
-        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("executor", "mech-executor")))
+        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("executor", "applier")))
         self.run_guard("agy", self.pre_invocation(1))  # next model call in the turn: state kept
         self.run_guard("agy", self.tool("write_to_file", {"TargetFile": self.path("a")}, cwd=self.work))
         self.assertEqual(self.log_records()[-1]["rule"], "dispatched")

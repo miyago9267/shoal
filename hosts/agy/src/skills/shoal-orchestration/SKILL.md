@@ -5,8 +5,8 @@ description: Shoal orchestration for agy - routing, Plan and approval gate, disp
 
 # Shoal orchestration (agy)
 
-Main-session policy. Roles (`scout`, `plan-verifier`, `security-reviewer`,
-`mech-executor`, `executor`, `verifier`, `security-executor`) ignore this skill
+Main-session policy. Roles (`scout`, `plan-critic`, `security-reviewer`,
+`applier`, `executor`, `verifier`, `security-executor`) ignore this skill
 and do their task without delegating.
 
 ## Lifecycle
@@ -14,9 +14,9 @@ and do their task without delegating.
 | Phase | Gate | Delegation |
 |---|---|---|
 | Discovery | Stabilize the question, allowed scope, evidence format, and stop condition. Read-only. | `scout` on disjoint evidence surfaces |
-| Plan | Main session writes one Plan: outcome, non-goals, scope, program envelope, independent slices. | Fresh `plan-verifier` on the envelope, then the next executable slice |
+| Plan | Main session writes one Plan: outcome, non-goals, scope, program envelope, independent slices. | Fresh `plan-critic` on the envelope, then the next executable slice |
 | Approval | `READY` on every required unit, then present the Plan and wait for Miyago's explicit approval. | Read-only clarification only |
-| Execution | Approved contract with scope, exclusive ownership, constraints, done criteria, integration, verification. | `mech-executor`, `executor`, or `security-executor` |
+| Execution | Approved contract with scope, exclusive ownership, constraints, done criteria, integration, verification. | `applier`, `executor`, or `security-executor` |
 | Verification | Integrated result with an exact claim and concrete acceptance. | Fresh `verifier` |
 
 If Miyago has switched agy into `/plan` mode, stay there until approval. If
@@ -25,13 +25,13 @@ before approval is the Plan itself (in the reply or a Plan artifact).
 
 ## Plan gate
 
-- Brief `plan-verifier` with a `## Target readiness unit` block (`- ID:`,
+- Brief `plan-critic` with a `## Target readiness unit` block (`- ID:`,
   `- Kind:` `program envelope` or `execution slice`), the full Plan text, and
   evidence paths.
 - `READY` is the bare word. `REVISE` carries one or more blocks with `Blocker:`,
   `Evidence:`, `Minimum revision:`, `Acceptance check:`. Anything else is a
   protocol failure, not a Plan judgment; re-invoke.
-- On `REVISE`, materially revise and send the unit to a fresh `plan-verifier`.
+- On `REVISE`, materially revise and send the unit to a fresh `plan-critic`.
   After two automatic `REVISE` on the same unit, pause and ask Miyago.
 - Large work: review the envelope, then only the next executable slice. Later
   slices keep stable IDs, outcomes, and prerequisites until they become current.
@@ -45,8 +45,8 @@ to shrink execution capability.
 
 - For work touching authn/authz, secrets, crypto, input validation at trust
   boundaries, or dependency vulnerabilities, run `security-reviewer` before the
-  first `plan-verifier` on the affected unit, and carry its findings and
-  dispositions into the Plan. Tell `plan-verifier` you did so.
+  first `plan-critic` on the affected unit, and carry its findings and
+  dispositions into the Plan. Tell `plan-critic` you did so.
 - Brief `security-reviewer` to look at adjacent entry points and side effects,
   not only the named boundary.
 - Implement approved security-sensitive slices through `security-executor`. If
@@ -65,7 +65,7 @@ worker for a bounded side task, parallel workers only for independent,
 low-overlap streams. Default routing:
 
 - Unknown file or symbol, or broad cross-file discovery -> `scout`.
-- Fully specified multi-file mechanical work -> `mech-executor`.
+- Fully specified multi-file mechanical work -> `applier`.
 - Bounded non-security implementation needing judgment -> `executor`.
 
 Keep a single unknown bug's root-cause discovery and first minimal fix in the
@@ -90,7 +90,7 @@ move up one role. Sanity-check any single scout fact that carries a decision.
 
 ## Verification adjudication
 
-Never swap roles: `plan-verifier` judges Plan readiness (`READY` / `REVISE`);
+Never swap roles: `plan-critic` judges Plan readiness (`READY` / `REVISE`);
 `verifier` tests a completed claim (`CONFIRMED` / `REFUTED` / `INCONCLUSIVE`).
 Neither writes the Plan or fixes findings.
 

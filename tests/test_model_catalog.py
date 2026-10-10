@@ -238,28 +238,28 @@ class CalibrationTests(unittest.TestCase):
 
     EXPECTED = {
         "claude": {
-            "scout": "sonnet",
-            "mech-executor": "sonnet",
+            "scout": "haiku",  # [roles.scout].model 的 pin，不是 tier pin
+            "applier": "sonnet",
             "executor": "sonnet",
-            "plan-verifier": "fable",
+            "plan-critic": "fable",
             "verifier": "opus",
             "security-reviewer": "opus",
             "security-executor": "opus",
         },
         "codex": {
             "scout": "gpt-6-luna",
-            "mech-executor": "gpt-6-luna",
+            "applier": "gpt-6-luna",
             "executor": "gpt-6-astra",
-            "plan-verifier": "gpt-6-sol",
+            "plan-critic": "gpt-6-sol",
             "verifier": "gpt-6-sol",
             "security-reviewer": "gpt-6-sol",
             "security-executor": "gpt-6-sol",
         },
         "agy": {
             "scout": "flash",
-            "mech-executor": "flash",
+            "applier": "flash",
             "executor": "pro",
-            "plan-verifier": "pro",
+            "plan-critic": "pro",
             "verifier": "pro",
             "security-reviewer": "pro",
             "security-executor": "pro",
@@ -268,9 +268,9 @@ class CalibrationTests(unittest.TestCase):
             n: "inherit"
             for n in (
                 "scout",
-                "mech-executor",
+                "applier",
                 "executor",
-                "plan-verifier",
+                "plan-critic",
                 "verifier",
                 "security-reviewer",
                 "security-executor",
@@ -333,7 +333,8 @@ class CliOverrideTests(unittest.TestCase):
         result = self.check()
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("host claude", result.stderr)
-        self.assertIn("role scout", result.stderr)
+        # scout pin 在 haiku，所以第一個解不出來的是 applier
+        self.assertIn("role applier", result.stderr)
 
     def test_explain_fails_the_same_way(self) -> None:
         self.edit(self.binding, '"anthropic/opus" = "opus"\n', "")
@@ -404,10 +405,13 @@ class ExplainTests(unittest.TestCase):
 
     def test_claude_explain_shows_candidates_exclusions_and_result(self) -> None:
         out = self.explain("claude")
+        # scout 是手動 pin，不走規則；fast tier 的選模過程看 applier
+        mech = out.split("applier  tier=fast")[1].split("\n\n")[0]
+        self.assertIn("capability 1 低於 fast 門檻 2", mech)
+        self.assertRegex(mech, r"(?m)^  \* anthropic/sonnet +capability=3 cost=2$")
+        self.assertIn("結果：sonnet（resolver 選出 anthropic/sonnet）", mech)
         scout = out.split("scout  tier=fast")[1].split("\n\n")[0]
-        self.assertIn("capability 1 低於 fast 門檻 2", scout)
-        self.assertRegex(scout, r"(?m)^  \* anthropic/sonnet +capability=3 cost=2$")
-        self.assertIn("結果：sonnet（resolver 選出 anthropic/sonnet）", scout)
+        self.assertIn("結果：haiku（手動指定 [roles.scout].model）", scout)
         security = out.split("security-reviewer  tier=strong  security=true")[1].split(
             "\n\n"
         )[0]
@@ -437,7 +441,7 @@ class ExplainTests(unittest.TestCase):
         self.assertIn(
             '結果：{"provider": "deepseek", "model": "deepseek-v4-flash"}', out
         )
-        self.assertNotIn("mech-executor", out)  # omitted_roles 不輸出
+        self.assertNotIn("applier", out)  # omitted_roles 不輸出
 
     def test_explain_does_not_touch_dist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -507,6 +511,7 @@ class SwapModelMutationTests(unittest.TestCase):
             set(changed),
             {
                 "agents/verifier.md",
+                "agents/researcher.md",
                 "agents/security-reviewer.md",
                 "agents/security-executor.md",
             },

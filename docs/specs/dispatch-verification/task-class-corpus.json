@@ -16,9 +16,9 @@
       "prompt": "Challenge this material, pre-approval migration plan and return only READY or REVISE with missing assumptions.",
       "policy_basis": [
         "templates/agents-md.orchestration.md",
-        "templates/agents/plan-verifier.toml"
+        "templates/agents/plan-critic.toml"
       ],
-      "expected": {"decision": "delegate", "role": "plan-verifier"}
+      "expected": {"decision": "delegate", "role": "plan-critic"}
     },
     {
       "id": "preapproval-security-evidence",
@@ -34,9 +34,9 @@
       "prompt": "Apply this complete, approved rename specification across the listed files, update the prescribed tests, and run the named command.",
       "policy_basis": [
         "templates/agents-md.orchestration.md",
-        "templates/agents/mech-executor.toml"
+        "templates/agents/applier.toml"
       ],
-      "expected": {"decision": "delegate", "role": "mech-executor"}
+      "expected": {"decision": "delegate", "role": "applier"}
     },
     {
       "id": "bounded-implementation-judgment",

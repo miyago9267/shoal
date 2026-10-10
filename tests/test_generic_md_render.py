@@ -239,7 +239,7 @@ class EncodingTests(GenericRoot):
         )
         self.binding(roles=roles)
         self.assertIn("tools: only\n", self.head("scout"))
-        self.assertIn("tools: read, grep\n", self.head("plan-verifier"))
+        self.assertIn("tools: read, grep\n", self.head("plan-critic"))
 
     def test_body_follows_frontmatter_and_frame_wraps_it(self) -> None:
         self.binding()

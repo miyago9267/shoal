@@ -33,7 +33,7 @@ class NativeTemplateTests(unittest.TestCase):
 
     def test_model_routing_matches_cost_policy(self) -> None:
         agents = ROOT / "templates" / "agents"
-        with (agents / "plan-verifier.toml").open("rb") as handle:
+        with (agents / "plan-critic.toml").open("rb") as handle:
             plan_verifier = tomllib.load(handle)
         with (agents / "verifier.toml").open("rb") as handle:
             verifier = tomllib.load(handle)
@@ -106,7 +106,7 @@ class NativeTemplateTests(unittest.TestCase):
         self.assertIn("bounded implementation requiring judgment to `sol-executor`", policy)
         self.assertIn("approved security-sensitive implementation to `security-executor`", policy)
         self.assertIn("After a risk-triggered implementation", policy)
-        self.assertIn("dispatch exactly one `mech-executor`", policy)
+        self.assertIn("dispatch exactly one `applier`", policy)
         self.assertIn("choose delegation by net benefit", policy)
         self.assertIn("stable, complete one-shot brief, not a numeric trigger", policy)
         self.assertIn("smallest coherent integration boundary", policy)

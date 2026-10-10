@@ -3,7 +3,7 @@ title: Dispatch 強制與權限補強
 status: completed
 approved_by: Miyago
 created: 2026-10-05
-updated: 2026-10-06
+updated: 2026-10-10
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -206,6 +206,31 @@ enforcement hook，只在紀律跑掉時才加（`docs/design.md:142`）。R2 �
 - `SHOAL_GUARD_DIRECT=1` 保留，作用改為關閉提醒。
 - 其他不變：路徑正規化、派 write role 才算本輪派工（影響提醒是否觸發）、state 與
   log 的防護。
+
+## 修訂：R1 改回 deny 與 G4（2026-10-10）
+
+Miyago 2026-10-10 指出強制力不夠：hook 提醒後 main 仍自己做，背景 shell 常要使用者自己去看。
+`docs/specs/delegation-default`（SPEC G1–G4、D7；2026-10-10 核准）把派工改為預設，guard 對應修訂：
+
+- **R1 在 Claude 改回 deny**：host 是 `claude` 且模式為 enforce，本輪被分類為 `judgment` 或
+  `mechanical`、尚未派出 write role、路徑不在豁免範圍時，deny main 的改檔工具，訊息寫明出口
+  （派 `executor`／`applier`，或在 prompt 加 `#direct`）。shadow 記 `would_deny`。沒有本輪分類時
+  不觸發。其他 host 的 R1 維持 2026-10-06 的 `advise`。
+- **R2 不變**：維持只提醒，所有 host 一樣。
+- **G4（新）**：host 是 `claude` 且模式為 enforce，main（payload 沒有 `agent_id`）以背景方式呼叫
+  shell 工具（`Bash` 的 `run_in_background: true`）時 deny，提示改在背景派 `watcher`。shadow 記
+  `would_deny`；subagent 與其他 host 不受影響。`Bash` 因此加進 `tools/install_hooks.py` 與
+  plugin `hooks.json` 的 `PreToolUse` matcher；前景 `Bash` 不判斷、不計入、不改狀態。plugin 的
+  `--plugin` 讓出邏輯對 `Bash` 同樣適用：全域 matcher 沒有涵蓋 `Bash`（舊安裝）時由 plugin 那份處理。
+- **`#direct` 恢復（D7）**：使用者 prompt 內獨立的 `#direct` 只放行那一輪的 R1 與 G4（R2 的提醒也
+  一併關閉），guard 在 `UserPromptSubmit` 把旗標記進該輪 state，下一輪重算，不記錄 prompt 內容。
+  這修訂 R2 的「無法分辨 prompt 來源的 host 改用環境變數」：deny 沒有單回合出口會卡住工作
+  （delegation-default D7），所以 Claude 恢復接受 `#direct`，未區分 `/loop`、wakeup 等
+  非使用者輸入的 prompt（未驗證 Claude 是否對它們送 `UserPromptSubmit`）；其他 host 維持不接受。
+  `SHOAL_GUARD_DIRECT=1` 照舊，且同樣放行 R1 與 G4。
+- 2026-10-06 修訂中「R1、R2 改為 advise」只對非 Claude host 與 R2 繼續成立；「硬規則」清單
+  （LEAF、VERIFY_EDIT）不變。測試向量新增 `write_turn` 步驟與 `direct`、`background_shell` 事件欄位
+  （Python 與 OpenCode TypeScript 重放同一份）。
 
 ## 完結狀態（2026-10-06）
 

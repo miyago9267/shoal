@@ -457,7 +457,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             config = tomllib.loads((home / "config.toml").read_text())
             self.assertEqual(config["agents"]["max_concurrent_threads_per_session"], 3)
-            self.assertEqual({p.stem for p in (home / "agents").glob("*.toml")}, {"executor", "mech-executor", "plan-verifier", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier"})
+            self.assertEqual({p.stem for p in (home / "agents").glob("*.toml")}, {"executor", "applier", "plan-critic", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier"})
             state = home.with_name(f"{home.name}.shoal-install-state.json")
             recorded = json.loads(state.read_text())
             self.assertEqual(recorded["status"], "committed")
@@ -536,7 +536,7 @@ class NativeInstallTests(unittest.TestCase):
                 self.assertEqual(self.run_install(home), 0)
             self.assertEqual(
                 {p.stem for p in (home / "agents").glob("*.toml")},
-                {"executor", "mech-executor", "plan-verifier", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier"},
+                {"executor", "applier", "plan-critic", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier"},
             )
 
     def test_windows_crlf_policy_preserves_original_bytes_for_commit(self) -> None:
@@ -1044,7 +1044,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             policy = home / "AGENTS.md"
             policy.write_bytes(policy.read_bytes() + b"\n# current policy\n")
-            role = home / "agents" / "mech-executor.toml"
+            role = home / "agents" / "applier.toml"
             role.write_bytes(role.read_bytes() + b"\n# customized\n")
             before = role.read_bytes()
 
@@ -1061,7 +1061,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "2.1.2",
+                            "version": "3.0.1",
                             "enabled": True,
                         }
                     ]
@@ -1702,7 +1702,7 @@ class NativeInstallTests(unittest.TestCase):
     def test_release_pinned_v130_roles_upgrade_but_custom_bytes_abort(self) -> None:
         previous = ROOT / "install" / "previous" / "v1.3.0" / "agents"
         expected = installer.CANONICAL_ROLE_UPGRADE_DIGESTS
-        for role in ("plan-verifier", "security-reviewer"):
+        for role in ("security-reviewer",):
             payload = (previous / f"{role}.toml").read_bytes()
             self.assertIn(hashlib.sha256(payload).hexdigest(), expected[role])
 
@@ -1718,7 +1718,7 @@ class NativeInstallTests(unittest.TestCase):
                 )
 
             self.assertEqual(self.run_install(home), 0)
-            for role in ("plan-verifier", "security-reviewer"):
+            for role in ("security-reviewer",):
                 self.assertEqual(
                     (agents / f"{role}.toml").read_bytes(),
                     (ROOT / "templates" / "agents" / f"{role}.toml").read_bytes(),
@@ -1728,8 +1728,8 @@ class NativeInstallTests(unittest.TestCase):
             home = Path(directory) / "home"
             agents = home / "agents"
             agents.mkdir(parents=True)
-            payload = (previous / "plan-verifier.toml").read_bytes() + b"# custom\n"
-            (agents / "plan-verifier.toml").write_bytes(payload)
+            payload = (previous / "security-reviewer.toml").read_bytes() + b"# custom\n"
+            (agents / "security-reviewer.toml").write_bytes(payload)
             with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
                 self.run_install(home)
 
@@ -1738,26 +1738,26 @@ class NativeInstallTests(unittest.TestCase):
                 0,
             )
             self.assertEqual(
-                (agents / "plan-verifier.toml").read_bytes(),
-                (ROOT / "templates/agents/plan-verifier.toml").read_bytes(),
+                (agents / "security-reviewer.toml").read_bytes(),
+                (ROOT / "templates/agents/security-reviewer.toml").read_bytes(),
             )
 
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             agents = home / "agents"
             agents.mkdir(parents=True)
-            (agents / "plan-verifier.toml").write_bytes(
-                (previous / "plan-verifier.toml").read_bytes() + b"# custom\n"
+            (agents / "security-reviewer.toml").write_bytes(
+                (previous / "security-reviewer.toml").read_bytes() + b"# custom\n"
             )
             with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
                 self.run_install(
                     home,
-                    replace_drifted_role=("security-reviewer",),
+                    replace_drifted_role=("verifier",),
                 )
             self.assertEqual(
                 self.run_install(
                     home,
-                    replace_drifted_role=("plan-verifier",),
+                    replace_drifted_role=("security-reviewer",),
                 ),
                 0,
             )
@@ -1792,7 +1792,6 @@ class NativeInstallTests(unittest.TestCase):
             stdout = buffer.getvalue()
 
             self.assertEqual(code, 0)
-            self.assertIn("note: upgraded canonical role plan-verifier", stdout)
             self.assertIn("note: upgraded canonical role security-reviewer", stdout)
             self.assertIn("would change", stdout)
             after = {
@@ -1808,15 +1807,15 @@ class NativeInstallTests(unittest.TestCase):
             home = Path(directory) / "home"
             agents = home / "agents"
             agents.mkdir(parents=True)
-            (agents / "plan-verifier.toml").write_bytes(
-                (previous / "plan-verifier.toml").read_bytes() + b"# custom\n"
+            (agents / "security-reviewer.toml").write_bytes(
+                (previous / "security-reviewer.toml").read_bytes() + b"# custom\n"
             )
             with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
                 install(source_root=ROOT, codex_home=home, dry_run=True, check_codex=False)
 
     def test_release_pinned_v131_roles_upgrade_but_custom_bytes_abort(self) -> None:
         previous = ROOT / "install" / "previous" / "v1.3.1" / "agents"
-        for role in ("plan-verifier", "verifier"):
+        for role in ("verifier",):
             digest = hashlib.sha256((previous / f"{role}.toml").read_bytes()).hexdigest()
             self.assertIn(digest, installer.CANONICAL_ROLE_UPGRADE_DIGESTS[role])
 
@@ -1827,13 +1826,13 @@ class NativeInstallTests(unittest.TestCase):
             for role in installer.ROLES:
                 source = ROOT / "templates" / "agents" / f"{role}.toml"
                 (agents / f"{role}.toml").write_bytes(source.read_bytes())
-            for role in ("plan-verifier", "verifier"):
+            for role in ("verifier",):
                 (agents / f"{role}.toml").write_bytes(
                     (previous / f"{role}.toml").read_bytes()
                 )
 
             self.assertEqual(self.run_install(home), 0)
-            for role in ("plan-verifier", "verifier"):
+            for role in ("verifier",):
                 self.assertEqual(
                     (agents / f"{role}.toml").read_bytes(),
                     (ROOT / "templates" / "agents" / f"{role}.toml").read_bytes(),
@@ -1843,15 +1842,15 @@ class NativeInstallTests(unittest.TestCase):
             home = Path(directory) / "home"
             agents = home / "agents"
             agents.mkdir(parents=True)
-            (agents / "plan-verifier.toml").write_bytes(
-                (previous / "plan-verifier.toml").read_bytes() + b"# custom\n"
+            (agents / "verifier.toml").write_bytes(
+                (previous / "verifier.toml").read_bytes() + b"# custom\n"
             )
             with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
                 self.run_install(home)
 
         runbook = (ROOT / "install" / "AGENT-INSTALL.md").read_text()
         self.assertIn(
-            "released canonical\nv1.3.1 `plan-verifier` and `verifier`",
+            "released canonical\nv1.3.1 `verifier` payloads",
             runbook,
         )
         self.assertIn("released canonical v1.3.3 payloads", runbook)
@@ -1911,7 +1910,7 @@ class NativeInstallTests(unittest.TestCase):
 
     def test_release_pinned_v133_routing_roles_upgrade(self) -> None:
         previous = ROOT / "install" / "previous" / "v1.3.3" / "agents"
-        roles = ("plan-verifier", "verifier")
+        roles = ("verifier",)
         for role in roles:
             digest = hashlib.sha256((previous / f"{role}.toml").read_bytes()).hexdigest()
             self.assertIn(digest, installer.CANONICAL_ROLE_UPGRADE_DIGESTS[role])

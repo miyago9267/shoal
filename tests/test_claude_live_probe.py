@@ -64,7 +64,7 @@ def stage_events(
     events = _events(
         sample or ("dispatch-ok" if stage == "dispatch" else "no-agent-call")
     )
-    events = json.loads(json.dumps(events).replace("plan-verifier", "scout"))
+    events = json.loads(json.dumps(events).replace("plan-critic", "scout"))
     for event in events:
         if event["type"] == "system" and event["subtype"] == "init":
             event.update(

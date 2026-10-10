@@ -81,7 +81,7 @@
       "policy_basis": [
         "templates/agents-md.orchestration.md",
         "templates/agents/scout.toml",
-        "templates/agents/plan-verifier.toml"
+        "templates/agents/plan-critic.toml"
       ],
       "expected": {
         "task_mode": "execute",

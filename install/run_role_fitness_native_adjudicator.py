@@ -38,14 +38,14 @@ VERSION = "role-fitness-native-adjudicator-v2"
 def _prompt(plan: str, primary: dict[str, Any], verifier: dict[str, Any]) -> str:
     message = (
         "Act as a one-shot Sol adjudicator. Resolve the semantic disagreement between two anonymous Luna verdicts for the same Plan. "
-        "Do not invent risks, use external evidence, or repair missing evidence. Preserve every concrete blocker from either verdict when its evidence is present in the Plan; do not drop a supported blocker merely because the other verdict omitted it. Return exactly the installed plan-verifier contract: either READY, or REVISE followed by one or more blocks with the exact fields Blocker:, Evidence:, Minimum revision:, and Acceptance check:. "
+        "Do not invent risks, use external evidence, or repair missing evidence. Preserve every concrete blocker from either verdict when its evidence is present in the Plan; do not drop a supported blocker merely because the other verdict omitted it. Return exactly the installed plan-critic contract: either READY, or REVISE followed by one or more blocks with the exact fields Blocker:, Evidence:, Minimum revision:, and Acceptance check:. "
         "Do not return JSON, markdown fences, extra headings, or commentary. Do not call tools, modify files, delegate, or mention model identities.\n\n"
         f"Verdict A:\n{json.dumps(primary, sort_keys=True)}\n\n"
         f"Verdict B:\n{json.dumps(verifier, sort_keys=True)}\n\nPlan:\n{plan}"
     )
     return (
         "Call spawn_agent exactly once with the following message, using "
-        "agent_type='plan-verifier', task_name='role_fitness_adjudication', fork_turns='none':\n\n"
+        "agent_type='plan-critic', task_name='role_fitness_adjudication', fork_turns='none':\n\n"
         + message
         + "\n\nThen call wait_agent exactly once with timeout_ms=30000. Do not use an untyped fallback or a second spawn."
     )
@@ -77,8 +77,8 @@ def _native_case(*, private_root: Path, active_home: Path, codex_bin: str, case_
         child_events = dispatch.load_jsonl(dispatch.locate_rollout(home / "sessions", child_id))
         receipt = dispatch.inspect_dispatch(
             parent_events, child_events,
-            expected_role=dispatch.read_role_binding(home / "agents" / "plan-verifier.toml"),
-            expected_role_name="plan-verifier", expected_task_name="role_fitness_adjudication",
+            expected_role=dispatch.read_role_binding(home / "agents" / "plan-critic.toml"),
+            expected_role_name="plan-critic", expected_task_name="role_fitness_adjudication",
         )
         child_messages, event_types, child_usage = _messages("\n".join(json.dumps(event) for event in child_events))
         _, _, parent_usage = _messages("\n".join(json.dumps(event) for event in parent_events))
@@ -89,7 +89,7 @@ def _native_case(*, private_root: Path, active_home: Path, codex_bin: str, case_
             return {"case_id": case_id, "status": "inconclusive", "reason": "invalid_native_adjudicator", "dispatch_status": receipt.status, "dispatch_reason": receipt.reason_code, "wall_seconds": round(elapsed, 3), "event_types": event_types}
         score = score_plan_review(ledger, output)
         return {
-            "case_id": case_id, "status": "accepted", "native_role": "plan-verifier", "model": receipt.model, "reasoning_effort": receipt.reasoning_effort,
+            "case_id": case_id, "status": "accepted", "native_role": "plan-critic", "model": receipt.model, "reasoning_effort": receipt.reasoning_effort,
             "dispatch_status": receipt.status, "dispatch_reason": receipt.reason_code, "weighted_tokens": weighted_tokens, "wall_seconds": round(elapsed, 3),
             "supported_findings": score["supported_findings"], "quality_score": _quality_score(score), "false_escalation": score["false_escalation"], "risk_coverage": score["risk_coverage"],
         }

@@ -20,7 +20,7 @@ write `privacy: not in scope`, which does not replace a no-findings statement.
 Report severity, affected unit ID, file:line evidence or an explicit evidence
 gap, assumptions, minimum remediation, and an acceptance check. The main
 session carries findings and dispositions into the Plan before that unit's
-first plan-verifier review. Never modify files or external state, produce an
+first plan-critic review. Never modify files or external state, produce an
 implementation brief, or fix findings; approved implementation belongs to
 security-executor.
 

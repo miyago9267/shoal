@@ -34,9 +34,9 @@ class PolicyTests(unittest.TestCase):
             "proactively delegate",
             "parallel independent discovery",
             "start them in parallel",
-            "material Plan to `plan-verifier` before approval",
+            "material Plan to `plan-critic` before approval",
             "pre-approval security evidence to `security-reviewer`",
-            "fully specified mechanical repetition to `mech-executor`",
+            "fully specified mechanical repetition to `applier`",
             "approved, bounded implementation requiring judgment to `sol-executor`",
             "risk-triggered implementation",
             "fresh `verifier` for one independent refutation pass",
@@ -88,7 +88,7 @@ class PolicyTests(unittest.TestCase):
         policy = " ".join(
             (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8").split()
         )
-        self.assertIn("`mech-executor` and `scout` are baseline-only", policy)
+        self.assertIn("`applier` and `scout` are baseline-only", policy)
         self.assertIn("never request Astra", policy)
         self.assertIn(
             "route normal work to `sol-executor`; deep work to `executor`/`verifier`",
@@ -190,7 +190,7 @@ class PolicyTests(unittest.TestCase):
             "complete one-shot brief",
             "exclusive ownership",
             "per-item acceptance",
-            "dispatch exactly one `mech-executor` before the main session edits by default",
+            "dispatch exactly one `applier` before the main session edits by default",
             "main session owns per-item triage, exceptions, integration, and acceptance",
             "must not edit the worker-owned scope",
             "specific named blocker before editing",
@@ -322,7 +322,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_verifier_contracts_converge_without_crossing_boundaries(self) -> None:
         policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
-        plan = (AGENTS / "plan-verifier.toml").read_text(encoding="utf-8")
+        plan = (AGENTS / "plan-critic.toml").read_text(encoding="utf-8")
         outcome = (AGENTS / "verifier.toml").read_text(encoding="utf-8")
         security = (AGENTS / "security-reviewer.toml").read_text(encoding="utf-8")
         normalized_policy = " ".join(policy.split())
@@ -339,7 +339,7 @@ class PolicyTests(unittest.TestCase):
             "Evidence:",
             "Minimum revision:",
             "Acceptance check:",
-            "use a fresh `plan-verifier`",
+            "use a fresh `plan-critic`",
             "two automatic `REVISE` verdicts for the same unit",
             "disposition every blocker as `FIX`, `DEFER`, or `REJECT`",
             "Ask the user only for unresolved P0/P1",
@@ -364,7 +364,7 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn("REFUTED", normalized_plan)
         self.assertNotIn("READY", outcome)
         self.assertNotIn("REVISE", outcome)
-        self.assertIn("first plan-verifier review", security)
+        self.assertIn("first plan-critic review", security)
 
     def test_policy_owns_outcome_disposition(self) -> None:
         policy = " ".join((ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8").split())
@@ -443,7 +443,7 @@ class PolicyTests(unittest.TestCase):
         )
         for phrase in (
             "mandatory tool-use gate",
-            "must call `plan-verifier` before sending any readiness recommendation",
+            "must call `plan-critic` before sending any readiness recommendation",
             "Do not return `READY` or `REVISE` from the main session first",
             "typed delegation is unavailable",
             "Review-service circuit breaker",

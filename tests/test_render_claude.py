@@ -39,7 +39,7 @@ def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
-        self.assertEqual(len(golden), 13)
+        self.assertEqual(len(golden), 15)
         rendered = render.RENDERERS["claude"](ROOT)
         self.assertEqual(sorted(rendered), sorted(golden))
         for rel, data in golden.items():

@@ -10,7 +10,7 @@ access = "read-only"
 tier = "fast"
 security = false
 
-[roles.mech-executor]
+[roles.applier]
 access = "write"
 tier = "fast"
 security = false
@@ -20,7 +20,7 @@ access = "write"
 tier = "standard"
 security = false
 
-[roles.plan-verifier]
+[roles.plan-critic]
 access = "read-only"
 tier = "frontier"
 security = false
@@ -40,3 +40,14 @@ capabilities = ["web"]
 access = "write"
 tier = "strong"
 security = true
+
+[roles.watcher]
+access = "verify"
+tier = "fast"
+security = false
+
+[roles.researcher]
+access = "read-only"
+tier = "strong"
+security = false
+capabilities = ["web"]

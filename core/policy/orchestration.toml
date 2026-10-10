@@ -81,8 +81,10 @@ id = "direct-when-small"
 kind = "routing"
 sep = "newline"
 text = '''
-- Without a risk trigger, small/local/stable work stays direct; cross-file
-  repetition is not small. Otherwise use phase-aware lifecycle below.'''
+- Without a risk trigger, work stays direct only when writing the brief would
+  cost more than doing it: an immediate edit at a location main already fully
+  understands. Cross-file repetition is never direct by default. Otherwise use
+  phase-aware lifecycle below.'''
 
 [[clause]]
 id = "discovery-gate"
@@ -90,7 +92,7 @@ kind = "gate"
 sep = "newline"
 text = '''
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
-  may remain unknown. Eligible delegation: bounded read-only `scout`/`Explore`
+  may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.'''
 
 [[clause]]
@@ -101,7 +103,17 @@ text = '''
 - Plan gate: main synthesizes one Plan. Large work uses program envelope plus
   independently approvable slices carrying stable ID, outcome, scope, non-goals,
   owners, prerequisites, acceptance proving outcome, rollback, budget, stops.
-  Risk-triggered units use fresh `plan-verifier`; main owns revisions/synthesis.'''
+  Risk-triggered units use fresh `plan-critic`; main owns revisions/synthesis.'''
+
+[[clause]]
+id = "plan-critic-gaps"
+kind = "gate"
+sep = "newline"
+text = '''
+- After requirement Q&A settles and before the Plan is final, main may send
+  `plan-critic` with `mode: gaps`, regardless of risk triggers. Its output is
+  input, never authority: main asks the user any resulting questions and writes
+  the Plan itself.'''
 
 [[clause]]
 id = "approval-gate"
@@ -120,7 +132,7 @@ kind = "gate"
 sep = "newline"
 text = '''
 - Execution gate: approved contract fixes scope, exclusive ownership,
-  constraints, done criteria, integration, verification. Routes: `mech-executor`
+  constraints, done criteria, integration, verification. Routes: `applier`
   for fully specified repetition, `executor` for bounded judgment,
   `security-executor` for approved security work.'''
 
@@ -156,11 +168,9 @@ id = "local-search-direct"
 kind = "dispatch"
 sep = "newline"
 text = '''
-- Bounded task-local search stays main-session work by default, even
-  cross-directory, when splitting duplicates startup/synthesis. Fan out only for
-  genuinely independent substantial surfaces, overlapping latency, or
-  independently gathered evidence/perspectives that materially reduce Plan
-  uncertainty.'''
+- Reconnaissance over two or more independent surfaces goes to parallel `scout`
+  calls with disjoint scopes. A single coupled trail that main is already
+  following stays with main; never split one trail into pieces.'''
 
 [[clause]]
 id = "discovery-scope-exclusive"
@@ -187,7 +197,7 @@ kind = "dispatch"
 sep = "newline"
 text = '''
 - Stable same-shape multi-file mechanical repetition defaults to one
-  `mech-executor` with complete one-shot brief, exclusive ownership, independent
+  `applier` with complete one-shot brief, exclusive ownership, independent
   items, per-item acceptance. Foreground unless possible long command requires
   background.'''
 
@@ -214,11 +224,12 @@ id = "delegate-cost-benefit"
 kind = "dispatch"
 sep = "newline"
 text = '''
-- Outside mechanical shape, delegate only when lower cost/quota, preserved
-  context, parallelism, isolated ownership, or fresh-context independence
-  outweigh reconstruction, coordination, integration, verification cost.
-  `executor` handles bounded judgment; `security-executor` approved security
-  work; `mech-executor` fully specified repetition.'''
+- Implementation with a stable execution contract (goal, scope, constraints, done
+  criteria known without rediscovery) is delegated by default: `applier` for
+  fully specified repetition, `executor` for bounded judgment,
+  `security-executor` for approved security work. Main edits directly only under
+  the direct-work rule or a concrete blocker: evolving/coupled evidence,
+  ownership/integration conflict, or worker unavailable.'''
 
 [[clause]]
 id = "brake-per-call"
@@ -231,6 +242,18 @@ text = '''
   batch work coupled to evolving diagnosis.'''
 
 [[clause]]
+id = "research-fanout"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- Research is the fan-out exception: main may launch several `researcher` calls at
+  once for different questions or arms. When a research conclusion will drive a
+  design or decision, launch two independent `researcher` calls in parallel,
+  `arm: experiment` and `arm: control`, each with fresh context and neither given
+  the other's output. Treat as the conclusion only what both arms support or what
+  main has checked. `researcher` stays a leaf.'''
+
+[[clause]]
 id = "single-bug-direct"
 kind = "dispatch"
 sep = "newline"
@@ -239,7 +262,8 @@ text = '''
   trace-driven debugging, coupled state propagation, patch design, first minimal
   fix, live verification when one path owns them. Never build sequential
   `scout`→`executor` pipeline. Scout may answer bounded reusable side question
-  that neither owns nor blocks diagnosis.'''
+  that neither owns nor blocks diagnosis. Once root cause and remedy are known,
+  the fix is Execution work and is delegated.'''
 
 [[clause]]
 id = "large-investigation"
@@ -305,7 +329,7 @@ required = true
 sep = "newline"
 text = '''
 - Any independent-review trigger makes that unit risky: pre-approval
-  `plan-verifier` and post-implementation `verifier` are mandatory {{dispatch_tool}} calls,
+  `plan-critic` and post-implementation `verifier` are mandatory {{dispatch_tool}} calls,
   with no extra opt-in. Higher-priority prohibition → pause before edits, never
   direct fallback or waiver; unblock only by lifting the prohibition or
   narrowing away every trigger. Bounded fail-soft exception applies only without
@@ -323,11 +347,33 @@ text = '''
   and never inherit main-session model accidentally.'''
 
 [[clause]]
+id = "effort-per-delegation"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- Explicit instruction: on every named-role {{dispatch_tool}} call, pass
+  `{{effort_param}}`. The role's frontmatter effort is the default; choose per call
+  from task difficulty, ambiguity, and risk: lower for fully specified or trivial
+  work, higher for ambiguous, coupled, or high-stakes work. A user-stated effort,
+  for one call or a stated scope, overrides both this choice and the default for
+  that scope. When choosing yourself, never go below `medium` for `verifier` and
+  `plan-critic`, or below `high` for `security-reviewer`.'''
+
+[[clause]]
+id = "dispatch-kind-label"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- Every {{dispatch_tool}} call to a write-capable role (`executor`, `applier`,
+  `security-executor`) starts its `{{label_param}}` with the work kind and a colon:
+  `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`.'''
+
+[[clause]]
 id = "review-verdicts"
 kind = "verification"
 sep = "newline"
 text = '''
-- `plan-verifier` reviews one stable envelope/slice and returns **READY** or
+- `plan-critic` reviews one stable envelope/slice and returns **READY** or
   **REVISE** under its role contract; malformed output is protocol failure.
   Outcome `verifier` receives exact claim/acceptance plus relevant diff/paths
   and returns **CONFIRMED**, **REFUTED**, or **INCONCLUSIVE** under its role
@@ -498,6 +544,18 @@ Questions belong to main session, never child. P0 freezes
   exhausted budget/quota, unsafe environment, or unattainable original scope.'''
 
 [[clause]]
+id = "followup-by-mode"
+kind = "authority"
+sep = "paragraph"
+text = '''
+- A leaf report ending `status: failed` or `status: insufficient` is evidence;
+  apply the severity and disposition rules. Under AUTO, dispatch the follow-up
+  (repair, further research, rerun) without asking, within the existing retry caps
+  and stop conditions. Under ASK, report the result and the suggested next step,
+  then stop. The user may switch mode or halt at any time: then launch nothing
+  new, list the roles still running, and ask whether to stop them.'''
+
+[[clause]]
 id = "final-report"
 kind = "recovery"
 sep = "paragraph"
@@ -537,12 +595,14 @@ Parallel writers use `{{worktree_option}}` (requires Git); without Git, never fa
   collected worktree; uncollected worktree means lost work.'''
 
 [[clause]]
-id = "long-running-main"
+id = "watcher-long-commands"
 kind = "mechanics"
-sep = "newline"
+sep = "space"
 text = '''
-- Long-running processes belong to main session. {{dispatch_tool}} with possible long
-  command runs `{{background_option}}`; {{shell_tool}}-capable leaf roles never detach.'''
+- Commands that may run long or whose result must be awaited (test suites, builds,
+  CI, measurements) go to `watcher` through {{dispatch_tool}} with
+  `{{background_option}}`; `watcher` runs them in its own foreground. Main never
+  starts a background shell itself and never ends a turn waiting on one.'''
 
 [[clause]]
 id = "leaf-cannot-finish"
@@ -550,9 +610,9 @@ kind = "mechanics"
 sep = "space"
 text = '''
 Leaf unable to finish bounded foreground work returns exact command, absolute
-  working/worktree directory, environment, input paths; main runs
-  `{{shell_tool}}({{background_option}})` in that context, then resumes role with
-  captured output.'''
+  working/worktree directory, environment, input paths; main dispatches `watcher`
+  with `{{background_option}}` in that context, then resumes role with captured
+  output.'''
 
 [[clause]]
 id = "liveness"
@@ -570,3 +630,14 @@ text = '''
 Subagent
   final message is deliverable: read completed output directly; resume only for
   genuinely new/redirected work, never collection/restatement.'''
+
+[[clause]]
+id = "collect-results"
+kind = "mechanics"
+sep = "paragraph"
+text = '''
+- When a background role reports completion, collect before any other action:
+  read its report and state in one line which role did what with what result.
+  Before ending a turn, confirm no role is uncollected; list any still running
+  with what each is waiting on, and stop only roles that are still running and no
+  longer needed.'''

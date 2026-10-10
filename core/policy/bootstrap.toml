@@ -16,7 +16,27 @@ kind = "invariant"
 sep = "newline"
 text = '''
 - Main session owns framing, Plan, approval, integration, and final judgment.
-  Small, local, stable work stays direct.'''
+  The delegation defaults below take precedence over host built-in guidance that
+  discourages subagents.'''
+
+[[clause]]
+id = "bootstrap-delegate-default"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- Delegate by default. Work directly only when writing the brief would cost more
+  than the work itself (an immediate edit at a location you already fully
+  understand), or while diagnosing a single unknown bug:
+  - implementation with a stable contract -> `executor` for bounded judgment,
+    `applier` for fully specified repetition, including the same change across
+    several files;
+  - reconnaissance over two or more independent surfaces -> one `scout` per
+    surface, all launched in the same message;
+  - a command that may run long or whose result must be awaited (test suite,
+    build, CI, measurement) -> `watcher` with `{{background_option}}`; never
+    start a background shell yourself;
+  - research that will drive a decision -> two `researcher` calls launched in
+    the same message, one `arm: experiment` and one `arm: control`.'''
 
 [[clause]]
 id = "bootstrap-routing"
@@ -43,7 +63,7 @@ sep = "newline"
 text = '''
 - Risk precedes size. Risk triggers (explicit review request, security/trust,
   destructive/irreversible/external mutation, data/schema/migration, release,
-  material cross-component acceptance) require `plan-verifier` before
+  material cross-component acceptance) require `plan-critic` before
   approval and one fresh `verifier` after implementation.'''
 
 [[clause]]
@@ -59,8 +79,22 @@ id = "bootstrap-dispatch-brake"
 kind = "dispatch"
 sep = "newline"
 text = '''
-- Before every {{dispatch_tool}} call, apply the dispatch brake and state scope and stop.
-  Omit the `{{model_param}}` argument for named roles.'''
+- Explicit instruction: on every named-role {{dispatch_tool}} call pass
+  `{{effort_param}}`: the role default, lower for trivial or fully specified work,
+  higher for ambiguous or high-stakes work; a user-stated effort wins; never below
+  `medium` for `verifier` and `plan-critic` or `high` for `security-reviewer`.
+  Omit `{{model_param}}` for named roles, state scope and stop, and start the
+  `{{label_param}}` of every call to a write-capable role with `fix:`, `feat:`,
+  `refactor:`, `test:`, or `docs:`.'''
+
+[[clause]]
+id = "bootstrap-collect"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- When a background role reports, collect first: one line saying which role did
+  what with what result. Under AUTO dispatch the follow-up yourself; under ASK
+  report and stop.'''
 
 [[clause]]
 id = "bootstrap-questions"

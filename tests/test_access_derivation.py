@@ -207,7 +207,7 @@ class ShippedBindingTests(unittest.TestCase):
         self.assertEqual(used, {"web"})
         self.assertEqual(
             {n for n, r in roles.items() if "web" in r.get("capabilities", [])},
-            {"security-reviewer"},
+            {"security-reviewer", "researcher"},
         )
 
     def test_every_host_derives_every_role_with_core_access(self) -> None:
@@ -250,14 +250,14 @@ class ShippedBindingTests(unittest.TestCase):
         perms = {n: p.fields for n, p in derive("claude").items()}
         read_only = {"tools": ["Read", "Glob", "Grep"]}
         self.assertEqual(perms["scout"], read_only)
-        self.assertEqual(perms["plan-verifier"], read_only)
+        self.assertEqual(perms["plan-critic"], read_only)
         self.assertEqual(perms["Explore"], read_only)
         self.assertEqual(
             perms["security-reviewer"],
             {"tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]},
         )
         self.assertEqual(perms["executor"], {"disallowedTools": ["Agent", "Workflow"]})
-        self.assertEqual(perms["security-executor"], perms["mech-executor"])
+        self.assertEqual(perms["security-executor"], perms["applier"])
         self.assertEqual(
             perms["verifier"],
             {"disallowedTools": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]},
@@ -266,26 +266,26 @@ class ShippedBindingTests(unittest.TestCase):
     def test_codex_derivation(self) -> None:
         perms = {n: p.fields for n, p in derive("codex").items()}
         self.assertEqual(perms["scout"], {"sandbox_mode": "read-only"})
-        self.assertEqual(perms["plan-verifier"], {"sandbox_mode": "read-only"})
+        self.assertEqual(perms["plan-critic"], {"sandbox_mode": "read-only"})
         self.assertEqual(
             perms["security-reviewer"],
             {"sandbox_mode": "read-only", "web_search": "live"},
         )
         self.assertEqual(perms["verifier"], {"sandbox_mode": "workspace-write"})
-        for name in ("mech-executor", "executor", "security-executor", "sol-executor"):
+        for name in ("applier", "executor", "security-executor", "sol-executor"):
             self.assertEqual(perms[name], {}, name)
 
     def test_agy_derivation(self) -> None:
         perms = {n: p.fields for n, p in derive("agy").items()}
         base = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message"]
         self.assertEqual(perms["scout"], {"tools": base})
-        self.assertEqual(perms["plan-verifier"], {"tools": base})
+        self.assertEqual(perms["plan-critic"], {"tools": base})
         self.assertEqual(perms["verifier"], {"tools": [*base, "run_command"]})
         self.assertEqual(
             perms["security-reviewer"],
             {"tools": [*base, "read_url_content", "search_web"]},
         )
-        for name in ("mech-executor", "executor", "security-executor"):
+        for name in ("applier", "executor", "security-executor"):
             self.assertEqual(perms[name], {}, name)
 
     def test_grok_derivation(self) -> None:
@@ -294,9 +294,9 @@ class ShippedBindingTests(unittest.TestCase):
             modes,
             {
                 "scout": "read-only",
-                "mech-executor": "all",
+                "applier": "all",
                 "executor": "all",
-                "plan-verifier": "read-only",
+                "plan-critic": "read-only",
                 "verifier": "execute",
                 "security-reviewer": "read-only",
                 "security-executor": "all",
@@ -503,8 +503,9 @@ class MutationTests(TempRoot):
             self.changed("claude"),
             {
                 "agents/scout.md",
-                "agents/plan-verifier.md",
+                "agents/plan-critic.md",
                 "agents/security-reviewer.md",
+                "agents/researcher.md",
                 "agents/Explore.md",
             },
         )
@@ -514,6 +515,10 @@ class MutationTests(TempRoot):
         self.assertIn(
             b"\ntools: Read, Grep, WebSearch, WebFetch\n",
             out["agents/security-reviewer.md"],
+        )
+        self.assertIn(
+            b"\ntools: Read, Grep, WebSearch, WebFetch\n",
+            out["agents/researcher.md"],
         )
 
     def test_agy_read_only_table_change_moves_every_read_only_role(self) -> None:
@@ -526,7 +531,7 @@ class MutationTests(TempRoot):
             self.changed("agy"),
             {
                 "agents/scout/agent.md",
-                "agents/plan-verifier/agent.md",
+                "agents/plan-critic/agent.md",
                 "agents/security-reviewer/agent.md",
             },
         )
@@ -566,7 +571,7 @@ class MutationTests(TempRoot):
         self.assertEqual(
             self.changed("claude"),
             {
-                "agents/mech-executor.md",
+                "agents/applier.md",
                 "agents/executor.md",
                 "agents/security-executor.md",
             },

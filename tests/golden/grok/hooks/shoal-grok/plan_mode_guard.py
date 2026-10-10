@@ -76,7 +76,7 @@ def decide(payload: object, home: Path) -> dict | None:
     reason = (f"Plan mode is active, and this subagent can write files ({verdict[1]}); Grok's plan mode does not "
               "restrict subagents. Finish the verified Plan and leave plan mode with exit_plan_mode after "
               "the user approves it, then spawn this subagent. Inside plan mode use only read-only roles "
-              "(scout, plan-verifier, security-reviewer).")
+              "(scout, plan-critic, security-reviewer).")
     return {"decision": "deny", "reason": reason}
 
 

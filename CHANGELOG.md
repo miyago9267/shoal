@@ -3,6 +3,78 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.0.0
+
+role 重整、預設派工與每次派工的 effort。設計與條款原文在
+`docs/specs/delegation-default/`（`SPEC.md`、`CLAUSES.md`；2026-10-10 核准）。因為兩個
+role 改名，這是 breaking release。
+
+### Breaking changes
+
+- role 改名（core 的 key，五個 host 一起換；行為、model、effort、權限與 prompt 語意不變）：
+
+  | 舊名 | 新名 |
+  | --- | --- |
+  | `mech-executor` | `applier` |
+  | `plan-verifier` | `plan-critic` |
+
+  對照表在 `docs/specs/delegation-default/RENAME.md`。上游專案仍使用舊名，比對上游時先套用此表。
+- `Explore` 不再列入 role 清單與路由條款；覆寫檔保留（haiku / low）。
+
+### Features
+
+- 新 role `watcher`（haiku / low，可跑不可寫）：在自己的前景執行被指派的指令、build、測試或 CI 到結束，回報指令、
+  結束狀態與判定成敗的原始輸出。`researcher`（opus / high，唯讀加 web）：論文、外部文件與上游專案分析，主張逐項附來源，
+  區分來源原文、推論與未驗證；研究結論會影響決策時，main 平行派出實驗組與對照組兩個互相獨立的 `researcher`。兩者都以 `status` 與
+  `suggested_next` 結尾。第一階段只有 Claude 綁定，Codex、Grok、agy、OpenCode 的 `omitted_roles`
+  列出它們。
+- 每次派工帶 effort：新條款 `effort-per-delegation` 以 `Explicit instruction:` 開頭，要求 main
+  對每次具名 role 的派工傳 `effort`；role frontmatter 的值是預設，使用者指定時優先，`verifier`、
+  `plan-critic` 自行選擇時不低於 `medium`，`security-reviewer` 不低於 `high`。
+  `dispatch-kind-label`：派可寫的 role（`executor`、`applier`、`security-executor`）時，
+  description 以 `fix:`、`feat:`、`refactor:`、`test:`、`docs:` 之一開頭。
+- 預設派工：條款 `direct-when-small`、`local-search-direct`、`delegate-cost-benefit`、
+  `single-bug-direct`、`bootstrap-ownership` 改寫。已有穩定契約的實作、互不相干的偵察與長指令預設派工，main
+  直接做的條件是寫 brief 的成本高於直接做；bootstrap 註明這個預設優先於 host 內建的「少派 subagent」指示。
+  `long-running-main` 取代為 `watcher-long-commands`，`leaf-cannot-finish` 改為由 main
+  派背景 `watcher`，main 不自己開背景 shell。新增 `research-fanout`、`plan-critic-gaps`、
+  `followup-by-mode`（AUTO 下 role 回報 failed／insufficient 時自動接手，ASK 下停下）、
+  `collect-results`（背景 role 完成後先回收並寫一行結果）。
+- 常駐 bootstrap 直接寫派工路徑（第一輪 live gate：headless session 只拿到
+  bootstrap）：`bootstrap-ownership`、`bootstrap-dispatch-brake` 改寫，新增
+  `bootstrap-delegate-default`（executor／applier、每個偵察面一個 scout、背景
+  watcher、兩個 researcher）與 `bootstrap-collect`；`watcher` 新增
+  `long-command-background`，指令超過前景時限時可自己開背景 shell 等到結束。
+- `docs/DESIGN-INVARIANTS.md` 第 2、3、4 條修訂：派工預設化；hook 硬規則加上 Claude 上的 R1 與 main
+  背景 shell；各 host 規則相同、只換 model 與工具名稱綁定。
+- `plan-critic` 新增補漏模式：brief 帶 `mode: gaps` 時不回 READY／REVISE，改列還沒被問到的需求、沒說出口的假設、
+  風險與最多三個不同做法；問使用者與寫 Plan 仍由 main 負責。補漏條款在 core contract，使用 core contract 的 host
+  都有。
+- dispatch guard（`docs/specs/dispatch-enforcement` 的 2026-10-10 修訂）：Claude 在
+  enforce 下 R1 改回 deny（本輪被分類為實作工作而尚未派 write role 時，deny main 的改檔工具）；新增 G4，deny
+  main 的背景 `Bash`（`run_in_background: true`），要求改派背景 `watcher`。shadow 記
+  `would_deny`；R2 與其他 host 的 R1 維持只提醒；subagent 不受影響。prompt 內獨立的 `#direct`
+  放行那一輪（下一輪失效，不記錄 prompt 內容），`SHOAL_GUARD_DIRECT=1` 照舊放行。`Bash` 加進
+  `tools/install_hooks.py` 與 plugin 的 `PreToolUse` matcher。
+- 選模：Claude 的 `scout` 固定用 haiku（low），`executor` 的 effort 由 high 改 medium。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.0.0。prompt lock 以 migration
+  `delegation-default-3-0-0`（`--allow-lock-update`）更新：新增 `watcher`、`researcher`
+  的 surface，改名的 surface 換路徑，三個超過變動預算的 policy surface 掛 migration marker。
+
+### 升級
+
+- Codex、Grok、agy：`tools/sync_global.py`（每日同步）在 `--apply` 時移除確認是 shoal
+  安裝的舊名檔案（`mech-executor`、`plan-verifier`）再安裝新名；dry-run 只回報。Grok 的
+  `tools/install_grok.py` 同樣處理。
+- Claude 由 dotfile 複製安裝，不在 sync 範圍：全域安裝要自己移除 `~/.claude/agents/mech-executor.md`
+  與 `~/.claude/agents/plan-verifier.md`，並重跑
+  `python3 tools/install_hooks.py --host claude --apply`（才有 G4 的 `Bash`
+  matcher）。
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.0.0` 加回並更新。
+
 ## v2.1.1
 
 跨機器共用設定檔時的三個修正。

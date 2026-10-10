@@ -49,7 +49,7 @@ sep = "space"
 text = '''
 The main
 session carries findings and dispositions into the Plan before that unit's
-first plan-verifier review.'''
+first plan-critic review.'''
 
 [[clause]]
 id = "no-modify"

@@ -9,6 +9,14 @@ written.
 
 ## Unreleased
 
+## v3.0.0
+
+- Roles renamed: `mech-executor` is now `applier`, `plan-verifier` is now
+  `plan-critic` (`docs/specs/delegation-default/RENAME.md`). Behavior, models
+  and permissions are unchanged; `tools/sync_global.py --apply` removes the
+  old-name agent files. `watcher` and `researcher` are not bound on Codex
+  yet. The Codex policy text changes only by the two names and the marker.
+
 ## v2.1.1
 
 - Cost-unbounded continuation: an opt-in paragraph after the direction

@@ -63,11 +63,15 @@ class GrokRenderTests(rh.HostRenderCase):
         rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-grok v.+ -->$", rules),
                          [f"<!-- shoal-grok v{version} -->"])
-        self.assertEqual(version, "2.0.0")
+        self.assertEqual(version, "3.0.0")
 
     def test_rules_equal_upstream_except_the_rename(self) -> None:  # AC-GW-003
         # 2.0.0 起 rules 不再逐字等於上游：只差 docs/specs/shoal-rebrand/RENAME.md 的名稱替換與版本 marker。
+        # 另加 docs/specs/delegation-default/RENAME.md 的 role 改名（上游仍用舊名）。
         upstream = apply_rename(UPSTREAM_RULES.read_text(encoding="utf-8"), "rules.md")
+        upstream = upstream.replace("mech-executor", "applier").replace("plan-verifier", "plan-critic")
+        version = (ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip()
+        upstream = upstream.replace("<!-- shoal-grok v2.0.0 -->", f"<!-- shoal-grok v{version} -->")  # apply_rename stamps 2.0.0
         rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
         self.assertEqual(rules, upstream)
 
@@ -91,7 +95,7 @@ class GrokRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:  # AC-GW-005
         src = self.root / "hosts" / "grok" / "src" / "rules" / "shoal-grok.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-grok v2.0.0 -->\n"
+        marker = "<!-- shoal-grok v3.0.0 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
@@ -107,8 +111,8 @@ class GrokRenderTests(rh.HostRenderCase):
     def test_role_toml_carries_reasoning_effort(self) -> None:
         rendered = render.RENDERERS["grok"](ROOT)
         efforts = {n: tomllib.loads(rendered[f"roles/{n}.toml"].decode())["reasoning_effort"]
-                   for n in ("scout", "mech-executor", "security-reviewer")}
-        self.assertEqual(efforts, {"scout": "low", "mech-executor": "low", "security-reviewer": "high"})
+                   for n in ("scout", "applier", "security-reviewer")}
+        self.assertEqual(efforts, {"scout": "low", "applier": "low", "security-reviewer": "high"})
 
     def test_agent_model_must_match_binding(self) -> None:
         self.edit(self.root / "hosts" / "grok" / "frames" / "scout.md", "model: inherit", "model: grok-4.5")

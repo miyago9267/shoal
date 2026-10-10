@@ -102,7 +102,7 @@ class CoOwnedHookStagingTests(unittest.TestCase):
     def test_legacy_role_rollback_backup_date_shape_is_omitted_from_stage(self) -> None:
         self.assertTrue(
             stage_smoke_home._rollback_backup(
-                Path("agents/plan-verifier.toml.shoal-codex-20260807")
+                Path("agents/plan-critic.toml.shoal-codex-20260807")
             )
         )
 

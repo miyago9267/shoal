@@ -170,12 +170,14 @@ class PromptDocumentLockTests(unittest.TestCase):
 CLAUDE_AGENT_FILES = (
     "executor",
     "Explore",
-    "mech-executor",
-    "plan-verifier",
+    "applier",
+    "plan-critic",
     "scout",
     "security-executor",
     "security-reviewer",
     "verifier",
+    "watcher",
+    "researcher",
 )
 CLAUDE_SKILL_DIR = "hosts/claude/dist/skills/shoal-orchestration"
 LOCK_RELATIVE = "docs/specs/prompt-document-lock/LOCK.json"
@@ -204,12 +206,12 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         path = root / version_file
         path.write_text(path.read_text(encoding="utf-8").strip() + ".bump\n", encoding="utf-8")
 
-    def test_lock_covers_exactly_the_eleven_claude_surfaces(self) -> None:
+    def test_lock_covers_exactly_the_thirteen_claude_surfaces(self) -> None:
         lock = load_lock(ROOT)
         claude = {s["path"] for s in lock["surfaces"] if s["path"].startswith("hosts/claude/")}
 
         self.assertEqual(claude, _claude_paths())
-        self.assertEqual(len(claude), 11)
+        self.assertEqual(len(claude), 13)
         for path in claude:
             self.assertTrue((ROOT / path).is_file(), path)
 
@@ -557,14 +559,21 @@ class MigrationMarkerTests(unittest.TestCase):
                 with self.assertRaisesRegex(PromptLockError, "migration"):
                     load_lock(root)
 
-    def test_real_lock_markers_are_only_the_recorded_rebrand_renewal(self) -> None:
-        # 一次性的 marker 只允許 shoal-rebrand 的 lock renewal；之後的 renewal 要換 id，舊的在下一次改動移除。
+    def test_real_lock_markers_are_only_the_recorded_delegation_default_renewal(self) -> None:
+        # 一次性的 marker 只允許最近一次核准的 renewal（delegation-default 3.0.0）；
+        # 之後的 renewal 要換 id，這一批在下一次改動移除（shoal-rebrand 2.0.0 的 marker 已在這次移除）。
         expected = {
-            "migration_id": "shoal-rebrand-2-0-0",
-            "equivalence": "docs/specs/shoal-rebrand/RENAME.md",
+            "migration_id": "delegation-default-3-0-0",
+            "equivalence": "docs/specs/delegation-default/RENAME.md",
         }
+        marked = {s["id"] for s in load_lock(ROOT)["surfaces"] if "migration" in s}
+        self.assertEqual(
+            marked,
+            {"orchestration-template", "packaged-orchestration-policy", "claude-orchestration-policy"},
+        )
         for surface in load_lock(ROOT)["surfaces"]:
             self.assertIn(surface.get("migration", expected), [expected], surface["id"])
+        self.assertTrue((ROOT / expected["equivalence"]).read_text(encoding="utf-8").strip())
 
 
 class RepoPathSemanticsTests(unittest.TestCase):

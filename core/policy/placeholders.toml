@@ -29,6 +29,12 @@ description = "平行寫入時隔離 worktree 的參數寫法（不含反引號�
 [placeholders.model_param]
 description = "派工時指定模型的參數名稱；named role 的選模在 agent 定義，不傳這個參數。"
 
+[placeholders.effort_param]
+description = "派工時指定本次推理強度（effort）的參數名稱；role 定義裡的 effort 是預設值，這個參數逐次覆寫。"
+
+[placeholders.label_param]
+description = "派工時描述這次工作的欄位名稱；可寫 role 的呼叫在此欄位開頭放工作類型標籤。"
+
 [placeholders.goal_command]
 description = "使用者宣告長時間目標的指令（含斜線）。"
 

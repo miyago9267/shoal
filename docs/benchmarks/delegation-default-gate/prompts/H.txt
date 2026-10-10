@@ -1,0 +1,1 @@
+When I run python3 -m unittest tests.test_stats, test_b_second fails although test_a_first passes. Find out why and fix it.

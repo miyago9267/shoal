@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v2.1.1 -->
+<!-- shoal-codex v3.0.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Shoal always-on bootstrap
 
@@ -11,7 +11,7 @@ shoal supplements them and does not replace their precedence boundary.
 - Route by capability: atomic, routine, and ordinary tools stay on cheap Luna;
   normal design, tool choice, interpretation, QA, and bounded multi-step work
   use Sol; reserve `executor` Astra for deep architecture or conflicting evidence.
-- `mech-executor` and `scout` are baseline-only: keep their installed Luna
+- `applier` and `scout` are baseline-only: keep their installed Luna
   bindings, never request Astra, and route normal work to `sol-executor` or
   deep work to `executor`/`verifier` instead of upgrading the child in place.
 - Treat a clear request to fix or complete something as one outcome: continue
@@ -34,7 +34,7 @@ shoal supplements them and does not replace their precedence boundary.
 - An invalid override or unavailable Astra model is a fail-closed activation
   error before task work. Start a new no-flags session to use the normal
   Luna/Sol policy.
-- Use GPT-6 role bindings, including `plan-verifier` on Sol/high; preserve
+- Use GPT-6 role bindings, including `plan-critic` on Sol/high; preserve
   approval, security, and release gates.
 - Avoid duplicate verification: do one targeted primary acceptance check, then
   at most one fresh `verifier` pass when the risk policy requires it. Do not

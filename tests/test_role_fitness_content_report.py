@@ -22,7 +22,7 @@ CLASSES = scorecard.CONTENT_FAILURE_CLASSES
 
 def _accepted(case_id: str, *, quality: float = 80.0, escalated: bool = False) -> dict[str, Any]:
     return {
-        "case_id": case_id, "status": "accepted", "native_role": "plan-verifier",
+        "case_id": case_id, "status": "accepted", "native_role": "plan-critic",
         "dispatch_status": "NATIVE_OK", "false_escalation": escalated,
         "quality_score": quality, "risk_coverage": 1.0,
         "score": {"expected_decision": "READY", "risk_coverage": 1.0},

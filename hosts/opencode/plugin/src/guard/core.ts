@@ -4,7 +4,8 @@
  * Decides on a normalized event only; the OpenCode adapter lives in ./opencode.ts.
  * Behaviour must stay identical to the Python core: both replay
  * tests/fixtures/guard_vectors.json.  The guard is a policy nudge, not a security
- * boundary (docs/specs/dispatch-enforcement/SPEC.md).
+ * boundary (docs/specs/dispatch-enforcement/SPEC.md; R1 deny and G4 on claude:
+ * docs/specs/delegation-default/SPEC.md).
  *
  * `evaluate` throws only on programming or OS errors; callers fail open.
  */
@@ -46,9 +47,11 @@ export type GuardEvent = {
   is_subagent: boolean;
   role: string | null;
   tool_name: string | null;
-  tool_kind: "edit" | "dispatch" | "other" | null;
+  tool_kind: "edit" | "dispatch" | "background_shell" | "other" | null;
   paths: string[];
   dispatched_role: string | null;
+  /** prompt events (claude): the user's prompt carried a standalone `#direct` token. */
+  direct?: boolean;
 };
 
 export type GuardResult = {
@@ -61,7 +64,13 @@ export type GuardResult = {
   notify?: boolean;
 };
 
-type StateFile = { turn_id: string | null; dispatched: boolean; advised: boolean; edited: string[] };
+type StateFile = {
+  turn_id: string | null;
+  dispatched: boolean;
+  advised: boolean;
+  edited: string[];
+  direct: boolean;
+};
 type LogRecord = Record<string, unknown>;
 
 // Default mode per host.  E6: opencode is enforce (shadow evidence met); codex is enforce, grok stays shadow, agy is forced shadow.
@@ -86,6 +95,9 @@ const STATE_TURN_HOSTS = new Set(["agy", "grok", "opencode", "claude"]);
 const ADVISE_OUTPUT_HOSTS = new Set(["claude", "codex"]);
 // Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
 const PROMPT_KEEP_HOSTS = new Set(["claude"]);
+// Hosts where R1 denies (claude only, G1) and where main's background shell is denied (G4).
+// The OpenCode adapter never produces such an event; the vectors replay it at the core level.
+const DENY_MAIN_HOSTS = new Set(["claude"]);
 // Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
 // `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
 const ROLE_NAMESPACES = ["shoal:"];
@@ -94,14 +106,16 @@ const ROLE_NAMESPACES = ["shoal:"];
 // (tests/guard-vectors.test.ts compares the two tables).
 export const ROLE_ACCESS: Record<string, string> = {
   scout: "read-only",
-  "plan-verifier": "read-only",
+  "plan-critic": "read-only",
   "security-reviewer": "read-only",
+  researcher: "read-only",
   Explore: "read-only",
-  "mech-executor": "write",
+  "applier": "write",
   executor: "write",
   "security-executor": "write",
   "sol-executor": "write",
   verifier: "verify",
+  watcher: "verify",
 };
 
 /** Bare role name; a leading allowlisted namespace (`shoal:`) is removed once (K3). */
@@ -120,7 +134,7 @@ function roleAccess(role: string | null | undefined): string | null {
 
 const CLASSIFIED_ROLE: Record<string, string> = {
   judgment: "executor",
-  mechanical: "mech-executor",
+  mechanical: "applier",
 };
 const DISPATCH_NAME: Record<string, string> = {
   claude: "Agent",
@@ -136,7 +150,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
     ADVISE:
       "Shoal dispatch brake (a reminder, nothing was blocked): this turn has edited {n} " +
       "files directly. If the work is stable same-shape repetition, or bounded judgment " +
-      "with a stable contract, consider handing it to `mech-executor` / `executor` with " +
+      "with a stable contract, consider handing it to `applier` / `executor` with " +
       "{tool}; otherwise continuing directly is fine.",
     LEAF:
       "Shoal dispatch guard: subagents are leaf workers and must not dispatch other " +
@@ -144,14 +158,27 @@ const MESSAGES: Record<string, Record<string, string>> = {
     VERIFY_EDIT:
       "Shoal dispatch guard: verify-level roles must not edit files with editing tools. " +
       "Report findings to the parent instead.",
+    R1:
+      "Shoal dispatch guard: this turn is classified as implementation work and no write " +
+      "role has been dispatched. Dispatch executor or applier, or add #direct to your " +
+      "prompt to edit directly.",
+    G4:
+      "Shoal dispatch guard: the main session does not start background shells. Dispatch " +
+      "watcher in the background instead, or add #direct to your prompt.",
   },
   "zh-TW": {
     ADVISE:
       "Shoal dispatch brake（提醒，沒有擋任何操作）：本輪 main session 已直接改了 {n} 個檔案。" +
       "若這是穩定的同形重複，或契約穩定、範圍有界的判斷工作，可考慮用 {tool} 交給 " +
-      "`mech-executor` / `executor`；否則直接做下去也可以。",
+      "`applier` / `executor`；否則直接做下去也可以。",
     LEAF: "Shoal dispatch guard：subagent 是 leaf worker，不可再派其他 agent。請自己完成並回報給上層。",
     VERIFY_EDIT: "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
+    R1:
+      "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。" +
+      "請派給 executor 或 applier，或在 prompt 加上 #direct 以直接修改。",
+    G4:
+      "Shoal dispatch guard：main session 不自己開背景 shell。" +
+      "請改在背景派出 watcher，或在 prompt 加上 #direct。",
   },
 };
 
@@ -518,7 +545,11 @@ class Guard {
   main(): GuardResult {
     const event = this.event;
     const isBoundary = event.kind === "prompt" || event.kind === "turn_boundary";
-    if (event.kind === "tool" && event.tool_kind !== "edit" && event.tool_kind !== "dispatch") {
+    let toolKind = event.tool_kind;
+    if (event.kind === "tool" && toolKind === "background_shell" && !DENY_MAIN_HOSTS.has(this.host)) {
+      toolKind = null; // G4 exists on claude only
+    }
+    if (event.kind === "tool" && toolKind !== "edit" && toolKind !== "dispatch" && toolKind !== "background_shell") {
       return none(this.mode);
     }
     const sid = event.session_id;
@@ -555,8 +586,9 @@ class Guard {
           dispatched: false,
           advised: false,
           edited: Array.isArray(prior.edited) ? (prior.edited as string[]) : [],
+          direct: event.direct === true,
         };
-      } else next = { turn_id: tid, dispatched: false, advised: false, edited: [] };
+      } else next = { turn_id: tid, dispatched: false, advised: false, edited: [], direct: event.direct === true };
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
       return this.result("state");
     }
@@ -569,6 +601,7 @@ class Guard {
       dispatched: prior.dispatched === true,
       advised: prior.advised === true,
       edited,
+      direct: prior.direct === true, // this turn's prompt carried #direct
     };
 
     if (event.tool_kind === "dispatch") {
@@ -578,7 +611,17 @@ class Guard {
       }
       return this.result("allow", { rule: "dispatch" });
     }
+    if (event.tool_kind === "background_shell") return this.backgroundShell(state);
     return this.edit(state, statePath, dir);
+  }
+
+  /** G4: main starting a background shell.  Reads state only; nothing is recorded. */
+  private backgroundShell(state: StateFile): GuardResult {
+    if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) return this.result("allow", { rule: "direct" });
+    return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
+      rule: "G4",
+      reason: text(this.env, "G4"),
+    });
   }
 
   private edit(state: StateFile, statePath: string, dir: string): GuardResult {
@@ -587,7 +630,7 @@ class Guard {
     const cwd = this.event.cwd || process.cwd();
     const resolved = rawPaths.map((p) => resolvePath(p, cwd));
     const edited: string[] = [...state.edited];
-    const direct = this.env.SHOAL_GUARD_DIRECT === "1";
+    const direct = this.env.SHOAL_GUARD_DIRECT === "1" || state.direct;
     const limit = maxFiles(this.env);
     let classified: string | null = null;
     const tid = state.turn_id; // effective turn (agy tool events may omit it)
@@ -600,6 +643,7 @@ class Guard {
 
     let firstRule = "exempt";
     let adviseRule: string | null = null;
+    let denyR1 = false;
     for (const [index, path] of resolved.entries()) {
       if (isExempt(path, this.host, this.env, this.home)) continue;
       let rule: string;
@@ -613,18 +657,24 @@ class Guard {
           if (limit === null) return this.result("skip", { skip: "invalid_config" });
           fired = "R2";
         }
-        // R1 and R2 only remind; the edit goes ahead (spec amendment 2026-10-06).
-        if (fired !== null && adviseRule === null) adviseRule = fired;
+        // G1: R1 denies on claude; everywhere else R1 and R2 only remind and the edit goes ahead.
+        if (fired === "R1" && DENY_MAIN_HOSTS.has(this.host)) denyR1 = true;
+        else if (fired !== null && adviseRule === null) adviseRule = fired;
       }
       if (firstRule === "exempt") firstRule = rule;
       if (!edited.includes(path)) edited.push(path);
     }
     if (firstRule === "exempt") return this.result("allow", { rule: firstRule, file: rawPaths[0] });
+    if (denyR1 && this.mode === "enforce") {
+      return this.result("deny", { rule: "R1", reason: text(this.env, "R1"), file: rawPaths[0] });
+    }
     state.edited = edited;
     const notify =
       adviseRule !== null && !state.advised && this.mode === "enforce" && ADVISE_OUTPUT_HOSTS.has(this.host);
     if (notify) state.advised = true; // the one reminder of this turn is spent
     writeJson(statePath, state);
+    // shadow: the edit goes ahead, the log says what enforce would have done
+    if (denyR1) return this.result("would_deny", { rule: "R1", file: rawPaths[0] });
     if (adviseRule === null) return this.result("allow", { rule: firstRule, file: rawPaths[0] });
     return this.result("advise", {
       rule: adviseRule,

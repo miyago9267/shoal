@@ -158,7 +158,7 @@ class ClaudeStageCase(unittest.TestCase):
     def request(
         self,
         *,
-        role: str | None = "plan-verifier",
+        role: str | None = "plan-critic",
         sandbox: str = "read-only",
         prompt: str = "stage prompt",
         name: str = "stage",
@@ -288,7 +288,7 @@ class DispatchEvidenceTests(ClaudeStageCase):
                     "type": "tool_use",
                     "id": "toolu_second",
                     "name": "Agent",
-                    "input": {"subagent_type": "plan-verifier"},
+                    "input": {"subagent_type": "plan-critic"},
                 }
             )
 
@@ -561,7 +561,7 @@ class DispatchEvidenceTests(ClaudeStageCase):
             )
         ]
         started = [event for event in events if event.get("subtype") == "task_started"]
-        self.assertEqual(started[0]["subagent_type"], "plan-verifier")
+        self.assertEqual(started[0]["subagent_type"], "plan-critic")
         outcome, _, _ = self.run_stage(_Host(stdout=_stream(events)))
         self.assertEqual(
             (outcome.evidence.ok, outcome.evidence.reason_code, outcome.messages),
@@ -952,7 +952,7 @@ class CommandAndEnvironmentTests(ClaudeStageCase):
         )
 
     def test_sandbox_maps_to_a_permission_mode(self) -> None:
-        _, host, _ = self.run_stage(role="mech-executor", sandbox="workspace-write")
+        _, host, _ = self.run_stage(role="applier", sandbox="workspace-write")
         argv = host.calls[0]["argv"]
         self.assertEqual(argv[argv.index("--permission-mode") + 1], "acceptEdits")
         _, host, request = self.run_failing(
@@ -1018,7 +1018,7 @@ class CommandAndEnvironmentTests(ClaudeStageCase):
             path.name: path.read_bytes()
             for path in (ROOT / "hosts" / "claude" / "dist" / "agents").iterdir()
         }
-        self.assertEqual(len(committed), 8)
+        self.assertEqual(len(committed), 10)
         self.assertEqual(host.calls[0]["staged_agents"], committed)
 
     def test_stage_inside_the_user_config_is_refused(self) -> None:
@@ -1027,7 +1027,7 @@ class CommandAndEnvironmentTests(ClaudeStageCase):
         before = self._user_config_state()
         request = StageRequest(
             prompt="p",
-            role="plan-verifier",
+            role="plan-critic",
             sandbox="read-only",
             workdir=scratch / "clean-cwd",
             scratch=scratch,
@@ -1056,7 +1056,7 @@ class CommandAndEnvironmentTests(ClaudeStageCase):
 
     def test_role_must_be_a_committed_agent(self) -> None:
         for index, role in enumerate(
-            (None, "not-a-role", "../plan-verifier", "plan-verifier.md", "")
+            (None, "not-a-role", "../plan-critic", "plan-critic.md", "")
         ):
             with self.subTest(role):
                 _, host, request = self.run_failing(
@@ -1086,7 +1086,7 @@ class PromptTests(unittest.TestCase):
         prompts = [
             claude.claude_native_review_prompt(plan),
             claude.claude_dispatch_prompt(
-                role="mech-executor",
+                role="applier",
                 task_name="role_fitness_mechanical_execution",
                 message="Execute the fixture.",
             ),
@@ -1095,9 +1095,9 @@ class PromptTests(unittest.TestCase):
             for word in ("spawn_agent", "wait_agent", "fork_turns", "timeout_ms"):
                 self.assertNotIn(word, prompt)
             self.assertIn("Agent tool exactly once", prompt)
-        self.assertIn("subagent_type='plan-verifier'", prompts[0])
+        self.assertIn("subagent_type='plan-critic'", prompts[0])
         self.assertIn("description='role_fitness_plan_review'", prompts[0])
-        self.assertIn("subagent_type='mech-executor'", prompts[1])
+        self.assertIn("subagent_type='applier'", prompts[1])
 
     def test_review_message_is_the_one_the_codex_prompt_carries(self) -> None:
         plan = "# Plan\nChange one documentation line."
@@ -1529,7 +1529,7 @@ class AbsolutePathTests(ClaudeStageCase):
 
     def _refused(self, workdir: Path, scratch: Path) -> _Host:
         host = _Host()
-        request = StageRequest(prompt="p", role="plan-verifier", sandbox="read-only", workdir=workdir, scratch=scratch, timeout=30)
+        request = StageRequest(prompt="p", role="plan-critic", sandbox="read-only", workdir=workdir, scratch=scratch, timeout=30)
         with patch.object(claude.subprocess, "run", host.run), self.assertRaisesRegex(StageSetupError, "absolute"):
             self.adapter.run_stage(request)
         self.assertEqual(host.calls, [])
@@ -1662,7 +1662,7 @@ class AccountHomeTests(ClaudeStageCase):
     def test_stage_under_the_account_home_config_is_refused(self) -> None:
         # The path is never created: the refusal comes from the path alone.
         scratch = claude._account_home() / ".claude" / "role-fitness-stage-that-does-not-exist"
-        request = StageRequest(prompt="p", role="plan-verifier", sandbox="read-only", workdir=scratch / "clean-cwd", scratch=scratch, timeout=30)
+        request = StageRequest(prompt="p", role="plan-critic", sandbox="read-only", workdir=scratch / "clean-cwd", scratch=scratch, timeout=30)
         host = _Host()
         with patch.object(claude.subprocess, "run", host.run), self.assertRaisesRegex(StageSetupError, "inside the user's Claude config"):
             self.adapter.run_stage(request)

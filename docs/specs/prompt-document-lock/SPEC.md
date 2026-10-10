@@ -65,9 +65,10 @@ General README and historical report prose remains outside the lock.
   the push path (`Lock-Renewal: approved`): the label path passes
   `--no-migration`, and an active marker there fails. Each host migrates in its
   own commit, and a rollback is a new migration with a new `migration_id`.
-- The Claude host `hosts/claude/dist/agents/*.md` (8 files, 7 core-rendered plus
-  `Explore`) and `skills/pilotfish-orchestration/` (`SKILL.md` plus 2
-  references) are protected. `hosts/claude/dist/claude-md.bootstrap.md` and
+- The Claude host `hosts/claude/dist/agents/*.md` (10 files, 9 core-rendered
+  plus `Explore`; `watcher` and `researcher` joined in 3.0.0) and
+  `skills/pilotfish-orchestration/` (`SKILL.md` plus 2 references) are
+  protected. `hosts/claude/dist/claude-md.bootstrap.md` and
   `settings.snippet.json` are not installed and stay outside the lock. Three
   surfaces (`executor`, `mech-executor`, `security-executor`) use
   `max_change_ratio` 0.35, the validator's hard ceiling, see

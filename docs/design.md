@@ -47,7 +47,7 @@ routine and mechanical work stays on the installed Luna roles. The
 prompt's `max_tool_calls=12` and `max_wall_seconds=300` values are advisory
 usage guards, not provider quota enforcement. Invalid or unavailable Astra
 activation fails closed before task work; a separately started no-flags session
-returns to the normal root Luna/Sol policy. `plan-verifier` uses GPT-6 Sol/high;
+returns to the normal root Luna/Sol policy. `plan-critic` uses GPT-6 Sol/high;
 all approval, security, release, and fresh-verifier boundaries remain intact.
 This slice adds no main-session typed-dispatch receipt field; existing child
 receipt schemas remain unchanged.
@@ -72,8 +72,12 @@ and child model, reasoning-effort, service-tier, and context overrides.
 Large work keeps shared constraints in a program envelope and splits only
 independent execution slices. Concrete security, irreversible or external,
 data, release, or cross-component acceptance risk triggers a fresh
-`plan-verifier`; file count or “non-trivial” alone does not. `REVISE` returns
+`plan-critic`; file count or “non-trivial” alone does not. `REVISE` returns
 all known P0-P2 blockers in one pass; P3/P4 and adjacent hardening do not block.
+When the brief sets `mode: gaps`, `plan-critic` instead returns unasked
+requirements, unstated assumptions, risks, and up to three alternative
+approaches, plus questions for the main session to ask; it never writes the
+Plan, and its output is input, not authority.
 
 After two automatic revisions for one unit, the main session stops resubmitting,
 dispositions every blocker as `FIX`, `DEFER`, or `REJECT`, and narrows, splits,

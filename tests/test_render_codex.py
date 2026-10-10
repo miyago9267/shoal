@@ -196,16 +196,16 @@ class CatalogTests(unittest.TestCase):
         roles = core["roles"]
         models = {n: render.resolve_model(n, core, binding) for n in roles}
         self.assertEqual(models["scout"], "gpt-6-luna")
-        self.assertEqual(models["mech-executor"], "gpt-6-luna")
+        self.assertEqual(models["applier"], "gpt-6-luna")
         self.assertEqual(models["executor"], "gpt-6-astra")
-        self.assertEqual(models["plan-verifier"], "gpt-6-sol")
+        self.assertEqual(models["plan-critic"], "gpt-6-sol")
         self.assertEqual(binding["extra_roles"]["sol-executor"]["model"], "gpt-6-sol")
         self.assertNotIn("Explore", binding.get("extra_roles", {}))
 
     def test_claude_output_does_not_depend_on_fast_vs_standard_split(self) -> None:
         binding = render.load_toml(ROOT / "hosts" / "claude" / "binding.toml")
         core = render.load_core(ROOT)
-        self.assertEqual(render.resolve_model("scout", core, binding), render.resolve_model("executor", core, binding))
+        self.assertEqual(render.resolve_model("applier", core, binding), render.resolve_model("executor", core, binding))
 
 
 if __name__ == "__main__":

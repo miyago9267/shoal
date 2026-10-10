@@ -24,9 +24,9 @@ import install_grok  # noqa: E402
 
 ROLES = (
     "scout",
-    "plan-verifier",
+    "plan-critic",
     "security-reviewer",
-    "mech-executor",
+    "applier",
     "executor",
     "verifier",
     "security-executor",
@@ -53,7 +53,7 @@ security-reviewer = false
 "scout" = false   # old workaround
 executor = true
 codex = false
-plan-verifier = false
+plan-critic = false
 
 [compat.claude]
 skills = false
@@ -187,7 +187,7 @@ class DryRunTests(InstallGrokCase):
     def test_dry_run_flags_disabled_shoal_roles(self) -> None:  # AC-GW-033
         self.write_config()
         _, out, _ = self.run_cli()
-        self.assertIn("設成 false: plan-verifier, scout, security-reviewer", out)
+        self.assertIn("設成 false: plan-critic, scout, security-reviewer", out)
         self.assertIn("加 --fix-toggles 才會移除", out)
         self.assertNotIn("Explore", out.split("設成 false:")[1].splitlines()[0])
 
@@ -411,7 +411,7 @@ class FixTogglesTests(InstallGrokCase):
     EXPECTED = (
         CONFIG.replace("security-reviewer = false\n", "")
         .replace('"scout" = false   # old workaround\n', "")
-        .replace("plan-verifier = false\n", "")
+        .replace("plan-critic = false\n", "")
     )
 
     def test_removes_only_shoal_role_false_keys(self) -> None:  # AC-GW-034

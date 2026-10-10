@@ -56,7 +56,7 @@ timeouts fall back to shoal's local classifier. Calls use a one-second
 timeout. Security-review requirements and deterministic deep-judgment routes
 cannot be downgraded.
 
-Routes: parent-local, `mech-executor`, `scout`, `sol-executor`, and `executor`.
+Routes: parent-local, `applier`, `scout`, `sol-executor`, and `executor`.
 Active classification requires a score of at least 0.80 and a lead of at least
 0.20 over the next label. The provider never authorizes or executes work.
 

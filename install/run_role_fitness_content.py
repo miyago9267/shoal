@@ -277,7 +277,7 @@ def _parse_review(messages: list[str], ledger: list[dict[str, Any]] | None = Non
 
 
 def _parse_role_verdict(text: str, ledger: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Adapt the installed plan-verifier's native READY/REVISE contract."""
+    """Adapt the installed plan-critic's native READY/REVISE contract."""
     stripped = re.sub(r"<[^>]+>", "", text).strip()
     revise_index = stripped.rfind("REVISE")
     if revise_index > 0:
@@ -354,16 +354,16 @@ def _review_prompt(plan: str) -> str:
 
 
 def _native_review_message(plan: str) -> str:
-    """The host-neutral request the plan-verifier child receives."""
+    """The host-neutral request the plan-critic child receives."""
     return _review_prompt(plan).replace("Do not call tools, modify files, or delegate. ", "Do not call tools or modify files. ")
 
 
 def _native_review_prompt(plan: str) -> str:
-    """Ask the installed plan-verifier role for one machine-readable review."""
+    """Ask the installed plan-critic role for one machine-readable review."""
     message = _native_review_message(plan)
     return (
         "Call spawn_agent exactly once with the following message, using "
-        "agent_type='plan-verifier', task_name='role_fitness_plan_review', "
+        "agent_type='plan-critic', task_name='role_fitness_plan_review', "
         "fork_turns='none':\n\n" + message +
         "\n\nThen call wait_agent exactly once with timeout_ms=30000. "
         "Do not use an untyped fallback, a second spawn, or any child override."
@@ -505,7 +505,7 @@ def run_native_review_case(
     adapter: Any = None,
     dispatch_prompt: Any = None,
 ) -> dict[str, Any]:
-    """Run one native plan-verifier child and score only its child rollout."""
+    """Run one native plan-critic child and score only its child rollout."""
     host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     manifest = json.loads((private_root / "manifest.json").read_text(encoding="utf-8"))
     case = next((item for item in manifest["cases"] if item.get("case_id") == case_id), None)
@@ -518,16 +518,16 @@ def run_native_review_case(
         cwd = directory / "clean-cwd"
         cwd.mkdir()
         prompt = _native_review_prompt(plan) if wrap is None else wrap(
-            role="plan-verifier", task_name="role_fitness_plan_review", message=_native_review_message(plan),
+            role="plan-critic", task_name="role_fitness_plan_review", message=_native_review_message(plan),
         )
         request = StageRequest(
-            prompt=prompt, role="plan-verifier", sandbox="read-only", workdir=cwd,
+            prompt=prompt, role="plan-critic", sandbox="read-only", workdir=cwd,
             scratch=directory, timeout=timeout, task_name="role_fitness_plan_review",
         )
         try:
             stage = _run_stage(host, request, "native content stage materialization failed")
         except StageTimeout:
-            return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "plan-verifier"}
+            return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "plan-critic"}
         except StageEvidenceError as exc:
             return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": exc.detail}
         verdict, elapsed, usage, event_counts, messages = stage.evidence, stage.wall_seconds, stage.usage, stage.event_counts, stage.messages
@@ -562,7 +562,7 @@ def run_native_review_case(
         return {
             "case_id": case_id,
             "status": "accepted",
-            "native_role": "plan-verifier",
+            "native_role": "plan-critic",
             "model": verdict.model,
             "reasoning_effort": verdict.reasoning_effort,
             "dispatch_status": verdict.status,
@@ -593,7 +593,7 @@ def run_native_mechanical_case(
     adapter: Any = None,
     dispatch_prompt: Any = None,
 ) -> dict[str, Any]:
-    """Run one native mech-executor child and validate its declared artifact."""
+    """Run one native applier child and validate its declared artifact."""
     host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     manifest = json.loads((private_root / "manifest.json").read_text(encoding="utf-8"))
     case = next((item for item in manifest["cases"] if item.get("case_id") == case_id), None)
@@ -608,18 +608,18 @@ def run_native_mechanical_case(
         + json.dumps({"case_id": case_id, "accepted": True}, sort_keys=True)
         + "\nFixture:\n" + json.dumps(fixture, sort_keys=True)
     )
-    prompt = (wrap or _codex_dispatch_prompt)(role="mech-executor", task_name=task_name, message=message)
+    prompt = (wrap or _codex_dispatch_prompt)(role="applier", task_name=task_name, message=message)
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()
         request = StageRequest(
-            prompt=prompt, role="mech-executor", sandbox="workspace-write", workdir=cwd,
+            prompt=prompt, role="applier", sandbox="workspace-write", workdir=cwd,
             scratch=directory, timeout=timeout, task_name=task_name,
         )
         try:
             stage = _run_stage(host, request, "native mechanical stage materialization failed")
         except StageTimeout:
-            return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "mech-executor"}
+            return {"case_id": case_id, "status": "inconclusive", "reason": "timeout", "native_role": "applier"}
         except StageEvidenceError as exc:
             return {"case_id": case_id, "status": "inconclusive", "reason": "native_evidence_unavailable", "detail": exc.detail}
         verdict, elapsed, usage, event_counts = stage.evidence, stage.wall_seconds, stage.child_usage, stage.event_counts
@@ -644,7 +644,7 @@ def run_native_mechanical_case(
         return {
             "case_id": case_id,
             "status": "accepted",
-            "native_role": "mech-executor",
+            "native_role": "applier",
             "model": verdict.model,
             "reasoning_effort": verdict.reasoning_effort,
             "dispatch_status": verdict.status,
@@ -752,7 +752,7 @@ def run_native_split_executor_case(
     adapter: Any = None,
     dispatch_prompt: Any = None,
 ) -> dict[str, Any]:
-    """Execute one already-approved split handoff through mech-executor."""
+    """Execute one already-approved split handoff through applier."""
     host, wrap = _stage_host(adapter, dispatch_prompt, active_home, codex_bin)
     if handoff.get("scenario_id") != case_id:
         raise BenchmarkContractError("split executor handoff identity is invalid")
@@ -764,12 +764,12 @@ def run_native_split_executor_case(
         "the approved revision fragments are applied. Do not modify any other file.\n"
         + json.dumps(handoff, sort_keys=True)
     )
-    prompt = (wrap or _codex_dispatch_prompt)(role="mech-executor", task_name=task_name, message=message)
+    prompt = (wrap or _codex_dispatch_prompt)(role="applier", task_name=task_name, message=message)
     try:
         cwd = directory / "clean-cwd"
         cwd.mkdir()
         request = StageRequest(
-            prompt=prompt, role="mech-executor", sandbox="workspace-write", workdir=cwd,
+            prompt=prompt, role="applier", sandbox="workspace-write", workdir=cwd,
             scratch=directory, timeout=timeout, task_name=task_name,
         )
         stage = _run_stage(host, request, "native split executor materialization failed")
@@ -783,7 +783,7 @@ def run_native_split_executor_case(
         weighted_tokens = _weighted_tokens(usage)
         if not verdict.ok or stage.returncode != 0 or result is None or weighted_tokens is None:
             return {"case_id": case_id, "status": "inconclusive", "reason": "invalid_split_executor_acceptance", "dispatch_status": verdict.status, "dispatch_reason": verdict.reason_code, "wall_seconds": round(elapsed, 3), "event_types": event_counts}
-        return {"case_id": case_id, "status": "accepted", "native_role": "mech-executor", "model": verdict.model, "reasoning_effort": verdict.reasoning_effort, "dispatch_status": verdict.status, "dispatch_reason": verdict.reason_code, "accepted": True, "wall_seconds": round(elapsed, 3), "usage": usage, "weighted_tokens": weighted_tokens, "event_types": event_counts}
+        return {"case_id": case_id, "status": "accepted", "native_role": "applier", "model": verdict.model, "reasoning_effort": verdict.reasoning_effort, "dispatch_status": verdict.status, "dispatch_reason": verdict.reason_code, "accepted": True, "wall_seconds": round(elapsed, 3), "usage": usage, "weighted_tokens": weighted_tokens, "event_types": event_counts}
     finally:
         _remove(directory)
 

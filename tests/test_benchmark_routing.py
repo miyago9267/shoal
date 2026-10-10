@@ -64,7 +64,7 @@ class HomeAndAuthTests(unittest.TestCase):
                     return_value=str(shared_root),
                 ):
                     with benchmark.temporary_trial_home(
-                        "mech-executor",
+                        "applier",
                         benchmark.CANDIDATES["routine"][0],
                     ):
                         pass
@@ -93,25 +93,25 @@ class HomeAndAuthTests(unittest.TestCase):
         candidate = benchmark.CANDIDATES["routine"][1]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = (ROOT / "templates" / "agents" / "mech-executor.toml").read_bytes()
-            with benchmark.temporary_trial_home("mech-executor", candidate, parent_dir=root) as trial:
+            source = (ROOT / "templates" / "agents" / "applier.toml").read_bytes()
+            with benchmark.temporary_trial_home("applier", candidate, parent_dir=root) as trial:
                 self.assertEqual((trial.home / "config.toml").read_bytes(), (ROOT / "templates" / "config.snippet.toml").read_bytes())
                 for role in benchmark.ROLE_NAMES:
                     content = (trial.home / "agents" / f"{role}.toml").read_bytes()
-                    if role == "mech-executor":
+                    if role == "applier":
                         self.assertIn(b'model = "gpt-5.6-terra"', content)
                         self.assertIn(b'model_reasoning_effort = "high"', content)
                     else:
                         self.assertEqual(content, (ROOT / "templates" / "agents" / f"{role}.toml").read_bytes())
-                self.assertTrue((trial.home / "agents" / "mech-executor.toml").exists())
+                self.assertTrue((trial.home / "agents" / "applier.toml").exists())
             self.assertFalse((root / "shoal-benchmark-codex").exists())
-            self.assertEqual(source.split(b"developer_instructions = ", 1)[1], (ROOT / "templates" / "agents" / "mech-executor.toml").read_bytes().split(b"developer_instructions = ", 1)[1])
+            self.assertEqual(source.split(b"developer_instructions = ", 1)[1], (ROOT / "templates" / "agents" / "applier.toml").read_bytes().split(b"developer_instructions = ", 1)[1])
 
     def test_live_trial_home_uses_current_native_v2_schema_only_when_requested(self) -> None:
         candidate = benchmark.CANDIDATES["routine"][0]
         with tempfile.TemporaryDirectory() as directory:
             with benchmark.temporary_trial_home(
-                "mech-executor",
+                "applier",
                 candidate,
                 parent_dir=Path(directory),
                 native_v2_compat=True,
@@ -166,7 +166,7 @@ class HomeAndAuthTests(unittest.TestCase):
             source.chmod(0o600)
             with self.assertRaises(RuntimeError):
                 with benchmark.temporary_trial_home(
-                    "mech-executor", benchmark.CANDIDATES["routine"][0], auth_source=source, parent_dir=root
+                    "applier", benchmark.CANDIDATES["routine"][0], auth_source=source, parent_dir=root
                 ) as trial:
                     auth_path = trial.auth_path
                     self.assertIsNotNone(auth_path)
@@ -177,23 +177,23 @@ class HomeAndAuthTests(unittest.TestCase):
 class ReceiptMetricsTests(unittest.TestCase):
     def test_receipt_requires_exactly_one_child_and_binding(self) -> None:
         candidate = benchmark.CANDIDATES["routine"][0]
-        receipt = benchmark.build_binding_receipt("mech-executor", candidate)
+        receipt = benchmark.build_binding_receipt("applier", candidate)
         self.assertEqual(
             benchmark.validate_binding_receipt(
-                receipt, expected_role="mech-executor", expected_candidate=candidate
+                receipt, expected_role="applier", expected_candidate=candidate
             )["status"],
             "NATIVE_OK",
         )
         receipt["child_count"] = 2
         with self.assertRaises(benchmark.ReceiptError):
-            benchmark.validate_binding_receipt(receipt, expected_role="mech-executor", expected_candidate=candidate)
+            benchmark.validate_binding_receipt(receipt, expected_role="applier", expected_candidate=candidate)
 
     def test_live_receipt_is_bound_to_its_real_case_id(self) -> None:
         candidate = benchmark.CANDIDATES["routine"][0]
         observed = SimpleNamespace(
             status="NATIVE_OK",
             reason_code="native_verified",
-            task_name="model_probe_mech_executor",
+            task_name="model_probe_applier",
             parent_ref="parent",
             child_ref="child",
             fork_turns="none",
@@ -205,7 +205,7 @@ class ReceiptMetricsTests(unittest.TestCase):
             receipt = benchmark.parse_native_dispatch_receipt(
                 Path("/tmp/benchmark-home"),
                 "",
-                role="mech-executor",
+                role="applier",
                 candidate=candidate,
                 case_id="routine-01",
             )
@@ -224,8 +224,8 @@ class ReceiptMetricsTests(unittest.TestCase):
                     "arguments": json.dumps(
                         {
                             "message": "ready",
-                            "agent_type": "mech-executor",
-                            "task_name": "model_probe_mech_executor",
+                            "agent_type": "applier",
+                            "task_name": "model_probe_applier",
                             "fork_turns": "none",
                         }
                     ),
@@ -479,8 +479,8 @@ class CliTests(unittest.TestCase):
     def test_case_prompt_matches_native_typed_dispatch_contract(self) -> None:
         case = benchmark.load_manifest()["cases"][0]
         prompt = benchmark.build_case_prompt(case, Path("/tmp/shoal-case"))
-        self.assertIn("agent_type='mech-executor'", prompt)
-        self.assertIn("task_name='model_probe_mech_executor'", prompt)
+        self.assertIn("agent_type='applier'", prompt)
+        self.assertIn("task_name='model_probe_applier'", prompt)
         self.assertIn("fork_turns='none'", prompt)
         self.assertIn(
             f"wait_agent exactly once with timeout_ms={benchmark.BENCHMARK_WAIT_TIMEOUT_MS}",
@@ -492,7 +492,7 @@ class CliTests(unittest.TestCase):
         observed = SimpleNamespace(
             status="NATIVE_OK",
             reason_code="native_verified",
-            task_name="model_probe_mech_executor",
+            task_name="model_probe_applier",
             parent_ref="parent",
             child_ref="child",
             fork_turns="none",
@@ -504,7 +504,7 @@ class CliTests(unittest.TestCase):
             benchmark.parse_native_dispatch_receipt(
                 Path("/tmp/benchmark-home"),
                 "",
-                role="mech-executor",
+                role="applier",
                 candidate=candidate,
                 case_id="routine-01",
             )
@@ -529,8 +529,8 @@ class CliTests(unittest.TestCase):
                     "arguments": json.dumps(
                         {
                             "message": "write the declared artifact",
-                            "agent_type": "mech-executor",
-                            "task_name": "model_probe_mech_executor",
+                            "agent_type": "applier",
+                            "task_name": "model_probe_applier",
                             "fork_turns": "none",
                         }
                     ),
@@ -566,8 +566,8 @@ class CliTests(unittest.TestCase):
             parent_events,
             child_events,
             expected_role=verify_dispatch.RoleBinding("gpt-5.6-luna", "medium"),
-            expected_role_name="mech-executor",
-            expected_task_name="model_probe_mech_executor",
+            expected_role_name="applier",
+            expected_task_name="model_probe_applier",
             expected_wait_timeout_ms=wait_timeout,
         )
         self.assertEqual((verdict.status, verdict.reason_code), ("NATIVE_OK", "native_verified"))
@@ -593,8 +593,8 @@ class CliTests(unittest.TestCase):
                 parent_events,
                 child_events,
                 expected_role=verify_dispatch.RoleBinding("gpt-5.6-luna", "medium"),
-                expected_role_name="mech-executor",
-                expected_task_name="model_probe_mech_executor",
+                expected_role_name="applier",
+                expected_task_name="model_probe_applier",
             ).reason_code,
             "policy_violation",
         )
@@ -603,7 +603,7 @@ class CliTests(unittest.TestCase):
         command = benchmark.build_benchmark_codex_command(
             codex_bin="codex",
             cwd=Path("/tmp/shoal-benchmark"),
-            role="mech-executor",
+            role="applier",
             prompt="fixture benchmark",
         )
         self.assertEqual(command[command.index("-s") + 1], "workspace-write")

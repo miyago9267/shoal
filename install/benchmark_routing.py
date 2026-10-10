@@ -38,8 +38,8 @@ MANIFEST_PATH = ROOT / "docs" / "benchmarks" / MANIFEST_VERSION / "manifest.json
 FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "benchmark_routing"
 ROLE_NAMES = (
     "executor",
-    "mech-executor",
-    "plan-verifier",
+    "applier",
+    "plan-critic",
     "scout",
     "sol-executor",
     "security-executor",
@@ -167,9 +167,9 @@ ROLE_CANDIDATES: dict[str, tuple[Candidate, Candidate]] = {
         Candidate("gpt-6-astra", "high"),
     ),
 }
-BASELINE_ONLY_ROLES = frozenset({"mech-executor", "scout"})
+BASELINE_ONLY_ROLES = frozenset({"applier", "scout"})
 BASELINE_ONLY_BINDINGS = {
-    "mech-executor": Candidate("gpt-6-luna", "medium"),
+    "applier": Candidate("gpt-6-luna", "medium"),
     "scout": Candidate("gpt-6-luna", "low"),
 }
 
@@ -459,7 +459,7 @@ def sha256_file(path: Path) -> str:
 
 def _case_specs() -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
-    for cohort, role in (("routine", "mech-executor"), ("judgment", "executor")):
+    for cohort, role in (("routine", "applier"), ("judgment", "executor")):
         for number in range(1, 7):
             case_id = f"{cohort}-{number:02d}"
             fixture_id = f"fixture-{case_id}"
@@ -575,7 +575,7 @@ def validate_manifest(
         role = case["role"]
         if not isinstance(case_id, str) or case_id in seen:
             raise BenchmarkError("case IDs must be unique strings")
-        if cohort not in CANDIDATES or role != {"routine": "mech-executor", "judgment": "executor"}[cohort]:
+        if cohort not in CANDIDATES or role != {"routine": "applier", "judgment": "executor"}[cohort]:
             raise BenchmarkError("case cohort/role is invalid")
         if not isinstance(case["prompt"], str) or not case["prompt"]:
             raise BenchmarkError("case prompt is invalid")
@@ -1163,7 +1163,7 @@ def build_binding_receipt(
     if permission_profile is None:
         permission_profile = (
             "read-only"
-            if role in {"scout", "plan-verifier", "security-reviewer"}
+            if role in {"scout", "plan-critic", "security-reviewer"}
             else "workspace-write"
         )
     try:
@@ -1202,10 +1202,10 @@ def build_binding_receipt(
     }
 
 
-def build_dry_run_receipts(*, role: str = "mech-executor") -> list[dict[str, Any]]:
+def build_dry_run_receipts(*, role: str = "applier") -> list[dict[str, Any]]:
     """Build all three candidate receipts without network or persistent writes."""
 
-    cohort = "routine" if role == "mech-executor" else "judgment"
+    cohort = "routine" if role == "applier" else "judgment"
     return [
         build_binding_receipt(role, candidate, case_id=f"dry-run-{cohort}-{index}")
         for index, candidate in enumerate(CANDIDATES[cohort], start=1)

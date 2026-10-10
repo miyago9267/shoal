@@ -14,12 +14,12 @@ class AgyRenderTests(rh.HostRenderCase):
     DIST_FILE = "agents/scout/agent.md"
     SRC_FILE = "rules/shoal-agy.md"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
 
-    # --- 2.0.0：agy 有自己的 VERSION，rules 的 marker 由它產生（同 grok） ---
+    # --- 3.0.0：agy 有自己的 VERSION，rules 的 marker 由它產生（同 grok） ---
     def test_rules_marker_comes_from_host_version(self) -> None:
         version = (ROOT / "hosts" / "agy" / "VERSION").read_text(encoding="utf-8").strip()
         rules = render.RENDERERS["agy"](ROOT)["rules/shoal-agy.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-agy v.+ -->$", rules), [f"<!-- shoal-agy v{version} -->"])
-        self.assertEqual(version, "2.0.0")
+        self.assertEqual(version, "3.0.0")
 
     def test_changing_version_requires_rewriting_dist(self) -> None:
         (self.root / "hosts" / "agy" / "VERSION").write_text("2.0.1\n", encoding="utf-8", newline="\n")
@@ -40,7 +40,7 @@ class AgyRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:
         src = self.root / "hosts" / "agy" / "src" / "rules" / "shoal-agy.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-agy v2.0.0 -->\n"
+        marker = "<!-- shoal-agy v3.0.0 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
@@ -82,8 +82,9 @@ class AgyRenderTests(rh.HostRenderCase):
     def test_tiers_map_to_expected_models(self) -> None:
         binding = render.load_toml(ROOT / "hosts" / "agy" / "binding.toml")
         core = render.load_core(ROOT)
-        models = {n: render.resolve_model(n, core, binding) for n in core["roles"]}
-        self.assertEqual({n for n, m in models.items() if m == "flash"}, {"scout", "mech-executor"})
+        # watcher、researcher 在 agy 的 omitted_roles，不算 agy 的 role
+        models = {n: render.resolve_model(n, core, binding) for n in render._bound_roles(core, binding)}
+        self.assertEqual({n for n, m in models.items() if m == "flash"}, {"scout", "applier"})
         self.assertEqual(len(models), 7)
 
 

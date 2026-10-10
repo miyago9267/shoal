@@ -162,7 +162,7 @@ class ClaudeTests(Case):
         self.assertEqual(len(prompt), 2)
         self.assertEqual(len(tool), 2)
         self.assertEqual(
-            tool[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
+            tool[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
         )
         for group in (prompt[1], tool[1]):
             (handler,) = group["hooks"]
@@ -251,7 +251,7 @@ class ClaudeTests(Case):
         groups = self.load(path)["hooks"]["PreToolUse"]
         self.assertEqual(groups[0], FOREIGN_TOOL)
         self.assertEqual(
-            groups[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
+            groups[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
         )
         self.assertEqual(groups[1]["hooks"][0]["command"], PORTABLE_CLAUDE)
         # the neighbour that shared the stale group stays, as its own group

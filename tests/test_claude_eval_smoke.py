@@ -111,7 +111,7 @@ class StubClaude:
             raise step["error"]
         if "stdout" in step:
             return subprocess.CompletedProcess(argv, 0, step["stdout"], "")
-        if role == "plan-verifier":
+        if role == "plan-critic":
             case_id = re.search(
                 r"# ((?:plan-review|split-workflow)-\d\d)", prompt
             ).group(1)
@@ -119,7 +119,7 @@ class StubClaude:
         else:
             case_id = re.search(r'"case_id": "([a-z-]+-\d\d)"', prompt).group(1)
             text = f"CONFIRMED the artifact matches. {SENTINEL}"
-            if role == "mech-executor" and step.get("write", True):
+            if role == "applier" and step.get("write", True):
                 (cwd / "result.json").write_text(
                     json.dumps({"case_id": case_id, "accepted": True}), encoding="utf-8"
                 )
@@ -229,7 +229,7 @@ class ClaudeCaseTests(SmokeCase):
         )
         self.assert_codex_fields(stage, "native_review_accepted")
         self.assertEqual(
-            (stage["status"], stage["native_role"]), ("accepted", "plan-verifier")
+            (stage["status"], stage["native_role"]), ("accepted", "plan-critic")
         )
         self.assertEqual(
             (stage["dispatch_status"], stage["dispatch_reason"]), ("NATIVE_OK", "ok")
@@ -239,7 +239,7 @@ class ClaudeCaseTests(SmokeCase):
         self.assertIsNone(scorecard.classify_content_failure(stage))
         call = stub.calls[0]
         self.assertEqual(
-            (call["role"], call["task"]), ("plan-verifier", "role_fitness_plan_review")
+            (call["role"], call["task"]), ("plan-critic", "role_fitness_plan_review")
         )
         self.assertNotIn("spawn_agent", call["prompt"])
         self.assertNotIn("wait_agent", call["prompt"])
@@ -313,7 +313,7 @@ class ClaudeCaseTests(SmokeCase):
         )
         self.assert_codex_fields(stage, "mechanical_accepted")
         self.assertEqual((stage["status"], stage["accepted"]), ("accepted", True))
-        self.assertEqual(stub.calls[0]["role"], "mech-executor")
+        self.assertEqual(stub.calls[0]["role"], "applier")
         self.assertEqual(
             stub.calls[0]["argv"][stub.calls[0]["argv"].index("--permission-mode") + 1],
             "acceptEdits",
@@ -531,7 +531,7 @@ class RunSettingsTests(SmokeCase):
     def test_arm_binding_changes_only_the_model_line_of_the_staged_copy(self) -> None:
         run = self.open_run()
         arm = claude.AdmittedStageAdapter(
-            run.inner.with_role_models({"plan-verifier": "opus"}), run.admission
+            run.inner.with_role_models({"plan-critic": "opus"}), run.admission
         )
         stub = StubClaude()
         self.case(
@@ -555,15 +555,15 @@ class RunSettingsTests(SmokeCase):
         staged = stub.calls[0]["agents"]
         self.assertEqual(set(staged), set(committed))
         for name, data in staged.items():
-            if name != "plan-verifier.md":
+            if name != "plan-critic.md":
                 self.assertEqual(data, committed[name], name)
-        before = committed["plan-verifier.md"].decode("utf-8").split("\n")
-        after = staged["plan-verifier.md"].decode("utf-8").split("\n")
+        before = committed["plan-critic.md"].decode("utf-8").split("\n")
+        after = staged["plan-critic.md"].decode("utf-8").split("\n")
         changed = [
             (old, new) for old, new in zip(before, after, strict=True) if old != new
         ]
         self.assertEqual(
-            changed, [(f"model: {smoke._bound_model('plan-verifier')}", "model: opus")]
+            changed, [(f"model: {smoke._bound_model('plan-critic')}", "model: opus")]
         )
         # Both arms draw on the same admission.
         self.assertIs(arm.admission, run.admission)
@@ -573,9 +573,9 @@ class RunSettingsTests(SmokeCase):
         run = self.open_run()
         for models in (
             {"no-such-role": "opus"},
-            {"plan-verifier": "opus --flag"},
-            {"plan-verifier": 3},
-            ["plan-verifier"],
+            {"plan-critic": "opus --flag"},
+            {"plan-critic": 3},
+            ["plan-critic"],
         ):
             with (
                 self.subTest(models=models),
@@ -621,17 +621,17 @@ class DryRunTests(SmokeCase):
         self.assertEqual(
             [(stage["arm"], stage["stage"], stage["role"]) for stage in plan["stages"]],
             [
-                ("plan_frontier", "review", "plan-verifier"),
-                ("plan_strong", "review", "plan-verifier"),
-                ("mechanical_current", "executor", "mech-executor"),
+                ("plan_frontier", "review", "plan-critic"),
+                ("plan_strong", "review", "plan-critic"),
+                ("mechanical_current", "executor", "applier"),
                 ("mechanical_current", "verifier", "verifier"),
-                ("split_current", "review", "plan-verifier"),
-                ("split_current", "executor", "mech-executor"),
+                ("split_current", "review", "plan-critic"),
+                ("split_current", "executor", "applier"),
                 ("split_current", "verifier", "verifier"),
             ],
         )
         frontier, strong = plan["stages"][0], plan["stages"][1]
-        self.assertEqual(frontier["child_model"], smoke._bound_model("plan-verifier"))
+        self.assertEqual(frontier["child_model"], smoke._bound_model("plan-critic"))
         self.assertEqual(strong["child_model"], smoke._tier_model("strong"))
         self.assertNotEqual(frontier["child_model"], strong["child_model"])
         self.assertEqual(frontier["case_id"], strong["case_id"])
@@ -773,12 +773,12 @@ class SmokeRunTests(SmokeCase):
         self.assertEqual(
             [call["role"] for call in stub.calls],
             [
-                "plan-verifier",
-                "plan-verifier",
-                "mech-executor",
+                "plan-critic",
+                "plan-critic",
+                "applier",
                 "verifier",
-                "plan-verifier",
-                "mech-executor",
+                "plan-critic",
+                "applier",
                 "verifier",
             ],
         )
@@ -820,14 +820,14 @@ class SmokeRunTests(SmokeCase):
             report["arm_summary"]["plan_strong"]["R1"],
             {"stages": 1, "passed": 1, "mean_quality_score": 100.0},
         )
-        # Only the strong arm rebinds the plan-verifier; the budget flag is the same everywhere.
+        # Only the strong arm rebinds the plan-critic; the budget flag is the same everywhere.
         models = [
-            re.search(rb"^model: (\S+)$", call["agents"]["plan-verifier.md"], re.M)
+            re.search(rb"^model: (\S+)$", call["agents"]["plan-critic.md"], re.M)
             .group(1)
             .decode()
             for call in stub.calls
         ]
-        frontier = smoke._bound_model("plan-verifier")
+        frontier = smoke._bound_model("plan-critic")
         self.assertEqual(
             models, [frontier, smoke._tier_model("strong"), *[frontier] * 5]
         )

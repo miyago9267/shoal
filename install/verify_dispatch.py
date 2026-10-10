@@ -1002,7 +1002,7 @@ def inspect_autoroute(
             or set(args) != {"message", "agent_type", "task_name", "fork_turns"}
             or not isinstance(args.get("message"), str)
             or not args["message"].strip()
-            or args.get("agent_type") != "plan-verifier"
+            or args.get("agent_type") != "plan-critic"
             or not TASK_NAME_RE.fullmatch(str(args.get("task_name")))
             or args.get("fork_turns") not in {"none", "1", "2", "3"}
         ):
@@ -1071,7 +1071,7 @@ def inspect_autoroute(
             return _verdict("FAILED", "policy_violation", child_created="yes")
         return _verdict("SKIPPED", "child_binding_unobservable", child_created="yes")
     child_session, child_context = child_sessions[0], child_contexts[0]
-    if child_session.get("id") != child_id or child_session.get("parent_thread_id") != parent_id or child_session.get("agent_role") != "plan-verifier":
+    if child_session.get("id") != child_id or child_session.get("parent_thread_id") != parent_id or child_session.get("agent_role") != "plan-critic":
         return _verdict("FAILED", "parent_child_mismatch", child_created="yes")
     model, effort = child_context.get("model"), child_context.get("effort")
     if not isinstance(model, str) or not isinstance(effort, str):
@@ -1086,7 +1086,7 @@ def inspect_autoroute(
         "NATIVE_OK",
         "native_verified",
         child_created="yes",
-        role="plan-verifier",
+        role="plan-critic",
         task_name=task_name,
         fork_turns=fork_turns,
         parent_ref=_short_ref(parent_id),
@@ -1346,12 +1346,12 @@ def receipt_payload(
         )
         snapshot = f"{model}@{effort}" if effort else UNKNOWN_SNAPSHOT
         if escalation_reason is None:
-            escalation_reason = "explicit-risk" if effective_role == "plan-verifier" else "baseline"
+            escalation_reason = "explicit-risk" if effective_role == "plan-critic" else "baseline"
         if permission_profile is None:
             permission_profile = (
                 "read-only"
                 if verdict.phase == "preflight"
-                or effective_role in {"scout", "plan-verifier", "security-reviewer"}
+                or effective_role in {"scout", "plan-critic", "security-reviewer"}
                 else "workspace-write"
             )
         try:
@@ -1482,7 +1482,7 @@ def validate_receipt(payload: dict) -> None:
         needed = {"role", "parent_ref", "child_ref", "model", "reasoning_effort", "correlation_mode"}
         if payload["phase"] != "post-spawn" or payload["child_created"] != "yes" or not needed <= set(payload) or payload["role"] not in ROLES or not isinstance(payload["model"], str) or not payload["model"].strip() or not isinstance(payload["reasoning_effort"], str) or not payload["reasoning_effort"].strip():
             raise ReceiptError("NATIVE_OK receipt lacks core evidence")
-        if payload["correlation_mode"] == "session_metadata" and payload["role"] != "plan-verifier":
+        if payload["correlation_mode"] == "session_metadata" and payload["role"] != "plan-critic":
             raise ReceiptError("session metadata receipt is not autoroute evidence")
 
 
@@ -1585,7 +1585,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--launch-capture", type=Path)
     args = parser.parse_args(raw)
     if args.autoroute:
-        args.role = "plan-verifier"
+        args.role = "plan-critic"
     if not args.live:
         _print(_verdict("SKIPPED", "live_flag_required", phase="preflight", child_created="no")); return 2
     if not args.yes:

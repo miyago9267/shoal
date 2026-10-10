@@ -4,7 +4,7 @@
 One case per cohort through ``ClaudeStageAdapter``, scored by the same case
 functions, classifier and report as the Codex path:
 
-- plan_review: the plan-verifier's committed binding (frontier) against the
+- plan_review: the plan-critic's committed binding (frontier) against the
   strong tier, one ``claude -p`` process per arm;
 - mechanical_execution: the committed binding, executor then verifier;
 - split_workflow: the committed binding, review, executor then verifier.
@@ -85,7 +85,7 @@ DEFAULT_PARENT_MODEL = "haiku"
 DEFAULT_TIMEOUT = 360
 MAX_TIMEOUT = 600
 
-PLAN_ROLE, EXECUTOR_ROLE, VERIFIER_ROLE = "plan-verifier", "mech-executor", "verifier"
+PLAN_ROLE, EXECUTOR_ROLE, VERIFIER_ROLE = "plan-critic", "applier", "verifier"
 COHORT_PROCESSES = {"plan_review": 1, "mechanical_execution": 2, "split_workflow": 3}
 
 _CODE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
@@ -288,7 +288,7 @@ def build_plan(options: argparse.Namespace) -> SmokePlan:
     }
     frontier, strong = _tier_model("frontier"), _tier_model("strong")
     if current[PLAN_ROLE] != frontier:
-        raise BenchmarkContractError("plan-verifier is not bound to the frontier tier")
+        raise BenchmarkContractError("plan-critic is not bound to the frontier tier")
     if strong == frontier:
         raise BenchmarkContractError(
             "strong and frontier tiers resolve to the same model"

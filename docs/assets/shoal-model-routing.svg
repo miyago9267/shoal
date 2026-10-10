@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
   <title id="title">shoal 選模矩陣</title>
-  <desc id="desc">七個 role 依 tier 在各 host 的模型目錄中選模。fast 取 capability 至少 2 中最便宜的，standard 至少 3，strong 至少 4，frontier 取最強。Grok Build 為 inherit，沿用 grok 自己的模型設定。資料來自 tools/render.py --explain，v1.2.0。</desc>
+  <desc id="desc">圖中列出的七個 role（scout、applier、executor、plan-critic、verifier、security-reviewer、security-executor；不含目前只有 Claude 綁定的 watcher、researcher）依 tier 在各 host 的模型目錄中選模。fast 取 capability 至少 2 中最便宜的，standard 至少 3，strong 至少 4，frontier 取最強。Grok Build 為 inherit，沿用 grok 自己的模型設定。資料來自 tools/render.py --explain，v1.2.0。</desc>
   <defs>
     <style>
       .bg { fill: #f7f9fc; } .fg { fill: #152238; } .muted { fill: #66758a; }
@@ -62,7 +62,7 @@
   <text x="1038" y="340" class="cell fg">deepseek-v4-flash</text>
   <text x="1258" y="340" class="cell muted">inherit</text>
   <line x1="48" y1="362" x2="1352" y2="362" class="line"/>
-  <text x="66" y="396" class="mono fg">mech-executor</text>
+  <text x="66" y="396" class="mono fg">applier</text>
   <rect x="280" y="378" width="52" height="26" rx="13" class="green"/><text x="291" y="396" class="pill">fast</text>
   <text x="398" y="396" class="small fg">write</text>
   <text x="558" y="396" class="cell fg">sonnet</text>
@@ -80,7 +80,7 @@
   <text x="1038" y="452" class="cell fg">gpt-5.6-luna</text>
   <text x="1258" y="452" class="cell muted">inherit</text>
   <line x1="48" y1="474" x2="1352" y2="474" class="line"/>
-  <text x="66" y="508" class="mono fg">plan-verifier</text>
+  <text x="66" y="508" class="mono fg">plan-critic</text>
   <rect x="280" y="490" width="83" height="26" rx="13" class="purple"/><text x="291" y="508" class="pill">frontier</text>
   <text x="398" y="508" class="small fg">read-only</text>
   <text x="558" y="508" class="cell fg">fable</text>

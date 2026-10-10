@@ -60,7 +60,7 @@ def golden_files() -> dict[str, bytes]:
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
-        self.assertEqual(len(golden), 17)
+        self.assertEqual(len(golden), 19)
         rendered = render.render_claude_plugin(ROOT)
         self.assertEqual(sorted(rendered), sorted(golden))
         for rel, data in golden.items():
@@ -71,7 +71,7 @@ class GoldenTests(unittest.TestCase):
             self.assertEqual((ROOT / rel).read_bytes(), data, rel)
 
     def test_claude_dist_is_not_changed_by_the_plugin_target(self) -> None:
-        self.assertEqual(len(render.RENDERERS["claude"](ROOT)), 13)
+        self.assertEqual(len(render.RENDERERS["claude"](ROOT)), 15)
         self.assertNotIn("claude-plugin", render.RENDERERS)
 
 
@@ -432,6 +432,56 @@ class PluginDeferralTests(unittest.TestCase):
         self.install_global()
         self.assert_one_log_per_event(self.run_turn())
 
+    def background_bash(self) -> dict:
+        return {
+            "session_id": "sess-1",
+            "prompt_id": "p-1",
+            "cwd": self.work,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "sleep 60", "run_in_background": True},
+            "tool_use_id": "t",
+        }
+
+    def assert_one_g4_deny(self, out: str) -> None:
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+        g4 = [r for r in self.records() if r.get("rule") == "G4"]
+        self.assertEqual([(r["decision"], r["tool"]) for r in g4], [("deny", "Bash")], self.records())
+
+    def test_background_bash_plugin_only_is_judged_once(self) -> None:
+        self.fire(self.prompt())
+        self.assert_one_g4_deny(self.fire(self.background_bash()))
+
+    def test_background_bash_with_current_global_matcher_defers_to_global(self) -> None:
+        self.install_global()
+        self.fire(self.prompt())
+        self.assert_one_g4_deny(self.fire(self.background_bash()))  # global denies, the plugin copy stays silent
+        raw = json.dumps(self.background_bash()).encode()
+        self.assertEqual(self.call(self.plugin_script, ["--host", "claude", "--plugin"], raw, {}), "")
+
+    def test_background_bash_with_older_global_matcher_is_handled_by_the_plugin(self) -> None:
+        """An older install registered a matcher without Bash: Claude Code never calls the global entry for it."""
+        self.install_global()
+        settings = json.loads((self.cfg / "settings.json").read_text(encoding="utf-8"))
+        for group in settings["hooks"]["PreToolUse"]:
+            group["matcher"] = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
+        self.write_settings(settings)
+        self.assertFalse(guard.global_guard_covers("claude", "PreToolUse", "Bash", self.env(), self.home))
+        self.assertTrue(guard.global_guard_covers("claude", "PreToolUse", "Edit", self.env(), self.home))
+        self.call(self.plugin_script, ["--host", "claude", "--plugin"], json.dumps(self.prompt()).encode(), {})
+        out = self.call(self.plugin_script, ["--host", "claude", "--plugin"], json.dumps(self.background_bash()).encode(), {})
+        self.assert_one_g4_deny(out)
+
+    def test_foreground_bash_is_silent_and_leaves_no_trace(self) -> None:
+        self.fire(self.prompt())
+        before = self.records()
+        payload = self.background_bash()
+        payload["tool_input"] = {"command": "ls"}
+        self.assertEqual(self.fire(payload), "")
+        payload["tool_input"] = {"command": "ls", "run_in_background": False}
+        self.assertEqual(self.fire(payload), "")
+        self.assertEqual(self.records(), before)
+
     def test_plugin_alone_with_global_entry_is_silent_and_logs_nothing(self) -> None:
         self.install_global()
         raw = json.dumps(self.edit("a")).encode()
@@ -501,7 +551,8 @@ class PluginDeferralTests(unittest.TestCase):
         self.assertTrue(covers("UserPromptSubmit", None))
         self.assertTrue(covers("PreToolUse", "Edit"))
         self.assertTrue(covers("PreToolUse", "Workflow"))
-        self.assertFalse(covers("PreToolUse", "Bash"))
+        self.assertTrue(covers("PreToolUse", "Bash"))  # G4 needs the shell tool
+        self.assertFalse(covers("PreToolUse", "Read"))
         self.assertFalse(covers("PreToolUse", None))
         self.assertFalse(covers("SessionStart", None))
         self.assertFalse(covers(None, None))

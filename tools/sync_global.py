@@ -15,15 +15,19 @@ shoal 2.0.0 把所有安裝出去的名稱都改了（docs/specs/shoal-rebrand�
   codex     tools/install_hooks.py --host codex（dispatch guard 與 hook entry），加上
             templates/agents/*.toml 對 <CODEX_HOME 或 ~/.codex>/agents/ 的 role：已相同就略過；
             與 HEAD 不同但位元組等於該 template 的某個歷史版本才取代（temp file + rename）；
-            其他（使用者改過、未知來源、symlink）一律不動並回報 drift。平常不跑 install/install.py；
+            其他（使用者改過、未知來源、symlink）一律不動並回報 drift。
+            role 改名（RENAMED_ROLES）後留下的舊名 role 檔案：位元組等於該舊名 template 的某個歷史版本
+            才移除（dry-run 只回報），其他一律不動並回報 drift。平常不跑 install/install.py；
             只有偵測到 2.0.0 之前的舊名安裝時才跑它（它先移除舊名：舊 hook 群組與 gate、AGENTS.md
             舊 marker、install state、config.toml 的 marketplace／plugin key、plugin cache、
             舊名的 jev 資料目錄，再以新名安裝並寫新的 state）。使用者自改的舊 gate 腳本改名成
             .pre-shoal-<ts> 備份並取消註冊。這一步需要 codex CLI，工作樹在安裝用路徑上必須與 HEAD 相同。
   grok      tools/install_grok.py dry-run 回報有差異才 --apply（不帶 --fix-toggles，不動 config.toml）；
-            舊名的 rules、hooks json、hooks 目錄（確認是 shoal 安裝的）由它一起移除。
+            舊名的 rules、hooks json、hooks 目錄，以及 role 改名後的舊名 agents／roles 檔案
+            （確認是 shoal 安裝的）由它一起移除。
   agy       tools/install_hooks.py --host agy；agents/skill 是指向 hosts/agy/dist 的 symlink，
-            只檢查 symlink 還指在那裡（回報，不修）；唯一例外是舊名（LEGACY_AGY_NAME_PREFIX 開頭）的 symlink：
+            只檢查 symlink 還指在那裡（回報，不修）；例外是舊名（LEGACY_AGY_NAME_PREFIX 開頭）的 symlink，
+            以及 role 改名（RENAMED_ROLES）後仍指向本 repo 的 hosts/agy/dist/agents/<舊名> 的 symlink（移除連結）：
             指向本 repo 的 hosts/agy/dist 的 skill 移除並改指新名；其他舊名 symlink（例如指向
             dotfile 的舊安裝或斷掉的連結）直接移除（dry-run 只回報）。一般檔案與非舊名一律不動。
   opencode  需要 bun。用 install_global.sh 同樣的步驟建出 HEAD 的 bundle，與全域 config dir 的
@@ -62,6 +66,9 @@ LEGACY_AGY_SKILL = "pilotfish-orchestration"
 LEGACY_AGY_NAME_PREFIX = "pilotfish"  # skill 與 agent symlink 的舊名都以此開頭
 LEGACY_OPENCODE_PLUGIN_ENTRY = "plugins/pilotfish-opencode.js"
 LEGACY_OPENCODE_DIR_PREFIX = "pilotfish/"
+
+# ---- RENAMED_: role 改名前的名稱（docs/specs/delegation-default/RENAME.md）----
+RENAMED_ROLES = ("mech-executor", "plan-verifier")
 
 Result = tuple[str, str]  # (status, detail)
 
@@ -191,10 +198,13 @@ def template_history(ctx: Ctx, path: str) -> set[bytes]:
     return out
 
 
-def sync_codex_roles(ctx: Ctx, home: Path) -> tuple[list[str], list[str], list[str]]:
+def sync_codex_roles(
+    ctx: Ctx, home: Path
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """回傳 (updated, added, drift, removed)；removed 是 role 改名後留下的舊名檔案。"""
     agents = home / "agents"
     if not agents.is_dir():
-        return [], [], []
+        return [], [], [], []
     listing = (
         git(ctx, "ls-tree", "--name-only", ctx.ref, f"{ROLE_DIR}/").decode().split()
     )
@@ -222,7 +232,21 @@ def sync_codex_roles(ctx: Ctx, home: Path) -> tuple[list[str], list[str], list[s
                 atomic_replace(target, head, stat.S_IMODE(target.stat().st_mode))
         else:
             drift.append(name)
-    return updated, added, drift
+    removed: list[str] = []
+    for role in RENAMED_ROLES:
+        name = f"{role}.toml"
+        target = agents / name
+        if not (target.is_symlink() or target.exists()):
+            continue
+        if target.is_symlink() or not target.is_file():
+            drift.append(name)
+        elif target.read_bytes() in template_history(ctx, f"{ROLE_DIR}/{name}"):
+            removed.append(name)
+            if ctx.apply:
+                target.unlink()
+        else:
+            drift.append(name)
+    return updated, added, drift, removed
 
 
 # 遷移後由正常的 installer 安裝的新名（只用在 dry-run 的計畫文字）。
@@ -310,9 +334,11 @@ def sync_codex(ctx: Ctx) -> Result:
                         "jev router reinstall: " + one_line(proc.stderr or proc.stdout)
                     )
                 parts.append("jev router")
-    updated, added, drift = sync_codex_roles(ctx, home)
+    updated, added, drift, removed = sync_codex_roles(ctx, home)
     if updated:
         parts.append("roles: " + ", ".join(updated))
+    if removed:
+        parts.append("renamed roles removed: " + ", ".join(removed))
     if added:
         parts.append("new roles: " + ", ".join(added))
     drift_note = ("drift: " + ", ".join(drift)) if drift else ""
@@ -391,10 +417,24 @@ def migrate_agy_skill_link(ctx: Ctx) -> tuple[Optional[str], list[str], str]:
     return f"legacy migration: relink skills/{LEGACY_AGY_SKILL} -> skills/{name}", [], name
 
 
+def is_renamed_role_link(ctx: Ctx, link: Path) -> bool:
+    """role 改名前的名稱，且 symlink 仍指向本 repo 的 hosts/agy/dist/agents/<舊名>（目標可能已不存在）。"""
+    if link.name not in RENAMED_ROLES:
+        return False
+    target = Path(os.readlink(link))
+    if not target.is_absolute():
+        target = link.parent / target
+    dist_agents = ctx.repo / "hosts" / "agy" / "dist" / "agents"
+    return os.path.join(os.path.realpath(target.parent), target.name) == os.path.join(
+        os.path.realpath(dist_agents), link.name
+    )
+
+
 def remove_legacy_agy_links(ctx: Ctx, skip: str = "") -> Optional[str]:
     """skills、agents 目錄裡舊名（LEGACY_AGY_NAME_PREFIX 開頭）的 symlink 一律視為舊安裝：--apply 移除，dry-run 回報。
 
     不管指向哪裡（舊 dist、dotfile 時代的目標、斷掉的連結）；只 unlink 連結本身。
+    agents 裡 role 改名前的名稱（RENAMED_ROLES）只在 symlink 仍指向本 repo 的 dist 時才算舊安裝。
     一般檔案、目錄與非舊名不動。skip 是 migrate_agy_skill_link 已處理的 "kind/name"。
     """
     config = ctx.home / ".gemini" / "config"
@@ -405,9 +445,12 @@ def remove_legacy_agy_links(ctx: Ctx, skip: str = "") -> Optional[str]:
             continue
         for link in sorted(directory.iterdir()):
             if (
-                not link.name.startswith(LEGACY_AGY_NAME_PREFIX)
-                or not link.is_symlink()
+                not link.is_symlink()
                 or f"{kind}/{link.name}" == skip
+                or not (
+                    link.name.startswith(LEGACY_AGY_NAME_PREFIX)
+                    or (kind == "agents" and is_renamed_role_link(ctx, link))
+                )
             ):
                 continue
             removed.append(f"{kind}/{link.name}")

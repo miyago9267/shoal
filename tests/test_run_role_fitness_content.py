@@ -32,7 +32,7 @@ class ContentProbeTests(unittest.TestCase):
 
     def test_native_review_prompt_matches_dispatch_contract(self) -> None:
         prompt = content._native_review_prompt("# plan-review-05\nRisk fixture")
-        self.assertIn("agent_type='plan-verifier'", prompt)
+        self.assertIn("agent_type='plan-critic'", prompt)
         self.assertIn("task_name='role_fitness_plan_review'", prompt)
         self.assertIn("timeout_ms=30000", prompt)
         self.assertEqual(prompt.count("exactly once"), 2)

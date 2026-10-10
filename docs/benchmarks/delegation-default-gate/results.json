@@ -1,0 +1,527 @@
+{
+  "runs_used": 10,
+  "total_cost_usd": 1.8155,
+  "records": [
+    {
+      "case": "A",
+      "exit": 0,
+      "wall_s": 6.4,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 3,
+      "cost_usd": 0.1789,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 339,
+          "cacheReadInputTokens": 40246,
+          "cacheCreationInputTokens": 20506,
+          "costUSD": 0.1789012
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Edit"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": false,
+      "final_has_question": false,
+      "pass": true,
+      "observation": "typo fixed=True; no Agent call"
+    },
+    {
+      "case": "B",
+      "exit": 0,
+      "wall_s": 17.5,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 6,
+      "cost_usd": 0.1449,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 1473,
+          "cacheReadInputTokens": 116088,
+          "cacheCreationInputTokens": 11522,
+          "costUSD": 0.14490160000000002
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": false,
+      "final_has_question": false,
+      "pass": false,
+      "observation": "files done=True; no Agent call"
+    },
+    {
+      "case": "C",
+      "exit": 0,
+      "wall_s": 26.9,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 6,
+      "cost_usd": 0.1772,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 2623,
+          "cacheReadInputTokens": 118219,
+          "cacheCreationInputTokens": 12631,
+          "costUSD": 0.17719980000000002
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": true,
+      "final_has_question": false,
+      "pass": false,
+      "observation": "no Agent call"
+    },
+    {
+      "case": "D1",
+      "exit": 0,
+      "wall_s": 16.0,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 3,
+      "cost_usd": 0.1234,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 1402,
+          "cacheReadInputTokens": 51543,
+          "cacheCreationInputTokens": 10633,
+          "costUSD": 0.12343660000000001
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": true,
+      "final_has_question": false,
+      "pass": false,
+      "observation": "parallel=False; no Agent call"
+    },
+    {
+      "case": "D2",
+      "exit": 0,
+      "wall_s": 15.3,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 3,
+      "cost_usd": 0.1135,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 992,
+          "cacheReadInputTokens": 51564,
+          "cacheCreationInputTokens": 10418,
+          "costUSD": 0.1135208
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": false,
+      "final_has_question": false,
+      "pass": false,
+      "observation": "parallel=False; no Agent call"
+    },
+    {
+      "case": "E1",
+      "exit": 0,
+      "wall_s": 26.7,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 2,
+      "cost_usd": 0.0895,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 338,
+          "cacheReadInputTokens": 30868,
+          "cacheCreationInputTokens": 9570,
+          "costUSD": 0.08950960000000001
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": true,
+      "final_has_question": false,
+      "pass": false,
+      "observation": "main ran suite itself=True; no Agent call"
+    },
+    {
+      "case": "E2",
+      "exit": 0,
+      "wall_s": 30.7,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 3,
+      "cost_usd": 0.097,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 434,
+          "cacheReadInputTokens": 51252,
+          "cacheCreationInputTokens": 9755,
+          "costUSD": 0.0969944
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": true,
+      "final_has_question": false,
+      "pass": false,
+      "observation": "main ran suite itself=True; no Agent call"
+    },
+    {
+      "case": "F",
+      "exit": 0,
+      "wall_s": 112.2,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 1,
+      "cost_usd": 0.6392,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 22,
+          "outputTokens": 13196,
+          "cacheReadInputTokens": 144506,
+          "cacheCreationInputTokens": 46232,
+          "costUSD": 0.5834212
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 262781,
+          "outputTokens": 39087,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 0,
+          "costUSD": 0.0558216
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [
+        {
+          "subagent_type": "shoal:researcher",
+          "description": "WAL research, experiment arm",
+          "effort": null,
+          "run_in_background": false,
+          "arm": "experiment",
+          "mode_gaps": false,
+          "input_keys": [
+            "description",
+            "prompt",
+            "subagent_type"
+          ],
+          "child_models": [
+            "claude-opus-5-5"
+          ],
+          "order": 1
+        },
+        {
+          "subagent_type": "shoal:researcher",
+          "description": "WAL research, control arm",
+          "effort": null,
+          "run_in_background": false,
+          "arm": "control",
+          "mode_gaps": false,
+          "input_keys": [
+            "description",
+            "prompt",
+            "subagent_type"
+          ],
+          "child_models": [
+            "claude-opus-5-5"
+          ],
+          "order": 2
+        }
+      ],
+      "main_tools": [
+        "Read",
+        "Bash",
+        "Read"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [
+        "claude-opus-5-5"
+      ],
+      "final_has_pass_signal": true,
+      "final_has_question": false,
+      "pass": false,
+      "observation": "arms=['control', 'experiment'] parallel=False; shoal:researcher[WAL research, experiment arm|effort=None|bg=False], shoal:researcher[WAL research, control arm|effort=None|bg=False]"
+    },
+    {
+      "case": "G",
+      "exit": 0,
+      "wall_s": 18.1,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 3,
+      "cost_usd": 0.1284,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 1383,
+          "cacheReadInputTokens": 51421,
+          "cacheCreationInputTokens": 11305,
+          "costUSD": 0.1284082
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": true,
+      "final_has_question": true,
+      "pass": true,
+      "observation": "path=text questions; implemented=False; no Agent call"
+    },
+    {
+      "case": "H",
+      "exit": 0,
+      "wall_s": 14.6,
+      "result_subtype": "success",
+      "is_error": false,
+      "turns": 4,
+      "cost_usd": 0.1235,
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1008,
+          "cacheReadInputTokens": 73367,
+          "cacheCreationInputTokens": 11078,
+          "costUSD": 0.1234894
+        }
+      },
+      "init_agents": [
+        "shoal:Explore",
+        "shoal:applier",
+        "shoal:executor",
+        "shoal:plan-critic",
+        "shoal:researcher",
+        "shoal:scout",
+        "shoal:security-executor",
+        "shoal:security-reviewer",
+        "shoal:verifier",
+        "shoal:watcher"
+      ],
+      "init_plugins": [
+        "shoal",
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agent_calls": [],
+      "main_tools": [
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "main_bash_background": false,
+      "child_models_observed": [],
+      "final_has_pass_signal": true,
+      "final_has_question": false,
+      "pass": true,
+      "observation": "fixed=True; no Agent call"
+    }
+  ]
+}

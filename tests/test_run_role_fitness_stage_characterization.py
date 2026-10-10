@@ -393,7 +393,7 @@ class StageCharacterizationTests(unittest.TestCase):
         )
         self.assertEqual(host.run_calls, [])
 
-    # -- native plan-verifier review -----------------------------------
+    # -- native plan-critic review -----------------------------------
     def _native_review(self, host: _Host) -> dict[str, Any]:
         return self._stage(
             host,
@@ -413,10 +413,10 @@ class StageCharacterizationTests(unittest.TestCase):
             host,
             sandbox="read-only",
             prompt_sha256=NATIVE_REVIEW_PROMPT_SHA256,
-            role="plan-verifier",
+            role="plan-critic",
             timeout=9,
         )
-        self._assert_binding(host, "plan-verifier", "role_fitness_plan_review")
+        self._assert_binding(host, "plan-critic", "role_fitness_plan_review")
         self.assertEqual(host.cwd_entries_at_run, [])
         self.assertEqual(row, EXPECTED["native_review_accepted"])
 
@@ -445,7 +445,7 @@ class StageCharacterizationTests(unittest.TestCase):
                 "case_id": PLAN_CASE,
                 "status": "inconclusive",
                 "reason": "timeout",
-                "native_role": "plan-verifier",
+                "native_role": "plan-critic",
             },
         )
 
@@ -503,10 +503,10 @@ class StageCharacterizationTests(unittest.TestCase):
             host,
             sandbox="workspace-write",
             prompt_sha256=MECH_PROMPT_SHA256,
-            role="mech-executor",
+            role="applier",
             timeout=11,
         )
-        self._assert_binding(host, "mech-executor", "role_fitness_mechanical_execution")
+        self._assert_binding(host, "applier", "role_fitness_mechanical_execution")
         self.assertEqual(host.cwd_entries_at_run, [])
         self.assertEqual(row["usage"], CHILD_USAGE)
         self.assertEqual(row, EXPECTED["mechanical_accepted"])
@@ -536,7 +536,7 @@ class StageCharacterizationTests(unittest.TestCase):
                 "case_id": MECH_CASE,
                 "status": "inconclusive",
                 "reason": "timeout",
-                "native_role": "mech-executor",
+                "native_role": "applier",
             },
         )
         self.assertEqual(
@@ -656,10 +656,10 @@ class StageCharacterizationTests(unittest.TestCase):
             host,
             sandbox="workspace-write",
             prompt_sha256=SPLIT_PROMPT_SHA256,
-            role="mech-executor",
+            role="applier",
             timeout=15,
         )
-        self._assert_binding(host, "mech-executor", "role_fitness_split_execution")
+        self._assert_binding(host, "applier", "role_fitness_split_execution")
         self.assertEqual(host.cwd_entries_at_run, [])
         self.assertEqual(row, EXPECTED["split_accepted"])
 
@@ -702,10 +702,10 @@ class StageCharacterizationTests(unittest.TestCase):
 
 
 DIRECT_PROMPT_SHA256 = "62709909982b301177c7c787092ab6755f337c8939c87941a12c1b33db2a4673"
-NATIVE_REVIEW_PROMPT_SHA256 = "09071640ad9f9a519acab154d8c8c208db1911528757d05a14ce539f81e2f480"
-MECH_PROMPT_SHA256 = "f55526f98a1e38ff7ca2dc02b800d79657af5b401b0ac9c3e6ac8bf0d40b9f4d"
+NATIVE_REVIEW_PROMPT_SHA256 = "4793677e8e00253d6af3d5b8ffb76cd7638c6ec08e4ee3b45c341041f750da31"
+MECH_PROMPT_SHA256 = "3c7344105be8f17b21ee8925522ee6fd57f369006cfb100bc5f98b6d990d09b2"
 VERIFIER_PROMPT_SHA256 = "be3c6182e921a48d39c490d3ffcd70c0c4cf4a976b9e85ab65c647346bb97ab6"
-SPLIT_PROMPT_SHA256 = "3d29bbc7e1d89b93954689d66f1752fdccc4238929708bfaef2295d831e41380"
+SPLIT_PROMPT_SHA256 = "5ddde569cbbab00904d4cb8f261ea4ae2e2ab0a7fa74fb73218c17034efb17d8"
 EXPECTED: dict[str, Any] = {'direct_accepted': {'candidate': 'luna_xhigh',
                      'case_id': 'plan-review-01',
                      'event_types': {'item.completed': 1, 'turn.completed': 1},
@@ -745,7 +745,7 @@ EXPECTED: dict[str, Any] = {'direct_accepted': {'candidate': 'luna_xhigh',
                                          'response_item': 1,
                                          'turn.completed': 1},
                          'model': 'gpt-5.6-luna',
-                         'native_role': 'mech-executor',
+                         'native_role': 'applier',
                          'reasoning_effort': 'low',
                          'status': 'accepted',
                          'usage': {'cache_write_input_tokens': 4,
@@ -771,7 +771,7 @@ EXPECTED: dict[str, Any] = {'direct_accepted': {'candidate': 'luna_xhigh',
                                             'turn.completed': 1},
                             'false_escalation': False,
                             'model': 'gpt-5.6-luna',
-                            'native_role': 'plan-verifier',
+                            'native_role': 'plan-critic',
                             'quality_score': 100.0,
                             'reasoning_effort': 'low',
                             'review_output': {'decision': 'READY',
@@ -845,7 +845,7 @@ EXPECTED: dict[str, Any] = {'direct_accepted': {'candidate': 'luna_xhigh',
                     'dispatch_status': 'NATIVE_OK',
                     'event_types': {'item.completed': 1, 'response_item': 1, 'turn.completed': 1},
                     'model': 'gpt-5.6-luna',
-                    'native_role': 'mech-executor',
+                    'native_role': 'applier',
                     'reasoning_effort': 'low',
                     'status': 'accepted',
                     'usage': {'cache_write_input_tokens': 6,

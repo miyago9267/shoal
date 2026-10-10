@@ -25,13 +25,13 @@ HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 # 新增 replace 必須同時改這裡（R5）；host 沒有 addenda 就是空。
 EXPECTED_REPLACES: dict[str, dict[str, list[str]]] = {
     "claude": {},
-    "codex": {"mech-executor": ["route-judgment"]},
+    "codex": {"applier": ["route-judgment"]},
     "agy": {
         role: ["foreground-timeout"]
-        for role in ("mech-executor", "executor", "verifier", "security-executor")
+        for role in ("applier", "executor", "verifier", "security-executor")
     },
     "grok": {},
-    # OpenCode 的用語是 parent session；沒有 plan-verifier，main-session-carries 改寫成 parent session 的 Plan。
+    # OpenCode 的用語是 parent session；沒有 plan-critic，main-session-carries 改寫成 parent session 的 Plan。
     "opencode": {
         "scout": ["no-delegate"],
         "executor": ["no-spawn"],
@@ -45,19 +45,21 @@ EXPECTED_REPLACES: dict[str, dict[str, list[str]]] = {
 # host 專屬 role（Claude 的 Explore）與 omitted_roles 不在內。
 CORE_ROLES = (
     "scout",
-    "mech-executor",
+    "applier",
     "executor",
-    "plan-verifier",
+    "plan-critic",
     "verifier",
     "security-reviewer",
     "security-executor",
 )
+# watcher、researcher（delegation-default D3、D16）第一階段只有 Claude 綁定，其他 host 列入 omitted_roles。
+NEW_CLAUDE_ONLY_ROLES = ("watcher", "researcher")
 EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
     "agy": CORE_ROLES,
     "grok": CORE_ROLES,
-    "claude": CORE_ROLES,
-    # OpenCode 只有 5 個 role（Decision 9），omitted_roles 不變。
-    "opencode": tuple(r for r in CORE_ROLES if r not in ("mech-executor", "plan-verifier")),
+    "claude": CORE_ROLES + NEW_CLAUDE_ONLY_ROLES,
+    # OpenCode 只有 5 個 role（Decision 9）；applier、plan-critic 與兩個新 role 都在 omitted_roles。
+    "opencode": tuple(r for r in CORE_ROLES if r not in ("applier", "plan-critic")),
 }
 
 # host 專屬內容（工具限制、capability 說明、foreground 用語、brief 用語對照等）只能放在這些 addenda；
@@ -65,9 +67,9 @@ EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
 EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
     "agy": {
         "scout": ["tool-limits"],
-        "mech-executor": ["foreground-limit", "mechanical-not-tool-heavy"],
+        "applier": ["foreground-limit", "mechanical-not-tool-heavy"],
         "executor": ["foreground-limit"],
-        "plan-verifier": [
+        "plan-critic": [
             "tool-limits",
             "envelope-scope-nongoals",
             "brief-unit-kinds",
@@ -81,8 +83,8 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
     },
     "grok": {
         "scout": ["tool-templates"],
-        "mech-executor": ["mechanical-not-tool-heavy"],
-        "plan-verifier": [
+        "applier": ["mechanical-not-tool-heavy"],
+        "plan-critic": [
             "capability-note",
             "envelope-scope-nongoals",
             "brief-unit-kinds",
@@ -95,9 +97,9 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
     },
     "claude": {
         "scout": ["final-message-channel"],
-        "mech-executor": ["tools-disabled", "timeout-param", "background-note", "mechanical-not-tool-heavy"],
+        "applier": ["tools-disabled", "timeout-param", "background-note", "mechanical-not-tool-heavy"],
         "executor": ["tools-disabled", "timeout-param", "background-note"],
-        "plan-verifier": [
+        "plan-critic": [
             "tool-allowlist",
             "brief-unit-kinds",
             "read-needed-evidence",
@@ -122,6 +124,8 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
             "background-note",
             "do-not-start",
         ],
+        "watcher": ["tools-disabled", "final-message-channel"],
+        "researcher": ["final-message-channel"],
     },
     "opencode": {
         "scout": ["assigned-paths", "parent-session-owns", "parent-session-wording"],
@@ -542,7 +546,9 @@ class OmittedRoleTests(TempHost):
         )
         files = self.render("opencode")
         omitted = render.load_toml(self.binding("opencode"))["omitted_roles"]
-        self.assertEqual(sorted(omitted), ["mech-executor", "plan-verifier"])
+        self.assertEqual(
+            sorted(omitted), ["applier", "plan-critic", "researcher", "watcher"]
+        )
         for role in omitted:
             self.assertNotIn(f"roles/{role}.md", files)
         self.assertEqual(files["roles/scout.md"], b"scout one. scout two.\n")
@@ -629,9 +635,9 @@ class VerbatimClauseTests(unittest.TestCase):
             with self.subTest(host=host, role="verifier"):
                 text = rendered_text(host, "verifier", files)
                 self.assertIn("treat it as `outcome_verification`", text)
-            if "plan-verifier" in roles:
-                with self.subTest(host=host, role="plan-verifier"):
-                    text = rendered_text(host, "plan-verifier", files)
+            if "plan-critic" in roles:
+                with self.subTest(host=host, role="plan-critic"):
+                    text = rendered_text(host, "plan-critic", files)
                     self.assertIn("treat a `program envelope` as a `readiness_review` envelope", text)
 
     def test_claude_explore_keeps_its_legacy_text(self) -> None:
@@ -689,17 +695,17 @@ class CoreContractTests(unittest.TestCase):
 
 CODEX_CORE_ROLES = (
     "scout",
-    "mech-executor",
+    "applier",
     "executor",
-    "plan-verifier",
+    "plan-critic",
     "verifier",
     "security-reviewer",
     "security-executor",
 )
 # Codex 專屬內容（模型、reasoning effort、semantic_adjudication）只能放在這些 addenda；新增要同時改這裡。
 CODEX_ADDENDA = {
-    "mech-executor": ["model-binding"],
-    "plan-verifier": ["semantic-adjudication"],
+    "applier": ["model-binding"],
+    "plan-critic": ["semantic-adjudication"],
     "security-executor": ["reasoning-effort"],
 }
 

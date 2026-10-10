@@ -16,12 +16,21 @@ role 只寫 tier，不寫模型。resolver 在每個 host 的模型目錄裡排�
 選模。用 `python3 tools/render.py --host <host> --explain` 可以看到每個 role
 的候選、排除原因與結果。
 
-![選模矩陣：七個 role 在五個 host 選出的模型](./docs/assets/shoal-model-routing.svg)
+Claude host 另有兩個只在 Claude 綁定的 role（其他 host 先列入 `omitted_roles`）：
+
+| Role | 存取 | Claude 預設 | 用途 |
+| --- | --- | --- | --- |
+| `watcher` | 可跑不可寫 | haiku / low | 在背景盯指令、build、測試、CI 到結束，回摘要 |
+| `researcher` | 唯讀加 web | opus / high | 論文、外部文件、上游專案分析；研究結論會影響決策時平行派實驗組與對照組 |
+
+![選模矩陣：圖中七個 role 在五個 host 選出的模型（不含 watcher、researcher）](./docs/assets/shoal-model-routing.svg)
 
 ## 呼叫鏈
 
-main session 先判斷互動形態與風險，小而局部的工作直接做；有風險或大型工作
-才走五道關卡，依階段派唯讀、審查或寫入的 role。完整規則在各 host 的
+main session 先判斷互動形態與風險。已有穩定契約的實作、互不相干的偵察與長
+指令預設派工；只有寫 brief 的成本高於直接改時才自己做。有風險或大型工作才走
+五道關卡，依階段派唯讀、審查或寫入的 role。每次派工都帶 effort，可寫 role 的
+description 以 `fix:`、`feat:` 這類類型開頭（目前只有 Claude 的 policy 渲染這些條款）。完整規則在各 host 的
 orchestration policy（例如
 `hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md`）。
 
@@ -85,9 +94,11 @@ dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex
 `install/install.py` 一併註冊（需在 Codex 內用 `/hooks` 核准一次），Grok 隨
 `install_grok.py` 安裝，Claude Code 與 agy 由 `tools/install_hooks.py` 安裝，OpenCode
 的 guard 在 plugin 內。除 Claude 之外的 host 預設 shadow，`SHOAL_GUARD=off` 關閉。
-main session 的直接編輯只會被提醒：R1、R2 不擋（Claude、Codex 每輪第一次回傳
+main session 的直接編輯在 Claude 以外只會被提醒：R1、R2 不擋（Codex 每輪第一次回傳
 `additionalContext`，其餘 host 只記 log，`SHOAL_GUARD_DIRECT=1` 關閉提醒），只有
-subagent 的 LEAF、VERIFY_EDIT 會擋。
+subagent 的 LEAF、VERIFY_EDIT 會擋。Claude 上（3.0.0 起）本輪被分類為實作工作而 main
+還沒派工時的改檔（R1），以及 main 自己開背景 shell（G4）會被擋；R2 仍只提醒。
+prompt 內的 `#direct` 放行那一輪，見 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
 每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [INSTALL.md](./INSTALL.md#每日同步)。
@@ -96,12 +107,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 2.1.1 |
-| codex host | 2.1.1（`hosts/codex/VERSION`） |
-| claude host | 2.1.1（`hosts/claude/VERSION`） |
-| agy host | 2.0.0（`hosts/agy/VERSION`） |
-| grok host | 2.0.0（`hosts/grok/VERSION`） |
-| opencode host | 2.0.0（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.0.0 |
+| codex host | 3.0.0（`hosts/codex/VERSION`） |
+| claude host | 3.0.0（`hosts/claude/VERSION`） |
+| agy host | 3.0.0（`hosts/agy/VERSION`） |
+| grok host | 3.0.0（`hosts/grok/VERSION`） |
+| opencode host | 3.0.0（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

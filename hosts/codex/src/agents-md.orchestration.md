@@ -1,10 +1,10 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v2.1.1 -->
+<!-- shoal-codex v3.0.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
 Main-session policy. If you are running as a subagent role (`scout`,
-`plan-verifier`, `security-reviewer`, `mech-executor`, `sol-executor`,
+`plan-critic`, `security-reviewer`, `applier`, `sol-executor`,
 `executor`, `verifier`, or `security-executor`), ignore this section and
 complete the task yourself without further delegation.
 
@@ -16,9 +16,9 @@ Complete small, local, already-stable work directly.
 | Role | Boundary |
 |---|---|
 | `scout` | Broad or focused read-only repository reconnaissance |
-| `plan-verifier` | Pre-approval Plan challenge; `READY` or `REVISE` |
+| `plan-critic` | Pre-approval Plan challenge; `READY` or `REVISE` |
 | `security-reviewer` | Pre-approval read-only security evidence |
-| `mech-executor` | Fully specified mechanical implementation |
+| `applier` | Fully specified mechanical implementation |
 | `sol-executor` | Bounded implementation using normal engineering judgment |
 | `executor` | Bounded implementation requiring local judgment |
 | `verifier` | Calibrated completed-work falsification; `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` |
@@ -33,10 +33,10 @@ projection never bypasses typed dispatch or host approval.
 
 | Work surface | Default candidate | Conditional Astra candidate |
 |---|---|---|
-| Atomic one-command/one-action work | Parent or `mech-executor` Luna binding | Never open a child |
-| Pure Plan or semantic judgment | Sol where the existing contract requires it | Do not replace `plan-verifier` |
+| Atomic one-command/one-action work | Parent or `applier` Luna binding | Never open a child |
+| Pure Plan or semantic judgment | Sol where the existing contract requires it | Do not replace `plan-critic` |
 | Security review with cross-file or cross-system evidence | Current reviewer binding | `security-reviewer` at Astra `high`, read-only |
-| Routine design, ordinary tools, bounded multi-step, or uncertainty | Parent or `mech-executor` Luna binding | Keep on the cheap guarded path |
+| Routine design, ordinary tools, bounded multi-step, or uncertainty | Parent or `applier` Luna binding | Keep on the cheap guarded path |
 | Normal design, tool choice, interpretation, QA, or bounded implementation | `sol-executor` / `verifier` GPT-6 Sol binding | Use GPT-6 Sol as the capable middle tier |
 | Deep architecture, cross-system trade-offs, conflicting evidence, or advanced tool orchestration | `executor` Astra binding | Use Astra only at the rare deep tier |
 | Fingerprinted disagreement between two verdicts | Existing adjudication path | One Astra `high` adjudication, then stop |
@@ -65,8 +65,8 @@ Use `sol-executor` and `verifier` GPT-6 Sol bindings for normal design, tool cho
 interpretation, QA, and bounded implementation. Use the installed `executor`
 Astra binding only for deep architecture, cross-system trade-offs, conflicting
 evidence, advanced tool orchestration, or one bounded Sol-path escalation.
-Keep atomic, routine, and guarded work on Luna roles. `mech-executor` and
-`scout` remain baseline-only, and `plan-verifier` uses `gpt-6-sol@high`;
+Keep atomic, routine, and guarded work on Luna roles. `applier` and
+`scout` remain baseline-only, and `plan-critic` uses `gpt-6-sol@high`;
 required approval, security, release, and fresh-verifier gates remain
 unchanged. Automatic typed escalation never switches the root model in place.
 
@@ -74,7 +74,7 @@ If Astra is unavailable or an override is invalid, fail closed before task
 work or an Astra dispatch receipt. Recovery requires a separately started
 no-flags session, which returns to the normal Luna/Sol policy.
 
-`mech-executor` and `scout` are baseline-only roles. Keep their installed Luna
+`applier` and `scout` are baseline-only roles. Keep their installed Luna
 bindings and never request Astra for them, regardless of tool count, complexity,
 or horizon labels. If the work exceeds a mechanical or reconnaissance boundary,
   route normal work to `sol-executor`; deep work to `executor`/`verifier`.
@@ -114,10 +114,10 @@ matching typed role. In particular:
   scoped reconnaissance to `scout`. If two or more reconnaissance surfaces are
   independent, start them in parallel and give each child an exclusive surface
   and stop condition.
-- Send a material Plan to `plan-verifier` before approval when the independent-
+- Send a material Plan to `plan-critic` before approval when the independent-
   review trigger below applies, and send pre-approval security evidence to
   `security-reviewer`.
-- Send fully specified mechanical repetition to `mech-executor` under the
+- Send fully specified mechanical repetition to `applier` under the
   qualifying default below, and send an approved, bounded implementation
   requiring judgment to `sol-executor` or `executor` when the deep boundary is
   evidenced.
@@ -358,9 +358,9 @@ user-visible flow against acceptance before adversarial review; review never
 substitutes for that evidence.
 
 For a triggered material pre-approval Plan, this is a mandatory tool-use gate:
-the main session must call `plan-verifier` before sending any readiness
+the main session must call `plan-critic` before sending any readiness
 recommendation. When security evidence applies, call `security-reviewer`
-first, carry its findings into the Plan, then call `plan-verifier`. Do not
+first, carry its findings into the Plan, then call `plan-critic`. Do not
 return `READY` or `REVISE` from the main session first, even if the Plan looks
 obviously incomplete or the user did not name an agent. If typed delegation is
 unavailable, report that verification is unavailable and do not substitute a
@@ -368,7 +368,7 @@ local readiness judgment.
 
 #### Review-service circuit breaker
 
-Treat a missing or timed-out `plan-verifier`, `security-reviewer`, or `verifier`
+Treat a missing or timed-out `plan-critic`, `security-reviewer`, or `verifier`
 receipt as a service-availability failure, not as a user decision. Allow one
 bounded retry for the same stable unit and typed role. If the retry also has no
 valid receipt, stop dispatching that role for the unit and record the state:
@@ -430,12 +430,12 @@ this lifecycle:
 | Phase | Gate | Eligible delegation |
 |---|---|---|
 | Discovery | Stabilize the question, allowed scope, evidence format, and stop condition. The final implementation may remain unknown. | Bounded read-only `scout` work on disjoint evidence surfaces. |
-| Plan | The main session synthesizes one Plan. Large work uses a program envelope plus independent slices with stable IDs, outcome, scope, non-goals, owners, prerequisites, acceptance that proves the slice outcome, rollback, slice-local budget, and stop conditions. | When the independent-review trigger applies, a fresh `plan-verifier` reviews the envelope first, then only the next executable slice; main session owns revisions and final synthesis. |
+| Plan | The main session synthesizes one Plan. Large work uses a program envelope plus independent slices with stable IDs, outcome, scope, non-goals, owners, prerequisites, acceptance that proves the slice outcome, rollback, slice-local budget, and stop conditions. | When the independent-review trigger applies, a fresh `plan-critic` reviews the envelope first, then only the next executable slice; main session owns revisions and final synthesis. |
 | Approval | Present the Plan and wait for explicit user approval when the work is large, architectural, risky, or explicitly plan-first. | Read-only clarification only; do not send an implementation brief or edit source before required approval. |
-| Execution | The authorized contract has stable scope, exclusive ownership, constraints, done criteria, integration, and verification. | `mech-executor`, `executor`, or `security-executor`, chosen by the contract and trust boundary. |
+| Execution | The authorized contract has stable scope, exclusive ownership, constraints, done criteria, integration, and verification. | `applier`, `executor`, or `security-executor`, chosen by the contract and trust boundary. |
 | Verification | The integrated result is concrete enough to falsify as an exact completed-work claim and acceptance. | When the independent-review trigger applies, a fresh `verifier` returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. |
 
-A `plan-verifier` brief requests exactly bare `READY` or structured `REVISE`
+A `plan-critic` brief requests exactly bare `READY` or structured `REVISE`
 with `Blocker:`, `Evidence:`, `Minimum revision:`, and `Acceptance check:`
 fields for one stable envelope or slice. Malformed output is a protocol failure,
 not a Plan judgment. `REVISE` returns all currently known claim-relevant P0-P2
@@ -448,7 +448,7 @@ downstream slices do not block it. Shared blockers and unmet prerequisites
 still gate dependent work.
 
 For one readiness unit, materially revise after each valid `REVISE` and use a
-fresh `plan-verifier`. After two automatic `REVISE` verdicts for the same unit,
+fresh `plan-critic`. After two automatic `REVISE` verdicts for the same unit,
 stop resubmitting and independently disposition every blocker as `FIX`,
 `DEFER`, or `REJECT`; simplify, narrow, or split the unit and continue
 independently approvable slices. Ask the user only for unresolved P0/P1, a
@@ -503,7 +503,7 @@ only for independent, low-overlap workstreams.
 
 Stable multi-file mechanical repetition has a rebuttable delegation default.
 When it has a complete one-shot brief, exclusive ownership, per-item acceptance,
-and specified integration, dispatch exactly one `mech-executor` before the main
+and specified integration, dispatch exactly one `applier` before the main
 session edits by default. The main session owns per-item triage, exceptions,
 integration, and acceptance and must not edit the worker-owned scope while it
 runs. Direct execution of qualifying work requires a specific named blocker
@@ -544,7 +544,7 @@ coherent integration boundary where the complete claim can be independently
 refuted, after exercising the primary acceptance flow. Verify earlier for
 security changes, serialization or other data boundaries, irreversible
 operations, or work that could block later integration. Do not resubmit a
-substantially unchanged Plan to `plan-verifier`; another readiness pass requires
+substantially unchanged Plan to `plan-critic`; another readiness pass requires
 a material revision or new evidence.
 
 Give the outcome verifier the exact claim and acceptance plus relevant diff or
@@ -684,7 +684,7 @@ them; they return the exact command, absolute working directory or isolated
 workspace, required environment, input paths, and completion criterion so the
 orchestrator can run and collect the result before resuming the agent.
 
-Never swap `plan-verifier` and `verifier`. The former challenges Plan
+Never swap `plan-critic` and `verifier`. The former challenges Plan
 readiness; the latter reproduces tests and challenges a completed-work claim.
 Neither role writes the Plan or fixes findings. Final judgment remains in the
 main session.

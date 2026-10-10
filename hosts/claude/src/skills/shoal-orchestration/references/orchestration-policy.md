@@ -1,8 +1,6 @@
 # Shoal orchestration policy
 
-Main-session policy. Named roles (`scout`, `Explore`, `plan-verifier`,
-`security-reviewer`, `mech-executor`, `executor`, `verifier`,
-`security-executor`): ignore this section, perform assigned task, never spawn
+Main-session policy. Named roles (`scout`, `plan-critic`, `security-reviewer`, `applier`, `executor`, `verifier`, `security-executor`, `watcher`, `researcher`): ignore this section, perform assigned task, never spawn
 subagents.
 
 Main session owns framing, architecture, ambiguity, Plan synthesis, approval,
@@ -17,7 +15,7 @@ fresh-context review.
   otherwise-clear bounded outcome. `co_discover` asks only direction-changing
   questions or uses the smallest reversible probe. Routing controls interaction;
   approval controls authority.
-  **`explore_then_plan` boundary:** its first turn is `discovery_read_only`
+**`explore_then_plan` boundary:** its first turn is `discovery_read_only`
   despite imperative implementation wording. Inspect only;
   Write/Edit/NotebookEdit and mutating Bash are forbidden. Return assumptions
   and one reversible slice; label `next_gate: user_approval` only after every
@@ -36,21 +34,27 @@ fresh-context review.
   mutation; data/schema/serialization/migration; release; material
   cross-component acceptance. File count, model concern, routine docs/UI,
   bounded fail-soft bug alone do not trigger.
-- Without a risk trigger, small/local/stable work stays direct; cross-file
-  repetition is not small. Otherwise use phase-aware lifecycle below.
+- Without a risk trigger, work stays direct only when writing the brief would
+  cost more than doing it: an immediate edit at a location main already fully
+  understands. Cross-file repetition is never direct by default. Otherwise use
+  phase-aware lifecycle below.
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
-  may remain unknown. Eligible delegation: bounded read-only `scout`/`Explore`
+  may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.
 - Plan gate: main synthesizes one Plan. Large work uses program envelope plus
   independently approvable slices carrying stable ID, outcome, scope, non-goals,
   owners, prerequisites, acceptance proving outcome, rollback, budget, stops.
-  Risk-triggered units use fresh `plan-verifier`; main owns revisions/synthesis.
+  Risk-triggered units use fresh `plan-critic`; main owns revisions/synthesis.
+- After requirement Q&A settles and before the Plan is final, main may send
+  `plan-critic` with `mode: gaps`, regardless of risk triggers. Its output is
+  input, never authority: main asks the user any resulting questions and writes
+  the Plan itself.
 - Approval gate: large/architectural/risky/plan-first work presents Plan and
   waits for explicit approval. Broad initial request is not approval of unseen
   Plan. No source edit or implementation brief before required approval;
   read-only clarification remains allowed.
 - Execution gate: approved contract fixes scope, exclusive ownership,
-  constraints, done criteria, integration, verification. Routes: `mech-executor`
+  constraints, done criteria, integration, verification. Routes: `applier`
   for fully specified repetition, `executor` for bounded judgment,
   `security-executor` for approved security work.
 - Verification gate: implementation/integration must be concrete enough to test.
@@ -64,11 +68,9 @@ fresh-context review.
   approved execution contract. Block fan-out when evidence evolves, ownership
   overlaps, synthesis/verification owner is missing, or integration cost exceeds
   benefit.
-- Bounded task-local search stays main-session work by default, even
-  cross-directory, when splitting duplicates startup/synthesis. Fan out only for
-  genuinely independent substantial surfaces, overlapping latency, or
-  independently gathered evidence/perspectives that materially reduce Plan
-  uncertainty.
+- Reconnaissance over two or more independent surfaces goes to parallel `scout`
+  calls with disjoint scopes. A single coupled trail that main is already
+  following stays with main; never split one trail into pieces.
 - Before discovery launch, declare main-owned versus agent-owned read scopes.
   Active agent scope is temporarily exclusive until result collection,
   cancellation, or redirection: main must not read/analyze same scope; later
@@ -77,7 +79,7 @@ fresh-context review.
   sanity checks target only decision-carrying facts. Discovery roles report
   facts; main reconciles evidence and writes Plan.
 - Stable same-shape multi-file mechanical repetition defaults to one
-  `mech-executor` with complete one-shot brief, exclusive ownership, independent
+  `applier` with complete one-shot brief, exclusive ownership, independent
   items, per-item acceptance. Foreground unless possible long command requires
   background.
 - Collect mechanical result before main edits; worker files remain worker-only
@@ -86,20 +88,28 @@ fresh-context review.
 - Direct main execution of qualifying mechanical work requires prior concrete
   blocker: evolving/coupled evidence, ownership/integration conflict, worker
   unavailable, or non-positive net benefit.
-- Outside mechanical shape, delegate only when lower cost/quota, preserved
-  context, parallelism, isolated ownership, or fresh-context independence
-  outweigh reconstruction, coordination, integration, verification cost.
-  `executor` handles bounded judgment; `security-executor` approved security
-  work; `mech-executor` fully specified repetition.
+- Implementation with a stable execution contract (goal, scope, constraints, done
+  criteria known without rediscovery) is delegated by default: `applier` for
+  fully specified repetition, `executor` for bounded judgment,
+  `security-executor` for approved security work. Main edits directly only under
+  the direct-work rule or a concrete blocker: evolving/coupled evidence,
+  ownership/integration conflict, or worker unavailable.
 - Dispatch brakes judge one call at a time. Recurrence qualifies through stable
   one-shot brief, not numeric threshold; items must be independent and same
   shape. Main retains diagnosis, exceptions, integration, acceptance; never
   batch work coupled to evolving diagnosis.
+- Research is the fan-out exception: main may launch several `researcher` calls at
+  once for different questions or arms. When a research conclusion will drive a
+  design or decision, launch two independent `researcher` calls in parallel,
+  `arm: experiment` and `arm: control`, each with fresh context and neither given
+  the other's output. Treat as the conclusion only what both arms support or what
+  main has checked. `researcher` stays a leaf.
 - Single unknown bug stays main-session work through root-cause discovery,
   trace-driven debugging, coupled state propagation, patch design, first minimal
   fix, live verification when one path owns them. Never build sequential
   `scout`→`executor` pipeline. Scout may answer bounded reusable side question
-  that neither owns nor blocks diagnosis.
+  that neither owns nor blocks diagnosis. Once root cause and remedy are known,
+  the fix is Execution work and is delegated.
 - Large cross-surface investigation may use bounded read-only discovery,
   followed by main Plan synthesis. Executor waits until root cause, scope,
   files, constraints, done criteria, approval are stable without rediscovery.
@@ -110,13 +120,13 @@ fresh-context review.
   take over—no third same-tier retry.
 - Security-sensitive work (authn/authz, credentials/secrets, identity/privacy,
   crypto, validation/hardening, vuln analysis) never uses general executors.
-  Before required approval and first readiness review, finish tool-enforced
+Before required approval and first readiness review, finish tool-enforced
   read-only `security-reviewer`; carry findings/dispositions into Plan. After
   approval, send stable contract to `security-executor`. Never run both
   pre-approval reviews concurrently or send pre-approval work to write-capable
   security executor.
 - Any independent-review trigger makes that unit risky: pre-approval
-  `plan-verifier` and post-implementation `verifier` are mandatory Agent calls,
+  `plan-critic` and post-implementation `verifier` are mandatory Agent calls,
   with no extra opt-in. Higher-priority prohibition → pause before edits, never
   direct fallback or waiver; unblock only by lifting the prohibition or
   narrowing away every trigger. Bounded fail-soft exception applies only without
@@ -126,7 +136,17 @@ fresh-context review.
 - Named-role model routing lives in agent definitions. Omit invocation `model`;
   override would replace role routing. Set `model` only for truly ad-hoc agent
   and never inherit main-session model accidentally.
-- `plan-verifier` reviews one stable envelope/slice and returns **READY** or
+- Explicit instruction: on every named-role Agent call, pass
+  `effort`. The role's frontmatter effort is the default; choose per call
+  from task difficulty, ambiguity, and risk: lower for fully specified or trivial
+  work, higher for ambiguous, coupled, or high-stakes work. A user-stated effort,
+  for one call or a stated scope, overrides both this choice and the default for
+  that scope. When choosing yourself, never go below `medium` for `verifier` and
+  `plan-critic`, or below `high` for `security-reviewer`.
+- Every Agent call to a write-capable role (`executor`, `applier`,
+  `security-executor`) starts its `description` with the work kind and a colon:
+  `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`.
+- `plan-critic` reviews one stable envelope/slice and returns **READY** or
   **REVISE** under its role contract; malformed output is protocol failure.
   Outcome `verifier` receives exact claim/acceptance plus relevant diff/paths
   and returns **CONFIRMED**, **REFUTED**, or **INCONCLUSIVE** under its role
@@ -216,7 +236,14 @@ fresh-context review.
   cross-cutting blocker, all remaining work depending on paused slice, new
   authority/product decision, destructive/irreversible/external action,
   exhausted budget/quota, unsafe environment, or unattainable original scope.
-  Final report separates confirmed/fixed/deferred/regraded findings
+- A leaf report ending `status: failed` or `status: insufficient` is evidence;
+  apply the severity and disposition rules. Under AUTO, dispatch the follow-up
+  (repair, further research, rerun) without asking, within the existing retry caps
+  and stop conditions. Under ASK, report the result and the suggested next step,
+  then stop. The user may switch mode or halt at any time: then launch nothing
+  new, list the roles still running, and ask whether to stop them.
+
+Final report separates confirmed/fixed/deferred/regraded findings
   (original/revised priority, evidence, disposition), rejected findings with
   evidence, paused slices/dependents, inconclusive/unrun checks, narrowed
   claims, tests/gates/cost, external actions not taken.
@@ -229,16 +256,22 @@ fresh-context review.
   reconnaissance; collect all results before dependent work/final answer.
   Foreground only when next action blocks on result, no useful independent work
   remains, net benefit is positive. Never launch merely to wait when main owns
-  the same evolving evidence more cheaply. Parallel writers use `isolation:
-  "worktree"` (requires Git); without Git, never fan out—use one shared-checkout
+  the same evolving evidence more cheaply. Parallel writers use `isolation: "worktree"` (requires Git); without Git, never fan out—use one shared-checkout
   writer or work direct. Read-only roles may share checkout. Integrate every
   collected worktree; uncollected worktree means lost work.
-- Long-running processes belong to main session. Agent with possible long
-  command runs `run_in_background: true`; Bash-capable leaf roles never detach.
-  Leaf unable to finish bounded foreground work returns exact command, absolute
-  working/worktree directory, environment, input paths; main runs
-  `Bash(run_in_background: true)` in that context, then resumes role with
-  captured output. Liveness comes from tracked task state/output, never
+- Commands that may run long or whose result must be awaited (test suites, builds,
+  CI, measurements) go to `watcher` through Agent with
+  `run_in_background: true`; `watcher` runs them in its own foreground. Main never
+  starts a background shell itself and never ends a turn waiting on one. Leaf unable to finish bounded foreground work returns exact command, absolute
+  working/worktree directory, environment, input paths; main dispatches `watcher`
+  with `run_in_background: true` in that context, then resumes role with captured
+  output. Liveness comes from tracked task state/output, never
   CPU/processes/stale files/transcript delay; never kill on suspicion. Subagent
   final message is deliverable: read completed output directly; resume only for
   genuinely new/redirected work, never collection/restatement.
+
+- When a background role reports completion, collect before any other action:
+  read its report and state in one line which role did what with what result.
+  Before ending a turn, confirm no role is uncollected; list any still running
+  with what each is waiting on, and stop only roles that are still running and no
+  longer needed.

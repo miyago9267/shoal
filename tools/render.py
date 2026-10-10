@@ -618,7 +618,7 @@ def render_codex(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     def agent(name: str, spec: dict, model: str, body: bytes) -> None:
         out[f"agents/{name}.toml"] = _codex_agent(name, spec, perms[name], model, body)
 
-    for name in core["roles"]:
+    for name in _bound_roles(core, binding):
         agent(name, binding["roles"][name], resolve_model(name, core, binding),
               role_body(name, core, binding, src, lambda n=name: _legacy_body(src, "agents", n)))
     for name, spec in binding.get("extra_roles", {}).items():
@@ -1208,7 +1208,7 @@ CLAUDE_PLUGIN_OWNED = (CLAUDE_PLUGIN, CLAUDE_MARKETPLACE)
 CLAUDE_PLUGIN_AUTHOR = {"name": "Miyago", "url": "https://github.com/miyago9267"}
 CLAUDE_PLUGIN_REPO = "https://github.com/miyago9267/shoal"
 # 與 tools/install_hooks.py 的 CLAUDE_MATCHER 相同；全域安裝與 plugin 的 guard 要看到同一批工具。
-CLAUDE_PLUGIN_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
+CLAUDE_PLUGIN_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
 CLAUDE_PLUGIN_GUARD = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
 CLAUDE_PLUGIN_SESSIONSTART = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/emit-sessionstart.sh"'
 CLAUDE_PLUGIN_TIMEOUT = 10

@@ -59,15 +59,6 @@ LEGACY_PATHS = frozenset({
     "agents.max_concurrent_threads_per_session",
 })
 CANONICAL_ROLE_UPGRADE_DIGESTS = {
-    "plan-verifier": frozenset({
-        "6cb7b398c28269d9019a181e5faacd255d9bccc384b8bee2a99a4ca41b9d53fc",
-        "5d46fbeda04d159a84614d9f69c6b30c30d4a53a5577d023bddfb3da77a6b6f9",
-        "b4d2a70d8b762f574c05b7e1fa285b05796ebae3f506e331c736d9cd504e6723",
-        "dd3b318d3b771227c38110275b68d50c5fccf2ead0d5e4c9876909b773a5748c",
-        "c552938705065c826da9a3cbaf09c2fbbaa9fde4adb1f691a59b694d8468f541",
-        "e29dff16ee22d8dcf60f214c7226eba52e9c1d5fca475d47ca750c8850a32852",
-        "5cfd8630f9807a45eb18bfd587ab12dc41e8c06de82872ec6aa87f2c3e4c8fe0",
-    }),
     "security-reviewer": frozenset({
         "94d7de12d1cb197c98e83c2f78d402cf3fb393e860feee1e146f5b6294075d27",
     }),
@@ -106,7 +97,7 @@ class PolicyTargetIdentity:
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
 SHOAL_PLUGIN_NAME = "shoal-codex"
-SHOAL_PLUGIN_VERSION = "2.1.1"
+SHOAL_PLUGIN_VERSION = "3.0.0"
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
@@ -2151,7 +2142,7 @@ def install(
     if legacy_v2:
         allowed_migration = {
             "config.toml",
-            "agents/plan-verifier.toml",
+            "agents/plan-critic.toml",
             "agents/security-reviewer.toml",
             "agents/verifier.toml",
             "hooks.json",

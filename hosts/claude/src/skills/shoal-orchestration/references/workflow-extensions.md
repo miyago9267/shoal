@@ -128,7 +128,7 @@ An explicit user pause is honored without inventing a question.
 
 ## Review-service circuit breaker
 
-A missing, failed, or timed-out `plan-verifier`, `security-reviewer`, or
+A missing, failed, or timed-out `plan-critic`, `security-reviewer`, or
 `verifier` result is a service failure, not a user decision and not a
 verdict. Allow one bounded retry for the same stable unit and role. If the
 retry also returns no valid verdict, stop dispatching that role for the unit

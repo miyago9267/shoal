@@ -51,6 +51,8 @@ LEGACY_OPENCODE_PLUGIN = "plugins/pilotfish-opencode.js"
 LEGACY_OPENCODE_DIR = "pilotfish"
 LEGACY_AGY_SKILL = "pilotfish-orchestration"
 LEGACY_NAME_TOKENS = ("pilotfish", "Pilotfish", "PILOTFISH")
+# role 改名前的名稱（docs/specs/delegation-default/RENAME.md）：mech-executor -> applier、plan-verifier -> plan-critic
+LEGACY_ROLE_NAMES = ("mech-executor", "plan-verifier")
 
 FAKE_CODEX = """#!/bin/sh
 if [ "$1" = "--version" ]; then

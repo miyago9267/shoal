@@ -100,7 +100,7 @@ def child_events(
             "payload": {
                 "id": child_id,
                 "parent_thread_id": SESSION,
-                "agent_role": "plan-verifier",
+                "agent_role": "plan-critic",
             },
         },
         {
@@ -197,10 +197,10 @@ class AutorouteHookTests(unittest.TestCase):
             )
             context = result["hookSpecificOutput"]["additionalContext"]
             self.assertIn('"route":"mechanical"', context)
-            self.assertIn('"required_role":"mech-executor"', context)
+            self.assertIn('"required_role":"applier"', context)
             marker = gate._load_route_marker(home, SESSION)
             self.assertIsNotNone(marker)
-            self.assertEqual(marker["required_role"], "mech-executor")
+            self.assertEqual(marker["required_role"], "applier")
 
     def test_active_jev_mechanical_choice_uses_canonical_marker(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -220,10 +220,10 @@ class AutorouteHookTests(unittest.TestCase):
 
             context = payload["hookSpecificOutput"]["additionalContext"]
             self.assertIn('"route":"mechanical"', context)
-            self.assertIn('"required_role":"mech-executor"', context)
+            self.assertIn('"required_role":"applier"', context)
             marker = gate._load_route_marker(home, SESSION)
             self.assertIsNotNone(marker)
-            self.assertEqual(marker["required_role"], "mech-executor")
+            self.assertEqual(marker["required_role"], "applier")
 
     def test_jev_cannot_downgrade_deterministic_security_route(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -243,7 +243,7 @@ class AutorouteHookTests(unittest.TestCase):
 
             context = payload["hookSpecificOutput"]["additionalContext"]
             classify.assert_not_called()
-            self.assertNotIn('"required_role":"mech-executor"', context)
+            self.assertNotIn('"required_role":"applier"', context)
             self.assertIsNotNone(gate._load_marker(home, SESSION))
             self.assertIsNone(gate._load_route_marker(home, SESSION))
 
@@ -265,7 +265,7 @@ class AutorouteHookTests(unittest.TestCase):
 
             context = payload["hookSpecificOutput"]["additionalContext"]
             self.assertIn('"route":"guarded"', context)
-            self.assertNotIn('"required_role":"mech-executor"', context)
+            self.assertNotIn('"required_role":"applier"', context)
             self.assertIsNone(gate._load_route_marker(home, SESSION))
             log = home / "shoal-jev" / "shadow-decisions.jsonl"
             record = json.loads(log.read_text(encoding="utf-8"))
@@ -277,7 +277,7 @@ class AutorouteHookTests(unittest.TestCase):
                 self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
 
     def test_jev_role_mapping_uses_native_typed_roles(self) -> None:
-        for route, role in (("mechanical", "mech-executor"), ("exploration", "scout")):
+        for route, role in (("mechanical", "applier"), ("exploration", "scout")):
             with self.subTest(route=route):
                 signal = gate._route_signal(
                     {"session_id": SESSION, "turn_id": TURN},
@@ -746,7 +746,7 @@ class AutorouteHookTests(unittest.TestCase):
                                         {
                                             "type": "function_call",
                                             "name": "spawn_agent",
-                                            "arguments": {"agent_type": "plan-verifier"},
+                                            "arguments": {"agent_type": "plan-critic"},
                                             "sub_agent_activity": "started",
                                         }
                                     ),
@@ -781,7 +781,7 @@ class AutorouteHookTests(unittest.TestCase):
                             "arguments": json.dumps(
                                 {
                                     "message": "Resolve the fingerprinted Luna disagreement.",
-                                    "agent_type": "plan-verifier",
+                                    "agent_type": "plan-critic",
                                     "task_name": "semantic_adjudication",
                                     "fork_turns": "none",
                                 }
@@ -826,7 +826,7 @@ class AutorouteHookTests(unittest.TestCase):
                             "type": "function_call",
                             "name": "spawn_agent",
                             "call_id": "stale-call",
-                            "arguments": json.dumps({"agent_type": "plan-verifier"}),
+                            "arguments": json.dumps({"agent_type": "plan-critic"}),
                         },
                     },
                     task_started(started_at=ROOT_STARTED_AT),
@@ -839,7 +839,7 @@ class AutorouteHookTests(unittest.TestCase):
                             "arguments": json.dumps(
                                 {
                                     "message": "Review the Plan only.",
-                                    "agent_type": "plan-verifier",
+                                    "agent_type": "plan-critic",
                                     "task_name": "automatic_plan_review",
                                     "fork_turns": "none",
                                 }
@@ -995,7 +995,7 @@ class AutorouteHookTests(unittest.TestCase):
                                 "arguments": json.dumps(
                                     {
                                         "message": "Review the Plan only.",
-                                        "agent_type": "plan-verifier",
+                                        "agent_type": "plan-critic",
                                         "task_name": "automatic_plan_review",
                                         "fork_turns": "none",
                                     }
@@ -1131,7 +1131,7 @@ class ScanBoundaryTests(unittest.TestCase):
                         "arguments": json.dumps(
                             {
                                 "message": "Review the Plan only.",
-                                "agent_type": "plan-verifier",
+                                "agent_type": "plan-critic",
                                 "task_name": "automatic_plan_review",
                                 "fork_turns": "none",
                             }

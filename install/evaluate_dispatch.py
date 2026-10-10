@@ -33,9 +33,9 @@ from execution_contract import (
 ALLOWED_ROLES = frozenset(
     {
         "scout",
-        "plan-verifier",
+        "plan-critic",
         "security-reviewer",
-        "mech-executor",
+        "applier",
         "sol-executor",
         "executor",
         "verifier",

@@ -5,7 +5,7 @@
 {"decision": "block", "reason": ...} 退回，讓 subagent 重送。
 role 由環境變數 SHOAL_ROLE 決定（hook 設定的 env 欄位），也可用第一個參數覆寫。
 stopHookActive 為 true、輸入無法解析、role 未知時一律放行（fail-open，exit 0）。
-只用標準函式庫。格式規則取自 hosts/grok/dist/agents/{verifier,plan-verifier,
+只用標準函式庫。格式規則取自 hosts/grok/dist/agents/{verifier,plan-critic,
 security-reviewer}.md，tests/test_grok_hooks.py 會確認這些 token 仍出現在 agent 文字。
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ EVIDENCE_GAP_RE = re.compile(r"evidence\s+gap", re.IGNORECASE)
 SHAPES = {
     "verifier": "State exactly one verdict (CONFIRMED, REFUTED or INCONCLUSIVE), or for a direction_checkpoint "
                 "one of CONTINUE, PIVOT, ROLLBACK.",
-    "plan-verifier": "Reply with a bare READY line, or REVISE followed by one or more blocks, each with "
+    "plan-critic": "Reply with a bare READY line, or REVISE followed by one or more blocks, each with "
                      "'Blocker:', 'Evidence:', 'Minimum revision:' and 'Acceptance check:'.",
     "security-reviewer": "For each finding give a severity and file:line evidence or an explicit evidence gap; "
                          "if there are none, say there are no findings.",
@@ -58,7 +58,7 @@ def _has_ready_line(text: str) -> bool:
     return any(line.strip().strip("`*_ \t") == "READY" for line in text.splitlines())
 
 
-def check_plan_verifier(text: str) -> list[str]:
+def check_plan_critic(text: str) -> list[str]:
     if not REVISE_RE.search(text):
         if _has_ready_line(text):
             return []
@@ -105,7 +105,7 @@ def check_security_reviewer(text: str) -> list[str]:
 
 CHECKERS = {
     "verifier": check_verifier,
-    "plan-verifier": check_plan_verifier,
+    "plan-critic": check_plan_critic,
     "security-reviewer": check_security_reviewer,
 }
 

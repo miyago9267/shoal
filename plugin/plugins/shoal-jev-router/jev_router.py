@@ -20,14 +20,14 @@ MIN_LEAD = 0.2
 
 QUESTIONS = {
     "parent_local": {"type": "noul", "instructions": "Is this one clear, bounded action that the parent can do locally without delegation?"},
-    "mechanical": {"type": "noul", "instructions": "Is this routine, well-specified, low-judgment work suited to the cheap mech-executor role?"},
+    "mechanical": {"type": "noul", "instructions": "Is this routine, well-specified, low-judgment work suited to the cheap applier role?"},
     "exploration": {"type": "noul", "instructions": "Is this primarily read-only repository or context reconnaissance suited to scout?"},
     "judgment": {"type": "noul", "instructions": "Does this require normal design, tool choice, interpretation, QA, or bounded multi-step implementation suited to Sol?"},
     "deep_judgment": {"type": "noul", "instructions": "Does this require deep architecture, cross-system tradeoffs, conflicting evidence, or advanced tool orchestration suited to Astra?"},
 }
 ROUTES = {
     "parent_local": ("guarded", "parent-local"),
-    "mechanical": ("mechanical", "mech-executor"),
+    "mechanical": ("mechanical", "applier"),
     "exploration": ("exploration", "scout"),
     "judgment": ("judgment", "sol-executor"),
     "deep_judgment": ("deep_judgment", "executor"),

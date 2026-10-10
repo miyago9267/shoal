@@ -9,6 +9,9 @@
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
 role_text = "core"
 
+# watcher、researcher 是 delegation-default 新增的 core role，第一階段只有 Claude 綁定；其他 host 先省略（spec D3、D16）。
+omitted_roles = ["watcher", "researcher"]
+
 # 所有 agent 的 frontmatter 都是 model: inherit；effort 寫在 roles/*.toml 的 reasoning_effort。
 # 不指定模型：resolver 不介入，每個 role 都解析成 inherit。
 # render 會驗證 src/agents/<role>.md 的 model 等於解析出的值。
@@ -38,7 +41,7 @@ comment = "Role defaults applied when spawning subagent_type \"scout\"."
 effort = "low"
 description = "Read-only reconnaissance for broad codebase sweeps or focused lookup"
 
-[roles.mech-executor]
+[roles.applier]
 effort = "low"
 description = "Mechanical implementation from a complete specification"
 
@@ -46,7 +49,7 @@ description = "Mechanical implementation from a complete specification"
 effort = "medium"
 description = "Implementation requiring local engineering judgment"
 
-[roles.plan-verifier]
+[roles.plan-critic]
 effort = "medium"
 description = "Read-only Plan readiness challenge before approval"
 

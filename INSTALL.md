@@ -54,7 +54,7 @@ codex --model <strong-model> \
 
 This activation is zero-write and session-only. The prompt keeps Astra on
 synthesis, planning, and difficult judgment; delegates mechanical work to
-Luna; and preserves `plan-verifier` on Sol/high plus all approval and security
+Luna; and preserves `plan-critic` on Sol/high plus all approval and security
 gates. `max_tool_calls=12` and `max_wall_seconds=300` are advisory limits, not
 a provider-enforced quota. An invalid override or unavailable Astra model must
 fail closed before task work; start a new session without the flags to return
@@ -272,9 +272,10 @@ It runs in shadow mode (`would_deny` and `advise` log records under
 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`) until the enforce switch in
 the spec
 (E6); `SHOAL_GUARD=off` disables it for a session. Only the subagent rules
-(LEAF, VERIFY_EDIT) ever deny; the main-session rules R1 and R2 only remind
+(LEAF, VERIFY_EDIT) ever deny on Codex; the main-session rules R1 and R2 only remind
 (once per turn, as `additionalContext` on Claude and Codex;
-`SHOAL_GUARD_DIRECT=1` silences it). An existing home that
+`SHOAL_GUARD_DIRECT=1` silences it). On Claude, R1 and the background-shell rule
+G4 deny since 3.0.0 (see the Claude guard section below). An existing home that
 predates the
 guard gains the script and both groups on the next install; other hook groups are
 preserved. The installer does not write hook trust: after installing, approve
@@ -443,7 +444,7 @@ checks that each file has the same SHA-256 as the committed dist and that the
 rules marker matches `hosts/grok/VERSION`; a mismatch exits 1.
 
 If `[subagents.toggle]` in `config.toml` sets a shoal role (`scout`,
-`plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`,
+`plan-critic`, `security-reviewer`, `applier`, `executor`, `verifier`,
 `security-executor`) to `false`, the dry-run flags it and nothing is changed.
 `--fix-toggles` deletes exactly those lines and keeps every other byte; it
 aborts without writing if the table cannot be edited that way (for example
@@ -451,7 +452,7 @@ inline or dotted keys). Other `config.toml` keys, including the Claude
 compatibility cells in `config.snippet.toml`, are not managed by this
 installer; merge them by hand.
 
-The hooks add a `SubagentStop` format gate for `verifier`, `plan-verifier` and
+The hooks add a `SubagentStop` format gate for `verifier`, `plan-critic` and
 `security-reviewer`, and a `PreToolUse` guard that denies write-capable
 `spawn_subagent` calls while Grok is in plan mode. They also install the shoal
 dispatch guard (`hooks/shoal-grok/shoal_guard.py`) with a `UserPromptSubmit`
@@ -488,8 +489,9 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   （0755）。
 - `--host claude` 改 `settings.json`（`--home`，其次 `CLAUDE_CONFIG_DIR`，預設
   `~/.claude`）：`UserPromptSubmit`，以及 matcher 為
-  `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow` 的 `PreToolUse`。`settings.json`
-  若是 symlink（dotfile 管理）就寫進它指向的檔案，權限不變。Claude 預設 enforce。
+  `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash` 的 `PreToolUse`（`Bash`
+  是 3.0.0 起為 G4 加的，舊安裝重跑一次就會換成這個 matcher）。`settings.json` 若是 symlink（dotfile 管理）
+  就寫進它指向的檔案，權限不變。Claude 預設 enforce。
 - `--host agy` 改 `~/.gemini/config/hooks.json`（`--home` 指 `~/.gemini`）：新增具名
   群組 `shoal-guard`，含 `PreToolUse`（matcher `*`）與 `PreInvocation`。agy 無法分辨
   main 與 subagent，guard 固定 shadow。
@@ -502,9 +504,34 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   entry 也會在 grok session 觸發；guard 的 Claude adapter 看到 grok 的 camelCase payload
   就放行，由 grok 自己的註冊處理。
 
+### Claude 上 guard 的行為（3.0.0 起）
+
+[`docs/specs/delegation-default`](./docs/specs/delegation-default/SPEC.md)
+讓 Claude 上的 main session 規則回到 deny；其他 host 的行為不變（R1、R2 只提醒）。
+
+| 規則 | 條件 | Claude（enforce） | Claude（shadow） | 其他 host |
+| --- | --- | --- | --- | --- |
+| R1 | Jev 把本輪分類為 `judgment` 或 `mechanical`，本輪還沒派出 write role（`executor`、`applier`、`security-executor`），路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | 只提醒（`advise`） |
+| R2 | 本輪 main 直接改到第 3 個不同的檔案 | 只提醒 | 只提醒 | 只提醒 |
+| G4 | main（payload 沒有 `agent_id`）呼叫 `Bash` 且 `run_in_background: true` | deny，訊息要求改派背景的 `watcher` | 記 `would_deny` | 無此規則 |
+
+- 沒有本輪的分類檔（`<state>/shoal/guard/turns/<session>.json`，由 Jev 寫入）時 R1 不觸發。
+  派出 `watcher`、`researcher`、`scout` 等非 write role 不會解除 R1；G4 不因任何派工解除。
+- 放行：使用者 prompt 內獨立的 `#direct`（區分大小寫的字面比對；`#directory`、
+  `x#direct`、`#direct-ly` 不算）只放行那一輪，下一輪失效，同時關掉那一輪的 R1、R2 與 G4；
+  `SHOAL_GUARD_DIRECT=1` 對整個 session 放行 R1、R2、G4。guard 只記「這輪有 `#direct`」的旗標，
+  不記錄 prompt 內容。
+- subagent 不受 R1、G4 影響（它們是 main session 規則）；前景的 `Bash` 與其他工具不會被
+  guard 計入或改變狀態。
+- `Bash` 是 3.0.0 起加進 `PreToolUse` matcher 的工具名稱，所以 3.0.0 之前裝的全域 guard
+  要重跑 `tools/install_hooks.py --host claude --apply` 才有 G4。plugin 的 `--plugin` 判斷看的是
+  全域 `settings.json` 的 matcher 有沒有涵蓋該工具：舊 matcher 不含 `Bash` 時，`Bash` 事件由 plugin
+  那份處理，每個事件仍只判一次。
+- 訊息預設英文，`SHOAL_GUARD_LANG=zh-TW` 切繁中；`SHOAL_GUARD=shadow|off` 照常有效。
+
 ## Claude Code plugin
 
-Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容（8 個 role、
+Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容（10 個 role，含 `watcher`、`researcher`、
 `shoal-orchestration` skill、dispatch guard、policy bootstrap）全部由
 `python3 tools/render.py --host claude-plugin --write` 從 `hosts/claude/dist`、
 `hooks/shoal_guard.py` 與根目錄 `VERSION` 產生，輸出在 `claude-plugin/` 與
@@ -513,12 +540,12 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 
 ```bash
 # 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v2.1.1
+claude plugin marketplace add miyago9267/shoal#v3.0.0
 claude plugin install shoal@shoal
 
 # 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v2.1.1
+claude plugin marketplace add miyago9267/shoal#v3.0.0
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -533,7 +560,7 @@ claude --plugin-dir ./claude-plugin
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
   `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
   `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v2.1.1` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  上面的 `#v3.0.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是

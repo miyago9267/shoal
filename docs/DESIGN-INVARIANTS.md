@@ -8,12 +8,13 @@
    write role 只接已核准、規格完整的執行契約，discovery role 只接穩定的研究
    契約與停止條件。executor 在 brief 之外做的設計決定，視為未審查，main 逐項
    接受或退回。
-2. **派工是淨效益判斷**：要不要派工由 dispatch brake 依淨效益決定，不以數字
-   門檻強制；小而局部的工作由 main 直接做。
-3. **hook 只強制硬規則**：hook 只擋 leaf 不再派 subagent、verifier 不改檔；
-   其餘以提醒呈現，不取代判斷。
-4. **各 host 保留自己的形狀**：共用化以持平為準，不藉共用化新增能力；Grok 的
-   rules 保持與上游可對照。
+2. **派工是淨效益判斷**，不以數字門檻強制。已有穩定契約的實作、互不相干的
+   偵察與長指令預設派工；main 直接做的條件是寫 brief 的成本高於直接做。
+3. **hook 強制硬規則**：leaf 不再派 subagent、verifier 類 role
+   不改檔，以及 Claude 上本輪已被分類為實作工作而 main 尚未派工時的改檔、main
+   以背景方式開 shell（兩者可用 `#direct` 放行）。含數字門檻的規則只提醒。
+4. **各 host 的規則相同**，model 與工具名稱依 host 綁定；host 做不到的條款明列
+   省略理由。
 5. **core 條款不綁具體模型**：core／host 中立條款不寫具體 model ID；host
    addenda、role frontmatter 與 alias（例如 Luna／Sol／Astra、tier）不在此限。
 6. **驗證邊界不省略**：有風險的工作，核准前的 plan review 與完成後的 outcome

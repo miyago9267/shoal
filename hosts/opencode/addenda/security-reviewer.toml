@@ -1,5 +1,5 @@
 # OpenCode 專屬：要檢查的 surface 與 unknown capability 規則、不授權限（legacy 有、core 沒有）、
-# parent session 用語。OpenCode 沒有 plan-verifier，main-session-carries 改寫成 parent session 的 Plan。
+# parent session 用語。OpenCode 沒有 plan-critic，main-session-carries 改寫成 parent session 的 Plan。
 
 [[addendum]]
 id = "inspect-surfaces"

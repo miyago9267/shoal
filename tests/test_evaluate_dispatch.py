@@ -56,9 +56,9 @@ class DispatchEvaluationTests(unittest.TestCase):
             roles,
             {
                 "scout",
-                "plan-verifier",
+                "plan-critic",
                 "security-reviewer",
-                "mech-executor",
+                "applier",
                 "sol-executor",
                 "executor",
                 "verifier",

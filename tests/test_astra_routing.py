@@ -205,7 +205,7 @@ class AstraMainSessionContractTests(unittest.TestCase):
                 "advisory",
                 "mechanical",
                 "Luna",
-                "plan-verifier",
+                "plan-critic",
                 "Sol",
             ):
                 self.assertIn(phrase, normalized)
@@ -289,10 +289,10 @@ class AstraRoleRoutingTests(unittest.TestCase):
             {"model": "gpt-6-astra", "reasoning_effort": "high"},
             projection["security-reviewer"],
         )
-        self.assertNotIn("plan-verifier", projection)
+        self.assertNotIn("plan-critic", projection)
 
     def test_mechanical_roles_are_luna_only_even_when_tool_triggers_fire(self) -> None:
-        for role in ("mech-executor", "scout"):
+        for role in ("applier", "scout"):
             with self.subTest(role=role):
                 candidate, reason = benchmark.select_role_candidate(
                     role,
@@ -311,15 +311,15 @@ class AstraRoleRoutingTests(unittest.TestCase):
             return_value=benchmark.Candidate("gpt-6-astra", "high"),
         ):
             with self.assertRaisesRegex(benchmark.BenchmarkError, "baseline-only role binding drift"):
-                benchmark.select_role_candidate("mech-executor", complexity="routine")
+                benchmark.select_role_candidate("applier", complexity="routine")
 
     def test_default_policy_forbids_astra_override_for_mechanical_roles(self) -> None:
         policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
         bootstrap = (ROOT / "templates" / "agents-md.bootstrap.md").read_text(encoding="utf-8")
-        role = (ROOT / "templates" / "agents" / "mech-executor.toml").read_text(encoding="utf-8")
+        role = (ROOT / "templates" / "agents" / "applier.toml").read_text(encoding="utf-8")
         skill = (ROOT / "plugin" / "plugins" / "shoal-codex" / "skills" / "shoal-orchestration" / "SKILL.md").read_text(encoding="utf-8")
         for source in (policy, bootstrap, role, skill):
-            self.assertIn("mech-executor", source)
+            self.assertIn("applier", source)
             self.assertIn("Astra", source)
         self.assertIn("baseline-only", policy)
         self.assertIn("baseline-only", bootstrap)
@@ -427,7 +427,7 @@ class RoutingReceiptTests(unittest.TestCase):
         self.assertEqual(payload["routing"]["model_snapshot"], "gpt-6-astra@high")
         self.assertNotIn("model", payload)
 
-    def test_plan_verifier_platform_halt_keeps_read_only_explicit_risk(self) -> None:
+    def test_plan_critic_platform_halt_keeps_read_only_explicit_risk(self) -> None:
         hashes = {"config": "a" * 64, "role_manifest": "b" * 64, "policy": "c" * 64}
         verdict = verify_dispatch._verdict(
             "SKIPPED",
@@ -441,11 +441,11 @@ class RoutingReceiptTests(unittest.TestCase):
             codex_version="unknown",
             active=hashes,
             target=hashes,
-            expected_role="plan-verifier",
+            expected_role="plan-critic",
             expected_binding=verify_dispatch.RoleBinding("gpt-6-sol", "high"),
         )
         routing = payload["routing"]
-        self.assertEqual(routing["role"], "plan-verifier")
+        self.assertEqual(routing["role"], "plan-critic")
         self.assertEqual(routing["model_candidate"], "gpt-6-sol")
         self.assertEqual(routing["model_snapshot"], "gpt-6-sol@high")
         self.assertEqual(routing["permission_profile"], "read-only")
@@ -481,7 +481,7 @@ class RoutingReceiptTests(unittest.TestCase):
     def test_default_prompt_and_policy_are_capability_first(self) -> None:
         policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
         self.assertIn("Capability-first model routing", policy)
-        self.assertIn("Do not replace `plan-verifier`", policy)
+        self.assertIn("Do not replace `plan-critic`", policy)
         self.assertIn("Do not create a new computer-use role", policy)
         bootstrap = (ROOT / "templates" / "agents-md.bootstrap.md").read_text(encoding="utf-8")
         self.assertIn("Route by capability", bootstrap)

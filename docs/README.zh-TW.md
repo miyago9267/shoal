@@ -38,8 +38,8 @@ Intent routing 決定互動形狀；上游 Nanako0129/pilotfish 的 role system 
 
 | 路徑 | 常見 role path | 作用 |
 | --- | --- | --- |
-| `execute` | `executor` 或 `mech-executor` → approval gate → 有風險時再 `verifier` | 實作明確且範圍固定的結果，並在 authority gate 前停下。 |
-| `explore_then_plan` | `scout` → Plan → 需要 review 時 `plan-verifier` → `executor` 或 `mech-executor` → `verifier` | 先確認邊界、審查切片，再實作與驗證。 |
+| `execute` | `executor` 或 `applier` → approval gate → 有風險時再 `verifier` | 實作明確且範圍固定的結果，並在 authority gate 前停下。 |
+| `explore_then_plan` | `scout` → Plan → 需要 review 時 `plan-critic` → `executor` 或 `applier` → `verifier` | 先確認邊界、審查切片，再實作與驗證。 |
 | `co_discover` | Root session + 有界的 `scout` → `execute` 或 `explore_then_plan` | 把想法整理成穩定的問題、目標、MVP 與 acceptance boundary。 |
 | Security-sensitive work | `security-reviewer` → approved Plan → `security-executor` → `verifier` | 將 security evidence 與 implementation 保持在不同 capability boundary。 |
 
@@ -48,13 +48,17 @@ Intent routing 決定互動形狀；上游 Nanako0129/pilotfish 的 role system 
 | Role | 職責 |
 | --- | --- |
 | `scout` | Read-only repository reconnaissance。 |
-| `plan-verifier` | 在 approval 前挑戰 material Plan。 |
+| `plan-critic` | 在 approval 前挑戰 material Plan。 |
 | `executor` | 需要 engineering judgment 的有界實作。 |
-| `mech-executor` | 已完整規格化的 mechanical implementation。 |
+| `applier` | 已完整規格化的 mechanical implementation。 |
 | `sol-executor` | 使用一般 engineering judgment 的有界實作。 |
 | `security-reviewer` | approval 前的 read-only security evidence。 |
 | `security-executor` | 已核准的 security-sensitive implementation。 |
 | `verifier` | 使用 fresh context 驗證 outcome 或 direction checkpoint。 |
+
+`watcher`（背景盯長指令）與 `researcher`（外部研究）是 core 新增的 role，目前
+只有 Claude 綁定，Codex 不安裝；`plan-critic` 另有 `mode: gaps` 補漏模式，回報
+還沒被問到的需求與風險，不回 READY／REVISE，Plan 仍由 root session 撰寫。
 
 Root session 負責 routing、Plan synthesis、approval decision、integration 與
 finding disposition。完整的 delegation 與 verification 規則請看

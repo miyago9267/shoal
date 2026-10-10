@@ -17,7 +17,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 VECTORS_PATH = ROOT / "tests" / "fixtures" / "guard_vectors.json"
-TOOL_NAME_BY_KIND = {"edit": "Edit", "dispatch": "Agent", "other": "Read"}
+TOOL_NAME_BY_KIND = {"edit": "Edit", "dispatch": "Agent", "background_shell": "Bash", "other": "Read"}
 
 
 def load_vectors() -> Dict[str, Any]:
@@ -94,6 +94,7 @@ def normalize_event(step_event: Dict[str, Any], vector_host: str, sandbox: Sandb
         "tool_kind": None,
         "paths": [],
         "dispatched_role": None,
+        "direct": False,
     }
     event.update(step_event)
     if event["tool_name"] is None and event["kind"] == "tool":
@@ -121,14 +122,18 @@ def apply_setup(setup: Dict[str, Any], sandbox: Sandbox, env: Dict[str, str], mo
         raise RuntimeError("guard dir unavailable during setup")
     for key, id_key in (("turn", "turn_id"), ("turn_legacy_prompt_id", "prompt_id")):
         if key in setup:
-            turn = setup[key]
-            (guard / "turns" / (turn["session"] + ".json")).write_text(
-                json.dumps({id_key: turn["turn_id"], "role": turn["role"]}), encoding="utf-8")
+            write_turn(guard, setup[key], id_key)
     for key, sub_dir in (("state_file", "state"), ("turn_file", "turns")):
         if key in setup:
             (guard / sub_dir / (setup[key]["session"] + ".json")).write_text(setup[key]["content"], encoding="utf-8")
     if "log_prefill_bytes" in setup:
         (guard / "guard.jsonl").write_text("x" * int(setup["log_prefill_bytes"]), encoding="utf-8")
+
+
+def write_turn(guard: Path, turn: Dict[str, Any], id_key: str = "turn_id") -> None:
+    """The classifier file (Jev's provider) for one session."""
+    (guard / "turns" / (turn["session"] + ".json")).write_text(
+        json.dumps({id_key: turn["turn_id"], "role": turn["role"]}), encoding="utf-8")
 
 
 @contextlib.contextmanager
@@ -167,6 +172,8 @@ def run_vector(vector: Dict[str, Any], whitelist: List[str], module: Any) -> Lis
         host = vector.get("host", "claude")
         with foreign_owner(module, targets):
             for index, step in enumerate(vector["steps"]):
+                if "write_turn" in step:  # the classifier writes a new file between turns
+                    write_turn(module._guard_dir(env, home), step["write_turn"])
                 event = normalize_event(step["event"], host, sandbox)
                 result = module.evaluate(event, env, home)
                 for key, want in step["expect"].items():

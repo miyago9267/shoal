@@ -141,7 +141,7 @@ def autoroute_parent_events(
                 "arguments": json.dumps(
                     {
                         "message": "Review the Plan only.",
-                        "agent_type": "plan-verifier",
+                        "agent_type": "plan-critic",
                         "task_name": "autoroute_plan_review",
                         "fork_turns": "none",
                     }
@@ -166,7 +166,7 @@ def autoroute_child_events(
     parent_id: str = PARENT,
     model: str = "gpt-6-sol",
     effort: str = "high",
-    role: str = "plan-verifier",
+    role: str = "plan-critic",
 ) -> list[dict]:
     return [
         {
@@ -566,7 +566,7 @@ class AutomaticPlanReviewEvidenceTests(unittest.TestCase):
         self.assertEqual(command[-1], AUTO_ROUTE_PROMPT)
         self.assertTrue(all(token not in prompt for token in ("spawn", "delegate", "subagent")))
 
-    def test_linked_plan_verifier_sol_high_child_is_native_ok(self) -> None:
+    def test_linked_plan_critic_sol_high_child_is_native_ok(self) -> None:
         verdict = inspect_autoroute(
             autoroute_parent_events(),
             {CHILD: autoroute_child_events()},
@@ -576,11 +576,11 @@ class AutomaticPlanReviewEvidenceTests(unittest.TestCase):
 
         self.assertEqual(
             (verdict.status, verdict.reason_code, verdict.role, verdict.model, verdict.reasoning_effort),
-            ("NATIVE_OK", "native_verified", "plan-verifier", "gpt-6-sol", "high"),
+            ("NATIVE_OK", "native_verified", "plan-critic", "gpt-6-sol", "high"),
         )
         self.assertEqual(verdict.correlation_mode, "spawn_activity")
 
-    def test_missing_plan_verifier_fails_closed(self) -> None:
+    def test_missing_plan_critic_fails_closed(self) -> None:
         parent = autoroute_parent_events(include_transport=False)
 
         verdict = inspect_autoroute(
@@ -751,7 +751,7 @@ class AutomaticPlanReviewEvidenceTests(unittest.TestCase):
                 )
                 self.assertEqual(verdict.status, "FAILED")
 
-    def test_metadata_requires_one_and_only_one_direct_plan_verifier_child(self) -> None:
+    def test_metadata_requires_one_and_only_one_direct_plan_critic_child(self) -> None:
         parent = autoroute_parent_events(include_transport=False)
         cases = {
             "direct scout extra": {

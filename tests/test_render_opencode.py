@@ -25,8 +25,10 @@ class OpencodeRenderTests(rh.HostRenderCase):
         expected = {"scout", "executor", "verifier", "security-reviewer", "security-executor"}
         self.assertEqual(set(catalog["agents"]), expected)
         self.assertEqual(set(routing["roles"]), expected)
-        self.assertNotIn("roles/mech-executor.md", rendered)
-        self.assertNotIn("roles/plan-verifier.md", rendered)
+        self.assertNotIn("roles/applier.md", rendered)
+        self.assertNotIn("roles/plan-critic.md", rendered)
+        self.assertNotIn("roles/watcher.md", rendered)
+        self.assertNotIn("roles/researcher.md", rendered)
 
     def test_every_role_denies_task_so_none_can_dispatch_subagents(self) -> None:
         # dispatch-enforcement R6：write 等級（executor、security-executor）也是 leaf，不可再派 subagent。
@@ -46,17 +48,17 @@ class OpencodeRenderTests(rh.HostRenderCase):
             self.assertEqual(agent["model"], routing["roles"][name]["candidates"][0])
 
     def test_omitted_role_cannot_also_be_bound(self) -> None:
-        self.edit(self.binding, "[roles.scout]\n", '[roles.mech-executor]\nfallback = "none"\nfallback_candidates = []\n'
+        self.edit(self.binding, "[roles.scout]\n", '[roles.applier]\nfallback = "none"\nfallback_candidates = []\n'
                   '\n[roles.scout]\n')
-        self.assert_rejected("mech-executor")
+        self.assert_rejected("applier")
 
     def test_omitted_role_must_exist_in_catalog(self) -> None:
-        self.edit(self.binding, '["mech-executor", "plan-verifier"]', '["mech-executor", "plan-verifier", "ghost"]')
+        self.edit(self.binding, '["applier", "plan-critic", "watcher", "researcher"]', '["applier", "plan-critic", "watcher", "researcher", "ghost"]')
         self.assert_rejected("ghost")
 
     def test_role_missing_from_binding_and_omitted_roles_is_rejected(self) -> None:
-        self.edit(self.binding, '["mech-executor", "plan-verifier"]', '["mech-executor"]')
-        self.assert_rejected("plan-verifier")
+        self.edit(self.binding, '["applier", "plan-critic", "watcher", "researcher"]', '["applier", "watcher", "researcher"]')
+        self.assert_rejected("plan-critic")
 
     def test_fallback_none_cannot_have_candidates(self) -> None:
         self.edit(self.binding, 'fallback = "none"\nfallback_candidates = []',

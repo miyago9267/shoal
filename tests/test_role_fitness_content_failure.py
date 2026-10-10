@@ -48,7 +48,7 @@ def _review_stage(case_id: str) -> dict[str, Any]:
     return {
         "case_id": case_id,
         "status": row["status"],
-        "native_role": "plan-verifier",
+        "native_role": "plan-critic",
         "dispatch_status": row["dispatch_status"],
         "false_escalation": row["false_escalation"],
         "risk_coverage": coverage,
@@ -64,7 +64,7 @@ def _executor_stage(case_id: str, *, accepted: bool) -> dict[str, Any]:
         return {
             "case_id": case_id,
             "status": "accepted",
-            "native_role": "mech-executor",
+            "native_role": "applier",
             "dispatch_status": "NATIVE_OK",
             "accepted": True,
         }
@@ -277,7 +277,7 @@ class UnclassifiedTests(unittest.TestCase):
             {
                 "case_id": "c2",
                 "status": "accepted",
-                "native_role": "plan-verifier",
+                "native_role": "plan-critic",
                 "false_escalation": False,
                 "risk_coverage": 1.0,
                 "score": {"expected_decision": "REVISE", "passed": False},

@@ -245,7 +245,7 @@ class JevRouterTests(unittest.TestCase):
         self.assertNotIn("recommendation", result)
 
     def test_mechanical_and_exploration_bind_to_cheap_roles(self) -> None:
-        for label, role in (("mechanical", "mech-executor"), ("exploration", "scout")):
+        for label, role in (("mechanical", "applier"), ("exploration", "scout")):
             values = {name: 0.02 for name in router.QUESTIONS}
             values[label] = 0.94
             self.server.payload = answer(**values)

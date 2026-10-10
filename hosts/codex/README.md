@@ -41,8 +41,8 @@ that shape; a request does not need every role.
 
 | Route | Typical role path | Purpose |
 | --- | --- | --- |
-| `execute` | `executor` or `mech-executor` → approval gate → `verifier` when risk-triggered | Implement a clear, bounded outcome and stop before an authority gate. |
-| `explore_then_plan` | `scout` → Plan → `plan-verifier` when review is required → `executor` or `mech-executor` → `verifier` | Establish the boundary, review the slice, then implement and verify it. |
+| `execute` | `executor` or `applier` → approval gate → `verifier` when risk-triggered | Implement a clear, bounded outcome and stop before an authority gate. |
+| `explore_then_plan` | `scout` → Plan → `plan-critic` when review is required → `executor` or `applier` → `verifier` | Establish the boundary, review the slice, then implement and verify it. |
 | `co_discover` | Root session + bounded `scout` → `execute` or `explore_then_plan` | Turn an idea into a stable problem, target, MVP, and acceptance boundary. |
 | Security-sensitive work | `security-reviewer` → approved Plan → `security-executor` → `verifier` | Keep security evidence and implementation on separate capability boundaries. |
 
@@ -51,9 +51,9 @@ The eight installed roles are:
 | Role | Responsibility |
 | --- | --- |
 | `scout` | Read-only repository reconnaissance. |
-| `plan-verifier` | Pre-approval challenge of a material Plan. |
+| `plan-critic` | Pre-approval challenge of a material Plan. |
 | `executor` | Bounded implementation requiring engineering judgment. |
-| `mech-executor` | Fully specified mechanical implementation. |
+| `applier` | Fully specified mechanical implementation. |
 | `sol-executor` | Bounded implementation using ordinary engineering judgment. |
 | `security-reviewer` | Read-only security evidence before approval. |
 | `security-executor` | Approved security-sensitive implementation. |
@@ -110,7 +110,7 @@ Sol review config, roles, hooks, and approval boundaries remain unchanged. The
 prompt recommends named inputs, one sufficient pass, and stopping at
 acceptance evidence. Its
 `max_tool_calls=12` and `max_wall_seconds=300` limits are advisory, not a
-provider-enforced quota. `mech-executor` and `scout` stay on Luna, normal
+provider-enforced quota. `applier` and `scout` stay on Luna, normal
 judgment and verification use Sol, and `executor` uses Astra only at the deep
 boundary. If Astra is unavailable or an override is
 invalid, activation fails closed before task work; start a new session without

@@ -10,7 +10,7 @@
 來源是 repo committed HEAD 的 hooks/shoal_guard.py（git show，不是工作樹；HEAD 沒有就中止）。
 腳本裝到 ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py（0755），entry 寫進：
   claude  <home>/settings.json（--home，其次 CLAUDE_CONFIG_DIR，預設 ~/.claude）：
-          UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow 的 PreToolUse
+          UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
           PreToolUse（matcher "*"）與 PreInvocation
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
@@ -61,7 +61,7 @@ from hook_registration import (  # noqa: E402
 )
 from legacy_codex import legacy_state_path  # noqa: E402
 GUARD_SOURCE = "hooks/shoal_guard.py"
-CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow"
+CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
 AGY_GROUP = "shoal-guard"
 TIMEOUT = 10
 # 標記是 "shoal_guard.py --host"；路徑被引號包住時 "shoal_guard.py'" 後面才接空白與 --host。

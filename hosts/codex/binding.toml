@@ -8,6 +8,9 @@
 # host 專屬的 sol-executor 沒有 core 條款，一律沿用 src/agents/sol-executor.md。
 role_text = "core"
 
+# watcher、researcher 是 delegation-default 新增的 core role，第一階段只有 Claude 綁定；其他 host 先省略（spec D3、D16）。
+omitted_roles = ["watcher", "researcher"]
+
 # policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
 # omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
 [policy]
@@ -44,7 +47,7 @@ web_search = "live"
 effort = "low"
 description = "Read-only reconnaissance for broad codebase sweeps or focused lookup of files, symbols, usages, configuration values, and existing flows."
 
-[roles.mech-executor]
+[roles.applier]
 effort = "medium"
 description = "Mechanical implementation from a complete specification: patterned refactors, convention-following tests, documentation, bulk edits, and routine verification."
 
@@ -52,7 +55,7 @@ description = "Mechanical implementation from a complete specification: patterne
 effort = "high"
 description = "Implementation requiring local engineering judgment: features, bug fixes, integration, and design-sensitive refactors."
 
-[roles.plan-verifier]
+[roles.plan-critic]
 effort = "high"
 description = "Read-only Sol review of a material Plan: readiness review before approval or one-shot semantic adjudication after a fingerprinted Luna disagreement."
 

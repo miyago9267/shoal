@@ -29,7 +29,12 @@ type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 const PLUGIN_ROOT = resolve(import.meta.dir, "..");
 const REPO_ROOT = resolve(PLUGIN_ROOT, "..", "..", "..");
 const VECTORS_PATH = join(REPO_ROOT, "tests", "fixtures", "guard_vectors.json");
-const TOOL_NAME_BY_KIND: Record<string, string> = { edit: "Edit", dispatch: "Agent", other: "Read" };
+const TOOL_NAME_BY_KIND: Record<string, string> = {
+  edit: "Edit",
+  dispatch: "Agent",
+  background_shell: "Bash",
+  other: "Read",
+};
 
 const doc = JSON.parse(readFileSync(VECTORS_PATH, "utf8")) as Json;
 
@@ -124,12 +129,21 @@ function normalizeEvent(stepEvent: Json, vectorHost: string, sandbox: Sandbox): 
     tool_kind: null,
     paths: [],
     dispatched_role: null,
+    direct: false,
     ...stepEvent,
   };
   if (event.tool_name === null && event.kind === "tool") {
     event.tool_name = TOOL_NAME_BY_KIND[event.tool_kind] ?? null;
   }
   return sandbox.sub(event) as GuardEvent;
+}
+
+/** The classifier file (Jev's provider) for one session. */
+function writeTurn(guard: string, turn: Json, idKey = "turn_id"): void {
+  writeFileSync(
+    join(guard, "turns", `${turn.session}.json`),
+    JSON.stringify({ [idKey]: turn.turn_id, role: turn.role }),
+  );
 }
 
 function applySetup(setup: Json, sandbox: Sandbox, env: Record<string, string>, state: string): void {
@@ -156,13 +170,7 @@ function applySetup(setup: Json, sandbox: Sandbox, env: Record<string, string>, 
     ["turn", "turn_id"],
     ["turn_legacy_prompt_id", "prompt_id"],
   ] as const) {
-    if (key in setup) {
-      const turn = setup[key] as Json;
-      writeFileSync(
-        join(guard, "turns", `${turn.session}.json`),
-        JSON.stringify({ [idKey]: turn.turn_id, role: turn.role }),
-      );
-    }
+    if (key in setup) writeTurn(guard, setup[key] as Json, idKey);
   }
   for (const [key, subDir] of [
     ["state_file", "state"],
@@ -238,6 +246,7 @@ function runVector(vector: Json, whitelist: string[]): string[] {
     setOwnerResolverForTests((path) => (foreign.has(path) ? realUid + 1 : realUid));
     const host = (vector.host as string | undefined) ?? "claude";
     for (const [index, step] of (vector.steps as Json[]).entries()) {
+      if (step.write_turn) writeTurn(guardPath, step.write_turn as Json); // the classifier writes between turns
       const result = evaluate(normalizeEvent(step.event, host, sandbox), env, sandbox.home) as Json;
       for (const [key, want] of Object.entries(step.expect)) {
         if (result[key] !== want) {

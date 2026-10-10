@@ -17,9 +17,13 @@ directly and sets it through the hook's env map).
 Always exits 0 and fails open: any exception means "no opinion".  The guard is a
 policy nudge, not a security boundary (see docs/specs/dispatch-enforcement/SPEC.md).
 
-Modes (SHOAL_GUARD): enforce | shadow | off.  Only the hard rules (LEAF,
-VERIFY_EDIT) deny; the main-session rules R1/R2 decide `advise` and, on claude/codex in enforce,
-print a one-per-turn `additionalContext` reminder.
+Modes (SHOAL_GUARD): enforce | shadow | off.  The hard rules (LEAF, VERIFY_EDIT) deny on every
+host.  Main-session rules: R2 (file count) only advises, on claude/codex in enforce with a
+one-per-turn `additionalContext` reminder.  On claude only (docs/specs/delegation-default, G1/G4),
+R1 (turn classified as implementation work, no write role dispatched) denies main's edit tools and
+G4 denies main's background shell (`Bash` with run_in_background); both are released for one turn
+by a standalone `#direct` token in the user's prompt, or for good by SHOAL_GUARD_DIRECT=1.  R1 on
+every other host stays `advise`.
 """
 
 from __future__ import annotations
@@ -68,6 +72,10 @@ STATE_TURN_HOSTS = frozenset({"agy", "grok", "claude"})
 ADVISE_OUTPUT_HOSTS = frozenset({"claude", "codex"})
 # Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
 PROMPT_KEEP_HOSTS = frozenset({"claude"})
+# Hosts where R1 denies (claude only, G1) and where main's background shell is denied (G4).
+DENY_MAIN_HOSTS = frozenset({"claude"})
+# `#direct` as a standalone token (ASCII word characters and `-` around it make it part of a word).
+DIRECT_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_#])#direct(?![A-Za-z0-9_-])")
 # Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
 # `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
 ROLE_NAMESPACES = ("shoal:",)
@@ -76,17 +84,19 @@ ROLE_NAMESPACES = ("shoal:",)
 # hosts/*/binding.toml; tests/test_shoal_guard.py asserts it.
 ROLE_ACCESS = {
     "scout": "read-only",
-    "plan-verifier": "read-only",
+    "plan-critic": "read-only",
     "security-reviewer": "read-only",
+    "researcher": "read-only",
     "Explore": "read-only",
-    "mech-executor": "write",
+    "applier": "write",
     "executor": "write",
     "security-executor": "write",
     "sol-executor": "write",
     "verifier": "verify",
+    "watcher": "verify",
 }
 
-CLASSIFIED_ROLE = {"judgment": "executor", "mechanical": "mech-executor"}
+CLASSIFIED_ROLE = {"judgment": "executor", "mechanical": "applier"}
 DISPATCH_NAME = {
     "claude": "Agent",
     "codex": "spawn_agent",
@@ -110,7 +120,7 @@ MESSAGES = {
         "ADVISE": (
             "Shoal dispatch brake (a reminder, nothing was blocked): this turn has edited {n} "
             "files directly. If the work is stable same-shape repetition, or bounded judgment "
-            "with a stable contract, consider handing it to `mech-executor` / `executor` with "
+            "with a stable contract, consider handing it to `applier` / `executor` with "
             "{tool}; otherwise continuing directly is fine."
         ),
         "LEAF": (
@@ -121,15 +131,32 @@ MESSAGES = {
             "Shoal dispatch guard: verify-level roles must not edit files with editing tools. "
             "Report findings to the parent instead."
         ),
+        "R1": (
+            "Shoal dispatch guard: this turn is classified as implementation work and no write "
+            "role has been dispatched. Dispatch executor or applier, or add #direct to your "
+            "prompt to edit directly."
+        ),
+        "G4": (
+            "Shoal dispatch guard: the main session does not start background shells. Dispatch "
+            "watcher in the background instead, or add #direct to your prompt."
+        ),
     },
     "zh-TW": {
         "ADVISE": (
             "Shoal dispatch brake（提醒，沒有擋任何操作）：本輪 main session 已直接改了 {n} 個檔案。"
             "若這是穩定的同形重複，或契約穩定、範圍有界的判斷工作，可考慮用 {tool} 交給 "
-            "`mech-executor` / `executor`；否則直接做下去也可以。"
+            "`applier` / `executor`；否則直接做下去也可以。"
         ),
         "LEAF": "Shoal dispatch guard：subagent 是 leaf worker，不可再派其他 agent。請自己完成並回報給上層。",
         "VERIFY_EDIT": "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
+        "R1": (
+            "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。"
+            "請派給 executor 或 applier，或在 prompt 加上 #direct 以直接修改。"
+        ),
+        "G4": (
+            "Shoal dispatch guard：main session 不自己開背景 shell。"
+            "請改在背景派出 watcher，或在 prompt 加上 #direct。"
+        ),
     },
 }
 
@@ -455,7 +482,10 @@ class _Guard:
         kind = event.get("kind")
         sid, tid = event.get("session_id"), event.get("turn_id")
         is_boundary = kind in ("prompt", "turn_boundary")
-        if kind == "tool" and event.get("tool_kind") not in ("edit", "dispatch"):
+        tool_kind = event.get("tool_kind")
+        if kind == "tool" and tool_kind == "background_shell" and self.host not in DENY_MAIN_HOSTS:
+            tool_kind = None  # G4 exists on claude only
+        if kind == "tool" and tool_kind not in ("edit", "dispatch", "background_shell"):
             return {
                 "decision": "none",
                 "rule": None,
@@ -497,9 +527,11 @@ class _Guard:
                 edited = prior.get("edited") if isinstance(prior.get("edited"), list) else []
                 prior_tid = prior.get("turn_id")
                 state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
-                         "dispatched": False, "advised": False, "edited": edited}
+                         "dispatched": False, "advised": False, "edited": edited,
+                         "direct": event.get("direct") is True}
             else:
-                state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": []}
+                state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
+                         "direct": event.get("direct") is True}
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
@@ -513,6 +545,7 @@ class _Guard:
             "dispatched": state.get("dispatched") is True,
             "advised": state.get("advised") is True,
             "edited": edited,
+            "direct": state.get("direct") is True,  # this turn's prompt carried #direct
         }
 
         if event.get("tool_kind") == "dispatch":
@@ -520,7 +553,17 @@ class _Guard:
                 state["dispatched"] = True
                 _write_json(state_path, state)
             return self.result("allow", "dispatch")
+        if event.get("tool_kind") == "background_shell":
+            return self.background_shell(state)
         return self.edit(state, state_path, guard)
+
+    def background_shell(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """G4: main starting a background shell.  Reads state only; nothing is recorded."""
+        if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
+            return self.result("allow", "direct")
+        return self.result(
+            "deny" if self.mode == "enforce" else "would_deny", "G4", reason=_text(self.env, "G4")
+        )
 
     def edit(self, state: Dict[str, Any], state_path: Path, guard: Path) -> Dict[str, Any]:
         raw_paths = [
@@ -531,7 +574,7 @@ class _Guard:
         cwd = self.event.get("cwd") or os.getcwd()
         resolved = [resolve_path(p, cwd) for p in raw_paths]
         edited: List[str] = list(state["edited"])
-        direct = self.env.get("SHOAL_GUARD_DIRECT") == "1"
+        direct = self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]
         limit = _max_files(self.env)
         classified: Optional[str] = None
         tid = state["turn_id"]  # effective turn (agy tool events may omit it)
@@ -545,6 +588,7 @@ class _Guard:
 
         first_rule = "exempt"
         advise_rule: Optional[str] = None
+        deny_r1 = False
         for index, path in enumerate(resolved):
             if is_exempt(path, self.host, self.env, self.home):
                 continue
@@ -562,14 +606,18 @@ class _Guard:
                     fired = "R2"
                 else:
                     fired = None
-                if fired and advise_rule is None:
-                    advise_rule = fired  # R1 and R2 only remind; the edit goes ahead (spec amendment)
+                if fired == "R1" and self.host in DENY_MAIN_HOSTS:
+                    deny_r1 = True  # G1: R1 denies on claude; everywhere else it only reminds
+                elif fired and advise_rule is None:
+                    advise_rule = fired  # R2 (and R1 off claude) only remind; the edit goes ahead
             if first_rule == "exempt":
                 first_rule = rule
             if path not in edited:
                 edited.append(path)
         if first_rule == "exempt":
             return self.result("allow", first_rule, file=raw_paths[0])
+        if deny_r1 and self.mode == "enforce":
+            return self.result("deny", "R1", reason=_text(self.env, "R1"), file=raw_paths[0])
         state["edited"] = edited
         notify = (
             advise_rule is not None
@@ -580,6 +628,8 @@ class _Guard:
         if notify:
             state["advised"] = True  # the one reminder of this turn is spent
         _write_json(state_path, state)
+        if deny_r1:  # shadow: the edit goes ahead, the log says what enforce would have done
+            return self.result("would_deny", "R1", file=raw_paths[0])
         if advise_rule is None:
             return self.result("allow", first_rule, file=raw_paths[0])
         reason = None
@@ -648,6 +698,7 @@ def _event(
     tool_kind: Optional[str] = None,
     paths: Optional[List[str]] = None,
     dispatched_role: Any = None,
+    direct: bool = False,
 ) -> Dict[str, Any]:
     return {
         "host": host,
@@ -661,6 +712,7 @@ def _event(
         "tool_kind": tool_kind,
         "paths": paths or [],
         "dispatched_role": _str(dispatched_role),
+        "direct": direct,
     }
 
 
@@ -679,10 +731,14 @@ def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         payload.get("agent_type"),
     )
     if name == "UserPromptSubmit":
-        return _event("claude", "prompt", *base)
+        prompt = payload.get("prompt")  # read for the #direct token only; never stored or logged
+        has_direct = isinstance(prompt, str) and DIRECT_TOKEN_RE.search(prompt) is not None
+        return _event("claude", "prompt", *base, direct=has_direct)
     if name != "PreToolUse":
         return None
     tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
+    if tool == "Bash" and tin.get("run_in_background") is True:
+        return _event("claude", "tool", *base, tool=tool, tool_kind="background_shell")
     if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         path = _str(tin.get("file_path")) or _str(tin.get("notebook_path"))
         return _event(

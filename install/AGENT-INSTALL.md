@@ -26,8 +26,8 @@ existing model and effort choices are preserved and may be changed later.
 - The value is child concurrency: one root plus up to three children. Do not
   emit `features.multi_agent_v2`, adapter namespace/metadata keys, or
   `agents.max_threads`.
-- The native manifest is exactly `executor`, `mech-executor`,
-  `plan-verifier`, `scout`, `security-executor`, `security-reviewer`, and
+- The native manifest is exactly `executor`, `applier`,
+  `plan-critic`, `scout`, `security-executor`, `security-reviewer`, and
   `verifier`. Role identity is each TOML `name`; filename equality is a local
   shoal validation rule.
 
@@ -90,9 +90,9 @@ the installer must not claim that the Skill is active. Plugin installation is
 allowed to update only shoal's own `plugins`/`marketplaces` entries; any
 other config mutation aborts and remains visible for recovery.
 
-Release-pinned canonical v1.3.0 `plan-verifier` and `security-reviewer` bytes
+Release-pinned canonical v1.3.0 `security-reviewer` bytes
 may upgrade to their packaged v1.3.1 replacements. The released canonical
-v1.3.1 `plan-verifier` and `verifier` payloads may likewise upgrade to their
+v1.3.1 `verifier` payloads may likewise upgrade to their
 packaged calibrated contracts. The released canonical v1.3.3 payloads for
 those roles may upgrade to the latest packaged routing contracts. Any other
 same-name role difference remains `installed_role_drift` and requires explicit
@@ -102,6 +102,11 @@ same-name role files and preserves a timestamped backup. The flag does not
 authorize credential, external, or unrelated home changes. For a narrower
 update, use `--replace-drifted-role <role>` once per approved role. Both forms
 retain role validation, transaction fingerprints, and post-write verification.
+
+Role files installed before the rename (`mech-executor.toml`, now `applier`;
+`plan-verifier.toml`, now `plan-critic`) are outside the native manifest, so
+this installer neither upgrades nor removes them; `tools/sync_global.py`
+removes them when their bytes match a released shoal template.
 
 ## Install entrypoints and offline validation
 
@@ -315,7 +320,7 @@ child activity, and child `turn_context.model` and `turn_context.effort`.
 
 For `--autoroute` only, the verifier also accepts `session_metadata` correlation
 when no spawn/activity transport evidence exists. The metadata path requires
-exactly one GPT-6 Luna/max root and one directly linked `plan-verifier` child at
+exactly one GPT-6 Luna/max root and one directly linked `plan-critic` child at
 GPT-6 Sol/high; any mixed, orphaned, duplicate, or malformed evidence fails closed.
 The probe waits once for that child so `codex exec` does not abort it while
 evidence is being written. Receipts normalize effort to `reasoning_effort`,
