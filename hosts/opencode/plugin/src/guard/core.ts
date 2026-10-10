@@ -102,6 +102,32 @@ const PROMPT_KEEP_HOSTS = new Set(["claude"]);
 // shell command that writes a file is judged by R1 (G5).
 // The OpenCode adapter never produces such an event; the vectors replay it at the core level.
 const DENY_MAIN_HOSTS = new Set(["claude"]);
+
+// `#direct` as an instruction the user typed (mirrors hooks/shoal_guard.py has_direct_token): a
+// standalone token after the start of the text or whitespace, followed by the end, whitespace or
+// sentence punctuation (ASCII or CJK).  Fenced blocks and inline code spans are masked with NUL
+// first, so quoted code never counts.  The OpenCode adapter does not read prompts; this exists so
+// both implementations replay tests/fixtures/direct_token_vectors.json.
+const DIRECT_TOKEN_RE = /(?<!\S)#direct(?![^\s.,;:!?\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f])/;
+const FENCE_OPEN_RE = /^ {0,3}`{3,}/;
+const FENCE_CLOSE_RE = /^ {0,3}`{3,}\s*$/;
+const INLINE_CODE_RE = /(?<!`)(`+)(?!`)(?:(?!\n[ \t\r]*\n)[\s\S])+?(?<!`)\1(?!`)/g;
+
+export function hasDirectToken(prompt: unknown): boolean {
+  if (typeof prompt !== "string") return false;
+  const lines: string[] = [];
+  let inFence = false;
+  for (const line of prompt.split("\n")) {
+    if (inFence) {
+      inFence = !FENCE_CLOSE_RE.test(line);
+      lines.push("\0");
+    } else if (FENCE_OPEN_RE.test(line)) {
+      inFence = true;
+      lines.push("\0");
+    } else lines.push(line);
+  }
+  return DIRECT_TOKEN_RE.test(lines.join("\n").replace(INLINE_CODE_RE, "\0"));
+}
 // Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
 // `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
 const ROLE_NAMESPACES = ["shoal:"];

@@ -3,6 +3,45 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.0.3
+
+收掉 v3.0.2 之後驗證留下的三個缺口，不需要實測。沒有改動任何 role 或 policy 條款，
+受保護的 prompt 檔只有版本 marker 變動。
+
+### Fixes
+
+- Codex installer（`install/install.py`，完整與 `--roles-only` 兩種模式）處理 3.0.0
+  改名前的 role 檔案：`agents/mech-executor.toml`、`agents/plan-verifier.toml`
+  的位元組等於某個已發行的 shoal template 時，先備份成
+  `<檔名>.shoal-codex-<時間>` 再移除（全部成功或全部還原）；使用者改過的檔案不動，
+  在輸出的 note 回報 `renamed role drift`。`--dry-run` 只印 `would remove`，不改任何東西。
+  與 `tools/sync_global.py` 同一條規則；已發行位元組的 sha256 表由測試對照 git 歷史。
+- `#direct` 只在使用者打出的獨立 token 才算：前面是文字開頭或空白，後面是文字結尾、
+  空白或句末標點（含 `。，、；：！？`），而且不在 fenced code block 或行內
+  code span 裡。`(#direct)`、`docs/x#direct`、URL 片段、`#directly`、`##direct`
+  不再放行。仍區分大小寫；每回合有效與 `SHOAL_GUARD_DIRECT=1` 不變。Python 與
+  TypeScript（`hasDirectToken`，OpenCode adapter 本身不讀 prompt）共用
+  `tests/fixtures/direct_token_vectors.json`。
+- `tools/sync_global.py` 的 agy 遷移：移除指向本 repo 的舊名 role symlink 後，若
+  `agents/<新名>` 還不存在就補上指向 `hosts/agy/dist/agents/<新名>` 的 symlink
+  （`mech-executor` -> `applier`、`plan-verifier` -> `plan-critic`）。原本只移除不補，
+  遷移後 `agents/applier`、`agents/plan-critic` 一直被回報不是 symlink。已存在的
+  新名一律不動；dry-run 只回報。已經遷移過的機器要手動補這兩個連結。
+
+### Docs
+
+- `docs/assets/shoal-model-routing.svg` 的範例與 Claude 欄的 scout 改成 haiku
+  （v3.0.0 起手動指定），圖表其餘不動。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.0.3。
+
+### 升級
+
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.0.3`
+  加回並更新。
+
 ## v3.0.2
 
 `watcher` 對不知道要跑多久的指令，一律改成背景執行再輪詢。第四輪 live gate 中，

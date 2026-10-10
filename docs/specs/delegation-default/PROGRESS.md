@@ -25,14 +25,14 @@
 
 ## 處置
 
-- `verifier` A1（Codex installer 不清舊名 role 檔）：DEFER。清除集中在
-  `tools/sync_global.py`，`install/AGENT-INSTALL.md` 已寫明。本機已於 2026-10-10 跑過
-  `sync_global.py --apply`，Codex、Grok、agy 的舊名 role 檔已移除、新名已安裝。要讓
-  installer 自己清，另開修正。
+- `verifier` A1（Codex installer 不清舊名 role 檔）：FIX（v3.0.3）。`install/install.py`
+  的完整與 `--roles-only` 模式會備份後移除位元組等於已發行 template 的 `mech-executor.toml`、
+  `plan-verifier.toml`，改過的檔案不動並回報 drift；dry-run 只回報。
 - A2（`watcher` 超過前景時限）：FIX，已加 `long-command-background` 條款。
-- A3（`#direct` 在引用文字內也放行）、A4（prompt 與 tool 的 id 形狀不一致時 `#direct`
-  失效）：DEFER。A3 的錯誤方向是放行，不會擋住正常工作；A4 在真實 session 是否會發生
-  未確認。
+- A3（`#direct` 在引用文字內也放行）：FIX（v3.0.3）。只算獨立 token（前面是開頭或空白、
+  後面是結尾、空白或句末標點），fenced block 與行內 code 內不算；Python 與 TypeScript 共用
+  `tests/fixtures/direct_token_vectors.json`。A4（prompt 與 tool 的 id 形狀不一致時
+  `#direct` 失效）：DEFER，在真實 session 是否會發生未確認。
 - executor 在 brief 之外的決定（corpus 與 manifest 內的 role 名稱、installer 的升級
   digest、各 host 一起升版、`render_codex` 支援 `omitted_roles`）：接受。
 
@@ -71,3 +71,20 @@ unittest 1479 個全過、六個 render 檢查、lock、舊名掃描、lint 都�
 - 各 case 的重複性：多數只有 1 次。
 - Jev 不給分類的回合（風險字、信心不足）R1 與 G5 不觸發，小功能會由 main 自己做。
 - 其他 host 綁定新 role 與同一組條款：第二階段，另開 spec。
+
+## 不再追加實測（2026-10-10）
+
+Miyago 在 2026-10-10 決定停止付費的 live 實測，接受現有證據。上面「尚未驗證」是已知限制的
+紀錄，不是待辦；之後若要補，另開 spec。
+
+## v3.0.3 缺口清理（2026-10-10）
+
+- A1、A3 見「處置」。
+- agy 回報 `agents/applier`、`agents/plan-critic` 不是 symlink：原因是遷移的缺口，不是機器
+  狀態誤報。`tools/sync_global.py` 移除指向本 repo 的舊名 role symlink，卻不補新名
+  （skill 的舊名會改指新名，role 不會），而 `agy_link_problems` 對 dist 裡每個 role 都
+  要求 symlink。v3.0.3 改成移除舊名後，新名不存在就補上指向 `hosts/agy/dist/agents/<新名>`
+  的 symlink。這台機器的舊名連結已在先前的 `--apply` 移除，不會自動補；要執行
+  `ln -s <repo>/hosts/agy/dist/agents/applier ~/.gemini/config/agents/applier` 與
+  `plan-critic` 同樣一條。OpenCode 的 harness 副本不同仍未處理。
+- `docs/assets/shoal-model-routing.svg` 的範例與 Claude 欄 scout 改為 haiku。

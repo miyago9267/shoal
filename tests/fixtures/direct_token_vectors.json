@@ -1,0 +1,190 @@
+{
+  "_doc": "Prompt text -> whether the guard counts it as a typed #direct instruction.  Replayed by tests/test_shoal_guard.py (Python) and hosts/opencode/plugin/tests/direct-token.test.ts (TypeScript); both must agree.",
+  "vectors": [
+    {
+      "name": "plain token alone",
+      "prompt": "#direct",
+      "direct": true
+    },
+    {
+      "name": "at start",
+      "prompt": "#direct fix the parser",
+      "direct": true
+    },
+    {
+      "name": "at end",
+      "prompt": "fix the parser #direct",
+      "direct": true
+    },
+    {
+      "name": "middle",
+      "prompt": "please #direct fix it now",
+      "direct": true
+    },
+    {
+      "name": "full stop",
+      "prompt": "fix it #direct.",
+      "direct": true
+    },
+    {
+      "name": "cjk full stop",
+      "prompt": "請直接改 #direct。",
+      "direct": true
+    },
+    {
+      "name": "comma and question mark",
+      "prompt": "use #direct, or #direct?",
+      "direct": true
+    },
+    {
+      "name": "cjk comma",
+      "prompt": "改這個 #direct，謝謝",
+      "direct": true
+    },
+    {
+      "name": "after newline",
+      "prompt": "line one\n#direct",
+      "direct": true
+    },
+    {
+      "name": "before newline",
+      "prompt": "#direct\nfix it",
+      "direct": true
+    },
+    {
+      "name": "after cjk space and tab",
+      "prompt": "請\t#direct　修",
+      "direct": true
+    },
+    {
+      "name": "with chinese sentence",
+      "prompt": "請直接改 #direct",
+      "direct": true
+    },
+    {
+      "name": "inline code",
+      "prompt": "use the `#direct` marker",
+      "direct": false
+    },
+    {
+      "name": "inline code after token text",
+      "prompt": "`#direct`",
+      "direct": false
+    },
+    {
+      "name": "double backtick span",
+      "prompt": "see ``a `#direct` b`` here",
+      "direct": false
+    },
+    {
+      "name": "fenced block",
+      "prompt": "```\n#direct\n```",
+      "direct": false
+    },
+    {
+      "name": "fenced block with info string",
+      "prompt": "before\n```text\nfix #direct\n```\nafter",
+      "direct": false
+    },
+    {
+      "name": "unclosed fence masks the rest",
+      "prompt": "```\n#direct",
+      "direct": false
+    },
+    {
+      "name": "token after a closed fence",
+      "prompt": "```\ncode\n```\n#direct",
+      "direct": true
+    },
+    {
+      "name": "token after inline code",
+      "prompt": "`x` #direct",
+      "direct": true
+    },
+    {
+      "name": "token glued to inline code",
+      "prompt": "`x`#direct",
+      "direct": false
+    },
+    {
+      "name": "unmatched backtick is literal",
+      "prompt": "it`s fine #direct",
+      "direct": true
+    },
+    {
+      "name": "path fragment",
+      "prompt": "see docs/x#direct for details",
+      "direct": false
+    },
+    {
+      "name": "url fragment",
+      "prompt": "open https://example.com/page#direct now",
+      "direct": false
+    },
+    {
+      "name": "url fragment then token",
+      "prompt": "https://example.com/#direct #direct",
+      "direct": true
+    },
+    {
+      "name": "parenthesised",
+      "prompt": "(#direct)",
+      "direct": false
+    },
+    {
+      "name": "quoted",
+      "prompt": "\"#direct\"",
+      "direct": false
+    },
+    {
+      "name": "glued to cjk before",
+      "prompt": "修好#direct吧",
+      "direct": false
+    },
+    {
+      "name": "followed by letters",
+      "prompt": "#directly",
+      "direct": false
+    },
+    {
+      "name": "double hash",
+      "prompt": "##direct",
+      "direct": false
+    },
+    {
+      "name": "followed by hyphen",
+      "prompt": "#direct-ly",
+      "direct": false
+    },
+    {
+      "name": "followed by underscore",
+      "prompt": "#direct_mode",
+      "direct": false
+    },
+    {
+      "name": "followed by directory",
+      "prompt": "#directory",
+      "direct": false
+    },
+    {
+      "name": "space after hash",
+      "prompt": "# direct",
+      "direct": false
+    },
+    {
+      "name": "no hash",
+      "prompt": "direct",
+      "direct": false
+    },
+    {
+      "name": "case sensitive",
+      "prompt": "#Direct",
+      "direct": false
+    },
+    {
+      "name": "empty",
+      "prompt": "",
+      "direct": false
+    }
+  ]
+}

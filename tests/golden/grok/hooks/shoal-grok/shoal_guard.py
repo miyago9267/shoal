@@ -76,8 +76,33 @@ PROMPT_KEEP_HOSTS = frozenset({"claude"})
 # Hosts where R1 denies (claude only, G1), where main's background shell is denied (G4) and where a
 # shell command that writes a file is judged by R1 (G5).
 DENY_MAIN_HOSTS = frozenset({"claude"})
-# `#direct` as a standalone token (ASCII word characters and `-` around it make it part of a word).
-DIRECT_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_#])#direct(?![A-Za-z0-9_-])")
+# `#direct` as an instruction the user typed: a standalone token that follows the start of the text or
+# whitespace and is followed by the end, whitespace or sentence punctuation (ASCII or CJK).  Anything
+# else (`x#direct`, `(#direct)`, `#directly`, a URL fragment) is not.  Code the user quoted does not
+# count: fenced blocks and inline spans are masked with NUL (never whitespace) before matching.
+DIRECT_TOKEN_RE = re.compile(r"(?<!\S)#direct(?![^\s.,;:!?\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f])")
+FENCE_OPEN_RE = re.compile(r" {0,3}`{3,}")
+FENCE_CLOSE_RE = re.compile(r" {0,3}`{3,}\s*$")
+INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)(?:(?!\n[ \t\r]*\n).)+?(?<!`)\1(?!`)", re.DOTALL)
+
+
+def has_direct_token(prompt: Any) -> bool:
+    """True when the user's prompt carries `#direct` as typed instruction, outside any code."""
+    if not isinstance(prompt, str):
+        return False
+    lines: List[str] = []
+    in_fence = False
+    for line in prompt.split("\n"):
+        if in_fence:
+            in_fence = FENCE_CLOSE_RE.match(line) is None
+            lines.append("\0")
+        elif FENCE_OPEN_RE.match(line):
+            in_fence = True
+            lines.append("\0")
+        else:
+            lines.append(line)
+    text = INLINE_CODE_RE.sub("\0", "\n".join(lines))
+    return DIRECT_TOKEN_RE.search(text) is not None
 # Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
 # `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
 ROLE_NAMESPACES = ("shoal:",)
@@ -1068,7 +1093,7 @@ def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     )
     if name == "UserPromptSubmit":
         prompt = payload.get("prompt")  # read for the #direct token only; never stored or logged
-        has_direct = isinstance(prompt, str) and DIRECT_TOKEN_RE.search(prompt) is not None
+        has_direct = has_direct_token(prompt)
         return _event("claude", "prompt", *base, direct=has_direct)
     if name != "PreToolUse":
         return None

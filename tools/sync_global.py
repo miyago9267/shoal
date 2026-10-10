@@ -27,7 +27,8 @@ shoal 2.0.0 把所有安裝出去的名稱都改了（docs/specs/shoal-rebrand�
             （確認是 shoal 安裝的）由它一起移除。
   agy       tools/install_hooks.py --host agy；agents/skill 是指向 hosts/agy/dist 的 symlink，
             只檢查 symlink 還指在那裡（回報，不修）；例外是舊名（LEGACY_AGY_NAME_PREFIX 開頭）的 symlink，
-            以及 role 改名（RENAMED_ROLES）後仍指向本 repo 的 hosts/agy/dist/agents/<舊名> 的 symlink（移除連結）：
+            以及 role 改名（RENAMED_ROLES）後仍指向本 repo 的 hosts/agy/dist/agents/<舊名> 的 symlink
+            （移除連結，並在新名還不存在時補上指向 hosts/agy/dist/agents/<新名> 的 symlink）：
             指向本 repo 的 hosts/agy/dist 的 skill 移除並改指新名；其他舊名 symlink（例如指向
             dotfile 的舊安裝或斷掉的連結）直接移除（dry-run 只回報）。一般檔案與非舊名一律不動。
   opencode  需要 bun。用 install_global.sh 同樣的步驟建出 HEAD 的 bundle，與全域 config dir 的
@@ -68,7 +69,7 @@ LEGACY_OPENCODE_PLUGIN_ENTRY = "plugins/pilotfish-opencode.js"
 LEGACY_OPENCODE_DIR_PREFIX = "pilotfish/"
 
 # ---- RENAMED_: role 改名前的名稱（docs/specs/delegation-default/RENAME.md）----
-RENAMED_ROLES = ("mech-executor", "plan-verifier")
+RENAMED_ROLES = {"mech-executor": "applier", "plan-verifier": "plan-critic"}  # 舊名 -> 新名
 
 Result = tuple[str, str]  # (status, detail)
 
@@ -430,33 +431,48 @@ def is_renamed_role_link(ctx: Ctx, link: Path) -> bool:
     )
 
 
-def remove_legacy_agy_links(ctx: Ctx, skip: str = "") -> Optional[str]:
+def remove_legacy_agy_links(ctx: Ctx, skip: str = "") -> tuple[Optional[str], list[str]]:
     """skills、agents 目錄裡舊名（LEGACY_AGY_NAME_PREFIX 開頭）的 symlink 一律視為舊安裝：--apply 移除，dry-run 回報。
 
     不管指向哪裡（舊 dist、dotfile 時代的目標、斷掉的連結）；只 unlink 連結本身。
-    agents 裡 role 改名前的名稱（RENAMED_ROLES）只在 symlink 仍指向本 repo 的 dist 時才算舊安裝。
+    agents 裡 role 改名前的名稱（RENAMED_ROLES）只在 symlink 仍指向本 repo 的 dist 時才算舊安裝；
+    移除後若新名的 dist 項目存在、而 agents/<新名> 還不存在，就補上指向它的 symlink（像 skill 的改指新名，
+    否則使用者原本掛上的 role 會在改名後消失）。已存在的新名一律不動。
     一般檔案、目錄與非舊名不動。skip 是 migrate_agy_skill_link 已處理的 "kind/name"。
+    回傳 (摘要片段 或 None, 補上的 "agents/<新名>" 清單)。
     """
     config = ctx.home / ".gemini" / "config"
     removed: list[str] = []
+    relinked: list[str] = []
+    dist_agents = ctx.repo / "hosts" / "agy" / "dist" / "agents"
     for kind in ("skills", "agents"):
         directory = config / kind
         if not directory.is_dir():
             continue
         for link in sorted(directory.iterdir()):
+            renamed = kind == "agents" and is_renamed_role_link(ctx, link)
             if (
                 not link.is_symlink()
                 or f"{kind}/{link.name}" == skip
-                or not (
-                    link.name.startswith(LEGACY_AGY_NAME_PREFIX)
-                    or (kind == "agents" and is_renamed_role_link(ctx, link))
-                )
+                or not (link.name.startswith(LEGACY_AGY_NAME_PREFIX) or renamed)
             ):
                 continue
             removed.append(f"{kind}/{link.name}")
             if ctx.apply:
                 link.unlink()
-    return f"legacy migration: remove {', '.join(removed)}" if removed else None
+            new = directory / RENAMED_ROLES[link.name] if renamed else None
+            if new is not None and not (new.exists() or new.is_symlink()) and git(
+                ctx, "ls-tree", "--name-only", ctx.ref, f"hosts/agy/dist/agents/{new.name}", check=False
+            ).strip():
+                relinked.append(f"agents/{new.name}")
+                if ctx.apply:
+                    new.symlink_to(dist_agents / new.name)
+    if not removed:
+        return None, []
+    summary = f"legacy migration: remove {', '.join(removed)}"
+    if relinked:
+        summary += f"; relink {', '.join(relinked)}"
+    return summary, relinked
 
 
 def sync_agy(ctx: Ctx) -> Result:
@@ -464,11 +480,13 @@ def sync_agy(ctx: Ctx) -> Result:
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
     migrated, kept, relinked = migrate_agy_skill_link(ctx)
-    removed = remove_legacy_agy_links(ctx, f"skills/{LEGACY_AGY_SKILL}" if migrated else "")
+    removed, role_links = remove_legacy_agy_links(ctx, f"skills/{LEGACY_AGY_SKILL}" if migrated else "")
     changed = installer_changes("install_hooks.py", ["--host", "agy"], ctx)
     problems = agy_link_problems(ctx)
     if migrated and not ctx.apply:  # dry-run：新名的 link 還沒建，不算 drift
         problems = [p for p in problems if not p.startswith(f"skills/{relinked}")]
+    if not ctx.apply:  # 同理：dry-run 時即將補上的 role link 不算 drift
+        problems = [p for p in problems if not any(p.startswith(r + " ") for r in role_links)]
     problems += kept
     note = ("symlink drift: " + ", ".join(problems)) if problems else "symlinks ok"
     parts = [p for p in (migrated, removed, "guard hooks" if changed else None) if p]

@@ -104,9 +104,14 @@ update, use `--replace-drifted-role <role>` once per approved role. Both forms
 retain role validation, transaction fingerprints, and post-write verification.
 
 Role files installed before the rename (`mech-executor.toml`, now `applier`;
-`plan-verifier.toml`, now `plan-critic`) are outside the native manifest, so
-this installer neither upgrades nor removes them; `tools/sync_global.py`
-removes them when their bytes match a released shoal template.
+`plan-verifier.toml`, now `plan-critic`) are outside the native manifest and
+state inventory, so the installer handles them separately, in both the full and
+the `--roles-only` mode. A file whose bytes equal a released shoal template is
+copied to `agents/<name>.toml.shoal-codex-<timestamp>` and then removed (all or
+nothing; the removal is restored if a step fails). Any other file, such as one
+the operator edited, is left in place and reported as `renamed role drift` in
+the installer notes. `--dry-run` prints `would remove` lines and changes
+nothing. `tools/sync_global.py` applies the same rule for the daily sync.
 
 ## Install entrypoints and offline validation
 

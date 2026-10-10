@@ -161,6 +161,33 @@ class AgyRenamedRoleTests(Base):
             self.assertFalse((self.agents / old).is_symlink(), old)
         self.assertIn("symlinks ok", self.sync("--host", "agy", "--apply")[1][0])
 
+    def test_old_link_is_replaced_by_new_name_link_when_missing(self) -> None:
+        """只掛了舊名的機器（2026-10 實機）：移除舊名後補上新名，不留下 'agents/<新名> 不是 symlink'。"""
+        for old, new in zip(lf.LEGACY_ROLE_NAMES, ("applier", "plan-critic")):
+            (self.agents / new).unlink()
+            (self.agents / old).symlink_to(self.dist_agents / old)  # 目標已不存在
+        before = snapshot(self.home)
+        line = self.sync("--host", "agy")[1][0]
+        self.assertIn("relink agents/applier, agents/plan-critic", line)
+        self.assertNotIn("symlink drift", line)  # dry-run 即將補上的不算 drift
+        self.assertEqual(snapshot(self.home), before)
+
+        self.sync("--host", "agy", "--apply")
+        for old, new in zip(lf.LEGACY_ROLE_NAMES, ("applier", "plan-critic")):
+            self.assertFalse((self.agents / old).is_symlink(), old)
+            self.assertEqual(
+                (self.agents / new).resolve(), (self.dist_agents / new).resolve()
+            )
+        self.assertIn("symlinks ok", self.sync("--host", "agy", "--apply")[1][0])
+
+    def test_existing_new_name_entry_is_not_overwritten(self) -> None:
+        (self.agents / "applier").unlink()
+        (self.agents / "applier").write_text("mine\n")
+        (self.agents / OLD_MECH).symlink_to(self.dist_agents / OLD_MECH)
+        self.sync("--host", "agy", "--apply")
+        self.assertFalse((self.agents / OLD_MECH).is_symlink())
+        self.assertEqual((self.agents / "applier").read_text(), "mine\n")
+
     def test_link_pointing_elsewhere_or_real_file_is_untouched(self) -> None:
         elsewhere = self.tmp / "elsewhere"
         elsewhere.mkdir()

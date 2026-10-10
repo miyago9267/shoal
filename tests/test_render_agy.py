@@ -19,7 +19,7 @@ class AgyRenderTests(rh.HostRenderCase):
         version = (ROOT / "hosts" / "agy" / "VERSION").read_text(encoding="utf-8").strip()
         rules = render.RENDERERS["agy"](ROOT)["rules/shoal-agy.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-agy v.+ -->$", rules), [f"<!-- shoal-agy v{version} -->"])
-        self.assertEqual(version, "3.0.2")
+        self.assertEqual(version, "3.0.3")
 
     def test_changing_version_requires_rewriting_dist(self) -> None:
         (self.root / "hosts" / "agy" / "VERSION").write_text("2.0.1\n", encoding="utf-8", newline="\n")
@@ -40,7 +40,7 @@ class AgyRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:
         src = self.root / "hosts" / "agy" / "src" / "rules" / "shoal-agy.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-agy v3.0.2 -->\n"
+        marker = "<!-- shoal-agy v3.0.3 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")

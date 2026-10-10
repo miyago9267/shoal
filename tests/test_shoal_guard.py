@@ -265,13 +265,30 @@ class ClaudeAdapterTests(CliCase):
         def flag(prompt):
             return guard.adapt_claude(claude_prompt(prompt=prompt))["direct"]
 
-        for text in ("#direct", "do it #direct", "#direct do it", "(#direct)", "fix it, #direct.", "請 #direct 修",
-                     "修好#direct吧", "line one\n#direct"):
+        for text in ("#direct", "do it #direct", "#direct do it", "fix it, #direct.", "請 #direct 修",
+                     "line one\n#direct", "請直接改 #direct。"):
             self.assertTrue(flag(text), text)
         for text in ("#directory", "x#direct", "##direct", "#direct-ly", "#direct_mode", "#directs", "# direct",
-                     "direct", "#Direct", "", None, 7):
+                     "direct", "#Direct", "", None, 7, "(#direct)", "修好#direct吧", "`#direct`",
+                     "see docs/x#direct for details"):
             self.assertFalse(flag(text), text)
         self.assertFalse(guard.adapt_claude(claude_prompt())["direct"])  # no token in the default prompt
+
+    def test_direct_token_vectors(self) -> None:
+        """tests/fixtures/direct_token_vectors.json is shared with the TypeScript mirror."""
+        vectors = json.loads((ROOT / "tests" / "fixtures" / "direct_token_vectors.json").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(vectors["vectors"]), 30)
+        for vector in vectors["vectors"]:
+            self.assertIs(guard.has_direct_token(vector["prompt"]), vector["direct"], vector["name"])
+            self.assertIs(
+                guard.adapt_claude(claude_prompt(prompt=vector["prompt"]))["direct"], vector["direct"], vector["name"]
+            )
+
+    def test_quoted_direct_does_not_release_r1(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="why does `#direct` exist?"))
+        self.write_turn("sess-1", "p-1", "judgment")
+        out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work))
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
 
     def test_direct_flag_is_recorded_but_the_prompt_text_never_is(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct SECRET-DIRECT-PROMPT"))

@@ -75,6 +75,30 @@ CANONICAL_ROLE_UPGRADE_DIGESTS = {
     }),
 }
 
+# Roles renamed in shoal 3.0.0 (docs/specs/delegation-default/RENAME.md): sha256 of every
+# released templates/agents/<old name>.toml.  An installed file with the old name is removed
+# only when its bytes equal one of these; tests/test_install_renamed_roles.py keeps the table
+# equal to the git history that tools/sync_global.py reads.
+RENAMED_ROLE_LEGACY_DIGESTS = {
+    "mech-executor": frozenset({
+        "e823528dc6af8b9b0bc4c36b7b2835cf2cd7da55371dceb265eab0a66a53f26e",
+        "f949feb1842cee457f39698a32f038875e7573c0e440281cadc0c64b8420b722",
+        "140076bd6c7aecc6dc2902a104386e7567feed5dc1d0d11fcbc136653f8d6913",
+        "f26cbfffa0ed0c4145f5541905bc2f3c28e2eef9b93e0eb4258084dc01efc26b",
+        "76b0fe250031e1773a608c9838f569ce6f9ac19c9e40bfa555466903a6db3ac5",
+    }),
+    "plan-verifier": frozenset({
+        "5a50493ab3098aa982ef75dd62e200257e9b6faaea9bc3fbadd28c085a03b2c9",
+        "4721bd08d9f161657ad26c98052e6ba69bc2298a1749274f3df87c6290a50ea0",
+        "1e7b99637b187e059562de4f9dc32764df74eb79462b5413d0f1efdf4af10dd4",
+        "5cfd8630f9807a45eb18bfd587ab12dc41e8c06de82872ec6aa87f2c3e4c8fe0",
+        "d432eadc8a2d05ad7d7f756441cca966ca8b0a684150637bd3ed66df81489d80",
+        "e29dff16ee22d8dcf60f214c7226eba52e9c1d5fca475d47ca750c8850a32852",
+        "cf1471212795dac891ba7c9d8c605988627745d916802cb11520571661781d77",
+        "c552938705065c826da9a3cbaf09c2fbbaa9fde4adb1f691a59b694d8468f541",
+    }),
+}
+
 
 class InstallAbort(Exception):
     """The caller must resolve this state before any target write."""
@@ -97,7 +121,7 @@ class PolicyTargetIdentity:
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
 SHOAL_PLUGIN_NAME = "shoal-codex"
-SHOAL_PLUGIN_VERSION = "3.0.2"
+SHOAL_PLUGIN_VERSION = "3.0.3"
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
@@ -1821,6 +1845,71 @@ def _commit_role_writes(
             temp.unlink(missing_ok=True)
 
 
+def _renamed_role_removals(agents: Path) -> tuple[list[tuple[Path, bytes]], list[str]]:
+    """Old-name role files to remove (unmodified released bytes) and those left as drift."""
+    removals: list[tuple[Path, bytes]] = []
+    drift: list[str] = []
+    for old, digests in sorted(RENAMED_ROLE_LEGACY_DIGESTS.items()):
+        target = agents / f"{old}.toml"
+        if not (target.is_symlink() or target.exists()):
+            continue
+        if target.is_symlink() or not target.is_file():
+            drift.append(f"agents/{old}.toml is not a regular file")
+            continue
+        current = target.read_bytes()
+        if _sha256_bytes(current) in digests:
+            removals.append((target, current))
+        else:
+            drift.append(f"agents/{old}.toml differs from every released shoal template")
+    return removals, drift
+
+
+def _removal_notes(
+    removals: list[tuple[Path, bytes]], drift: list[str], *, dry_run: bool
+) -> list[str]:
+    verb = "would remove" if dry_run else "removed"
+    return [
+        f"{verb} renamed role {target.name} (unmodified released shoal template; backup kept)"
+        for target, _ in removals
+    ] + [f"renamed role drift: {item}; left in place" for item in drift]
+
+
+def _commit_role_removals(
+    removals: list[tuple[Path, bytes]],
+    *,
+    agents_root: Path,
+    codex_home: Path,
+    stamp: str,
+) -> None:
+    """Back up every old-name role, then remove them; restore all of them if any step fails."""
+    if not removals:
+        return
+    _assert_agents_root(agents_root, codex_home)
+    modes: dict[Path, int] = {}
+    for target, original in removals:
+        if target.parent != agents_root:
+            raise InstallAbort("role target escapes agents root")
+        if _read_role_target(target) != original:
+            raise InstallAbort(f"{target} changed while install was planned")
+        backup = _role_backup_path(target, codex_home, stamp)
+        if backup.exists() or backup.is_symlink():
+            raise InstallAbort(f"rollback backup already exists: {backup}")
+        _copy_backup_no_follow(target, backup, original)
+        modes[target] = stat.S_IMODE(target.stat().st_mode)
+    removed: list[tuple[Path, bytes]] = []
+    try:
+        for target, original in removals:
+            if _read_role_target(target) != original:
+                raise InstallAbort(f"{target} changed immediately before removal")
+            target.unlink()
+            removed.append((target, original))
+    except (OSError, InstallAbort):
+        for target, original in reversed(removed):
+            if not (target.exists() or target.is_symlink()):
+                _atomic_write(target, original, modes[target])
+        raise
+
+
 def install_roles(
     *,
     source_root: Path,
@@ -1870,10 +1959,12 @@ def install_roles(
         codex_home=codex_home,
         approved_drift_roles=approved_drift_roles,
     )
+    removals, removal_drift = _renamed_role_removals(agents)
+    notes += _removal_notes(removals, removal_drift, dry_run=dry_run)
     if dry_run:
         for note in notes:
             print(f"note: {note}")
-        if not writes:
+        if not writes and not removals:
             print("already up to date; nothing to change")
             return 0
         for target, _, _, original in writes:
@@ -1884,17 +1975,27 @@ def install_roles(
                     "allowed transaction artifact: "
                     f"{backup.relative_to(codex_home).as_posix()}"
                 )
+        for target, _ in removals:
+            print(f"would remove primary: {target.relative_to(codex_home).as_posix()}")
+            backup = _role_backup_path(target, codex_home, "<timestamp>")
+            print(f"allowed transaction artifact: {backup.relative_to(codex_home).as_posix()}")
         return 0
 
+    stamp = _stamp()
     _commit_role_writes(
         writes,
         agents_root=agents,
         codex_home=codex_home,
-        stamp=_stamp(),
+        stamp=stamp,
     )
+    _commit_role_removals(removals, agents_root=agents, codex_home=codex_home, stamp=stamp)
     for note in notes:
         print(f"note: {note}")
-    print("changed native role manifest" if writes else "already up to date; nothing to change")
+    print(
+        "changed native role manifest"
+        if writes or removals
+        else "already up to date; nothing to change"
+    )
     return 0
 
 
@@ -2068,6 +2169,8 @@ def install(
             )
         elif current is None:
             writes.append((target, payload, 0o600, None))
+    removals, removal_drift = _renamed_role_removals(agents)
+    notes.extend(_removal_notes(removals, removal_drift, dry_run=dry_run))
     if policy_payload != policy_bytes:
         writes.append((policy_path, policy_payload, 0o644, policy_bytes))
     hooks_registration = codex_home / "hooks.json"
@@ -2266,11 +2369,15 @@ def install(
             print(f"warning: {warning}")
         for note in notes:
             print(f"note: {note}")
-        if not writes and not state_needs_publication:
+        if not writes and not state_needs_publication and not removals:
             print("already up to date; nothing to change")
             return 0
         for path, _, _, _ in writes:
             print(f"would change primary: {path.relative_to(codex_home).as_posix()}")
+        for path, _ in removals:
+            print(f"would remove primary: {path.relative_to(codex_home).as_posix()}")
+            backup = _role_backup_path(path, codex_home, "<timestamp>")
+            print(f"allowed transaction artifact: {backup.relative_to(codex_home).as_posix()}")
         print(f"allowed transaction artifact: {state_path.name}.pending")
         print(f"allowed transaction artifact: {state_path.name}")
         for path, _, _, original in writes:
@@ -2566,11 +2673,18 @@ def install(
             if pending.is_file() and pending.read_bytes() == pending_payload:
                 _atomic_write(pending, aborted_payload, 0o600)
             raise
+    # Old-name roles sit outside the state inventory; they get their own per-file backup and
+    # all-or-nothing removal after the main transaction has committed.
+    _commit_role_removals(removals, agents_root=agents, codex_home=codex_home, stamp=_stamp())
     for warning in windows_warnings:
         print(f"warning: {warning}")
     for note in notes:
         print(f"note: {note}")
-    print("changed native target" if writes else "already up to date; nothing to change")
+    print(
+        "changed native target"
+        if writes or removals
+        else "already up to date; nothing to change"
+    )
     return 0
 
 

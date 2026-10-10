@@ -9,6 +9,14 @@ written.
 
 ## Unreleased
 
+## v3.0.3
+
+- `install/install.py` (full and `--roles-only`) now removes role files that
+  still carry the pre-3.0.0 names (`mech-executor.toml`, `plan-verifier.toml`)
+  when their bytes equal a released shoal template, with a per-file backup;
+  edited files are left in place and reported as drift. The Codex policy text
+  changes only by the marker.
+
 ## v3.0.2
 
 - No Codex behavior change. The watcher contract changed for Claude only
