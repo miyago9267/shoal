@@ -123,6 +123,12 @@ Miyago 2026-10-10 對照上游 v1.5.0 後提出五項需求：
 - **G4（main 的背景 shell）**：While host 是 claude 且模式為 enforce，when main
   以背景方式呼叫 shell 工具，the guard shall deny 並提示改派 `watcher`；`#direct`
   可放行。subagent 不受此規則影響。
+- **G5（shell 寫檔，2026-10-10 修訂）**：While host 是 claude 且模式為 enforce，when
+  R1 的條件成立且 main 的 shell 指令含寫檔（`>` 或 `>>` 導向一般檔案、heredoc 導向
+  檔案、`tee`、`sed -i`），the guard shall 以 R1 同樣的方式 deny；導向 `/dev/null`、
+  檔案描述符（`2>&1`）與 R1 豁免路徑不算寫檔。`#direct` 可放行。原因：真實設定下
+  實測，main 用 `cat > 檔案 <<EOF` 寫了三個檔，沒用任何改檔工具，R1 看不到。
+  這是字面判斷，用腳本語言寫檔等方式仍擋不到（Miyago 2026-10-10 核准）。
 - **G3（R2 不變）**：R2（檔案數）維持只提醒。其他 host 的 guard 行為不變。
 - **I1（Plugin 安裝）**：本機 Claude 改用 `claude-plugin/` 安裝，role 以
   `shoal:<role>` 出現；Plugin 與舊的 global 安裝不並存。

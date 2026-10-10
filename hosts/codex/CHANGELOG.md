@@ -9,6 +9,12 @@ written.
 
 ## Unreleased
 
+## v3.0.1
+
+- No Codex behavior change. The shared guard script gained a Claude-only rule
+  (G5, `docs/specs/dispatch-enforcement/SPEC.md`); the Codex policy text
+  changes only by the marker.
+
 ## v3.0.0
 
 - Roles renamed: `mech-executor` is now `applier`, `plan-verifier` is now

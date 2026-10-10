@@ -21,7 +21,8 @@ Modes (SHOAL_GUARD): enforce | shadow | off.  The hard rules (LEAF, VERIFY_EDIT)
 host.  Main-session rules: R2 (file count) only advises, on claude/codex in enforce with a
 one-per-turn `additionalContext` reminder.  On claude only (docs/specs/delegation-default, G1/G4),
 R1 (turn classified as implementation work, no write role dispatched) denies main's edit tools and
-G4 denies main's background shell (`Bash` with run_in_background); both are released for one turn
+G4 denies main's background shell (`Bash` with run_in_background); G5 applies R1 to main's foreground
+`Bash` when the command literally writes a file (see shell_write_targets); all are released for one turn
 by a standalone `#direct` token in the user's prompt, or for good by SHOAL_GUARD_DIRECT=1.  R1 on
 every other host stays `advise`.
 """
@@ -38,7 +39,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 try:
     import fcntl
@@ -72,7 +73,8 @@ STATE_TURN_HOSTS = frozenset({"agy", "grok", "claude"})
 ADVISE_OUTPUT_HOSTS = frozenset({"claude", "codex"})
 # Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
 PROMPT_KEEP_HOSTS = frozenset({"claude"})
-# Hosts where R1 denies (claude only, G1) and where main's background shell is denied (G4).
+# Hosts where R1 denies (claude only, G1), where main's background shell is denied (G4) and where a
+# shell command that writes a file is judged by R1 (G5).
 DENY_MAIN_HOSTS = frozenset({"claude"})
 # `#direct` as a standalone token (ASCII word characters and `-` around it make it part of a word).
 DIRECT_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_#])#direct(?![A-Za-z0-9_-])")
@@ -395,6 +397,283 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
     return any(_under(path, root) for root in roots)
 
 
+# ---------------------------------------------------------------------------
+# Shell writes (G5): a literal check of a `Bash` command string, not a shell parser
+# ---------------------------------------------------------------------------
+
+# Target reported when a write is certain but its file is not: `sed -i` without file operands
+# (xargs / find -exec feed them), or a redirect to a variable.  Never exempt.
+UNKNOWN_TARGET = "$?"
+_WORD_BREAK = " \t\r\n;|&<>()"
+_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+_DOUBLE_BRACKET_END_RE = re.compile(r"(?:^|\s)\]\](?=$|[\s;&|)])")
+# Words after which the next word is still a command (`FOO=1 tee f`, `then tee f`).
+_COMMAND_KEEP = frozenset(("then", "do", "else", "elif", "if", "while", "until", "!", "{"))
+# Wrappers: the next word is the real command, after any options.  `-exec` / `-execdir` work
+# anywhere on a `find` line, so they are matched at argument position too.
+_COMMAND_WRAPPERS = frozenset(("sudo", "command", "exec", "env", "time", "nohup", "builtin", "xargs"))
+_FIND_EXEC = frozenset(("-exec", "-execdir"))
+# sed flags that take no value; the first other letter ends a short-option cluster.
+_SED_FLAG_LETTERS = "Enrsuzb"
+
+
+def _skip_parens(text: str, start: int) -> int:
+    """`text[start]` is `(`: index just after the matching `)` (len(text) when unbalanced)."""
+    depth, i, n = 0, start, len(text)
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "'":
+            j = text.find("'", i + 1)
+            i = n if j < 0 else j + 1
+            continue
+        if c == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+            continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return n
+
+
+def _read_word(text: str, start: int) -> Tuple[str, int]:
+    """One shell word from `start`: quotes removed, `$(...)` / `${...}` / backticks kept raw."""
+    buf: List[str] = []
+    i, n = start, len(text)
+    while i < n:
+        c = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if c in _WORD_BREAK:
+            break
+        if c == "\\":
+            if nxt and nxt != "\n":
+                buf.append(nxt)
+            i += 2
+        elif c == "'":
+            j = text.find("'", i + 1)
+            j = n if j < 0 else j
+            buf.append(text[i + 1:j])
+            i = j + 1
+        elif c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            buf.append(text[i + 1:min(j, n)])
+            i = j + 1
+        elif c == "$" and nxt == "(":
+            j = _skip_parens(text, i + 1)
+            buf.append(text[i:j])
+            i = j
+        elif c == "$" and nxt == "{":
+            j = text.find("}", i + 2)
+            j = n if j < 0 else j + 1
+            buf.append(text[i:j])
+            i = j
+        elif c == "$" and nxt == "'":
+            j = i + 2
+            while j < n and text[j] != "'":
+                j += 2 if text[j] == "\\" else 1
+            buf.append(text[i + 2:min(j, n)])
+            i = j + 1
+        elif c == "`":
+            j = text.find("`", i + 1)
+            j = n if j < 0 else j + 1
+            buf.append(text[i:j])
+            i = j
+        else:
+            buf.append(c)
+            i += 1
+    return "".join(buf), min(i, n)
+
+
+def _tee_files(args: List[str]) -> List[str]:
+    return [a for a in args if a and not a.startswith("-")]
+
+
+def _sed_in_place_files(args: List[str]) -> List[str]:
+    """File operands of a `sed -i` / `--in-place` call; [] when the call does not edit in place."""
+    in_place, have_script = False, False
+    positional: List[str] = []
+    k = 0
+    while k < len(args):
+        a = args[k]
+        if a == "--":
+            positional.extend(args[k + 1:])
+            break
+        if a.startswith("--"):
+            if a == "--in-place" or a.startswith("--in-place="):
+                in_place = True
+            elif a in ("--expression", "--file"):
+                have_script = True
+                k += 1
+            elif a.startswith(("--expression=", "--file=")):
+                have_script = True
+        elif a.startswith("-") and len(a) > 1:
+            for index, letter in enumerate(a[1:]):
+                if letter == "i":
+                    in_place = True
+                    break
+                if letter in "efl":
+                    have_script = have_script or letter != "l"
+                    if index == len(a) - 2:
+                        k += 1  # the value is the next argument
+                    break
+        elif a:  # an empty word is macOS's `-i ''` suffix, never a file or the script
+            positional.append(a)
+        k += 1
+    if not in_place:
+        return []
+    files = positional if have_script else positional[1:]
+    return files or [UNKNOWN_TARGET]
+
+
+def shell_write_targets(command: str) -> List[str]:
+    """File targets that `command` writes by a literal reading of its text (G5).
+
+    Counts `>`, `>>`, `>|`, `&>` redirects to a word, `tee [-a] file...` and `sed -i` /
+    `--in-place`, each at command position (after `;`, `|`, `&&`, newline, `(`, `then`, `do`, or
+    wrappers such as `sudo`, `env`, `xargs`, `find -exec`).  Never counts: `>&2` / `2>&1`
+    duplications, `<` input, here-document bodies, quoted text, `[[ ]]`, `(( ))`, `$(( ))`,
+    comments and `>(...)`.  Targets are returned as written (quotes removed); a target holding
+    `$` or a backtick has no known value and is the caller's call.  Writes through an
+    interpreter or another command (python, node, cp, mv, patch, git apply, dd, ...) are not
+    detected.  The TypeScript port (guard/shell-writes.ts) must return the same list.
+    """
+    if ">" not in command and "tee" not in command and "sed" not in command:
+        return []
+    targets: List[str] = []
+    n = len(command)
+    i = 0
+    cmd_pos, wrapped = True, False
+    name: Optional[str] = None
+    args: List[str] = []
+    heredocs: List[Tuple[str, bool]] = []
+
+    def flush() -> None:
+        nonlocal name, args, cmd_pos, wrapped
+        if name == "tee":
+            targets.extend(_tee_files(args))
+        elif name == "sed":
+            targets.extend(_sed_in_place_files(args))
+        name, args, cmd_pos, wrapped = None, [], True, False
+
+    while i < n:
+        c = command[i]
+        nxt = command[i + 1] if i + 1 < n else ""
+        if c in " \t\r":
+            i += 1
+        elif c == "\n":
+            flush()
+            i += 1
+            for delim, strip in heredocs:  # bodies start on the next line
+                while i < n:
+                    end = command.find("\n", i)
+                    end = n if end < 0 else end
+                    line = command[i:end]
+                    i = min(end + 1, n)
+                    if (line.lstrip("\t") if strip else line) == delim:
+                        break
+            heredocs = []
+        elif c == "#" and (i == 0 or command[i - 1] in " \t\n;|&()"):
+            end = command.find("\n", i)
+            i = n if end < 0 else end
+        elif c in ";|" or (c == "&" and nxt != ">"):
+            flush()
+            i += 1
+            if i < n and command[i] in ";|&":
+                i += 1
+        elif c == ">" or c == "&":  # `&>` writes both streams to a file
+            i += 2 if c == "&" else 1
+            if i < n and command[i] in ">|":
+                i += 1
+            elif i < n and command[i] == "(":
+                continue  # process substitution `>(cmd)`
+            dup = c == ">" and i < n and command[i] == "&"
+            if dup:
+                i += 1
+            while i < n and command[i] in " \t":
+                i += 1
+            word, i = _read_word(command, i)
+            fd_only = dup and (word in ("", "-") or word.isdigit() or word.startswith("$"))
+            if word and not fd_only:
+                targets.append(word)
+        elif c == "<":
+            if command.startswith("<<<", i):
+                i += 3
+                while i < n and command[i] in " \t":
+                    i += 1
+                _, i = _read_word(command, i)
+            elif nxt == "<":
+                i += 2
+                strip = i < n and command[i] == "-"
+                i += 1 if strip else 0
+                while i < n and command[i] in " \t":
+                    i += 1
+                delim, i = _read_word(command, i)
+                heredocs.append((delim, strip))
+            elif nxt == "(":
+                i += 1  # process substitution `<(cmd)`
+            else:
+                i += 1
+                if i < n and command[i] in "&>":
+                    i += 1
+                while i < n and command[i] in " \t":
+                    i += 1
+                _, i = _read_word(command, i)
+        elif c == "(":
+            if nxt == "(":
+                i = _skip_parens(command, i)  # `(( ... ))`
+                flush()
+                cmd_pos = False
+            else:
+                flush()
+                i += 1
+        elif c == ")":
+            flush()
+            i += 1
+        elif c.isdigit() and _fd_prefix(command, i):
+            while command[i].isdigit():
+                i += 1
+        else:
+            word, i = _read_word(command, i)
+            if word in _FIND_EXEC and not cmd_pos:
+                flush()
+                wrapped = True
+            elif word == "[[" and cmd_pos:
+                found = _DOUBLE_BRACKET_END_RE.search(command, i)
+                i = found.end() if found else n
+                cmd_pos = False
+            elif not cmd_pos:
+                args.append(word)
+            elif _ASSIGNMENT_RE.match(word) or word in _COMMAND_KEEP:
+                pass
+            elif wrapped and word.startswith("-"):
+                pass
+            elif word in _COMMAND_WRAPPERS:
+                wrapped = True
+            else:
+                name, args, cmd_pos, wrapped = word.rsplit("/", 1)[-1], [], False, False
+    flush()
+    return targets
+
+
+def _fd_prefix(text: str, i: int) -> bool:
+    """`text[i]` starts a digit run directly followed by `<` or `>` (a file-descriptor number)."""
+    n = len(text)
+    while i < n and text[i].isdigit():
+        i += 1
+    return i < n and text[i] in "<>"
+
+
 def _text(env: Dict[str, str], key: str, **fmt: Any) -> str:
     lang = "zh-TW" if env.get("SHOAL_GUARD_LANG") == "zh-TW" else "en"
     return MESSAGES[lang][key].format(**fmt)
@@ -485,7 +764,12 @@ class _Guard:
         tool_kind = event.get("tool_kind")
         if kind == "tool" and tool_kind == "background_shell" and self.host not in DENY_MAIN_HOSTS:
             tool_kind = None  # G4 exists on claude only
-        if kind == "tool" and tool_kind not in ("edit", "dispatch", "background_shell"):
+        if kind == "tool" and tool_kind == "shell":
+            # G5 (claude only): a foreground shell call without a file write has no opinion, and
+            # touches no state or log.
+            if self.host not in DENY_MAIN_HOSTS or self.shell_write_target() is None:
+                tool_kind = None
+        if kind == "tool" and tool_kind not in ("edit", "dispatch", "background_shell", "shell"):
             return {
                 "decision": "none",
                 "rule": None,
@@ -555,6 +839,8 @@ class _Guard:
             return self.result("allow", "dispatch")
         if event.get("tool_kind") == "background_shell":
             return self.background_shell(state)
+        if event.get("tool_kind") == "shell":
+            return self.shell_write(state, guard)
         return self.edit(state, state_path, guard)
 
     def background_shell(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -564,6 +850,60 @@ class _Guard:
         return self.result(
             "deny" if self.mode == "enforce" else "would_deny", "G4", reason=_text(self.env, "G4")
         )
+
+    def shell_write_target(self) -> Optional[str]:
+        """G5: the first non-exempt file that main's shell command writes (UNKNOWN_TARGET or the
+        raw text when its value is not known), or None.  `/dev/...`, exempt paths and nothing
+        else are skipped; the check reads no state."""
+        command = self.event.get("command")
+        if not isinstance(command, str) or not command:
+            return None
+        cwd = self.event.get("cwd") or os.getcwd()
+        for raw in shell_write_targets(command):
+            target = self._expand_target(raw)
+            if target is None:
+                return raw  # `$var`, `$(...)`, backticks: a redirect to a non-/dev target
+            if target == "/dev" or target.startswith("/dev/"):
+                continue
+            if is_exempt(resolve_path(target, cwd), self.host, self.env, self.home):
+                continue
+            return raw
+        return None
+
+    def _expand_target(self, raw: str) -> Optional[str]:
+        """Leading `~`, `$HOME`, `${HOME}`, `$TMPDIR`, `${TMPDIR}` expanded; None while unknown."""
+        target = raw
+        for prefix, base in (("~", str(self.home)), ("$HOME", str(self.home)), ("${HOME}", str(self.home)),
+                             ("$TMPDIR", self.env.get("TMPDIR", "")), ("${TMPDIR}", self.env.get("TMPDIR", ""))):
+            if target == prefix or target.startswith(prefix + "/"):
+                if not base or not os.path.isabs(base):
+                    return None
+                target = base + target[len(prefix):]
+                break
+        return None if ("$" in target or "`" in target) else target
+
+    def shell_write(self, state: Dict[str, Any], guard: Path) -> Dict[str, Any]:
+        """G5: R1 for a shell command that writes a file.  Reads state only; a shell write is
+        never recorded as an edit, so R2's count is unaffected."""
+        target = self.shell_write_target()
+        if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
+            return self.result("allow", "direct", file=target)
+        if state["dispatched"]:
+            return self.result("allow", "dispatched", file=target)
+        if self._classified(state, guard) is None:
+            return self.result("allow", "uncounted", file=target)
+        return self.result(
+            "deny" if self.mode == "enforce" else "would_deny", "R1", reason=_text(self.env, "R1"), file=target
+        )
+
+    def _classified(self, state: Dict[str, Any], guard: Path) -> Optional[str]:
+        """The turn's `judgment` / `mechanical` classification, or None (no or stale classifier file)."""
+        tid = state["turn_id"]  # effective turn (agy tool events may omit it)
+        if tid is None:
+            return None
+        turn = _read_json(guard / "turns" / (str(self.event.get("session_id")) + ".json"))
+        role = turn.get("role") if turn.get("turn_id", turn.get("prompt_id")) == tid else None
+        return role if role in CLASSIFIED_ROLE else None
 
     def edit(self, state: Dict[str, Any], state_path: Path, guard: Path) -> Dict[str, Any]:
         raw_paths = [
@@ -577,14 +917,8 @@ class _Guard:
         direct = self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]
         limit = _max_files(self.env)
         classified: Optional[str] = None
-        tid = state["turn_id"]  # effective turn (agy tool events may omit it)
-        if not direct and not state["dispatched"] and tid is not None:
-            turn = _read_json(
-                guard / "turns" / (str(self.event.get("session_id")) + ".json")
-            )
-            match = turn.get("turn_id", turn.get("prompt_id")) == tid
-            role = turn.get("role") if match else None
-            classified = role if role in CLASSIFIED_ROLE else None
+        if not direct and not state["dispatched"]:
+            classified = self._classified(state, guard)
 
         first_rule = "exempt"
         advise_rule: Optional[str] = None
@@ -699,6 +1033,7 @@ def _event(
     paths: Optional[List[str]] = None,
     dispatched_role: Any = None,
     direct: bool = False,
+    command: Any = None,
 ) -> Dict[str, Any]:
     return {
         "host": host,
@@ -713,6 +1048,7 @@ def _event(
         "paths": paths or [],
         "dispatched_role": _str(dispatched_role),
         "direct": direct,
+        "command": command if isinstance(command, str) else None,
     }
 
 
@@ -737,8 +1073,10 @@ def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if name != "PreToolUse":
         return None
     tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
-    if tool == "Bash" and tin.get("run_in_background") is True:
+    if tool == "Bash" and tin.get("run_in_background") is True:  # G4 first: one deny, not two
         return _event("claude", "tool", *base, tool=tool, tool_kind="background_shell")
+    if tool == "Bash":
+        return _event("claude", "tool", *base, tool=tool, tool_kind="shell", command=tin.get("command"))
     if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         path = _str(tin.get("file_path")) or _str(tin.get("notebook_path"))
         return _event(

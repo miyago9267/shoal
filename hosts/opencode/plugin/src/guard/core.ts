@@ -4,7 +4,7 @@
  * Decides on a normalized event only; the OpenCode adapter lives in ./opencode.ts.
  * Behaviour must stay identical to the Python core: both replay
  * tests/fixtures/guard_vectors.json.  The guard is a policy nudge, not a security
- * boundary (docs/specs/dispatch-enforcement/SPEC.md; R1 deny and G4 on claude:
+ * boundary (docs/specs/dispatch-enforcement/SPEC.md; R1 deny, G4 and G5 on claude:
  * docs/specs/delegation-default/SPEC.md).
  *
  * `evaluate` throws only on programming or OS errors; callers fail open.
@@ -24,6 +24,7 @@ import {
   writeSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { shellWriteTargets } from "./shell-writes.js";
 
 export const MAX_LOG_BYTES = 1024 * 1024;
 export const MAX_STATE_BYTES = 64 * 1024;
@@ -47,9 +48,11 @@ export type GuardEvent = {
   is_subagent: boolean;
   role: string | null;
   tool_name: string | null;
-  tool_kind: "edit" | "dispatch" | "background_shell" | "other" | null;
+  tool_kind: "edit" | "dispatch" | "background_shell" | "shell" | "other" | null;
   paths: string[];
   dispatched_role: string | null;
+  /** shell events (claude `Bash`, G5): the command text; null otherwise. */
+  command?: string | null;
   /** prompt events (claude): the user's prompt carried a standalone `#direct` token. */
   direct?: boolean;
 };
@@ -95,7 +98,8 @@ const STATE_TURN_HOSTS = new Set(["agy", "grok", "opencode", "claude"]);
 const ADVISE_OUTPUT_HOSTS = new Set(["claude", "codex"]);
 // Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
 const PROMPT_KEEP_HOSTS = new Set(["claude"]);
-// Hosts where R1 denies (claude only, G1) and where main's background shell is denied (G4).
+// Hosts where R1 denies (claude only, G1), where main's background shell is denied (G4) and where a
+// shell command that writes a file is judged by R1 (G5).
 // The OpenCode adapter never produces such an event; the vectors replay it at the core level.
 const DENY_MAIN_HOSTS = new Set(["claude"]);
 // Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
@@ -549,7 +553,18 @@ class Guard {
     if (event.kind === "tool" && toolKind === "background_shell" && !DENY_MAIN_HOSTS.has(this.host)) {
       toolKind = null; // G4 exists on claude only
     }
-    if (event.kind === "tool" && toolKind !== "edit" && toolKind !== "dispatch" && toolKind !== "background_shell") {
+    if (event.kind === "tool" && toolKind === "shell") {
+      // G5 (claude only): a foreground shell call without a file write has no opinion, and
+      // touches no state or log.
+      if (!DENY_MAIN_HOSTS.has(this.host) || this.shellWriteTarget() === null) toolKind = null;
+    }
+    if (
+      event.kind === "tool" &&
+      toolKind !== "edit" &&
+      toolKind !== "dispatch" &&
+      toolKind !== "background_shell" &&
+      toolKind !== "shell"
+    ) {
       return none(this.mode);
     }
     const sid = event.session_id;
@@ -612,6 +627,7 @@ class Guard {
       return this.result("allow", { rule: "dispatch" });
     }
     if (event.tool_kind === "background_shell") return this.backgroundShell(state);
+    if (event.tool_kind === "shell") return this.shellWrite(state, dir);
     return this.edit(state, statePath, dir);
   }
 
@@ -624,6 +640,72 @@ class Guard {
     });
   }
 
+  /**
+   * G5: the first non-exempt file that main's shell command writes (UNKNOWN_TARGET or the raw text
+   * when its value is not known), or null.  `/dev/...`, exempt paths and nothing else are skipped;
+   * the check reads no state.
+   */
+  private shellWriteTarget(): string | null {
+    const command = this.event.command;
+    if (typeof command !== "string" || command === "") return null;
+    const cwd = this.event.cwd || process.cwd();
+    for (const raw of shellWriteTargets(command)) {
+      const target = this.expandTarget(raw);
+      if (target === null) return raw; // `$var`, `$(...)`, backticks: a redirect to a non-/dev target
+      if (target === "/dev" || target.startsWith("/dev/")) continue;
+      if (isExempt(resolvePath(target, cwd), this.host, this.env, this.home)) continue;
+      return raw;
+    }
+    return null;
+  }
+
+  /** Leading `~`, `$HOME`, `${HOME}`, `$TMPDIR`, `${TMPDIR}` expanded; null while unknown. */
+  private expandTarget(raw: string): string | null {
+    let target = raw;
+    const tmp = this.env.TMPDIR ?? "";
+    const bases: Array<[string, string]> = [
+      ["~", this.home],
+      ["$HOME", this.home],
+      ["${HOME}", this.home],
+      ["$TMPDIR", tmp],
+      ["${TMPDIR}", tmp],
+    ];
+    for (const [prefix, base] of bases) {
+      if (target === prefix || target.startsWith(prefix + "/")) {
+        if (base === "" || !isAbsolute(base)) return null;
+        target = base + target.slice(prefix.length);
+        break;
+      }
+    }
+    return target.includes("$") || target.includes("`") ? null : target;
+  }
+
+  /**
+   * G5: R1 for a shell command that writes a file.  Reads state only; a shell write is never
+   * recorded as an edit, so R2's count is unaffected.
+   */
+  private shellWrite(state: StateFile, dir: string): GuardResult {
+    const file = this.shellWriteTarget() ?? undefined;
+    if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) return this.result("allow", { rule: "direct", file });
+    if (state.dispatched) return this.result("allow", { rule: "dispatched", file });
+    if (this.classified(state, dir) === null) return this.result("allow", { rule: "uncounted", file });
+    return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
+      rule: "R1",
+      reason: text(this.env, "R1"),
+      file,
+    });
+  }
+
+  /** The turn's `judgment` / `mechanical` classification, or null (no or stale classifier file). */
+  private classified(state: StateFile, dir: string): string | null {
+    const tid = state.turn_id; // effective turn (agy tool events may omit it)
+    if (tid === null) return null;
+    const turn = readJson(join(dir, "turns", String(this.event.session_id) + ".json"));
+    const turnId = "turn_id" in turn ? turn.turn_id : turn.prompt_id;
+    const role = turnId === tid ? turn.role : null;
+    return typeof role === "string" && Object.hasOwn(CLASSIFIED_ROLE, role) ? role : null;
+  }
+
   private edit(state: StateFile, statePath: string, dir: string): GuardResult {
     const rawPaths = (this.event.paths ?? []).filter((p) => typeof p === "string" && p !== "");
     if (rawPaths.length === 0) return this.result("skip", { skip: "no_path" });
@@ -632,14 +714,7 @@ class Guard {
     const edited: string[] = [...state.edited];
     const direct = this.env.SHOAL_GUARD_DIRECT === "1" || state.direct;
     const limit = maxFiles(this.env);
-    let classified: string | null = null;
-    const tid = state.turn_id; // effective turn (agy tool events may omit it)
-    if (!direct && !state.dispatched && tid !== null) {
-      const turn = readJson(join(dir, "turns", String(this.event.session_id) + ".json"));
-      const turnId = "turn_id" in turn ? turn.turn_id : turn.prompt_id;
-      const role = turnId === tid ? turn.role : null;
-      classified = typeof role === "string" && Object.hasOwn(CLASSIFIED_ROLE, role) ? role : null;
-    }
+    const classified = !direct && !state.dispatched ? this.classified(state, dir) : null;
 
     let firstRule = "exempt";
     let adviseRule: string | null = null;

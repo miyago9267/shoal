@@ -4,7 +4,8 @@
   "TypeScript port replays the same file).  Placeholders: $HOME (temp home), $WORK ($HOME/work, default cwd),",
   "$TMPDIR ($HOME/tmpdir, exported as TMPDIR), $STATE (state base).  Event defaults: host = vector host",
   "(claude), session_id s1, turn_id t1, cwd $WORK, is_subagent false, role null, tool_name derived from",
-  "tool_kind (edit=Edit, dispatch=Agent, background_shell=Bash, other=Read), paths [], dispatched_role null.  An explicit null",
+  "tool_kind (edit=Edit, dispatch=Agent, background_shell=Bash, shell=Bash, other=Read), paths [], dispatched_role null,",
+  "command null (shell events: the Bash command text).  An explicit null",
   "overrides a default.  Env defaults: XDG_STATE_HOME=$HOME/xdg-state, TMPDIR=$TMPDIR; null deletes a key.",
   "Setup: dirs, symlinks {link: target}, chmod, write {file: text}, turn {session, turn_id, role} (classifier",
   "file), turn_legacy_prompt_id, state_file/turn_file {session, content}, log_prefill_bytes.  Checks:",
@@ -13,6 +14,9 @@
   "against log_whitelist.",
   "R2 decides `advise` (never deny); R1 decides `advise` on every host except claude, where it decides `deny`",
   "(enforce) or `would_deny` (shadow); G4 (tool_kind background_shell, claude only) decides `deny`/`would_deny`.",
+  "G5 (tool_kind shell, claude only): a command that writes a non-exempt file (shell_write_targets) gets R1's decision",
+  "while the turn is classified, undispatched and not #direct; otherwise `allow` with rule direct / dispatched /",
+  "uncounted (never counted toward R2).  A shell event that writes nothing decides `none` and logs nothing.",
   "expect.notify is true on the first advise of a turn that a claude/codex host in enforce mode prints as",
   "additionalContext, false on later ones and on other hosts/modes.  Prompt events may set direct=true (the",
   "user prompt held a standalone #direct token; default false).  A step may carry write_turn {session,",
@@ -1459,6 +1463,315 @@
    "name": "g4_missing_session_id_skips",
    "steps": [
     {"event": {"kind": "tool", "tool_kind": "background_shell", "tool_name": "Bash", "turn_id": "t1", "session_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}}
+   ]
+  },
+  {
+   "name": "g5_heredoc_write_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt to edit directly."}}
+   ]
+  },
+  {
+   "name": "g5_deny_message_zh_tw",
+   "env": {"SHOAL_GUARD_LANG": "zh-TW"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。請派給 executor 或 applier，或在 prompt 加上 #direct 以直接修改。"}}
+   ]
+  },
+  {
+   "name": "g5_redirect_forms_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x >> notes.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x >| out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "make 2> err.log"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "make &> all.log"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat <<EOF > out.txt\nbody\nEOF"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo a; echo b > c"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_tee_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x | tee out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x | tee -a out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "make 2>&1 | tee build.log"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_sed_in_place_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "sed -i 's/a/b/' src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "sed -i '' 's/a/b/' src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "sed --in-place=.bak 's/a/b/' src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "git ls-files | xargs sed -i s/a/b/"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_mechanical_turn_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "mechanical"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_variable_target_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > \"$f\""}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > $OUT/log.txt"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_fd_duplication_and_dev_targets_have_no_opinion",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "log_lacks": ["Bash"],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "pytest -q 2>&1 | tail -5"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "make >&2"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "make > /dev/null 2>&1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "make 2>/dev/null"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x >> /dev/stderr"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "make &>/dev/null"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_quoted_and_comparison_operators_have_no_opinion",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "log_lacks": ["Bash"],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "grep \"a > b\" f"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 'x > y'"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "git commit -m \"fix: a > b\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "[[ $a > $b ]] && echo ok"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "(( a > b )) && echo ok"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo $((a > b))"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo done # not a > redirect"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_input_and_read_only_commands_have_no_opinion",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "log_lacks": ["Bash"],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat < in.txt"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat <<EOF\nhello > world\nEOF"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "python - <<'EOF'\nprint(1 > 0)\nEOF"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "sed -n 's/a/b/p' f"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x | tee"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "ls -la"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "diff <(sort a) <(sort b)"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_exempt_targets_have_no_opinion",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "log_lacks": ["Bash"],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > /tmp/g5-vector"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > ${TMPDIR}/out.txt"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > \"${TMPDIR}/out.txt\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x | tee ${TMPDIR}/o"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > $TMPDIR/sub.txt"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > .ai/notes.md"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > ~/.claude/projects/p/x.jsonl"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > rel.txt", "cwd": "$TMPDIR"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > ../tmpdir/x"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_relative_target_resolves_against_cwd",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > rel.txt", "cwd": "$WORK"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > ../out.txt", "cwd": "$TMPDIR"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_unclassified_turn_is_allowed",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "uncounted"}}
+   ]
+  },
+  {
+   "name": "g5_other_roles_are_allowed",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "exploration"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "uncounted"}}
+   ]
+  },
+  {
+   "name": "g5_stale_classification_is_allowed",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "uncounted"}}
+   ]
+  },
+  {
+   "name": "g5_shell_writes_do_not_count_toward_r2",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 1 > x1"}, "expect": {"decision": "allow", "rule": "uncounted"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 2 > x2"}, "expect": {"decision": "allow", "rule": "uncounted"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 3 > x3"}, "expect": {"decision": "allow", "rule": "uncounted"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2", "notify": true}}
+   ]
+  },
+  {
+   "name": "g5_denied_write_is_not_recorded_as_an_edit",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 1 > x1"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 2 > x2"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 3 > x3"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "g5_direct_prompt_token_allows_this_turn_only",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"write_turn": {"session": "s1", "turn_id": "t2", "role": "judgment"}, "event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "command": "echo x > out.txt"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_direct_env_allows",
+   "env": {"SHOAL_GUARD_DIRECT": "1"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "direct"}}
+   ]
+  },
+  {
+   "name": "g5_write_role_dispatch_unlocks",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "sed -i s/a/b/ f"}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "g5_applier_dispatch_unlocks",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "mechanical"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:applier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "g5_shadow_would_deny",
+   "env": {"SHOAL_GUARD": "shadow"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "log_contains": ["would_deny", "R1"],
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "would_deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "g5_subagents_are_never_affected",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt", "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt", "is_subagent": true, "role": "watcher"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt", "is_subagent": true, "role": "verifier"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_not_applied_on_codex",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_not_applied_on_grok",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_not_applied_on_agy",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_off_mode_no_opinion",
+   "env": {"SHOAL_GUARD": "off"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_missing_session_id_skips_a_write_only",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt", "session_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "ls -la", "session_id": null}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_shell_event_without_command_has_no_opinion",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "g5_background_shell_with_write_is_one_g4_deny",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "background_shell", "tool_name": "Bash", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "G4"}}
    ]
   }
  ]

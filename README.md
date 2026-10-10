@@ -97,7 +97,8 @@ dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex
 main session 的直接編輯在 Claude 以外只會被提醒：R1、R2 不擋（Codex 每輪第一次回傳
 `additionalContext`，其餘 host 只記 log，`SHOAL_GUARD_DIRECT=1` 關閉提醒），只有
 subagent 的 LEAF、VERIFY_EDIT 會擋。Claude 上（3.0.0 起）本輪被分類為實作工作而 main
-還沒派工時的改檔（R1），以及 main 自己開背景 shell（G4）會被擋；R2 仍只提醒。
+還沒派工時的改檔（R1）、main 自己開背景 shell（G4），以及 main 用 shell 指令字面上寫檔
+（`>`、`>>`、`tee`、`sed -i`；3.0.1 起的 G5，與 R1 同條件、同訊息）會被擋；R2 仍只提醒。
 prompt 內的 `#direct` 放行那一輪，見 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
@@ -107,12 +108,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.0.0 |
-| codex host | 3.0.0（`hosts/codex/VERSION`） |
-| claude host | 3.0.0（`hosts/claude/VERSION`） |
-| agy host | 3.0.0（`hosts/agy/VERSION`） |
-| grok host | 3.0.0（`hosts/grok/VERSION`） |
-| opencode host | 3.0.0（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.0.1 |
+| codex host | 3.0.1（`hosts/codex/VERSION`） |
+| claude host | 3.0.1（`hosts/claude/VERSION`） |
+| agy host | 3.0.1（`hosts/agy/VERSION`） |
+| grok host | 3.0.1（`hosts/grok/VERSION`） |
+| opencode host | 3.0.1（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

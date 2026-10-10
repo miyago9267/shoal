@@ -46,6 +46,31 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(list(guard.LOG_FIELDS), helper.load_vectors()["log_whitelist"])
 
 
+@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
+class ShellWriteDetectorTests(unittest.TestCase):
+    """G5: shell_write_targets is replayed from the fixture the TypeScript port also replays."""
+
+    def test_shared_cases(self) -> None:
+        data = json.loads((ROOT / "tests" / "fixtures" / "shell_write_cases.json").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(data["cases"]), 60)
+        commands = [c["command"] for c in data["cases"]]
+        self.assertEqual(len(commands), len(set(commands)))
+        for case in data["cases"]:
+            with self.subTest(case["command"]):
+                self.assertEqual(guard.shell_write_targets(case["command"]), case["targets"])
+
+    def test_interpreter_and_copy_writes_are_out_of_scope(self) -> None:
+        for command in ("python3 -c \"open('f','w').write('x')\"", "node -e \"require('fs').writeFileSync('f','x')\"",
+                        "cp a b", "mv a b", "git apply x.patch", "patch -p1 < x.patch", "dd if=a of=b", "install -m 644 a b"):
+            self.assertEqual(guard.shell_write_targets(command), [], command)
+
+    def test_scanner_terminates_on_malformed_input(self) -> None:
+        for command in ("cat > ", ">", ">>", "echo '", 'echo "', "echo $(", "echo ${", "echo `", "(( a", "[[ a",
+                        "cat <<", "cat <<EOF", "cat <<EOF\nbody", "\\", "echo >(", "tee", "sed -i", "2>", "&>",
+                        "x" * 5000 + " > f", "(" * 400, "'" * 401):
+            self.assertIsInstance(guard.shell_write_targets(command), list, command)
+
+
 class WindowsNoOpTests(unittest.TestCase):
     def test_run_is_a_silent_no_op_when_os_name_is_nt(self) -> None:
         with tempfile.TemporaryDirectory() as home:
@@ -167,7 +192,11 @@ class ClaudeAdapterTests(CliCase):
         self.assertEqual((agent["tool_kind"], agent["dispatched_role"]), ("dispatch", "executor"))
         workflow = guard.adapt_claude(claude_tool("Workflow", {"script": "x"}))
         self.assertEqual((workflow["tool_kind"], workflow["dispatched_role"]), ("dispatch", None))
-        self.assertEqual(guard.adapt_claude(claude_tool("Bash", {"command": "ls"}))["tool_kind"], "other")
+        shell = guard.adapt_claude(claude_tool("Bash", {"command": "ls"}))
+        self.assertEqual((shell["tool_kind"], shell["command"]), ("shell", "ls"))
+        background = guard.adapt_claude(claude_tool("Bash", {"command": "ls > f", "run_in_background": True}))
+        self.assertEqual((background["tool_kind"], background["command"]), ("background_shell", None))
+        self.assertIsNone(guard.adapt_claude(claude_tool("Bash", {"command": 7}))["command"])
 
     def test_subagent_identified_by_agent_id(self) -> None:
         event = guard.adapt_claude(claude_tool("Edit", {"file_path": "/r/a"}, agent_id="ag-1", agent_type="verifier"))
@@ -326,6 +355,55 @@ class ClaudeAdapterTests(CliCase):
                              SHOAL_GUARD="shadow")
         self.assertEqual(out, "")
         self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("would_deny", "G4"))
+
+    def test_g5_shell_write_is_denied_like_r1(self) -> None:
+        heredoc = "cat > src/a.py <<'EOF'\nx\nEOF"
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        self.write_turn("sess-1", "p-1", "judgment")
+        out = self.run_guard("claude", claude_tool("Bash", {"command": heredoc}, cwd=self.work))
+        body = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(body["permissionDecision"], "deny")
+        self.assertIn("#direct", body["permissionDecisionReason"])
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("deny", "R1"))
+        before = len(self.log_records())
+        self.assertEqual(self.run_guard("claude", claude_tool("Bash", {"command": "pytest -q 2>&1 | tail -5"}, cwd=self.work)), "")
+        self.assertEqual(len(self.log_records()), before)
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct write it"))
+        self.assertEqual(self.run_guard("claude", claude_tool("Bash", {"command": heredoc}, cwd=self.work)), "")
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("allow", "direct"))
+
+    def test_g5_shadow_logs_would_deny_and_prints_nothing(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD="shadow")
+        self.write_turn("sess-1", "p-1", "mechanical")
+        out = self.run_guard("claude", claude_tool("Bash", {"command": "echo x > out.txt"}, cwd=self.work), SHOAL_GUARD="shadow")
+        self.assertEqual(out, "")
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("would_deny", "R1"))
+
+    def test_g5_background_write_is_one_g4_deny(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        self.write_turn("sess-1", "p-1", "judgment")
+        payload = claude_tool("Bash", {"command": "cat > f <<EOF\nx\nEOF", "run_in_background": True}, cwd=self.work)
+        out = self.run_guard("claude", payload)
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("watcher", out)
+        self.assertEqual([r["rule"] for r in self.log_records() if r.get("decision") == "deny"], ["G4"])
+
+    def test_g5_leaves_other_hosts_and_subagents_alone(self) -> None:
+        self.write_turn("sess-1", "p-1", "judgment")
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        self.assertEqual(self.run_guard("claude", claude_tool("Bash", {"command": "echo x > out.txt"}, cwd=self.work,
+                                                              agent_id="a1", agent_type="executor")), "")
+        codex = {"session_id": "sess-1", "turn_id": "p-1", "cwd": self.work, "hook_event_name": "PreToolUse",
+                 "tool_name": "Bash", "tool_input": {"command": "echo x > out.txt"}}
+        self.assertEqual(self.run_guard("codex", codex), "")
+
+    def test_g5_an_allowed_shell_write_does_not_count_toward_r2(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        for name in ("x1", "x2", "x3"):
+            self.assertEqual(self.run_guard("claude", claude_tool("Bash", {"command": "echo 1 > " + name}, cwd=self.work)), "")
+        for name in ("a", "b"):
+            self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": name}, cwd=self.work)), "")
+        self.assertIn("edited 3 files", self.run_guard("claude", claude_tool("Edit", {"file_path": "c"}, cwd=self.work)))
 
     def test_subagent_leaf_and_verify_edit(self) -> None:
         out = self.run_guard("claude", claude_tool("Agent", {"subagent_type": "scout"}, agent_id="a1", agent_type="executor"))

@@ -17,7 +17,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 VECTORS_PATH = ROOT / "tests" / "fixtures" / "guard_vectors.json"
-TOOL_NAME_BY_KIND = {"edit": "Edit", "dispatch": "Agent", "background_shell": "Bash", "other": "Read"}
+TOOL_NAME_BY_KIND = {"edit": "Edit", "dispatch": "Agent", "background_shell": "Bash", "shell": "Bash", "other": "Read"}
 
 
 def load_vectors() -> Dict[str, Any]:
@@ -95,6 +95,7 @@ def normalize_event(step_event: Dict[str, Any], vector_host: str, sandbox: Sandb
         "paths": [],
         "dispatched_role": None,
         "direct": False,
+        "command": None,
     }
     event.update(step_event)
     if event["tool_name"] is None and event["kind"] == "tool":

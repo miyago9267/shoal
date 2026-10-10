@@ -3,6 +3,47 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.0.1
+
+dispatch guard 補上 shell 寫檔的缺口。條款原文是
+`docs/specs/delegation-default/SPEC.md` 的 G5（2026-10-10 核准），guard 行為記在
+`docs/specs/dispatch-enforcement/SPEC.md` 的 2026-10-10 修訂。
+
+### Features
+
+- G5：Claude 在 enforce 下，R1 的條件成立（本輪被分類為 `judgment` 或
+  `mechanical`、尚未派出 write role、沒有 `#direct` 或 `SHOAL_GUARD_DIRECT=1`）時，
+  main session 前景呼叫的 `Bash` 指令只要字面上寫檔就 deny，規則 id 與訊息沿用
+  R1；shadow 記 `would_deny`。原因：真實設定下實測，main 用
+  `cat > 檔案 <<EOF` 寫了三個檔，沒用任何改檔工具，R1 看不到。其他 host、
+  subagent、沒有本輪分類時不介入。
+- 「寫檔」是對指令字串的字面判斷，刻意保守。算寫檔：`>`、`>>`、`>|`、`&>`
+  導向一般檔案（含 heredoc）、`tee [-a] 檔案`、`sed -i` 與 `sed --in-place`。
+  不算：導向 `/dev/` 底下、`2>&1` 與 `>&2`、`<` 輸入、heredoc 本文、引號內的
+  `>`、`[[ ]]` 與 `(( ))` 內的比較，以及 R1 的豁免路徑（`/tmp`、`$TMPDIR`、
+  `.ai`、Claude 的 projects 目錄，相對路徑依 cwd 解析）。目標是變數而看不出值時，
+  只要明確是導向非 `/dev/` 的目標就算寫檔。
+- 限制：用 interpreter 寫檔（python、node、perl 腳本）、`cp`、`mv`、
+  `git apply`、`patch`、`dd of=`，以及 `$(...)` 內的導向擋不到，刻意不偵測。
+- 被 deny 的指令不記成 edit；放行的 shell 寫檔不計入 R2 的檔案數。沒有寫檔的
+  前景 `Bash` 照舊不判斷、不改狀態、不寫 log。背景 `Bash` 仍由 G4 處理，
+  背景加寫檔只會得到一次 deny。
+- Python guard 與 OpenCode TypeScript 移植共用
+  `tests/fixtures/guard_vectors.json`（新增 30 筆 `g5_` 向量）與
+  `tests/fixtures/shell_write_cases.json`（77 筆指令對寫檔目標）。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.0.1；
+  policy 文件只有版本 marker 變動，prompt lock 在預算內。
+
+### 升級
+
+- Claude 全域安裝：重跑 `python3 tools/install_hooks.py --host claude --apply`
+  取得新的 guard 腳本（matcher 不變，3.0.0 已含 `Bash`）。
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.0.1`
+  加回並更新。
+
 ## v3.0.0
 
 role 重整、預設派工與每次派工的 effort。設計與條款原文在

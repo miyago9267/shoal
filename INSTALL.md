@@ -275,7 +275,8 @@ the spec
 (LEAF, VERIFY_EDIT) ever deny on Codex; the main-session rules R1 and R2 only remind
 (once per turn, as `additionalContext` on Claude and Codex;
 `SHOAL_GUARD_DIRECT=1` silences it). On Claude, R1 and the background-shell rule
-G4 deny since 3.0.0 (see the Claude guard section below). An existing home that
+G4 deny since 3.0.0, and the shell-write rule G5 since 3.0.1 (see the Claude guard
+section below). An existing home that
 predates the
 guard gains the script and both groups on the next install; other hook groups are
 preserved. The installer does not write hook trust: after installing, approve
@@ -514,6 +515,7 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 | R1 | Jev 把本輪分類為 `judgment` 或 `mechanical`，本輪還沒派出 write role（`executor`、`applier`、`security-executor`），路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | 只提醒（`advise`） |
 | R2 | 本輪 main 直接改到第 3 個不同的檔案 | 只提醒 | 只提醒 | 只提醒 |
 | G4 | main（payload 沒有 `agent_id`）呼叫 `Bash` 且 `run_in_background: true` | deny，訊息要求改派背景的 `watcher` | 記 `would_deny` | 無此規則 |
+| G5（3.0.1 起） | R1 的條件成立，且 main 前景呼叫的 `Bash` 指令字面上寫檔（見下） | 以 R1 的規則 id 與訊息 deny | 記 `would_deny`（規則 `R1`） | 無此規則 |
 
 - 沒有本輪的分類檔（`<state>/shoal/guard/turns/<session>.json`，由 Jev 寫入）時 R1 不觸發。
   派出 `watcher`、`researcher`、`scout` 等非 write role 不會解除 R1；G4 不因任何派工解除。
@@ -521,13 +523,33 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   `x#direct`、`#direct-ly` 不算）只放行那一輪，下一輪失效，同時關掉那一輪的 R1、R2 與 G4；
   `SHOAL_GUARD_DIRECT=1` 對整個 session 放行 R1、R2、G4。guard 只記「這輪有 `#direct`」的旗標，
   不記錄 prompt 內容。
-- subagent 不受 R1、G4 影響（它們是 main session 規則）；前景的 `Bash` 與其他工具不會被
-  guard 計入或改變狀態。
+- subagent 不受 R1、G4、G5 影響（它們是 main session 規則）；沒有寫檔的前景 `Bash` 與其他工具不會被
+  guard 計入、改變狀態或寫 log。
 - `Bash` 是 3.0.0 起加進 `PreToolUse` matcher 的工具名稱，所以 3.0.0 之前裝的全域 guard
   要重跑 `tools/install_hooks.py --host claude --apply` 才有 G4。plugin 的 `--plugin` 判斷看的是
   全域 `settings.json` 的 matcher 有沒有涵蓋該工具：舊 matcher 不含 `Bash` 時，`Bash` 事件由 plugin
   那份處理，每個事件仍只判一次。
 - 訊息預設英文，`SHOAL_GUARD_LANG=zh-TW` 切繁中；`SHOAL_GUARD=shadow|off` 照常有效。
+
+G5 補的是 R1 看不到的缺口：main 用 `cat > 檔案 <<EOF` 之類的 shell 指令寫檔，沒走任何改檔工具
+（2026-10-10 實測）。它只看 `Bash` 的指令字串，是字面判斷，不是 shell parser：
+
+- 算寫檔：`>`、`>>`、`>|`、`&>` 導向一般檔案（含 `cat > f <<'EOF'` 這類 heredoc）、`tee [-a] 檔案`、
+  `sed -i` 與 `sed --in-place`。這些要在指令位置（`;`、`|`、`&&`、換行、`(`、`then`、`do` 之後，
+  或接在 `sudo`、`env`、`xargs`、`find -exec` 後面）。
+- 不算：導向 `/dev/` 底下（`/dev/null`、`/dev/stdout`、`/dev/stderr`）、檔案描述符複製（`2>&1`、`>&2`）、
+  輸入導向 `<`、沒有輸出導向的 heredoc 本文、引號內的 `>`（`grep "a > b" f`）、`[[ ]]`、`(( ))`、
+  `$(( ))` 內的比較、註解，以及 R1 豁免路徑（`/tmp`、`$TMPDIR`、`.ai`、Claude 的 projects 目錄；
+  相對路徑依事件的 cwd 解析；開頭的 `~`、`$HOME`、`$TMPDIR` 會展開）。
+- 目標看不出來時（`> "$f"`、`> $(mktemp)`）：只要它明確是導向非 `/dev/` 的目標就算寫檔；`sed -i`
+  沒有檔案參數（檔名來自 `xargs` 或 `find -exec`）也算。這會有誤擋（例如變數其實指向 `/tmp`），
+  出口是 `#direct`。
+- 擋不到：用 interpreter 寫檔（`python`、`node`、`perl` 腳本）、`cp`、`mv`、`git apply`、`patch`、
+  `dd of=`、`install`、`awk` 程式內的 `print > file`，以及 `$(...)` 或 backtick 內的導向。這是刻意的取捨，
+  不嘗試偵測。
+- 被 deny 的指令不會記成 edit；放行的 shell 寫檔（沒有分類、豁免路徑、`#direct`、已派 write role）
+  也不計入 R2 的檔案數。放行且確實有寫檔的呼叫會留一筆 `allow` log（規則 `direct`、`dispatched` 或
+  `uncounted`）。
 
 ## Claude Code plugin
 
@@ -540,12 +562,12 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 
 ```bash
 # 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v3.0.0
+claude plugin marketplace add miyago9267/shoal#v3.0.1
 claude plugin install shoal@shoal
 
 # 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v3.0.0
+claude plugin marketplace add miyago9267/shoal#v3.0.1
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -560,7 +582,7 @@ claude --plugin-dir ./claude-plugin
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
   `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
   `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v3.0.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  上面的 `#v3.0.1` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是

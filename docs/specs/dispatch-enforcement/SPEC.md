@@ -231,6 +231,27 @@ Miyago 2026-10-10 指出強制力不夠：hook 提醒後 main 仍自己做，背
 - 2026-10-06 修訂中「R1、R2 改為 advise」只對非 Claude host 與 R2 繼續成立；「硬規則」清單
   （LEAF、VERIFY_EDIT）不變。測試向量新增 `write_turn` 步驟與 `direct`、`background_shell` 事件欄位
   （Python 與 OpenCode TypeScript 重放同一份）。
+- **G5（shell 寫檔，2026-10-10 追加，3.0.1）**：真實設定下實測，main 用
+  `cat > 檔案 <<EOF` 寫了三個檔，沒走任何改檔工具，R1 看不到。host 是 `claude` 且
+  模式為 enforce，R1 的條件成立（本輪分類為 `judgment` 或 `mechanical`、尚未派出
+  write role、沒有 `#direct`／`SHOAL_GUARD_DIRECT`）時，main 前景呼叫的 `Bash`
+  指令若字面上寫檔就 deny；shadow 記 `would_deny`。沿用 R1 的規則 id 與訊息
+  （訊息的「直接修改」對 shell 同樣適用），差別只在 log 的 `tool` 是 `Bash`。
+  其他 host、subagent、沒有本輪分類時不介入。
+  - 判斷是字面的（`hooks/shoal_guard.py` 的 `shell_write_targets`，TypeScript
+    在 `guard/shell-writes.ts`，兩邊重放 `tests/fixtures/shell_write_cases.json`）。
+    算寫檔：`>`、`>>`、`>|`、`&>` 導向一般檔案、`tee`、`sed -i` 與
+    `--in-place`。不算：導向 `/dev/` 底下、`2>&1` 與 `>&2`、`<`、heredoc 本文、
+    引號內的 `>`、`[[ ]]` 與 `(( ))` 內的比較、註解、R1 豁免路徑（相對路徑依
+    事件 cwd 解析）。目標是變數等看不出值的重導向，視為寫檔（有誤擋，出口是
+    `#direct`）。
+  - 限制：用 interpreter 寫檔（python、node、perl）、`cp`、`mv`、`git apply`、
+    `patch`、`dd of=`、`$(...)` 內的導向擋不到，刻意不偵測。
+  - 被 deny 的指令不記成 edit；放行的 shell 寫檔不計入 R2。沒有寫檔的前景
+    `Bash` 照舊不判斷、不改狀態、不寫 log。事件新增 `tool_kind: shell` 與
+    `command` 欄位；背景 `Bash` 仍是 `background_shell`，所以「背景加寫檔」只會
+    得到一次 G4 deny。
+  - 來源：`docs/specs/delegation-default` G5（Miyago 2026-10-10 核准）。
 
 ## 完結狀態（2026-10-06）
 

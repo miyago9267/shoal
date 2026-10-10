@@ -33,6 +33,7 @@ const TOOL_NAME_BY_KIND: Record<string, string> = {
   edit: "Edit",
   dispatch: "Agent",
   background_shell: "Bash",
+  shell: "Bash",
   other: "Read",
 };
 
@@ -130,6 +131,7 @@ function normalizeEvent(stepEvent: Json, vectorHost: string, sandbox: Sandbox): 
     paths: [],
     dispatched_role: null,
     direct: false,
+    command: null,
     ...stepEvent,
   };
   if (event.tool_name === null && event.kind === "tool") {
