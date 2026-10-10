@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "pass": 3,
+    "date": "2026-10-10",
+    "setup": "real user configuration: plugin shoal@shoal, Jev active, throwaway repo under the home directory",
+    "runs": 2,
+    "total_cost_usd": 1.13
+  },
+  "runs": [
+    {
+      "case": "C-real",
+      "shoal_version": "3.0.0",
+      "jev_classification": null,
+      "main_agent_calls": [],
+      "main_shell_writes": true,
+      "guard": {"evaluated": false, "deny": 0},
+      "result": "fail",
+      "cost_usd": 0.43
+    },
+    {
+      "case": "C-real",
+      "shoal_version": "3.0.1",
+      "jev_classification": "judgment",
+      "main_agent_calls": [
+        {"subagent_type": "shoal:applier", "effort": "low", "label": "feat:", "child_model": "claude-sonnet-5-5"}
+      ],
+      "main_shell_writes": "denied",
+      "guard": {"evaluated": true, "deny": 1, "rule": "R1"},
+      "result": "pass",
+      "turns": 6,
+      "cost_usd": 0.70
+    }
+  ]
+}

@@ -12,7 +12,7 @@
 - 旗標：`--model opus --plugin-dir <repo>/claude-plugin --setting-sources project
   --strict-mcp-config --dangerously-skip-permissions --output-format stream-json
   --verbose --max-budget-usd 2`。
-- 驗證載入：init 事件列出 `shoal:*` 的 10 個 role，plugin 只有 `shoal`；SessionStart
+- 驗證載入：init 事件列出 `shoal:*` 的 10 個 role，使用者安裝的 plugin 只有 `shoal`（init 另列出三個內建的 `cc-plugin-*`）；SessionStart
   hook 注入了 bootstrap policy（完整 policy 在 `shoal-orchestration` skill，需 main 自己載入）。
 - `run_gate.py run <CASE> --work DIR` 執行並計數（上限 10，失敗也算），`classify` 與
   `export` 離線分類並產生 `results.json`。判定嚴格：未達期望一律 fail。
@@ -87,3 +87,20 @@ Agent tool_use 在同一則 message，或都早於任一 result。結果在 `res
   R1 與 G4 的 deny 仍未被量到。watcher 的測試在前景預設時限內跑完，沒用到背景 shell 條款。
 - bootstrap、fixture、guard 三件事同時改，每個 case 只有 1 次，不能把改善歸給單一因素。
   C 沒有 Agent 呼叫也沒載入 skill；原因只能從 tool 序列推論，沒有直接證據。
+
+## 第三輪：真實設定下的 guard（v3.0.1）
+
+前兩輪都在隔離設定下跑，沒有 Jev 分類，fixture 又在暫存目錄，所以 R1 從未觸發。
+這一輪改用本機的真實設定（Plugin `shoal@shoal` 3.0.1、Jev active），在家目錄下的
+拋棄式 repo 跑 case C 的同型題目（三個檔案的小功能加測試），共 2 次，USD 1.13。
+
+| run | Jev 分類 | main 的行為 | guard | 結果 |
+|---|---|---|---|---|
+| 1（v3.0.0） | 無（prompt 含風險字被 Jev 跳過） | 用 `cat > 檔 <<EOF` 寫三個檔，無 Agent | 無評估 | fail |
+| 2（v3.0.1） | `judgment` | `cat > 檔 <<EOF` 被擋後派 `shoal:applier`（`feat:`、effort low） | R1 `deny` 一次、Agent `allow` | pass |
+
+- run 1 找到兩個缺口：main 用 shell 寫檔繞過改檔工具（已由 G5 補上，v3.0.1）；Jev 的
+  風險字篩選會讓整個回合沒有分類，這類回合 R1 不會觸發（未處理，屬 Jev 的設計）。
+- run 2 的 child model 是 `claude-sonnet-5-5`。main 選的是 `applier` 而不是 `executor`；
+  兩者都是可寫 role，符合「有穩定契約的實作要派工」。
+- 只有 1 次通過，題目是同一型；G4（main 開背景 shell）仍只有單元測試與手動實測的證據。

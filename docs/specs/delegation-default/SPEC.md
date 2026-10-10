@@ -1,6 +1,6 @@
 ---
 title: role 重整、預設派工與每次派工的 effort
-status: approved
+status: completed
 approved_by: Miyago (2026-10-10)
 created: 2026-10-10
 updated: 2026-10-10
