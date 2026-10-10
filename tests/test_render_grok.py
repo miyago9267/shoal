@@ -16,7 +16,7 @@ UPSTREAM_RULES = ROOT / "tests" / "fixtures" / "grok" / "rules.pilotfish-grok.up
 
 class GrokRenderTests(rh.HostRenderCase):
     HOST = "grok"
-    GOLDEN_COUNT = 20
+    GOLDEN_COUNT = 24
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.toml"
     SRC_FILE = "config.snippet.toml"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
@@ -63,7 +63,7 @@ class GrokRenderTests(rh.HostRenderCase):
         rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-grok v.+ -->$", rules),
                          [f"<!-- shoal-grok v{version} -->"])
-        self.assertEqual(version, "3.0.3")
+        self.assertEqual(version, "3.1.0")
 
     def test_rules_equal_upstream_except_the_rename(self) -> None:  # AC-GW-003
         # 2.0.0 起 rules 不再逐字等於上游：只差 docs/specs/shoal-rebrand/RENAME.md 的名稱替換與版本 marker。
@@ -95,7 +95,7 @@ class GrokRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:  # AC-GW-005
         src = self.root / "hosts" / "grok" / "src" / "rules" / "shoal-grok.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-grok v3.0.3 -->\n"
+        marker = "<!-- shoal-grok v3.1.0 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
@@ -106,6 +106,8 @@ class GrokRenderTests(rh.HostRenderCase):
         src = ROOT / "hosts" / "grok" / "src" / "agents"
         rendered = render.RENDERERS["grok"](ROOT)
         for path in src.glob("*.md"):
+            if path.stem in ("watcher", "researcher"):
+                continue  # 沒有上游原文；legacy 檔是 core 輸出的快照，供 role_text = "legacy" 回復用
             self.assertNotEqual(rendered[f"agents/{path.name}"], path.read_bytes(), path.name)
 
     def test_role_toml_carries_reasoning_effort(self) -> None:

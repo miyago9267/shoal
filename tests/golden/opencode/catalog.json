@@ -39,6 +39,22 @@
         "provider": "openai",
         "model": "gpt-5.6-sol"
       }
+    },
+    "watcher": {
+      "mode": "subagent",
+      "available": true,
+      "model": {
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      }
+    },
+    "researcher": {
+      "mode": "subagent",
+      "available": true,
+      "model": {
+        "provider": "openai",
+        "model": "gpt-5.6-sol"
+      }
     }
   },
   "providers": {

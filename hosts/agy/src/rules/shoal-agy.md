@@ -1,4 +1,4 @@
-<!-- shoal-agy v3.0.3 -->
+<!-- shoal-agy v3.1.0 -->
 <!-- shoal-agy:begin -->
 ## Shoal orchestration (agy only)
 

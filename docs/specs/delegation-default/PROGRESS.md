@@ -88,3 +88,25 @@ Miyago 在 2026-10-10 決定停止付費的 live 實測，接受現有證據。�
   `ln -s <repo>/hosts/agy/dist/agents/applier ~/.gemini/config/agents/applier` 與
   `plan-critic` 同樣一條。OpenCode 的 harness 副本不同仍未處理。
 - `docs/assets/shoal-model-routing.svg` 的範例與 Claude 欄 scout 改為 haiku。
+
+## v3.1.0 其他 host 接 role（D17，2026-10-10）
+
+- codex、grok、agy、opencode 綁定 `watcher`、`researcher`，只提供 role；取代 D16 的
+  「第二階段移植條款與 guard」。其他 host 的 main-session policy 文字只有版本 marker 變動，
+  Codex 另在 role 表加兩列。
+- 各 host 由 tier 規則解出的 model（沒有手動指定，也沒有落到該 host 最便宜或明顯昂貴的
+  model）：
+
+  | Host | `watcher` | `researcher` |
+  | --- | --- | --- |
+  | codex | `gpt-6-luna` / low | `gpt-6-sol` / high |
+  | grok | inherit / low | inherit / high |
+  | agy | `flash` | `pro` |
+  | opencode | `deepseek/deepseek-v4-flash` | `openai/gpt-5.6-sol` |
+
+- 沒有為 `watcher` 加任何 host 專屬的背景指令句子（核心條款的「背景執行再輪詢」是 host
+  中立）；各 host 實際如何啟動背景指令沒有實測，屬於上面「不再追加實測」的範圍。
+- Codex 的 `verify` 等級對應 `workspace-write`，所以 `watcher` 在 Codex 不改檔只靠 contract
+  條款，與 `verifier` 相同。
+- prompt lock 新增 `watcher-agent`、`researcher-agent` 兩個 Codex surface，commit 需要
+  `Lock-Renewal: approved`。

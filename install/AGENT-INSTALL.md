@@ -27,9 +27,9 @@ existing model and effort choices are preserved and may be changed later.
   emit `features.multi_agent_v2`, adapter namespace/metadata keys, or
   `agents.max_threads`.
 - The native manifest is exactly `executor`, `applier`,
-  `plan-critic`, `scout`, `security-executor`, `security-reviewer`, and
-  `verifier`. Role identity is each TOML `name`; filename equality is a local
-  shoal validation rule.
+  `plan-critic`, `scout`, `security-executor`, `security-reviewer`,
+  `verifier`, `watcher`, and `researcher`. Role identity is each TOML `name`;
+  filename equality is a local shoal validation rule.
 
 ## Preflight and approval
 

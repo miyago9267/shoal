@@ -3,6 +3,61 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.1.0
+
+`watcher` 與 `researcher` 在 codex、grok、agy、opencode 也綁定並安裝，五個 host 的
+role 組合一致（delegation-default D17）。這些 host 上 shoal 只提供 role：名稱、
+contract 文字、存取等級、由 tier 規則解出的 model、支援 effort 的 host 再加 effort 與
+description。派工條款、guard 規則與路由文字不移植；各 host 的 main-session policy 文字
+只有版本 marker 變動，Codex 另在 role 表多兩列（`test_policy` 要求列出每個安裝的 role）。
+Claude 的輸出只有版本 marker 變動。
+
+### Features
+
+- 新 role 的 model 一律由 tier 規則解出，沒有手動指定：
+
+  | Host | `watcher`（`verify`、`fast`） | `researcher`（`read-only` 加 `web`、`strong`） |
+  | --- | --- | --- |
+  | codex | `gpt-6-luna`，effort `low` | `gpt-6-sol`，effort `high` |
+  | grok | `inherit`，effort `low` | `inherit`，effort `high` |
+  | agy | `flash`（agy 沒有 effort 欄位） | `pro` |
+  | opencode | `deepseek/deepseek-v4-flash`，`fallback = "none"` | `openai/gpt-5.6-sol`，`fallback = "none"` |
+
+- 存取限制照各 host 的對照表推導：codex `watcher` 是 `sandbox_mode = "workspace-write"`
+  （與 `verifier` 相同，不改檔由 contract 條款約束），`researcher` 是 `read-only` 加
+  `web_search = "live"`；grok `watcher` 是 `execute`、`researcher` 是 `read-only`；agy
+  `watcher` 的 allowlist 含 `run_command`、`researcher` 含 `read_url_content` 與
+  `search_web`；opencode 的 role frame 對 `watcher` 禁 `edit`、`task`，對 `researcher`
+  再禁 `bash`，並明寫 `webfetch`、`websearch` 為 allow。
+- grok 與 opencode 各加兩個 role frame；每個 host 的 `src` 補兩個 legacy 快照檔，
+  供 `role_text = "legacy"` 回復與既有等價測試使用。
+- `install/validate_agents.py` 的 `ROLES` 加入兩個 role，Codex installer 與
+  `--roles-only` 因此安裝它們；OpenCode 的 `install.sh` 與 route 解析的
+  `DEFAULT_ROLE_DEFINITIONS` 同步加入。agy、grok、`tools/sync_global.py` 依 dist 目錄
+  列舉，不需改程式。
+- grok 的 plan mode 守衛訊息在可用的唯讀 role 清單加上 `researcher`（只改訊息文字，
+  判斷仍依 role 的 `default_capability_mode`）。
+- prompt lock：新增 `watcher-agent`、`researcher-agent` 兩個 Codex surface
+  （`templates/agents/*.toml`），單次變動預算 8 行、800 字元，絕對上限 30 行與
+  1900／1700 bytes；既有 surface 只有版本 marker 與 Codex role 表的兩列變動，預算不動。
+  `LOCK.json` 有變動，commit 需要 `Lock-Renewal: approved`。
+
+### Docs
+
+- `core/README.md`、`README.md`、`INSTALL.md`、zh-TW／zh-CN README 改成五個 host 都有這兩個
+  role；`README.md` 加各 host 解出的 model 表。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.1.0。
+
+### 升級
+
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.1.0`
+  加回並更新。
+- codex、grok、agy、opencode 的使用者：重新跑各自的安裝或 `tools/sync_global.py`
+  才會多出兩個 role 檔；沒有安裝的 host 不受影響。
+
 ## v3.0.3
 
 收掉 v3.0.2 之後驗證留下的三個缺口，不需要實測。沒有改動任何 role 或 policy 條款，

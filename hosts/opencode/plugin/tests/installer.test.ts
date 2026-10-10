@@ -21,6 +21,9 @@ describe("opt-in installer", () => {
     try {
       expect(runInstaller(target, "--enable").exitCode).toBe(0);
       expect(await Bun.file(join(target, ".opencode", "agents", "scout.md")).exists()).toBe(true);
+      for (const role of ["watcher", "researcher"]) {
+        expect(await Bun.file(join(target, ".opencode", "agents", `${role}.md`)).exists()).toBe(true);
+      }
       expect(
         await Bun.file(join(target, ".opencode", "plugins", "shoal-opencode.js")).exists(),
       ).toBe(true);
@@ -33,6 +36,9 @@ describe("opt-in installer", () => {
       await Bun.write(nativeConfig, nativeConfigContent);
       expect(runInstaller(target, "--disable").exitCode).toBe(0);
       expect(await Bun.file(join(target, ".opencode", "agents", "scout.md")).exists()).toBe(false);
+      for (const role of ["watcher", "researcher"]) {
+        expect(await Bun.file(join(target, ".opencode", "agents", `${role}.md`)).exists()).toBe(false);
+      }
       expect(await Bun.file(nativeConfig).text()).toBe(nativeConfigContent);
       expect((await readFile(join(target, ".opencode", "shoal", "install.manifest"), "utf8"))).toContain(
         "state|disabled",

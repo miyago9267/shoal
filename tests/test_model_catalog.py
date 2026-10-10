@@ -434,7 +434,7 @@ class ExplainTests(unittest.TestCase):
     def test_grok_explain_says_inherit(self) -> None:
         out = self.explain("grok")
         self.assertIn('selection = "inherit"', out)
-        self.assertEqual(out.count("結果：inherit"), 7)
+        self.assertEqual(out.count("結果：inherit"), 9)
 
     def test_opencode_names_are_printed_as_json(self) -> None:
         out = self.explain("opencode")

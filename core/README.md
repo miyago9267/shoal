@@ -32,7 +32,8 @@ host 中立的來源，供 `tools/render.py` 產生各 host 的輸出。
 - `watcher`（`verify`、`fast`）在背景跑指令、build、測試或追 CI 到結束，回摘要，
   不改檔；`researcher`（`read-only` 加 `web`、`strong`）查論文、外部文件與上游專案，
   回報把來源原文、推論、未驗證分開。兩者的回報都以 `status` 與 `suggested_next`
-  結尾，只建議、不派工。第一階段只有 Claude 綁定，其他 host 列入 `omitted_roles`。
+  結尾，只建議、不派工。五個 host 都綁定並安裝這兩個 role（spec D17）；其他 host 只提供 role，
+  派工條款與 guard 規則仍只有 Claude 的 policy 渲染。
   `watcher` 在 Claude pin haiku；haiku 的 capability 低於 `fast` 的門檻，
   所以和 `scout` 一樣手動指定（見 Claude binding 的註解）。
 - `plan-critic` 有第二種模式：brief 設 `mode: gaps` 時不回 READY／REVISE，
@@ -172,8 +173,7 @@ renderer（規格見
 ## 各 host 的 role 子集與 effort
 
 - host 沒有的 role 要在 binding 用 `omitted_roles = [...]` 明列
-  （例如 opencode 沒有 `applier`、`plan-critic`；`watcher`、`researcher` 目前只有
-  Claude 綁定，codex、grok、agy、opencode 都列入 `omitted_roles`）。
+  （例如 opencode 沒有 `applier`、`plan-critic`，所以列入 `omitted_roles`）。
   `render_codex` 也遵守 `omitted_roles`。
   驗證規則：`roles.toml` 的每個 role，binding 要嘛有
   `[roles.<name>]`，要嘛列在 `omitted_roles`；兩者不可同時出現。

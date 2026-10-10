@@ -47,7 +47,7 @@ def make_root(root: Path) -> None:
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
-        self.assertEqual(len(golden), 12)
+        self.assertEqual(len(golden), 14)
         rendered = render.RENDERERS["codex"](ROOT)
         self.assertEqual(sorted(rendered), sorted(golden))
         for rel, data in golden.items():

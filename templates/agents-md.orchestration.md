@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.0.3 -->
+<!-- shoal-codex v3.1.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -23,6 +23,8 @@ Complete small, local, already-stable work directly.
 | `executor` | Bounded implementation requiring local judgment |
 | `verifier` | Calibrated completed-work falsification; `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` |
 | `security-executor` | Approved security-sensitive implementation |
+| `watcher` | Long-running command or CI run followed to a terminal state; reports exit status and deciding output |
+| `researcher` | Read-only external research with a source for every claim |
 
 #### Capability-first model routing
 

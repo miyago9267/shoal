@@ -300,6 +300,8 @@ class ShippedBindingTests(unittest.TestCase):
                 "verifier": "execute",
                 "security-reviewer": "read-only",
                 "security-executor": "all",
+                "watcher": "execute",
+                "researcher": "read-only",
             },
         )
 
@@ -533,6 +535,7 @@ class MutationTests(TempRoot):
                 "agents/scout/agent.md",
                 "agents/plan-critic/agent.md",
                 "agents/security-reviewer/agent.md",
+                "agents/researcher/agent.md",
             },
         )
         out = self.rendered("agy")
@@ -582,14 +585,14 @@ class MutationTests(TempRoot):
             'sandbox_mode = "workspace-write"',
             'sandbox_mode = "danger-full-access"',
         )
-        self.assertEqual(self.changed("codex"), {"agents/verifier.toml"})
+        self.assertEqual(self.changed("codex"), {"agents/verifier.toml", "agents/watcher.toml"})
         self.setUp()
         self.edit(
             self.path("grok"),
             '[access.verify]\ncapability_mode = "execute"',
             '[access.verify]\ncapability_mode = "all"',
         )
-        self.assertEqual(self.changed("grok"), {"roles/verifier.toml"})
+        self.assertEqual(self.changed("grok"), {"roles/verifier.toml", "roles/watcher.toml"})
 
     def test_codex_and_grok_read_only_tables_cannot_stop_being_read_only(self) -> None:
         self.edit(

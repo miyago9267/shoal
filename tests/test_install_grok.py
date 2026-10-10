@@ -218,8 +218,8 @@ class ApplyTests(InstallGrokCase):
         self.assertIn("驗證通過", out)
         expected = self.installable()
         self.assertEqual(self.installed(), expected)
-        self.assertEqual(len([k for k in expected if k.startswith("agents/")]), 7)
-        self.assertEqual(len([k for k in expected if k.startswith("roles/")]), 7)
+        self.assertEqual(len([k for k in expected if k.startswith("agents/")]), 9)
+        self.assertEqual(len([k for k in expected if k.startswith("roles/")]), 9)
         rules = (self.home / "rules" / "shoal-grok.md").read_text(encoding="utf-8")
         self.assertIn(f"<!-- shoal-grok v{self.version} -->", rules)
         for script in (self.home / "hooks" / "shoal-grok").glob("*.py"):

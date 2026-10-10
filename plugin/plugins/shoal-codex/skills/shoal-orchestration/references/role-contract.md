@@ -13,6 +13,8 @@ finding disposition.
 | `security-reviewer` | Read-only security evidence | Implement the security change |
 | `security-executor` | Approved security-sensitive implementation | Self-approve or broaden access |
 | `verifier` | Fresh-context falsification | Fix its own findings or replace acceptance |
+| `watcher` | Run a long command or follow a CI run to its end and report | Edit files or fix what it observes |
+| `researcher` | Read-only external research with a source for every claim | Fill a gap from memory or edit files |
 
 Use exclusive file ownership for writing roles. A user-owned extra role is
 preserved; a customized same-name shoal role requires explicit per-role

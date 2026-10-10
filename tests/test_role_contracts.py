@@ -52,14 +52,14 @@ CORE_ROLES = (
     "security-reviewer",
     "security-executor",
 )
-# watcher、researcher（delegation-default D3、D16）第一階段只有 Claude 綁定，其他 host 列入 omitted_roles。
-NEW_CLAUDE_ONLY_ROLES = ("watcher", "researcher")
+# watcher、researcher（delegation-default D3、D17）所有 host 都綁定；其他 host 只接 role，不接派工條款。
+NEW_ROLES = ("watcher", "researcher")
 EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
-    "agy": CORE_ROLES,
-    "grok": CORE_ROLES,
-    "claude": CORE_ROLES + NEW_CLAUDE_ONLY_ROLES,
-    # OpenCode 只有 5 個 role（Decision 9）；applier、plan-critic 與兩個新 role 都在 omitted_roles。
-    "opencode": tuple(r for r in CORE_ROLES if r not in ("applier", "plan-critic")),
+    "agy": CORE_ROLES + NEW_ROLES,
+    "grok": CORE_ROLES + NEW_ROLES,
+    "claude": CORE_ROLES + NEW_ROLES,
+    # OpenCode 沒有 applier、plan-critic（Decision 9），這兩個在 omitted_roles。
+    "opencode": tuple(r for r in CORE_ROLES if r not in ("applier", "plan-critic")) + NEW_ROLES,
 }
 
 # host 專屬內容（工具限制、capability 說明、foreground 用語、brief 用語對照等）只能放在這些 addenda；
@@ -547,7 +547,7 @@ class OmittedRoleTests(TempHost):
         files = self.render("opencode")
         omitted = render.load_toml(self.binding("opencode"))["omitted_roles"]
         self.assertEqual(
-            sorted(omitted), ["applier", "plan-critic", "researcher", "watcher"]
+            sorted(omitted), ["applier", "plan-critic"]
         )
         for role in omitted:
             self.assertNotIn(f"roles/{role}.md", files)
@@ -701,6 +701,8 @@ CODEX_CORE_ROLES = (
     "verifier",
     "security-reviewer",
     "security-executor",
+    "watcher",
+    "researcher",
 )
 # Codex 專屬內容（模型、reasoning effort、semantic_adjudication）只能放在這些 addenda；新增要同時改這裡。
 CODEX_ADDENDA = {
@@ -713,7 +715,7 @@ CODEX_ADDENDA = {
 class CodexCutTests(unittest.TestCase):
     """2b-1：core 條款加 Codex addenda 逐位元組拼回 Codex 1.8.1 原文，Codex 因此能切到 core。"""
 
-    def test_codex_is_core_for_the_seven_shared_roles_only(self) -> None:
+    def test_codex_is_core_for_the_nine_core_roles_only(self) -> None:
         binding = render.load_toml(ROOT / "hosts" / "codex" / "binding.toml")
         self.assertEqual(binding["role_text"], "core")
         self.assertEqual(sorted(binding["roles"]), sorted(CODEX_CORE_ROLES))

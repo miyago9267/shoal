@@ -9,9 +9,6 @@
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
 role_text = "core"
 
-# watcher、researcher 是 delegation-default 新增的 core role，第一階段只有 Claude 綁定；其他 host 先省略（spec D3、D16）。
-omitted_roles = ["watcher", "researcher"]
-
 # 所有 agent 的 frontmatter 都是 model: inherit；effort 寫在 roles/*.toml 的 reasoning_effort。
 # 不指定模型：resolver 不介入，每個 role 都解析成 inherit。
 # render 會驗證 src/agents/<role>.md 的 model 等於解析出的值。
@@ -64,3 +61,12 @@ description = "Read-only security evidence before approval"
 [roles.security-executor]
 effort = "high"
 description = "Approved security-sensitive implementation"
+
+# watcher、researcher 是 delegation-default 新增的 core role；其他 host 也只接 role，不接派工條款與 guard 規則（spec D17）。
+[roles.watcher]
+effort = "low"
+description = "Background watcher for long-running commands and CI runs (run and report, never edit)"
+
+[roles.researcher]
+effort = "high"
+description = "Read-only external research with a source for every claim"

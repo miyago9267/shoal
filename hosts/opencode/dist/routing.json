@@ -90,6 +90,35 @@
         "streaming",
         "reasoning"
       ]
+    },
+    "watcher": {
+      "agent": "watcher",
+      "candidates": [
+        {
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash"
+        }
+      ],
+      "fallback": "none",
+      "requiredCapabilities": [
+        "tools",
+        "streaming",
+        "reasoning"
+      ]
+    },
+    "researcher": {
+      "agent": "researcher",
+      "candidates": [
+        {
+          "provider": "openai",
+          "model": "gpt-5.6-sol"
+        }
+      ],
+      "fallback": "none",
+      "requiredCapabilities": [
+        "tools",
+        "streaming"
+      ]
     }
   }
 }

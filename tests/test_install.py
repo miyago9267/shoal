@@ -457,7 +457,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             config = tomllib.loads((home / "config.toml").read_text())
             self.assertEqual(config["agents"]["max_concurrent_threads_per_session"], 3)
-            self.assertEqual({p.stem for p in (home / "agents").glob("*.toml")}, {"executor", "applier", "plan-critic", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier"})
+            self.assertEqual({p.stem for p in (home / "agents").glob("*.toml")}, {"executor", "applier", "plan-critic", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier", "watcher", "researcher"})
             state = home.with_name(f"{home.name}.shoal-install-state.json")
             recorded = json.loads(state.read_text())
             self.assertEqual(recorded["status"], "committed")
@@ -1061,7 +1061,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "3.0.4",
+                            "version": "3.1.1",
                             "enabled": True,
                         }
                     ]

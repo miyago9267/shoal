@@ -179,6 +179,8 @@ $target/.opencode/agents/executor.md
 $target/.opencode/agents/verifier.md
 $target/.opencode/agents/security-reviewer.md
 $target/.opencode/agents/security-executor.md
+$target/.opencode/agents/watcher.md
+$target/.opencode/agents/researcher.md
 $plugin_target"
 
 while IFS= read -r installed_path; do

@@ -51,8 +51,9 @@ Intent routing 决定交互形状；上游 Nanako0129/pilotfish 的 role system 
 | `security-executor` | 已批准的 security-sensitive implementation。 |
 | `verifier` | 使用 fresh context 验证 outcome 或 direction checkpoint。 |
 
-`watcher`（后台盯长指令）与 `researcher`（外部研究）是 core 新增的 role，目前
-只有 Claude 绑定，Codex 不安装；`plan-critic` 另有 `mode: gaps` 补漏模式，回报
+`watcher`（后台盯长指令）与 `researcher`（外部研究）是 core 的 role，Codex 也绑定并安装
+（`sandbox_mode`：`watcher` 是 `workspace-write`、`researcher` 是 `read-only` 加 `web_search`）；
+派工条款只在 Claude 的 policy。`plan-critic` 另有 `mode: gaps` 补漏模式，回报
 还没被问到的需求与风险，不回 READY／REVISE，Plan 仍由 root session 撰写。
 
 Root session 负责 routing、Plan synthesis、approval decision、integration 与
@@ -140,7 +141,7 @@ py -3 install/install.py --dry-run --codex-home $codexHome
 py -3 install/install.py --codex-home $codexHome
 ```
 
-Installer 会加入 native seven-role manifest 与 shoal routing hook。安装后
+Installer 会加入 native role manifest 与 shoal routing hook。安装后
 请在新的交互式 Codex session 中 trust 这个 hook。
 
 Remote installation 必须在 script URL 与 archive ref 使用同一个 release tag

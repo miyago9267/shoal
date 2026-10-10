@@ -1,11 +1,13 @@
 """delegation-default（S3、S4、S5）：effort 與類型標籤條款、watcher / researcher、補漏模式、預設派工條款。
 
 文字本身的來源是 docs/specs/delegation-default/CLAUSES.md；這裡鎖定結構（條款在 Claude policy 輸出裡、
-核心條款不寫 model 名稱、其他 host 的輸出不受新 role 影響），不重複整段文字。
+核心條款不寫 model 名稱、其他 host 只接 role 而不接派工條款），不重複整段文字。
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import sys
 import tomllib
@@ -84,36 +86,140 @@ class NewRoleRenderTests(unittest.TestCase):
         self.assertNotIn("`Explore`", listed)
 
 
-class OtherHostsUnchangedTests(unittest.TestCase):
-    def test_other_hosts_omit_the_new_roles(self) -> None:
+class OtherHostsRoleTests(unittest.TestCase):
+    """D17：Codex、Grok、agy、OpenCode 也綁定 watcher 與 researcher，但只接 role，不接派工條款與 guard 規則。"""
+
+    # host -> {role: dist 內的檔案}
+    PATHS = {
+        "codex": {"watcher": "agents/watcher.toml", "researcher": "agents/researcher.toml"},
+        "grok": {"watcher": "agents/watcher.md", "researcher": "agents/researcher.md"},
+        "agy": {"watcher": "agents/watcher/agent.md", "researcher": "agents/researcher/agent.md"},
+        "opencode": {"watcher": "roles/watcher.md", "researcher": "roles/researcher.md"},
+    }
+    # 這些 host 的 main-session policy 文字（render 輸出的路徑）在 fa90087（v3.0.3）的 sha256；
+    # 版本 marker 先換成 vX。之後有意改 policy 時連同這張表一起改。
+    POLICY_SHA256 = {
+        "codex": {
+            "agents-md.bootstrap.md": "2ce83cc4800352763f17dc883f38e19a0f03dabff372dae6efbc6d39d563b020",
+            "agents-md.orchestration.md": "1751f78cad0882949f9477436ba495d74329f5257f5a455b2d7baaa10263ea7c",
+        },
+        "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
+        "agy": {
+            "rules/shoal-agy.md": "f7248ec2980120790aa668cf8034b138892a0b78201c2886a0f29d38bf4d20c3",
+            "skills/shoal-orchestration/SKILL.md": "270dcdd16dfb82e7df79501f4d35575749f5f532a7ba577102005fa2ad8ad0ab",
+        },
+        "opencode": {},
+    }
+    MARKER = re.compile(rb"<!-- shoal-(codex|grok|agy) v\S+ -->")
+    # Codex 的 policy 有一張 role 表（test_policy 要求列出每個安裝的 role）；這是唯一允許的差異。
+    ROLE_ROW = re.compile(rb"^\| `(watcher|researcher)` \|.*\n", re.MULTILINE)
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.files = {host: render.RENDERERS[host](ROOT) for host in cls.PATHS}
+
+    def text(self, host: str, role: str) -> str:
+        return self.files[host][self.PATHS[host][role]].decode("utf-8")
+
+    def test_every_host_binds_the_new_roles(self) -> None:
         for host in OTHER_HOSTS:
             binding = render.load_toml(ROOT / "hosts" / host / "binding.toml")
             with self.subTest(host=host):
-                self.assertEqual(
-                    [r for r in NEW_ROLES if r in binding["omitted_roles"]], list(NEW_ROLES)
-                )
-                self.assertFalse(set(NEW_ROLES) & set(binding["roles"]))
+                self.assertTrue(set(NEW_ROLES) <= set(binding["roles"]))
+                self.assertFalse(set(NEW_ROLES) & set(binding.get("omitted_roles", [])))
+        opencode = render.load_toml(ROOT / "hosts" / "opencode" / "binding.toml")
+        self.assertEqual(opencode["omitted_roles"], ["applier", "plan-critic"])
 
-    def test_other_hosts_render_nothing_for_the_new_roles(self) -> None:
+    def test_every_host_renders_both_roles_with_the_core_contract(self) -> None:
+        core = render.load_core(ROOT)["contracts"]
         for host in OTHER_HOSTS:
-            files = render.RENDERERS[host](ROOT)
-            with self.subTest(host=host):
-                for rel, data in files.items():
-                    if "/hooks/" in f"/{rel}":  # guard 腳本的 role 對照表是單一來源，會列出所有 role
-                        continue
-                    for name in NEW_ROLES:
-                        self.assertNotIn(name, rel)
-                        self.assertNotIn(name.encode(), data, rel)
+            for role in NEW_ROLES:
+                text = self.text(host, role)
+                with self.subTest(host=host, role=role):
+                    self.assertIn(f"You are a {role} and a leaf role that cannot delegate.", text)
+                    self.assertIn("Never spawn further subagents", text)
+                    self.assertIn("`status: ok | failed | insufficient`", text)
+                    # shoal 只提供 role：Claude 的工具用語與 policy 條款不進其他 host 的 role
+                    self.assertNotIn("Claude Code", text)
+                    self.assertNotIn("run_in_background", text)
+                    self.assertEqual(len([c for c in core[role] if c.text not in text]), 0)
 
-    def test_codex_omitting_roles_is_supported(self) -> None:
-        # render_codex 以前遍歷 core 的全部 role；omitted_roles 現在也適用於它
+    def test_codex_watcher_runs_commands_and_researcher_is_read_only_with_web(self) -> None:
+        watcher = tomllib.loads(self.text("codex", "watcher"))
+        researcher = tomllib.loads(self.text("codex", "researcher"))
+        # Codex 的 verify 等級沒有比 workspace-write 更窄的 sandbox（verifier 同）；不改檔由 contract 條款約束。
+        self.assertEqual(watcher["sandbox_mode"], "workspace-write")
+        self.assertNotIn("web_search", watcher)
+        self.assertIn("Never edit files", watcher["developer_instructions"])
+        self.assertEqual((researcher["sandbox_mode"], researcher["web_search"]), ("read-only", "live"))
+        self.assertEqual((watcher["model_reasoning_effort"], researcher["model_reasoning_effort"]), ("low", "high"))
+        self.assertEqual((watcher["model"], researcher["model"]), ("gpt-6-luna", "gpt-6-sol"))
+
+    def test_grok_capability_modes(self) -> None:
+        roles = {r: tomllib.loads(self.files["grok"][f"roles/{r}.toml"].decode("utf-8")) for r in NEW_ROLES}
+        self.assertEqual(roles["watcher"]["default_capability_mode"], "execute")  # 可跑指令、不可改檔
+        self.assertEqual(roles["researcher"]["default_capability_mode"], "read-only")
+        self.assertEqual((roles["watcher"]["reasoning_effort"], roles["researcher"]["reasoning_effort"]), ("low", "high"))
+        for role in NEW_ROLES:
+            self.assertEqual(frontmatter(self.files["grok"][f"agents/{role}.md"])["model"], "inherit")
+
+    def test_agy_tool_allowlists(self) -> None:
+        def tools(role: str) -> list[str]:
+            head = self.text("agy", role).split("\n---\n", 1)[0]
+            return re.findall(r"^    - (\S+)$", head, re.MULTILINE)
+
+        base = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message"]
+        self.assertEqual(tools("watcher"), [*base, "run_command"])
+        self.assertEqual(tools("researcher"), [*base, "read_url_content", "search_web"])
+        self.assertEqual(frontmatter(self.files["agy"][self.PATHS["agy"]["watcher"]])["model"], "flash")
+        self.assertEqual(frontmatter(self.files["agy"][self.PATHS["agy"]["researcher"]])["model"], "pro")
+
+    def test_opencode_permissions_and_routes(self) -> None:
+        def permission(role: str) -> list[str]:
+            head = self.text("opencode", role).split("\n---\n", 1)[0]
+            return head.split("permission:\n", 1)[1].splitlines()
+
+        self.assertEqual(permission("watcher"), ["  edit: deny", "  task: deny"])  # bash 不禁
+        self.assertEqual(
+            permission("researcher"),
+            ["  edit: deny", "  bash: deny", "  task: deny", "  webfetch: allow", "  websearch: allow"],
+        )
+        routes = json.loads(self.files["opencode"]["routing.json"])["roles"]
+        self.assertEqual(routes["watcher"]["candidates"], [{"provider": "deepseek", "model": "deepseek-v4-flash"}])
+        self.assertEqual(routes["researcher"]["candidates"], [{"provider": "openai", "model": "gpt-5.6-sol"}])
+        self.assertEqual(routes["watcher"]["requiredCapabilities"], ["tools", "streaming", "reasoning"])
+        self.assertEqual(routes["researcher"]["requiredCapabilities"], ["tools", "streaming"])
+        self.assertEqual({r: routes[r]["fallback"] for r in NEW_ROLES}, {"watcher": "none", "researcher": "none"})
+
+    def test_no_model_is_pinned_so_the_tier_rules_choose(self) -> None:
+        for host in OTHER_HOSTS:
+            binding = render.load_toml(ROOT / "hosts" / host / "binding.toml")
+            for role in NEW_ROLES:
+                with self.subTest(host=host, role=role):
+                    self.assertNotIn("model", binding["roles"][role])
+
+    def test_main_session_policy_text_is_unchanged_except_version_markers_and_role_rows(self) -> None:
+        for host, expected in self.POLICY_SHA256.items():
+            for rel, digest in expected.items():
+                data = self.MARKER.sub(rb"<!-- shoal-\1 vX -->", self.files[host][rel])
+                data = self.ROLE_ROW.sub(b"", data) if host == "codex" else data
+                with self.subTest(host=host, path=rel):
+                    self.assertEqual(hashlib.sha256(data).hexdigest(), digest)
+        # 其他 host 的 policy 不新增 watcher / researcher 的條款或路由（Codex 只多 role 表兩列）
+        for host in ("grok", "agy"):
+            for rel in self.POLICY_SHA256[host]:
+                for role in NEW_ROLES:
+                    self.assertNotIn(f"`{role}`".encode(), self.files[host][rel])
+        codex = self.files["codex"]["agents-md.orchestration.md"]
+        self.assertEqual(len(self.ROLE_ROW.findall(codex)), 2)
+        self.assertEqual(codex.count(b"`watcher`"), 1)
+        self.assertEqual(codex.count(b"`researcher`"), 1)
+
+    def test_codex_renders_every_core_role_plus_sol_executor(self) -> None:
         files = render.RENDERERS["codex"](ROOT)
         self.assertEqual(
             sorted(p for p in files if p.startswith("agents/")),
-            sorted(
-                [f"agents/{n}.toml" for n in render.load_core(ROOT)["roles"] if n not in NEW_ROLES]
-                + ["agents/sol-executor.toml"]
-            ),
+            sorted([f"agents/{n}.toml" for n in render.load_core(ROOT)["roles"]] + ["agents/sol-executor.toml"]),
         )
 
 

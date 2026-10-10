@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROLES = frozenset({
     "executor", "applier", "plan-critic", "scout", "sol-executor",
-    "security-executor", "security-reviewer", "verifier",
+    "security-executor", "security-reviewer", "verifier", "watcher", "researcher",
 })
 ALLOWED_KEYS = {
     "name", "description", "model", "model_reasoning_effort", "sandbox_mode",

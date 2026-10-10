@@ -14,7 +14,7 @@ from render_helpers import ROOT, render
 
 class OpencodeRenderTests(rh.HostRenderCase):
     HOST = "opencode"
-    GOLDEN_COUNT = 7
+    GOLDEN_COUNT = 9
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.md"
     SRC_FILE = "../frames/executor.md"  # core 模式下 src/roles 不參與 render，改改外框（路徑相對 src/）
@@ -22,18 +22,16 @@ class OpencodeRenderTests(rh.HostRenderCase):
     def test_omitted_roles_are_not_rendered(self) -> None:
         rendered = render.RENDERERS["opencode"](ROOT)
         catalog, routing = json.loads(rendered["catalog.json"]), json.loads(rendered["routing.json"])
-        expected = {"scout", "executor", "verifier", "security-reviewer", "security-executor"}
+        expected = {"scout", "executor", "verifier", "security-reviewer", "security-executor", "watcher", "researcher"}
         self.assertEqual(set(catalog["agents"]), expected)
         self.assertEqual(set(routing["roles"]), expected)
         self.assertNotIn("roles/applier.md", rendered)
         self.assertNotIn("roles/plan-critic.md", rendered)
-        self.assertNotIn("roles/watcher.md", rendered)
-        self.assertNotIn("roles/researcher.md", rendered)
 
     def test_every_role_denies_task_so_none_can_dispatch_subagents(self) -> None:
         # dispatch-enforcement R6：write 等級（executor、security-executor）也是 leaf，不可再派 subagent。
         rendered = render.RENDERERS["opencode"](ROOT)
-        for name in ("scout", "executor", "verifier", "security-reviewer", "security-executor"):
+        for name in ("scout", "executor", "verifier", "security-reviewer", "security-executor", "watcher", "researcher"):
             front = rendered[f"roles/{name}.md"].decode().split("---\n")[1]
             self.assertIn("permission:\n", front, name)
             self.assertIn("  task: deny\n", front, name)
@@ -53,16 +51,16 @@ class OpencodeRenderTests(rh.HostRenderCase):
         self.assert_rejected("applier")
 
     def test_omitted_role_must_exist_in_catalog(self) -> None:
-        self.edit(self.binding, '["applier", "plan-critic", "watcher", "researcher"]', '["applier", "plan-critic", "watcher", "researcher", "ghost"]')
+        self.edit(self.binding, '["applier", "plan-critic"]', '["applier", "plan-critic", "ghost"]')
         self.assert_rejected("ghost")
 
     def test_role_missing_from_binding_and_omitted_roles_is_rejected(self) -> None:
-        self.edit(self.binding, '["applier", "plan-critic", "watcher", "researcher"]', '["applier", "watcher", "researcher"]')
+        self.edit(self.binding, '["applier", "plan-critic"]', '["applier"]')
         self.assert_rejected("plan-critic")
 
     def test_fallback_none_cannot_have_candidates(self) -> None:
-        self.edit(self.binding, 'fallback = "none"\nfallback_candidates = []',
-                  'fallback = "none"\nfallback_candidates = [{ provider = "xai", model = "grok-4.6" }]')
+        self.edit(self.binding, '[roles.security-reviewer]\nfallback = "none"\nfallback_candidates = []',
+                  '[roles.security-reviewer]\nfallback = "none"\nfallback_candidates = [{ provider = "xai", model = "grok-4.6" }]')
         self.assert_rejected("security-reviewer")
 
     def test_candidate_must_be_in_providers(self) -> None:

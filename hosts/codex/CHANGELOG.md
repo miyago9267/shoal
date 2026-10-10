@@ -9,6 +9,14 @@ written.
 
 ## Unreleased
 
+## v3.1.0
+
+- Adds the `watcher` (`gpt-6-luna`, low, `workspace-write`) and `researcher`
+  (`gpt-6-sol`, high, `read-only` with `web_search = "live"`) roles; both models
+  come from the tier rules. The installer manifest (`ROLES`) now includes them.
+  Only the roles are provided: the Codex policy text gains two rows in its role
+  table and the marker, no routing or guard rules.
+
 ## v3.0.3
 
 - `install/install.py` (full and `--roles-only`) now removes role files that

@@ -16,12 +16,25 @@ role 只寫 tier，不寫模型。resolver 在每個 host 的模型目錄裡排�
 選模。用 `python3 tools/render.py --host <host> --explain` 可以看到每個 role
 的候選、排除原因與結果。
 
-Claude host 另有兩個只在 Claude 綁定的 role（其他 host 先列入 `omitted_roles`）：
+core 另有兩個 role，五個 host 都綁定並安裝：
 
 | Role | 存取 | Claude 預設 | 用途 |
 | --- | --- | --- | --- |
 | `watcher` | 可跑不可寫 | haiku / low | 在背景盯指令、build、測試、CI 到結束，回摘要 |
 | `researcher` | 唯讀加 web | opus / high | 論文、外部文件、上游專案分析；研究結論會影響決策時平行派實驗組與對照組 |
+
+其他 host 只提供 role（名稱、contract 文字、存取等級、tier 解出的 model、支援 effort 的 host
+再加 effort 與 description），model 不手動指定：
+
+| Host | `watcher` | `researcher` | 存取限制的寫法 |
+| --- | --- | --- | --- |
+| codex | gpt-6-luna / low | gpt-6-sol / high | `sandbox_mode` 與 `web_search`；`watcher` 是 `workspace-write`，不改檔靠 contract |
+| grok | inherit / low | inherit / high | `default_capability_mode`：`watcher` 是 `execute`，`researcher` 是 `read-only` |
+| agy | flash | pro | `tools` allowlist：`watcher` 有 `run_command`，`researcher` 有 `read_url_content`、`search_web` |
+| opencode | deepseek-v4-flash | gpt-5.6-sol | frame 的 `permission`：`watcher` 禁 `edit`、`task`；`researcher` 再禁 `bash` |
+
+派工條款（`watcher-long-commands`、`researcher` 的 A/B 規則等）與 guard 的 R1、G4、G5 仍只在
+Claude 的 policy 渲染；其他 host 的 main-session policy 文字不變（spec D17）。
 
 ![選模矩陣：圖中七個 role 在五個 host 選出的模型（不含 watcher、researcher）](./docs/assets/shoal-model-routing.svg)
 
@@ -108,12 +121,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.0.3 |
-| codex host | 3.0.3（`hosts/codex/VERSION`） |
-| claude host | 3.0.3（`hosts/claude/VERSION`） |
-| agy host | 3.0.3（`hosts/agy/VERSION`） |
-| grok host | 3.0.3（`hosts/grok/VERSION`） |
-| opencode host | 3.0.3（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.1.0 |
+| codex host | 3.1.0（`hosts/codex/VERSION`） |
+| claude host | 3.1.0（`hosts/claude/VERSION`） |
+| agy host | 3.1.0（`hosts/agy/VERSION`） |
+| grok host | 3.1.0（`hosts/grok/VERSION`） |
+| opencode host | 3.1.0（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

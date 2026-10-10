@@ -185,6 +185,12 @@ Miyago 2026-10-10 對照上游 v1.5.0 後提出五項需求：
   `executor` 相同，「原因由 main 先查清楚」是 policy 規則（P4），不是 role 的能力
   （Miyago 2026-10-10）。T1 與 effort 條款放在同一個 slice（S3）。
 
+- **D17（其他 host 只接 role，2026-10-10 修訂）**：Miyago 決定統一 role：shoal 對所有
+  host 只負責提供同一組 role（名稱、contract、存取等級、tier），`watcher` 與
+  `researcher` 在 Codex、Grok、agy、OpenCode 也綁定並安裝，model 由各 host 的 tier
+  規則選出。派工條款、guard 規則等其餘部分不由 shoal 移植，交給各 agent 自己的
+  adapter 去接。這取代 D16 的「第二階段移植同一組條款與 guard」。
+
 ## Slices
 
 | # | 內容 | 驗收 |
