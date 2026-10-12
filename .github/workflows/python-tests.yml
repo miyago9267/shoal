@@ -55,7 +55,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    timeout-minutes: 5
+    # 測試數量增加後 Windows runner 約需 4 到 6 分鐘，5 分鐘會在測試途中被取消。
+    timeout-minutes: 12
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
