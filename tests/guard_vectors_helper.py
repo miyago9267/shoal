@@ -159,12 +159,14 @@ def foreign_owner(module: Any, targets: List[str]) -> Iterator[None]:
         module._open_private = original
 
 
-def run_vector(vector: Dict[str, Any], whitelist: List[str], module: Any) -> List[str]:
-    """Replay one vector; returns a list of failure descriptions (empty = pass)."""
+def run_vector(vector: Dict[str, Any], whitelist: List[str], module: Any,
+               defaults: Optional[Dict[str, Optional[str]]] = None) -> List[str]:
+    """Replay one vector; returns a list of failure descriptions (empty = pass).  `defaults` is the
+    fixture's env_defaults, merged under the vector's own env."""
     failures: List[str] = []
     sandbox = Sandbox()
     try:
-        env = sandbox.env(vector.get("env"))
+        env = sandbox.env({**(defaults or {}), **(vector.get("env") or {})})
         state = sandbox.state_base(env)
         home = Path(sandbox.home)
         apply_setup(vector.get("setup", {}), sandbox, env, module, state)

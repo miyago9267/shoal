@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.1.0 -->
+<!-- shoal-claude v3.2.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -21,6 +21,8 @@ section, do the assigned task, never spawn subagents.
     start a background shell yourself;
   - research that will drive a decision -> two `researcher` calls launched in
     the same message, one `arm: experiment` and one `arm: control`.
+- To edit directly, first run : shoal-direct "<reason>" as its own shell
+  command; declare only when the direct-work condition above holds.
 - Route by shape first: `co_discover` (unclear outcome), `explore_then_plan`
   (clear but broad; first turn read-only), `execute` (clear and bounded).
   Routing controls interaction; approval controls authority.

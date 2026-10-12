@@ -21,6 +21,7 @@ beforeEach(() => {
     XDG_STATE_HOME: join(root, "xdg-state"),
     TMPDIR: join(root, "tmpdir"),
     SHOAL_GUARD_MAX_FILES: "40",
+    SHOAL_GUARD_R1: "classified", // these tests exercise the lock and R2, not the declare rule
   };
 });
 
@@ -51,7 +52,7 @@ describe("state lock (K4)", () => {
     const code = `
       import { evaluate } from ${JSON.stringify(CORE)};
       const [name, home, xdg, tmp, wd] = process.argv.slice(1);
-      const env = { HOME: home, XDG_STATE_HOME: xdg, TMPDIR: tmp, SHOAL_GUARD_MAX_FILES: "40" };
+      const env = { HOME: home, XDG_STATE_HOME: xdg, TMPDIR: tmp, SHOAL_GUARD_MAX_FILES: "40", SHOAL_GUARD_R1: "classified" };
       const r = evaluate({ host: "claude", kind: "tool", session_id: "s1", turn_id: null, cwd: wd,
         is_subagent: false, role: null, tool_name: "Edit", tool_kind: "edit", paths: [wd + "/" + name],
         dispatched_role: null }, env, home);

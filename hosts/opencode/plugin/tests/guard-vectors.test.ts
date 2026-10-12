@@ -239,7 +239,7 @@ function runVector(vector: Json, whitelist: string[]): string[] {
   const failures: string[] = [];
   const sandbox = new Sandbox();
   try {
-    const env = sandbox.env(vector.env);
+    const env = sandbox.env({ ...(doc.env_defaults ?? {}), ...(vector.env ?? {}) });
     const state = sandbox.stateBase(env);
     applySetup(vector.setup ?? {}, sandbox, env, state);
     const guardPath = join(state, "shoal", "guard");

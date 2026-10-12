@@ -9,6 +9,15 @@ written.
 
 ## Unreleased
 
+## v3.2.0
+
+- The guard reads a standalone `#direct` in the `UserPromptSubmit` prompt (same
+  token rule as Claude), which silences the R1/R2 reminder for that turn. The
+  `declare` rule of the Claude guard is not enabled on Codex: no recorded Codex
+  payload names the shell tool, so the hook registration and matcher are
+  unchanged and Codex keeps its reminder-only behavior. The Codex policy text
+  changes only by the marker.
+
 ## v3.1.0
 
 - Adds the `watcher` (`gpt-6-luna`, low, `workspace-write`) and `researcher`

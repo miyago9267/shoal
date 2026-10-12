@@ -338,6 +338,8 @@ class PluginDeferralTests(unittest.TestCase):
             "CLAUDE_CONFIG_DIR": str(self.cfg),
             "TMPDIR": self.sandbox.tmpdir,
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            # These tests count R2 reminders to prove each event is judged once; the declare rule has its own tests.
+            "SHOAL_GUARD_R1": "classified",
         }
         env.update(extra)
         return env

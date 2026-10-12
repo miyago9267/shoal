@@ -10,9 +10,9 @@
    接受或退回。
 2. **派工是淨效益判斷**，不以數字門檻強制。已有穩定契約的實作、互不相干的
    偵察與長指令預設派工；main 直接做的條件是寫 brief 的成本高於直接做。
-3. **hook 強制硬規則**：leaf 不再派 subagent、verifier 類 role
-   不改檔，以及 Claude 上本輪已被分類為實作工作而 main 尚未派工時的改檔、main
-   以背景方式開 shell（兩者可用 `#direct` 放行）。含數字門檻的規則只提醒。
+3. **hook 強制硬規則**：leaf 不再派 subagent、verifier 類 role 不改檔、main
+   以背景方式開 shell，以及 main 未派工、未宣告就改檔（宣告或 `#direct` 可放行）。
+   這些規則不依賴任何分類器。含數字門檻的規則只提醒。
 4. **各 host 的規則相同**，model 與工具名稱依 host 綁定；host 做不到的條款明列
    省略理由。
 5. **core 條款不綁具體模型**：core／host 中立條款不寫具體 model ID；host

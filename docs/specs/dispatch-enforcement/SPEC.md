@@ -253,6 +253,17 @@ Miyago 2026-10-10 指出強制力不夠：hook 提醒後 main 仍自己做，背
     得到一次 G4 deny。
   - 來源：`docs/specs/delegation-default` G5（Miyago 2026-10-10 核准）。
 
+## 修訂：R1 與 G5 改為宣告（2026-10-12）
+
+Miyago 2026-10-12 核准 [`docs/specs/guard-declared-direct`](../guard-declared-direct/SPEC.md)（3.2.0）：
+上一節的 R1／G5 只在「本輪已被分類為實作工作」時才擋，而分類來自 shoal 以外的 Jev，實測只有約
+19% 的回合有分類。修訂後 Claude 上的 R1／G5 由 `SHOAL_GUARD_R1` 決定（`declare` 預設、
+`classified` 即上一節的行為、`off`）：`declare` 下 main 沒派 write role、沒有 `#direct`、沒有宣告
+（單獨一次 `: shoal-direct "<理由>"` 的 shell 呼叫）就不能改檔，不需要任何分類檔；分類檔變成
+公開的選用介面，只能放寬（`role: parent_local`）。硬規則（LEAF、VERIFY_EDIT）、G4、R2、shadow 與
+fail-open 不變，Codex 預設維持原行為（理由見該 spec 的 PROGRESS）。上一節與本節衝突處，以
+guard-declared-direct 為準。
+
 ## 完結狀態（2026-10-06）
 
 - E0 到 E5 完成；E6 完成 OpenCode（live 實擋，`b445151`）。

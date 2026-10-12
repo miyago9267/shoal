@@ -19,12 +19,20 @@ policy nudge, not a security boundary (see docs/specs/dispatch-enforcement/SPEC.
 
 Modes (SHOAL_GUARD): enforce | shadow | off.  The hard rules (LEAF, VERIFY_EDIT) deny on every
 host.  Main-session rules: R2 (file count) only advises, on claude/codex in enforce with a
-one-per-turn `additionalContext` reminder.  On claude only (docs/specs/delegation-default, G1/G4),
-R1 (turn classified as implementation work, no write role dispatched) denies main's edit tools and
-G4 denies main's background shell (`Bash` with run_in_background); G5 applies R1 to main's foreground
-`Bash` when the command literally writes a file (see shell_write_targets); all are released for one turn
-by a standalone `#direct` token in the user's prompt, or for good by SHOAL_GUARD_DIRECT=1.  R1 on
-every other host stays `advise`.
+one-per-turn `additionalContext` reminder.  G4 (claude only) denies main's background shell (`Bash`
+with run_in_background); it is released for one turn by a standalone `#direct` token in the user's
+prompt, or for good by SHOAL_GUARD_DIRECT=1.
+
+The main-session edit rule (R1 for edit tools, G5 for a foreground `Bash` that literally writes a
+file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-declared-direct):
+  declare     (default on claude) deny unless this turn has a dispatched write role, `#direct` /
+              SHOAL_GUARD_DIRECT=1, a declaration (a shell call that is exactly
+              `: shoal-direct <reason>`, see parse_declaration) or a classification file whose role
+              is `parent_local`.  No classification file, or any other role, has no effect.
+  classified  the v3.1.0 rule: deny (claude) or advise (other hosts) only when the turn is
+              classified judgment/mechanical by the optional classification file.  Default on every
+              host that cannot declare (codex until its shell tool is evidenced, grok, agy).
+  off         no R1/G5; the hard rules, G4 and R2 are untouched.
 """
 
 from __future__ import annotations
@@ -76,6 +84,12 @@ PROMPT_KEEP_HOSTS = frozenset({"claude"})
 # Hosts where R1 denies (claude only, G1), where main's background shell is denied (G4) and where a
 # shell command that writes a file is judged by R1 (G5).
 DENY_MAIN_HOSTS = frozenset({"claude"})
+# SHOAL_GUARD_R1 (main-session edit rule).  `declare` needs a way to declare, so it is selectable only on
+# hosts whose adapter delivers main's shell calls to the guard (claude's `Bash`).  Codex joins once its
+# shell tool name and payload are evidenced (docs/specs/guard-declared-direct/PROGRESS.md); until then
+# it stays at the v3.1.0 behaviour (`classified`, advise only).  Any other value falls back to the host
+# default.
+DECLARE_HOSTS = frozenset({"claude"})
 # `#direct` as an instruction the user typed: a standalone token that follows the start of the text or
 # whitespace and is followed by the end, whitespace or sentence punctuation (ASCII or CJK).  Anything
 # else (`x#direct`, `(#direct)`, `#directly`, a URL fragment) is not.  Code the user quoted does not
@@ -140,6 +154,7 @@ LOG_FIELDS = (
     "file",
     "skip_reason",
     "mode",
+    "reason",
 )
 
 MESSAGES = {
@@ -167,6 +182,12 @@ MESSAGES = {
             "Shoal dispatch guard: the main session does not start background shells. Dispatch "
             "watcher in the background instead, or add #direct to your prompt."
         ),
+        "DECLARE": (
+            "Shoal dispatch guard: the main session delegates edits by default. Dispatch a "
+            "write-capable role (executor or applier), or declare direct work first by running "
+            'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add '
+            "#direct to the prompt."
+        ),
     },
     "zh-TW": {
         "ADVISE": (
@@ -183,6 +204,11 @@ MESSAGES = {
         "G4": (
             "Shoal dispatch guard：main session 不自己開背景 shell。"
             "請改在背景派出 watcher，或在 prompt 加上 #direct。"
+        ),
+        "DECLARE": (
+            "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
+            "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
+            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。'
         ),
     },
 }
@@ -383,6 +409,91 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
     if mode == "enforce" and host in FORCED_SHADOW_HOSTS:
         mode = "shadow"
     return mode
+
+
+def resolve_r1(host: str, env: Dict[str, str]) -> str:
+    """SHOAL_GUARD_R1: `classified` and `off` as given; `declare` where the host can declare.
+
+    Unset, unrecognized, or `declare` on a host that cannot declare -> the host default."""
+    raw = env.get("SHOAL_GUARD_R1") or ""
+    if raw in ("classified", "off"):
+        return raw
+    return "declare" if host in DECLARE_HOSTS else "classified"
+
+
+# ---------------------------------------------------------------------------
+# Declaration (M3): a shell call that is exactly `: shoal-direct <reason>`
+# ---------------------------------------------------------------------------
+
+_DECLARE_PREFIX_RE = re.compile(r":[ \t]+shoal-direct[ \t]+")
+# Controls other than TAB: a declaration is one line of printable text.
+_DECLARE_CONTROL_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")
+# A bare reason is plain words: no shell syntax, expansion or globbing (bash and zsh alike).
+_DECLARE_BARE_BAD_RE = re.compile(r"[;&|<>()$`\\\"'*?\[\]{}~^!#]")
+_DECLARE_SPLIT_RE = re.compile(r"[ \t]+")
+MAX_REASON_CHARS = 200
+
+
+def parse_declaration(command: Any) -> Optional[str]:
+    """The reason when `command` is, after trimming, exactly `: shoal-direct <reason>`; else None.
+
+    `:` is the shell's no-op, so the call does nothing; the guard only reads it.  The reason is
+    double-quoted (a backslash escapes only `"`, `\\`, `$` and the backtick; an unescaped `$` or
+    backtick would expand and is refused), single-quoted, or bare (plain words, see
+    _DECLARE_BARE_BAD_RE, no word starting with `=`).  It must be non-empty after trimming.  Nothing
+    may follow it and nothing may precede the `:`: no `;`, `&&`, `||`, `|`, newline, subshell,
+    redirection or comment.  The TypeScript port (guard/declaration.ts) must return the same value
+    for every case in tests/fixtures/declaration_cases.json.
+    """
+    if not isinstance(command, str):
+        return None
+    text = command.strip(" \t\r\n")
+    if _DECLARE_CONTROL_RE.search(text):
+        return None
+    head = _DECLARE_PREFIX_RE.match(text)
+    if head is None:
+        return None
+    rest = text[head.end():]
+    if not rest:
+        return None
+    reason: Optional[str]
+    if rest[0] == "'":
+        end = rest.find("'", 1)
+        reason = rest[1:end] if end == len(rest) - 1 else None
+    elif rest[0] == '"':
+        reason = _double_quoted_reason(rest)
+    elif _DECLARE_BARE_BAD_RE.search(rest) or any(w.startswith("=") for w in _DECLARE_SPLIT_RE.split(rest)):
+        reason = None
+    else:
+        reason = rest
+    if reason is None:
+        return None
+    reason = reason.strip(" \t")
+    return reason or None
+
+
+def _double_quoted_reason(rest: str) -> Optional[str]:
+    """`rest` starts with `"`: the unescaped text when the string closes at the very end, else None."""
+    buf: List[str] = []
+    i, n = 1, len(rest)
+    while i < n:
+        c = rest[i]
+        if c == "\\" and i + 1 < n and rest[i + 1] in '"\\$`':
+            buf.append(rest[i + 1])
+            i += 2
+        elif c == '"':
+            return "".join(buf) if i == n - 1 else None
+        elif c in "$`":
+            return None
+        else:
+            buf.append(c)
+            i += 1
+    return None
+
+
+def log_reason(reason: str) -> str:
+    """The reason as logged: control characters removed, at most MAX_REASON_CHARS characters."""
+    return _DECLARE_CONTROL_RE.sub("", reason.replace("\t", ""))[:MAX_REASON_CHARS]
 
 
 def _max_files(env: Dict[str, str]) -> Optional[int]:
@@ -713,6 +824,7 @@ class _Guard:
         self.home = home
         self.host = str(event.get("host") or "")
         self.mode = resolve_mode(self.host, env)
+        self.r1 = resolve_r1(self.host, env)
         self._dir: Optional[Path] = None
         self._dir_tried = False
 
@@ -742,9 +854,10 @@ class _Guard:
         reason: Optional[str] = None,
         file: Optional[str] = None,
         notify: bool = False,
+        note: Optional[str] = None,
     ) -> Dict[str, Any]:
         if decision in ("skip", "deny", "would_deny", "advise", "allow", "state"):
-            self.log(decision, rule=rule, skip_reason=skip, file=file)
+            self.log(decision, rule=rule, skip_reason=skip, file=file, reason=note)
         return {
             "decision": decision,
             "rule": rule,
@@ -790,9 +903,17 @@ class _Guard:
         if kind == "tool" and tool_kind == "background_shell" and self.host not in DENY_MAIN_HOSTS:
             tool_kind = None  # G4 exists on claude only
         if kind == "tool" and tool_kind == "shell":
-            # G5 (claude only): a foreground shell call without a file write has no opinion, and
-            # touches no state or log.
-            if self.host not in DENY_MAIN_HOSTS or self.shell_write_target() is None:
+            # A foreground shell call that is neither a declaration nor a file write has no opinion,
+            # and touches no state or log.  `declare` hosts read declarations and judge writes (G5);
+            # `classified` judges writes on claude only (v3.1.0); `off` has no G5.
+            if self.r1 == "declare":
+                if parse_declaration(event.get("command")) is None and self.shell_write_target() is None:
+                    tool_kind = None
+            elif (
+                self.r1 != "classified"
+                or self.host not in DENY_MAIN_HOSTS
+                or self.shell_write_target() is None
+            ):
                 tool_kind = None
         if kind == "tool" and tool_kind not in ("edit", "dispatch", "background_shell", "shell"):
             return {
@@ -837,10 +958,10 @@ class _Guard:
                 prior_tid = prior.get("turn_id")
                 state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
                          "dispatched": False, "advised": False, "edited": edited,
-                         "direct": event.get("direct") is True}
+                         "direct": event.get("direct") is True, "declared": False}
             else:
                 state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
-                         "direct": event.get("direct") is True}
+                         "direct": event.get("direct") is True, "declared": False}
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
@@ -855,6 +976,7 @@ class _Guard:
             "advised": state.get("advised") is True,
             "edited": edited,
             "direct": state.get("direct") is True,  # this turn's prompt carried #direct
+            "declared": state.get("declared") is True,  # main declared direct work this turn (M3)
         }
 
         if event.get("tool_kind") == "dispatch":
@@ -865,7 +987,7 @@ class _Guard:
         if event.get("tool_kind") == "background_shell":
             return self.background_shell(state)
         if event.get("tool_kind") == "shell":
-            return self.shell_write(state, guard)
+            return self.shell(state, state_path, guard)
         return self.edit(state, state_path, guard)
 
     def background_shell(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -907,28 +1029,53 @@ class _Guard:
                 break
         return None if ("$" in target or "`" in target) else target
 
-    def shell_write(self, state: Dict[str, Any], guard: Path) -> Dict[str, Any]:
-        """G5: R1 for a shell command that writes a file.  Reads state only; a shell write is
-        never recorded as an edit, so R2's count is unaffected."""
+    def shell(self, state: Dict[str, Any], state_path: Path, guard: Path) -> Dict[str, Any]:
+        """A main-session foreground shell call: a declaration (`declare` mode) or G5, R1 for a
+        command that writes a file.  A shell write is never recorded as an edit, so R2's count is
+        unaffected; only a declaration changes state."""
+        if self.r1 == "declare":
+            reason = parse_declaration(self.event.get("command"))
+            if reason is not None:
+                state["declared"] = True
+                if not _write_json(state_path, state):
+                    return self.result("skip", skip="state_write_failed")
+                return self.result("state", "declare", note=log_reason(reason))
         target = self.shell_write_target()
         if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
             return self.result("allow", "direct", file=target)
         if state["dispatched"]:
             return self.result("allow", "dispatched", file=target)
+        if self.r1 == "declare":
+            if self._declared(state, guard):
+                return self.result("allow", "declared", file=target)
+            return self.result(
+                "deny" if self.mode == "enforce" else "would_deny", "R1",
+                reason=_text(self.env, "DECLARE"), file=target
+            )
         if self._classified(state, guard) is None:
             return self.result("allow", "uncounted", file=target)
         return self.result(
             "deny" if self.mode == "enforce" else "would_deny", "R1", reason=_text(self.env, "R1"), file=target
         )
 
-    def _classified(self, state: Dict[str, Any], guard: Path) -> Optional[str]:
-        """The turn's `judgment` / `mechanical` classification, or None (no or stale classifier file)."""
+    def _turn_role(self, state: Dict[str, Any], guard: Path) -> Optional[str]:
+        """The role in this turn's classification file, or None (no, stale or unreadable file)."""
         tid = state["turn_id"]  # effective turn (agy tool events may omit it)
         if tid is None:
             return None
         turn = _read_json(guard / "turns" / (str(self.event.get("session_id")) + ".json"))
         role = turn.get("role") if turn.get("turn_id", turn.get("prompt_id")) == tid else None
+        return role if isinstance(role, str) else None
+
+    def _classified(self, state: Dict[str, Any], guard: Path) -> Optional[str]:
+        """The turn's `judgment` / `mechanical` classification, or None (no or stale classifier file)."""
+        role = self._turn_role(state, guard)
         return role if role in CLASSIFIED_ROLE else None
+
+    def _declared(self, state: Dict[str, Any], guard: Path) -> bool:
+        """`declare` mode: main declared direct work this turn, or the optional classification file
+        says `parent_local` (M5).  Any other role, or no file, changes nothing."""
+        return state["declared"] or self._turn_role(state, guard) == "parent_local"
 
     def edit(self, state: Dict[str, Any], state_path: Path, guard: Path) -> Dict[str, Any]:
         raw_paths = [
@@ -941,9 +1088,14 @@ class _Guard:
         edited: List[str] = list(state["edited"])
         direct = self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]
         limit = _max_files(self.env)
+        declare = self.r1 == "declare"
         classified: Optional[str] = None
+        declared = False
         if not direct and not state["dispatched"]:
-            classified = self._classified(state, guard)
+            if declare:
+                declared = self._declared(state, guard)
+            elif self.r1 == "classified":
+                classified = self._classified(state, guard)
 
         first_rule = "exempt"
         advise_rule: Optional[str] = None
@@ -956,8 +1108,8 @@ class _Guard:
             elif state["dispatched"]:
                 rule = "dispatched"
             else:
-                rule = "count"
-                if classified:
+                rule = "declared" if declared else "count"
+                if classified or (declare and not declared):
                     fired: Optional[str] = "R1"
                 elif path not in edited and (limit is None or len(edited) >= limit):
                     if limit is None:
@@ -965,7 +1117,7 @@ class _Guard:
                     fired = "R2"
                 else:
                     fired = None
-                if fired == "R1" and self.host in DENY_MAIN_HOSTS:
+                if fired == "R1" and (declare or self.host in DENY_MAIN_HOSTS):
                     deny_r1 = True  # G1: R1 denies on claude; everywhere else it only reminds
                 elif fired and advise_rule is None:
                     advise_rule = fired  # R2 (and R1 off claude) only remind; the edit goes ahead
@@ -976,7 +1128,9 @@ class _Guard:
         if first_rule == "exempt":
             return self.result("allow", first_rule, file=raw_paths[0])
         if deny_r1 and self.mode == "enforce":
-            return self.result("deny", "R1", reason=_text(self.env, "R1"), file=raw_paths[0])
+            return self.result(
+                "deny", "R1", reason=_text(self.env, "DECLARE" if declare else "R1"), file=raw_paths[0]
+            )
         state["edited"] = edited
         notify = (
             advise_rule is not None
@@ -1143,7 +1297,8 @@ def adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         payload.get("agent_type"),
     )
     if name == "UserPromptSubmit":
-        return _event("codex", "prompt", *base)
+        # The payload's `prompt` field is what shoal_autoroute_gate.py reads on Codex too.
+        return _event("codex", "prompt", *base, direct=has_direct_token(payload.get("prompt")))
     if name != "PreToolUse":
         return None
     tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))

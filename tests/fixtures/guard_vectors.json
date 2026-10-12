@@ -20,9 +20,16 @@
   "expect.notify is true on the first advise of a turn that a claude/codex host in enforce mode prints as",
   "additionalContext, false on later ones and on other hosts/modes.  Prompt events may set direct=true (the",
   "user prompt held a standalone #direct token; default false).  A step may carry write_turn {session,",
-  "turn_id, role}: the classifier file is rewritten before that step runs."
+  "turn_id, role}: the classifier file is rewritten before that step runs.",
+  "SHOAL_GUARD_R1 (docs/specs/guard-declared-direct): env_defaults is merged under every vector's env (null deletes a key).",
+  "The v3.1.0 vectors run with SHOAL_GUARD_R1=classified; the declare_*/off_*/r1_* vectors from v3.2.0 set it to null (the host",
+  "default: declare on claude, classified elsewhere) or to the value they exercise.  In `declare` mode R1 and G5 decide `deny` /",
+  "`would_deny` (rule R1, message DECLARE) unless the turn is direct, dispatched or declared; a shell event whose command is",
+  "exactly `: shoal-direct <reason>` (parse_declaration) decides `state` / rule `declare`, logs the reason in the `reason` field",
+  "and releases the turn (allow, rule `declared`); a classification file with role parent_local counts as declared."
  ],
- "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode"],
+ "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason"],
+ "env_defaults": {"SHOAL_GUARD_R1": "classified"},
  "vectors": [
   {
    "name": "r2_third_new_file_advises",
@@ -1772,6 +1779,561 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "background_shell", "tool_name": "Bash", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "G4"}}
+   ]
+  },
+  {
+   "name": "declare_undeclared_edit_denied_en",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "declare_deny_message_zh_tw",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_LANG": "zh-TW"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}}
+   ]
+  },
+  {
+   "name": "declare_undeclared_shell_write_denied",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "declare_shell_without_write_has_no_opinion",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "ls -la"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 'a > b'"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "declare_then_edit_allowed",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ],
+   "log_contains": ["\"rule\":\"declare\"", "\"reason\":\"fix typo\""]
+  },
+  {
+   "name": "declare_then_shell_write_allowed",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "declare_without_prompt_state_works",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "declare_does_not_carry_to_next_turn",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "declare_prompt_direct_allows_this_turn_only",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "declare_direct_env_allows",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "1"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "direct"}}
+   ]
+  },
+  {
+   "name": "declare_write_role_dispatch_allows",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "declare_read_only_and_verify_dispatch_do_not_allow",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "watcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "researcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "declare_parent_local_classification_allows",
+   "env": {"SHOAL_GUARD_R1": null},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "declare_stale_parent_local_is_ignored",
+   "env": {"SHOAL_GUARD_R1": null},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "declare_judgment_classification_is_same_as_no_file",
+   "env": {"SHOAL_GUARD_R1": null},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "declare_mechanical_and_unknown_roles_have_no_effect",
+   "env": {"SHOAL_GUARD_R1": null},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "exploration"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "declare_exempt_paths_are_allowed",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/x"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/.ai/n.md"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > $TMPDIR/out"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "declare_denied_edit_is_not_counted_and_r2_still_reminds",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/x"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/y"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/z"]}, "expect": {"decision": "advise", "rule": "R2", "notify": true}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/w"]}, "expect": {"decision": "advise", "rule": "R2", "notify": false}}
+   ]
+  },
+  {
+   "name": "declare_subagent_is_unaffected_and_its_declaration_ignored",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\"", "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "declare_does_not_affect_the_hard_rules",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "is_subagent": true, "role": "executor", "dispatched_role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
+   ]
+  },
+  {
+   "name": "declare_does_not_unlock_g4",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "background_shell", "turn_id": "t1", "command": "sleep 1"}, "expect": {"decision": "deny", "rule": "G4"}}
+   ]
+  },
+  {
+   "name": "declare_shadow_would_deny_and_edit_goes_ahead",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "shadow"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "would_deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "declare_mode_off_is_silent",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "off"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "declare_reason_is_logged_cut_at_200",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "expect": {"decision": "state", "rule": "declare"}}
+   ],
+   "log_contains": ["\"reason\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""],
+   "log_lacks": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+  },
+  {
+   "name": "declare_variants_bare_single_double_are_accepted",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct fix typo in readme"}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "command": ": shoal-direct 'one file; two lines'"}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "prompt", "turn_id": "t3"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t3", "command": ":\tshoal-direct\t\"quoted \\\"x\\\" reason\"  "}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "prompt", "turn_id": "t4"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t4", "command": "  : shoal-direct \"x\"\n"}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t4", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ],
+   "log_contains": ["\"reason\":\"fix typo in readme\"", "\"reason\":\"one file; two lines\"", "\"reason\":\"quoted \\\"x\\\" reason\""]
+  },
+  {
+   "name": "declare_rejected_forms_are_not_declarations",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct ''"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct   "}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \" \""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\"; rm -rf foo"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\" && echo y"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\" || echo y"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\" | cat"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\" & "}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct x; ls"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo hi; : shoal-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "ls && : shoal-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo hi\n: shoal-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\"\nls"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "set -e\n: shoal-direct \"x\"\nls"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "sh -c ': shoal-direct \"x\"'"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "(: shoal-direct \"x\")"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "( : shoal-direct x )"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "$(: shoal-direct \"x\")"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"$(touch f)\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"`id`\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"$USER\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct $(id)"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct fix #12"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\" # note"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\" \"y\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct 'x' y"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"unterminated"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct 'unterminated"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ":shoal-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ":  shoalx-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "shoal-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "true : shoal-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct\"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct =x"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct a*b"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct a,b | c"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct x\\y"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\u0007y\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "declare_redirect_after_declaration_is_a_write_not_a_declaration",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\" > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "classified_mode_ignores_declaration",
+   "env": {"SHOAL_GUARD_R1": "classified"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "classified_mode_denies_judgment_like_v3_1_0_and_declaration_does_not_help",
+   "env": {"SHOAL_GUARD_R1": "classified"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt to edit directly."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "classified_mode_parent_local_is_not_a_declaration",
+   "env": {"SHOAL_GUARD_R1": "classified"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "off_mode_disables_r1_and_g5_only",
+   "env": {"SHOAL_GUARD_R1": "off"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2", "notify": true}},
+    {"event": {"kind": "tool", "tool_kind": "background_shell", "turn_id": "t1", "command": "sleep 1"}, "expect": {"decision": "deny", "rule": "G4"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "is_subagent": true, "role": "scout", "dispatched_role": "scout"}, "expect": {"decision": "deny", "rule": "LEAF"}}
+   ]
+  },
+  {
+   "name": "off_mode_ignores_declaration",
+   "env": {"SHOAL_GUARD_R1": "off"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "r1_unrecognized_value_uses_the_host_default",
+   "env": {"SHOAL_GUARD_R1": "bogus"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "r1_empty_value_uses_the_host_default",
+   "env": {"SHOAL_GUARD_R1": ""},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "r1_declare_value_is_the_claude_default",
+   "env": {"SHOAL_GUARD_R1": "declare"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "codex_r1_unset_keeps_v3_1_0_behaviour",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "codex_r1_declare_keeps_v3_1_0_behaviour",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "codex_r1_bogus_keeps_v3_1_0_behaviour",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "bogus"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "codex_classified_judgment_still_advises",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "advise", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "grok_r1_unset_keeps_v3_1_0_behaviour",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "grok_r1_declare_keeps_v3_1_0_behaviour",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "grok_r1_bogus_keeps_v3_1_0_behaviour",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "bogus"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "grok_classified_judgment_still_advises",
+   "host": "grok",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "advise", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_r1_unset_keeps_v3_1_0_behaviour",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_r1_declare_keeps_v3_1_0_behaviour",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_r1_bogus_keeps_v3_1_0_behaviour",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "bogus"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_classified_judgment_still_advises",
+   "host": "agy",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "advise", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "codex_prompt_direct_releases_that_turn_only",
+   "host": "codex",
+   "env": {"SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2", "notify": true}}
    ]
   }
  ]

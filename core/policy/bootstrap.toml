@@ -39,6 +39,14 @@ text = '''
     the same message, one `arm: experiment` and one `arm: control`.'''
 
 [[clause]]
+id = "bootstrap-direct-declare"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- To edit directly, first run : shoal-direct "<reason>" as its own shell
+  command; declare only when the direct-work condition above holds.'''
+
+[[clause]]
 id = "bootstrap-routing"
 kind = "routing"
 sep = "newline"

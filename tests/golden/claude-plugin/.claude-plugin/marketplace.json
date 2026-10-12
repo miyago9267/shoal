@@ -9,7 +9,7 @@
     {
       "name": "shoal",
       "source": "./claude-plugin",
-      "version": "3.1.0",
+      "version": "3.2.0",
       "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap.",
       "category": "productivity",
       "tags": [

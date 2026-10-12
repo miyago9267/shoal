@@ -3,6 +3,65 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.2.0
+
+guard 的 main 改檔規則（R1、G5）改成「宣告直接做」，不再等外部分類來源
+（[`docs/specs/guard-declared-direct`](./docs/specs/guard-declared-direct/SPEC.md)）。
+動機：3.1.0 實測時 Jev（外部分類器）送出的 729 次中，門檻 0.8 只有 19% 有分類，
+沒有分類的回合 guard 不介入，小功能仍由 main 自己做；而且 Jev 不屬於 shoal。
+
+### Features
+
+- 新的環境變數 `SHOAL_GUARD_R1`：`declare`（Claude 預設）、`classified`（3.1.0 的行為，
+  保留給想用分類來源的人）、`off`（只關 R1 與 G5，硬規則、G4、R2 不變）。未設定、
+  無法辨識的值，或在不能宣告的 host 上設 `declare`，都用該 host 的預設；其他 host
+  維持「不 deny」。
+- `declare` 模式下，main 的改檔工具與 shell 寫檔在 enforce 會被 deny，除非本輪有：
+  已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告，
+  或分類檔的 `role` 為 `parent_local`。沒有分類檔、或其他 `role` 不影響結果。shadow 記
+  `would_deny`。
+- 宣告是單獨一次 shell 呼叫 `: shoal-direct "<理由>"`（`:` 是空指令；理由可用雙引號、
+  單引號或不加引號，去掉空白後不得為空；不得串接其他指令、導向、註解或放進較長 script）。
+  guard 記下本輪的宣告旗標（下一輪失效），log 寫 `decision: state`、`rule: declare` 與
+  截成 200 字元、去掉控制字元的 `reason`；guard 不判斷理由內容。subagent 的宣告無效，
+  宣告不解除 G4。字面判斷寫成專用的 `parse_declaration`（Python）與 `parseDeclaration`
+  （TypeScript），兩邊重放 `tests/fixtures/declaration_cases.json`（112 筆）。
+- deny 訊息改成自帶三個出口（派 `executor`／`applier`、執行宣告、請使用者加
+  `#direct`），沒有 policy 文字的 host 也能只靠訊息繼續。`classified` 模式保留原本的 R1 訊息。
+- 分類檔（`<state>/shoal/guard/turns/<session>.json`，`{"turn_id", "role"}`）列為公開的
+  選用介面，`declare` 下只能放寬（`parent_local`）；格式見 INSTALL.md。
+- Claude bootstrap 加一句：要自己改檔，先執行宣告指令，而且只在符合直接做的條件時宣告
+  （`bootstrap-direct-declare`，非 required）。
+- `docs/DESIGN-INVARIANTS.md` 第 3 條改為「hook 強制硬規則」包含 main 未派工、未宣告就改檔，
+  並明寫這些規則不依賴任何分類器。
+- 被 deny 的改檔與 shell 寫檔不計入 R2，也不會在同一次呼叫送出 R2 提醒。
+
+### Codex
+
+- Codex 的 `UserPromptSubmit` 事件現在會讀 prompt 內獨立的 `#direct`（規則與 Claude 相同，
+  `payload.prompt` 的欄位由 autoroute gate 在 Codex 上已使用）。
+- `declare` **沒有**在 Codex 啟用，Codex 維持 3.1.0 的行為（R1 提醒、R2 提醒）：repo 內沒有任何
+  已記錄的 Codex shell 工具名稱與 payload 欄位，hook matcher 也不含 shell，宣告沒有出口，
+  deny 會變成死路。hook 註冊（`shoal-guard-v1`）沒有變動，因此不需要在 Codex 重新核准 hook。
+  缺的證據與取得方式見 `docs/specs/guard-declared-direct/PROGRESS.md`。
+
+### Tests
+
+- `tests/fixtures/guard_vectors.json` 新增 declare／off／classified／其他 host 的向量，既有
+  向量以 `env_defaults`（`SHOAL_GUARD_R1=classified`）原樣重放；Python 與 TypeScript 共用。
+  log 白名單新增 `reason`。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.2.0。
+
+### 升級
+
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.2.0`
+  加回並更新。
+- 全域 guard（`tools/install_hooks.py --host claude`）：重跑 `--apply` 換新腳本；matcher 不變。
+  想維持 3.1.0 的行為，設 `SHOAL_GUARD_R1=classified`。
+
 ## v3.1.0
 
 `watcher` 與 `researcher` 在 codex、grok、agy、opencode 也綁定並安裝，五個 host 的

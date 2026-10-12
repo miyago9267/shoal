@@ -1061,7 +1061,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "3.1.1",
+                            "version": "3.2.1",
                             "enabled": True,
                         }
                     ]

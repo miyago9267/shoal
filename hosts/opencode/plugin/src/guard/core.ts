@@ -24,6 +24,7 @@ import {
   writeSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { logReason, parseDeclaration } from "./declaration.js";
 import { shellWriteTargets } from "./shell-writes.js";
 
 export const MAX_LOG_BYTES = 1024 * 1024;
@@ -73,6 +74,8 @@ type StateFile = {
   advised: boolean;
   edited: string[];
   direct: boolean;
+  /** main declared direct work this turn (`: shoal-direct <reason>`, M3). */
+  declared: boolean;
 };
 type LogRecord = Record<string, unknown>;
 
@@ -102,6 +105,11 @@ const PROMPT_KEEP_HOSTS = new Set(["claude"]);
 // shell command that writes a file is judged by R1 (G5).
 // The OpenCode adapter never produces such an event; the vectors replay it at the core level.
 const DENY_MAIN_HOSTS = new Set(["claude"]);
+// SHOAL_GUARD_R1 (main-session edit rule; docs/specs/guard-declared-direct).  `declare` needs a way to
+// declare, so it is selectable only on hosts whose adapter delivers main's shell calls to the guard
+// (claude's `Bash`); every other host keeps the v3.1.0 rule (`classified`).  Codex joins once its shell
+// tool is evidenced.  The OpenCode adapter never produces main-session shell events.
+const DECLARE_HOSTS = new Set(["claude"]);
 
 // `#direct` as an instruction the user typed (mirrors hooks/shoal_guard.py has_direct_token): a
 // standalone token after the start of the text or whitespace, followed by the end, whitespace or
@@ -173,7 +181,7 @@ const DISPATCH_NAME: Record<string, string> = {
   agy: "invoke_subagent",
   opencode: "task",
 };
-const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode"];
+const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason"];
 
 const MESSAGES: Record<string, Record<string, string>> = {
   en: {
@@ -195,6 +203,11 @@ const MESSAGES: Record<string, Record<string, string>> = {
     G4:
       "Shoal dispatch guard: the main session does not start background shells. Dispatch " +
       "watcher in the background instead, or add #direct to your prompt.",
+    DECLARE:
+      "Shoal dispatch guard: the main session delegates edits by default. Dispatch a " +
+      "write-capable role (executor or applier), or declare direct work first by running " +
+      'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add ' +
+      "#direct to the prompt.",
   },
   "zh-TW": {
     ADVISE:
@@ -209,6 +222,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
     G4:
       "Shoal dispatch guard：main session 不自己開背景 shell。" +
       "請改在背景派出 watcher，或在 prompt 加上 #direct。",
+    DECLARE:
+      "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
+      "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
+      ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。',
   },
 };
 
@@ -431,6 +448,13 @@ export function resolveMode(host: string, env: Env): string {
   return mode;
 }
 
+/** SHOAL_GUARD_R1: `classified` and `off` as given; `declare` where the host can declare. */
+export function resolveR1(host: string, env: Env): string {
+  const raw = env.SHOAL_GUARD_R1 || "";
+  if (raw === "classified" || raw === "off") return raw;
+  return DECLARE_HOSTS.has(host) ? "declare" : "classified";
+}
+
 /** null when the configured value is not an integer (the guard then fails open). */
 function maxFiles(env: Env): number | null {
   const raw = env.SHOAL_GUARD_MAX_FILES || "2";
@@ -512,6 +536,7 @@ function none(mode: string): GuardResult {
 class Guard {
   readonly host: string;
   readonly mode: string;
+  readonly r1: string;
   private dir: string | null = null;
   private dirTried = false;
 
@@ -522,6 +547,7 @@ class Guard {
   ) {
     this.host = String(event.host || "");
     this.mode = resolveMode(this.host, env);
+    this.r1 = resolveR1(this.host, env);
   }
 
   get guardDirectory(): string | null {
@@ -534,7 +560,7 @@ class Guard {
 
   private result(
     decision: string,
-    opts: { rule?: string; skip?: string; reason?: string; file?: string; notify?: boolean } = {},
+    opts: { rule?: string; skip?: string; reason?: string; file?: string; notify?: boolean; note?: string } = {},
   ): GuardResult {
     appendLog(this.guardDirectory, {
       host: this.host,
@@ -545,6 +571,7 @@ class Guard {
       rule: opts.rule,
       skip_reason: opts.skip,
       file: opts.file,
+      reason: opts.note,
     });
     return {
       decision,
@@ -580,9 +607,14 @@ class Guard {
       toolKind = null; // G4 exists on claude only
     }
     if (event.kind === "tool" && toolKind === "shell") {
-      // G5 (claude only): a foreground shell call without a file write has no opinion, and
-      // touches no state or log.
-      if (!DENY_MAIN_HOSTS.has(this.host) || this.shellWriteTarget() === null) toolKind = null;
+      // A foreground shell call that is neither a declaration nor a file write has no opinion, and
+      // touches no state or log.  `declare` hosts read declarations and judge writes (G5);
+      // `classified` judges writes on claude only (v3.1.0); `off` has no G5.
+      if (this.r1 === "declare") {
+        if (parseDeclaration(event.command) === null && this.shellWriteTarget() === null) toolKind = null;
+      } else if (this.r1 !== "classified" || !DENY_MAIN_HOSTS.has(this.host) || this.shellWriteTarget() === null) {
+        toolKind = null;
+      }
     }
     if (
       event.kind === "tool" &&
@@ -628,8 +660,11 @@ class Guard {
           advised: false,
           edited: Array.isArray(prior.edited) ? (prior.edited as string[]) : [],
           direct: event.direct === true,
+          declared: false,
         };
-      } else next = { turn_id: tid, dispatched: false, advised: false, edited: [], direct: event.direct === true };
+      } else {
+        next = { turn_id: tid, dispatched: false, advised: false, edited: [], direct: event.direct === true, declared: false };
+      }
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
       return this.result("state");
     }
@@ -643,6 +678,7 @@ class Guard {
       advised: prior.advised === true,
       edited,
       direct: prior.direct === true, // this turn's prompt carried #direct
+      declared: prior.declared === true, // main declared direct work this turn (M3)
     };
 
     if (event.tool_kind === "dispatch") {
@@ -653,7 +689,7 @@ class Guard {
       return this.result("allow", { rule: "dispatch" });
     }
     if (event.tool_kind === "background_shell") return this.backgroundShell(state);
-    if (event.tool_kind === "shell") return this.shellWrite(state, dir);
+    if (event.tool_kind === "shell") return this.shell(state, statePath, dir);
     return this.edit(state, statePath, dir);
   }
 
@@ -707,13 +743,30 @@ class Guard {
   }
 
   /**
-   * G5: R1 for a shell command that writes a file.  Reads state only; a shell write is never
-   * recorded as an edit, so R2's count is unaffected.
+   * A main-session foreground shell call: a declaration (`declare` mode) or G5, R1 for a command that
+   * writes a file.  A shell write is never recorded as an edit, so R2's count is unaffected; only a
+   * declaration changes state.
    */
-  private shellWrite(state: StateFile, dir: string): GuardResult {
+  private shell(state: StateFile, statePath: string, dir: string): GuardResult {
+    if (this.r1 === "declare") {
+      const reason = parseDeclaration(this.event.command);
+      if (reason !== null) {
+        state.declared = true;
+        if (!writeJson(statePath, state)) return this.result("skip", { skip: "state_write_failed" });
+        return this.result("state", { rule: "declare", note: logReason(reason) });
+      }
+    }
     const file = this.shellWriteTarget() ?? undefined;
     if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) return this.result("allow", { rule: "direct", file });
     if (state.dispatched) return this.result("allow", { rule: "dispatched", file });
+    if (this.r1 === "declare") {
+      if (this.declared(state, dir)) return this.result("allow", { rule: "declared", file });
+      return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
+        rule: "R1",
+        reason: text(this.env, "DECLARE"),
+        file,
+      });
+    }
     if (this.classified(state, dir) === null) return this.result("allow", { rule: "uncounted", file });
     return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
       rule: "R1",
@@ -722,14 +775,28 @@ class Guard {
     });
   }
 
-  /** The turn's `judgment` / `mechanical` classification, or null (no or stale classifier file). */
-  private classified(state: StateFile, dir: string): string | null {
+  /** The role in this turn's classification file, or null (no, stale or unreadable file). */
+  private turnRole(state: StateFile, dir: string): string | null {
     const tid = state.turn_id; // effective turn (agy tool events may omit it)
     if (tid === null) return null;
     const turn = readJson(join(dir, "turns", String(this.event.session_id) + ".json"));
     const turnId = "turn_id" in turn ? turn.turn_id : turn.prompt_id;
     const role = turnId === tid ? turn.role : null;
-    return typeof role === "string" && Object.hasOwn(CLASSIFIED_ROLE, role) ? role : null;
+    return typeof role === "string" ? role : null;
+  }
+
+  /** The turn's `judgment` / `mechanical` classification, or null (no or stale classifier file). */
+  private classified(state: StateFile, dir: string): string | null {
+    const role = this.turnRole(state, dir);
+    return role !== null && Object.hasOwn(CLASSIFIED_ROLE, role) ? role : null;
+  }
+
+  /**
+   * `declare` mode: main declared direct work this turn, or the optional classification file says
+   * `parent_local` (M5).  Any other role, or no file, changes nothing.
+   */
+  private declared(state: StateFile, dir: string): boolean {
+    return state.declared || this.turnRole(state, dir) === "parent_local";
   }
 
   private edit(state: StateFile, statePath: string, dir: string): GuardResult {
@@ -740,7 +807,13 @@ class Guard {
     const edited: string[] = [...state.edited];
     const direct = this.env.SHOAL_GUARD_DIRECT === "1" || state.direct;
     const limit = maxFiles(this.env);
-    const classified = !direct && !state.dispatched ? this.classified(state, dir) : null;
+    const declare = this.r1 === "declare";
+    let classified: string | null = null;
+    let declared = false;
+    if (!direct && !state.dispatched) {
+      if (declare) declared = this.declared(state, dir);
+      else if (this.r1 === "classified") classified = this.classified(state, dir);
+    }
 
     let firstRule = "exempt";
     let adviseRule: string | null = null;
@@ -751,15 +824,15 @@ class Guard {
       if (direct) rule = "direct";
       else if (state.dispatched) rule = "dispatched";
       else {
-        rule = "count";
+        rule = declared ? "declared" : "count";
         let fired: string | null = null;
-        if (classified) fired = "R1";
+        if (classified || (declare && !declared)) fired = "R1";
         else if (!edited.includes(path) && (limit === null || edited.length >= limit)) {
           if (limit === null) return this.result("skip", { skip: "invalid_config" });
           fired = "R2";
         }
         // G1: R1 denies on claude; everywhere else R1 and R2 only remind and the edit goes ahead.
-        if (fired === "R1" && DENY_MAIN_HOSTS.has(this.host)) denyR1 = true;
+        if (fired === "R1" && (declare || DENY_MAIN_HOSTS.has(this.host))) denyR1 = true;
         else if (fired !== null && adviseRule === null) adviseRule = fired;
       }
       if (firstRule === "exempt") firstRule = rule;
@@ -767,7 +840,7 @@ class Guard {
     }
     if (firstRule === "exempt") return this.result("allow", { rule: firstRule, file: rawPaths[0] });
     if (denyR1 && this.mode === "enforce") {
-      return this.result("deny", { rule: "R1", reason: text(this.env, "R1"), file: rawPaths[0] });
+      return this.result("deny", { rule: "R1", reason: text(this.env, declare ? "DECLARE" : "R1"), file: rawPaths[0] });
     }
     state.edited = edited;
     const notify =
