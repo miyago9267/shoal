@@ -263,8 +263,8 @@ Miyago 已在 Codex 核准變更過的 hook。以預設設定（不帶 `--danger
 
 ## 重複實測（2026-10-12，v3.3.1，Miyago 同意付費後執行）
 
-紀錄在 `docs/benchmarks/guard-declared-direct-gate/` 的 `results-repeat.json` 與 README 的
-「重複實測」一節。共 10 次（Claude 6 次 USD 2.87、Codex 4 次，其中 1 次作廢），9 個題目中
+紀錄在 `docs/benchmarks/guard-declared-direct-gate/` 的 `results-repeat.json`，
+以及該目錄 README 的「重複實測」一節。共 10 次（Claude 6 次 USD 2.87、Codex 4 次，其中 1 次作廢），9 個題目中
 8 個符合預期。
 
 各行為在真實 session 的累計觀察次數（含先前各節）：
