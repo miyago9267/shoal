@@ -162,3 +162,20 @@ live 重測尚未做。
 
 - live 重測：`strict` 下 Claude 與 Codex 各跑小改動與三檔小功能，看 main 被擋後是否改派 role。
   Codex 的 role 要先能啟動（見 live gate 一節的 model 問題），否則結果不具代表性。
+
+## strict 的 live 複測（2026-10-12，v3.3.0，Claude 1 次）
+
+真實設定（Plugin 3.3.0），題目是三檔小功能，prompt 沒有 `#direct`，USD 0.66。這是核准的
+8 次中的最後 1 次。
+
+- main 讀完檔案後直接派出 `shoal:executor`（effort low、description 以 `feat:` 開頭），沒有
+  嘗試自己改檔，guard 沒有任何 deny；role 跑在 Sonnet 5.5，三個檔案改好、測試通過。
+- 對照同一型題目：v3.2.1 的 `declare` 模式下 main 3 次都宣告後自己做。
+- 限制：只有 1 次；`strict` 的 deny 本身沒有被觸發（main 沒有嘗試改檔），deny 的證據仍是
+  單元測試、向量與手動實測；Codex 沒有複測（次數用完）。
+
+同一次執行以暫時的 probe hook 取得 Claude 的 `SubagentStart`／`SubagentStop` payload 形狀：
+`SubagentStart` 帶 `session_id`（與 main 相同）、`prompt_id`、`agent_id`、`agent_type`
+（例：`shoal:executor`）、`cwd`、`transcript_path`。M11 在 Claude 上因此有依據可以實作；
+「role 啟動失敗時是否仍會發出 `SubagentStart`」沒有量到。
+
