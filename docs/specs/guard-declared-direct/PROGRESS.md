@@ -240,3 +240,12 @@ live 重測尚未做。
   真實 session 被觀察到。
 - 限制：只有 1 次，而且只涵蓋「agent 不存在」這一種啟動失敗；role 啟動後才中途失敗的情況
   仍會被視為已啟動。
+
+## Codex 的 hook 核准與 strict（2026-10-12，v3.3.1，Codex 1 次）
+
+Miyago 已在 Codex 核准變更過的 hook。以預設設定（不帶 `--dangerously-bypass-hook-trust`）
+執行一次，題目是在 README 加一行，prompt 沒有 `#direct`：
+
+- guard 以 host `codex` 記錄了 prompt 事件，並對 `apply_patch` 以 R1 deny。
+- Codex 回報的訊息就是 `strict` 的 deny 訊息；README 沒有被改動。
+- 這是 Codex 上 `strict` 的 deny 第一次在已核准的 hook、真實設定下被觀察到。只有 1 次。
