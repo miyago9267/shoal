@@ -567,6 +567,32 @@ class CodexTests(Case):
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(sorted(p.name for p in self.backups.iterdir()), backups)
 
+    def test_v1_registration_is_upgraded_in_place_without_touching_foreign_entries(self) -> None:
+        # 3.2.0 and earlier wrote shoal-guard-v1, whose matcher has no Bash (3.2.1 adds it).
+        v1, v2 = TRUSTED_PROJECTIONS["shoal-guard-v1"], TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]
+        self.assertNotEqual(v1["PreToolUse"]["matcher"], v2["PreToolUse"]["matcher"])
+        self.assertIn("Bash", v2["PreToolUse"]["matcher"])
+        self.assertEqual(v1["UserPromptSubmit"], v2["UserPromptSubmit"])
+        other = {"matcher": "Write", "hooks": [{"type": "command", "command": "/opt/other.sh"}]}
+        path = self.write_hooks({"hooks": {"UserPromptSubmit": [GATE, v1["UserPromptSubmit"]],
+                                           "PreToolUse": [FOREIGN_TOOL, v1["PreToolUse"], other]}})
+        code, out, err = self.cli("codex", "--apply")
+        self.assertEqual(code, 0, err)
+        self.assertIn("提醒", out)  # the changed hook must be approved again with /hooks
+        hooks = self.load(path)["hooks"]
+        self.assertEqual(hooks["PreToolUse"], [FOREIGN_TOOL, v2["PreToolUse"], other])
+        self.assertEqual(hooks["UserPromptSubmit"], [GATE, v2["UserPromptSubmit"]])
+        before = path.read_bytes()
+        code, out, _ = self.cli("codex", "--apply")
+        self.assertEqual((code, path.read_bytes()), (0, before))
+        self.assertNotIn("提醒", out)
+
+    def test_foreign_bash_matcher_is_kept_when_installing_fresh(self) -> None:
+        path = self.write_hooks({"hooks": {"PreToolUse": [FOREIGN_TOOL]}})
+        self.assertEqual(self.cli("codex", "--apply")[0], 0)
+        groups = self.load(path)["hooks"]["PreToolUse"]
+        self.assertEqual(groups, [FOREIGN_TOOL, TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["PreToolUse"]])
+
     def test_uninstall_restores_hooks_bytes_and_removes_only_the_script(self) -> None:
         path = self.write_hooks({"hooks": {"UserPromptSubmit": [GATE, FOREIGN_PROMPT], "Stop": [GATE]}})
         original = path.read_bytes()
@@ -645,11 +671,14 @@ class CodexTests(Case):
             return subprocess.run(command, shell=True, input=json.dumps(payload).encode(),
                                   capture_output=True, env=env, timeout=30)
 
-        enforced = run({})
+        denied = run({})  # codex declares by default (3.2.1): an undeclared apply_patch is denied
+        self.assertEqual(denied.returncode, 0, denied.stderr)
+        self.assertEqual(json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+        enforced = run({"SHOAL_GUARD_R1": "classified"})
         self.assertEqual(enforced.returncode, 0, enforced.stderr)
         body = json.loads(enforced.stdout)["hookSpecificOutput"]
         self.assertEqual(set(body), {"hookEventName", "additionalContext"})
-        shadow = run({"SHOAL_GUARD": "shadow"})
+        shadow = run({"SHOAL_GUARD": "shadow", "SHOAL_GUARD_R1": "classified"})
         self.assertEqual(shadow.returncode, 0, shadow.stderr)
         self.assertEqual(shadow.stdout, b"")
         log = Path(sandbox.home, "xdg-state", "shoal", "guard", "guard.jsonl").read_text(encoding="utf-8")

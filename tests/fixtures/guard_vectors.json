@@ -26,7 +26,7 @@
   "default: declare on claude, classified elsewhere) or to the value they exercise.  In `declare` mode R1 and G5 decide `deny` /",
   "`would_deny` (rule R1, message DECLARE) unless the turn is direct, dispatched or declared; a shell event whose command is",
   "exactly `: shoal-direct <reason>` (parse_declaration) decides `state` / rule `declare`, logs the reason in the `reason` field",
-  "and releases the turn (allow, rule `declared`); a classification file with role parent_local counts as declared."
+  "and releases the turn (allow, rule `declared`); a classification file with role parent_local counts as declared. codex has the same rule (tool `Bash` = shell event, `apply_patch` = edit) since 3.2.1; grok, agy and opencode stay classified."
  ],
  "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason"],
  "env_defaults": {"SHOAL_GUARD_R1": "classified"},
@@ -2184,52 +2184,6 @@
    ]
   },
   {
-   "name": "codex_r1_unset_keeps_v3_1_0_behaviour",
-   "host": "codex",
-   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null},
-   "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
-   ]
-  },
-  {
-   "name": "codex_r1_declare_keeps_v3_1_0_behaviour",
-   "host": "codex",
-   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
-   "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
-   ]
-  },
-  {
-   "name": "codex_r1_bogus_keeps_v3_1_0_behaviour",
-   "host": "codex",
-   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "bogus"},
-   "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
-   ]
-  },
-  {
-   "name": "codex_classified_judgment_still_advises",
-   "host": "codex",
-   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
-   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
-   "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "advise", "rule": "R1"}}
-   ]
-  },
-  {
    "name": "grok_r1_unset_keeps_v3_1_0_behaviour",
    "host": "grok",
    "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null},
@@ -2334,6 +2288,274 @@
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2", "notify": true}}
+   ]
+  },
+  {
+   "name": "codex_declare_undeclared_apply_patch_denied_en",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "codex_declare_deny_message_zh_tw",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_LANG": "zh-TW"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}}
+   ]
+  },
+  {
+   "name": "codex_declare_then_apply_patch_allowed",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ],
+   "log_contains": ["\"rule\":\"declare\"", "\"reason\":\"fix a typo\"", "\"tool\":\"Bash\""]
+  },
+  {
+   "name": "codex_declare_shell_heredoc_denied_then_allowed_after_declaration",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "codex_declare_does_not_carry_to_next_turn",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "codex_declare_prompt_direct_allows_this_turn_only",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "codex_declare_direct_env_allows",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "1"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}
+   ]
+  },
+  {
+   "name": "codex_declare_write_role_dispatch_allows",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "watcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "sol-executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t2", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "codex_declare_subagent_is_unaffected_and_its_declaration_ignored",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\"", "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "is_subagent": true, "role": "executor", "dispatched_role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
+   ]
+  },
+  {
+   "name": "codex_declare_shell_without_write_or_declaration_has_no_opinion",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo ok"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "ls -la && git status"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "grep 'a > b' f"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\"; rm -rf foo"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ],
+   "log_lacks": ["\"tool\":\"Bash\""]
+  },
+  {
+   "name": "codex_declare_parent_local_allows_and_judgment_does_not",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "codex_declare_judgment_classification_is_same_as_no_file",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "codex_declare_denied_edit_is_not_counted_and_r2_still_reminds",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/x"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/y"]}, "expect": {"decision": "allow", "rule": "declared"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/z"]}, "expect": {"decision": "advise", "rule": "R2", "notify": true}}
+   ]
+  },
+  {
+   "name": "codex_declare_exempt_paths_are_allowed",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$TMPDIR/x"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > $TMPDIR/out"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "codex_declare_shadow_would_deny",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "shadow"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "would_deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ]
+  },
+  {
+   "name": "codex_declare_mode_off_is_silent",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "off"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "codex_declare_does_not_unlock_or_add_g4",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "background_shell", "turn_id": "t1", "command": "sleep 1"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "codex_r1_value_empty_is_the_declare_default",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": ""},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "codex_r1_value_bogus_is_the_declare_default",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": "bogus"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "codex_r1_value_declare_is_the_declare_default",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": "declare"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "codex_classified_mode_reproduces_v3_1_0_advise_only",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": "classified"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\""}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "advise", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "advise", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "codex_classified_mode_without_classification_counts_then_reminds",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": "classified"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2", "notify": true}}
+   ]
+  },
+  {
+   "name": "codex_off_mode_disables_r1_only",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": "off"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\""}, "expect": {"decision": "none"}}
    ]
   }
  ]

@@ -1,0 +1,25 @@
+{
+ "_doc": [
+  "Keys and value types of the Codex hook payloads recorded in one real `codex exec` run (codex-cli 0.160.1,",
+  "probe hook with matcher `.*`, 2026-10-12); values are synthetic.  A main-session call has no agent_id.",
+  "tool_input of the shell tool `Bash` is an object with exactly one key, `command` (string); there is no",
+  "run_in_background.  tests/test_shoal_guard.py feeds payloads built from this shape to adapt_codex."
+ ],
+ "events": {
+  "user_prompt": {
+   "hook_event_name": "UserPromptSubmit",
+   "keys": {"cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "prompt": "str", "session_id": "str", "transcript_path": "str", "turn_id": "str"},
+   "expect_kind": "prompt",
+   "expect_tool_kind": null
+  },
+  "bash_echo": {
+   "hook_event_name": "PreToolUse",
+   "tool_name": "Bash",
+   "keys": {"cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "session_id": "str", "tool_input": "dict", "tool_name": "str", "tool_use_id": "str", "transcript_path": "str", "turn_id": "str"},
+   "tool_input": {"command": "str"},
+   "expect_kind": "tool",
+   "expect_tool_kind": "shell",
+   "expect_command": "synthetic"
+  }
+ }
+}

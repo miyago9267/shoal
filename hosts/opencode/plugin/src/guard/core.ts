@@ -107,9 +107,9 @@ const PROMPT_KEEP_HOSTS = new Set(["claude"]);
 const DENY_MAIN_HOSTS = new Set(["claude"]);
 // SHOAL_GUARD_R1 (main-session edit rule; docs/specs/guard-declared-direct).  `declare` needs a way to
 // declare, so it is selectable only on hosts whose adapter delivers main's shell calls to the guard
-// (claude's `Bash`); every other host keeps the v3.1.0 rule (`classified`).  Codex joins once its shell
-// tool is evidenced.  The OpenCode adapter never produces main-session shell events.
-const DECLARE_HOSTS = new Set(["claude"]);
+// (claude's and, since 3.2.1, codex's `Bash`); every other host keeps the v3.1.0 rule (`classified`).
+// The OpenCode adapter never produces main-session shell events.
+const DECLARE_HOSTS = new Set(["claude", "codex"]);
 
 // `#direct` as an instruction the user typed (mirrors hooks/shoal_guard.py has_direct_token): a
 // standalone token after the start of the text or whitespace, followed by the end, whitespace or

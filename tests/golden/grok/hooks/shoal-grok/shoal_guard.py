@@ -25,13 +25,13 @@ prompt, or for good by SHOAL_GUARD_DIRECT=1.
 
 The main-session edit rule (R1 for edit tools, G5 for a foreground `Bash` that literally writes a
 file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-declared-direct):
-  declare     (default on claude) deny unless this turn has a dispatched write role, `#direct` /
+  declare     (default on claude and codex) deny unless this turn has a dispatched write role, `#direct` /
               SHOAL_GUARD_DIRECT=1, a declaration (a shell call that is exactly
               `: shoal-direct <reason>`, see parse_declaration) or a classification file whose role
               is `parent_local`.  No classification file, or any other role, has no effect.
   classified  the v3.1.0 rule: deny (claude) or advise (other hosts) only when the turn is
               classified judgment/mechanical by the optional classification file.  Default on every
-              host that cannot declare (codex until its shell tool is evidenced, grok, agy).
+              host that cannot declare (grok, agy, opencode).
   off         no R1/G5; the hard rules, G4 and R2 are untouched.
 """
 
@@ -85,11 +85,10 @@ PROMPT_KEEP_HOSTS = frozenset({"claude"})
 # shell command that writes a file is judged by R1 (G5).
 DENY_MAIN_HOSTS = frozenset({"claude"})
 # SHOAL_GUARD_R1 (main-session edit rule).  `declare` needs a way to declare, so it is selectable only on
-# hosts whose adapter delivers main's shell calls to the guard (claude's `Bash`).  Codex joins once its
-# shell tool name and payload are evidenced (docs/specs/guard-declared-direct/PROGRESS.md); until then
-# it stays at the v3.1.0 behaviour (`classified`, advise only).  Any other value falls back to the host
-# default.
-DECLARE_HOSTS = frozenset({"claude"})
+# hosts whose adapter delivers main's shell calls to the guard: claude's `Bash` and, since 3.2.1, codex's
+# `Bash` (recorded payload, docs/specs/guard-declared-direct/PROGRESS.md).  Any other value falls back to
+# the host default; every other host keeps the v3.1.0 behaviour (`classified`).
+DECLARE_HOSTS = frozenset({"claude", "codex"})
 # `#direct` as an instruction the user typed: a standalone token that follows the start of the text or
 # whitespace and is followed by the end, whitespace or sentence punctuation (ASCII or CJK).  Anything
 # else (`x#direct`, `(#direct)`, `#directly`, a URL fragment) is not.  Code the user quoted does not
@@ -1311,6 +1310,9 @@ def adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             tool_kind="edit",
             paths=patch_paths(tin.get("command")),
         )
+    if tool == "Bash" and isinstance(tin.get("command"), str):
+        # Codex's shell tool: tool_input is exactly {"command": str}; there is no run_in_background.
+        return _event("codex", "tool", *base, tool=tool, tool_kind="shell", command=tin["command"])
     if tool in ("collaborationspawn_agent", "spawn_agent"):
         return _event(
             "codex",

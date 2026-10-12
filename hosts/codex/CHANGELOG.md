@@ -9,6 +9,20 @@ written.
 
 ## Unreleased
 
+## v3.2.1
+
+- The guard's `declare` rule is enabled on Codex (default
+  `SHOAL_GUARD_R1=declare`): an undeclared `apply_patch`, or a `Bash` call
+  that literally writes a file, is denied unless the turn has a dispatched
+  write role, `#direct` in the prompt, or a declaration (a `Bash` call that is
+  exactly `: shoal-direct "<reason>"`). `classified` restores the
+  reminder-only behavior. Built on a payload recorded from codex-cli 0.160.1
+  (shell tool `Bash`, `tool_input.command`, no `run_in_background`).
+- The hook registration moves from `shoal-guard-v1` to `shoal-guard-v2`: the
+  `PreToolUse` matcher gains `Bash`. Installers upgrade only shoal's own group
+  in place; approve the changed hook once with `/hooks`. The Codex policy text
+  changes only by the marker.
+
 ## v3.2.0
 
 - The guard reads a standalone `#direct` in the `UserPromptSubmit` prompt (same

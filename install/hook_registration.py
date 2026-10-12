@@ -17,7 +17,12 @@ CURRENT_PROJECTION_ID = "shoal-autoroute-v1"
 # Dispatch guard (docs/specs/dispatch-enforcement Decision 6): its own script and
 # projection ID, registered next to the autoroute gate.  The groups live here, not in
 # templates/hooks.json, which is a prompt-lock surface with a fixed change budget.
-GUARD_PROJECTION_ID = "shoal-guard-v1"
+# v2 (3.2.1, docs/specs/guard-declared-direct M7) adds Codex's shell tool `Bash` to the
+# PreToolUse matcher; v1 stays allowlisted so a registration made by 3.2.0 or earlier is
+# upgraded in place instead of being rejected.
+GUARD_PROJECTION_ID = "shoal-guard-v2"
+GUARD_PROJECTION_ID_V1 = "shoal-guard-v1"
+GUARD_PROJECTION_IDS = (GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID)
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
@@ -57,9 +62,16 @@ _GUARD_HANDLER: dict[str, Any] = {
     "timeout": 10,
 }
 # apply_patch is the Codex edit tool; collaborationspawn_agent is the dispatch tool
-# (E0-RESULTS.md).  Codex matches the tool name as a regular expression.
-GUARD_TOOL_MATCHER = "^(apply_patch|spawn_agent|collaborationspawn_agent)$"
+# (E0-RESULTS.md); Bash is the shell tool (recorded payload: tool_input.command, no
+# run_in_background; docs/specs/guard-declared-direct/PROGRESS.md).  Codex matches the
+# tool name as a regular expression.
+GUARD_TOOL_MATCHER_V1 = "^(apply_patch|spawn_agent|collaborationspawn_agent)$"
+GUARD_TOOL_MATCHER = "^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$"
 _GUARD_PROMPT_GROUP: dict[str, Any] = {"hooks": [copy.deepcopy(_GUARD_HANDLER)]}
+_GUARD_TOOL_GROUP_V1: dict[str, Any] = {
+    "matcher": GUARD_TOOL_MATCHER_V1,
+    "hooks": [copy.deepcopy(_GUARD_HANDLER)],
+}
 _GUARD_TOOL_GROUP: dict[str, Any] = {
     "matcher": GUARD_TOOL_MATCHER,
     "hooks": [copy.deepcopy(_GUARD_HANDLER)],
@@ -71,6 +83,10 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
     CURRENT_PROJECTION_ID: {
         "UserPromptSubmit": _CURRENT_GROUP,
         "Stop": _CURRENT_GROUP,
+    },
+    GUARD_PROJECTION_ID_V1: {
+        "UserPromptSubmit": _GUARD_PROMPT_GROUP,
+        "PreToolUse": _GUARD_TOOL_GROUP_V1,
     },
     GUARD_PROJECTION_ID: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
@@ -351,7 +367,7 @@ def _contains_any_trusted_group(document: dict[str, Any]) -> bool:
     return bool(legacy_autoroute_locations(document)) or any(
         _locations(document, group)
         for projection_id, projection in TRUSTED_PROJECTIONS.items()
-        if projection_id != GUARD_PROJECTION_ID
+        if projection_id not in GUARD_PROJECTION_IDS
         for group in projection.values()
     )
 
@@ -397,18 +413,42 @@ def legacy_projection_digest(projection_id: str) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _guard_already_registered(document: dict[str, Any]) -> bool:
-    """True when every canonical guard group is already present exactly once.
+def _guard_already_registered(document: dict[str, Any], projection_id: str = GUARD_PROJECTION_ID) -> bool:
+    """True when every canonical group of the guard projection is already present exactly once.
 
     Such a registration is byte-identical to what this installer would write, so it
     is adopted instead of appended again (no duplicates).  Any other partial or
     cross-event shape still falls through to the collision check.
     """
     try:
-        validate_owned_projection(document, GUARD_PROJECTION_ID)
+        validate_owned_projection(document, projection_id)
     except HookRegistrationError:
         return False
     return True
+
+
+def _upgrade_guard(merged: dict[str, Any], owned_id: str, desired_id: str) -> None:
+    """Replace the owned guard projection's groups with the desired one's, in place.
+
+    Only groups that exactly equal the owned projection's are replaced; every other entry
+    (including a user's own matcher on the same tool) keeps its position and content.
+    """
+    validate_owned_projection(merged, owned_id)
+    if owned_id == desired_id:
+        return
+    prior, desired = TRUSTED_PROJECTIONS[owned_id], TRUSTED_PROJECTIONS[desired_id]
+    for event, group in desired.items():
+        if not _type_strict_equal(prior[event], group) and _locations(merged, group):
+            raise HookRegistrationError("desired guard group collides with an unowned canonical group")
+    for event, group in prior.items():
+        if _type_strict_equal(group, desired[event]):
+            continue
+        index = next(
+            index
+            for index, candidate in enumerate(merged["hooks"][event])
+            if _type_strict_equal(candidate, group)
+        )
+        merged["hooks"][event][index] = copy.deepcopy(desired[event])
 
 
 def validate_source_registration(payload: bytes) -> dict[str, Any]:
@@ -427,7 +467,7 @@ def validate_source_registration(payload: bytes) -> dict[str, Any]:
 def _upgrade_autoroute(
     merged: dict[str, Any], owned_projection_id: str, desired_id: str
 ) -> None:
-    if owned_projection_id not in TRUSTED_PROJECTIONS or owned_projection_id == GUARD_PROJECTION_ID:
+    if owned_projection_id not in TRUSTED_PROJECTIONS or owned_projection_id in GUARD_PROJECTION_IDS:
         raise HookRegistrationError("hook projection identifier is not allowlisted")
     validate_owned_projection(merged, owned_projection_id)
     if owned_projection_id == desired_id:
@@ -495,17 +535,23 @@ def merge_registration(
 
     if owned_guard_projection_id is None and _guard_already_registered(merged):
         pass  # adopted: placed by tools/install_hooks.py --host codex
+    elif owned_guard_projection_id is None and _guard_already_registered(merged, GUARD_PROJECTION_ID_V1):
+        _upgrade_guard(merged, GUARD_PROJECTION_ID_V1, desired_guard)  # placed by 3.2.0 or earlier
     elif owned_guard_projection_id is None:
-        if any(_locations(document, group) for group in guard_groups.values()):
+        if any(
+            _locations(document, group)
+            for guard_id in GUARD_PROJECTION_IDS
+            for group in TRUSTED_PROJECTIONS[guard_id].values()
+        ):
             raise HookRegistrationError(
                 "unowned hooks.json contains a canonical guard group"
             )
         for event, group in guard_groups.items():
             merged["hooks"].setdefault(event, []).append(copy.deepcopy(group))
-    elif owned_guard_projection_id != desired_guard:
+    elif owned_guard_projection_id not in GUARD_PROJECTION_IDS:
         raise HookRegistrationError("guard projection identifier is not allowlisted")
     else:
-        validate_owned_projection(merged, desired_guard)
+        _upgrade_guard(merged, owned_guard_projection_id, desired_guard)
 
     validate_owned_projection(merged, desired_id)
     validate_owned_projection(merged, desired_guard)

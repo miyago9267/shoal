@@ -1061,7 +1061,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "3.2.1",
+                            "version": "3.2.2",
                             "enabled": True,
                         }
                     ]
@@ -1324,7 +1324,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(len(tool_groups), 1)
             self.assertEqual(
                 tool_groups[0]["matcher"],
-                "^(apply_patch|spawn_agent|collaborationspawn_agent)$",
+                "^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$",
             )
             for group in (prompt_groups[1], tool_groups[0]):
                 command = group["hooks"][0]["command"]

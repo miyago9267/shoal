@@ -12,33 +12,43 @@
 - 向量：`tests/fixtures/guard_vectors.json` 228 筆（新增 48 筆）。既有向量以 fixture 的
   `env_defaults`（`SHOAL_GUARD_R1=classified`）原樣重放，沒有改寫或刪減；新向量涵蓋 spec 的
   declare、off、宣告變體、subagent、G4、hard rules、其他 host 不變。
-- 偏離 spec 字面的一點：`declare` 只在 claude 可選（`DECLARE_HOSTS`）。M1 寫 claude 與 codex，
-  見下方 S2。
+- 3.2.0 時 `declare` 只在 claude 可選（`DECLARE_HOSTS`）；M1 寫的 claude 與 codex，
+  codex 在 3.2.1 補上（S2）。
 
-## S2（部分完成：只啟用有證據的部分）
+## S2（3.2.0 部分完成，3.2.1 完成）
 
-- 啟用：Codex 的 `UserPromptSubmit` 讀 `payload.prompt` 的 `#direct`（規則同 Claude）。證據：
-  `hooks/shoal_autoroute_gate.py` 在 Codex 讀同一個欄位，
-  `tests/test_autoroute_hook.py` 的 payload 形狀與之相同。
-- **未啟用：Codex 的 shell 宣告與 shell 寫檔判斷。** 缺的證據：repo 內沒有任何 Codex shell 工具
-  的名稱或 `tool_input` 欄位的記錄。僅有的線索是 `dispatch-enforcement/SPEC.md` 轉述官方文件
-  「`apply_patch`、Bash、MCP」，沒有實測 payload；`E0-RESULTS.md` 只記錄 `apply_patch`
-  （`tool_input.command` 是 patch 全文）與 `collaborationspawn_agent`；hook 註冊的 matcher
-  （`install/hook_registration.py` 的 `GUARD_TOOL_MATCHER`）不含 shell。本機 Codex 0.160.1
-  二進位內的 `pre-tool-use.command.input` schema 只寫 `tool_name: string`、
-  `tool_input: true`，沒有 shell 的欄位。
-- 因此 matcher、`shoal-guard-v1` projection、`tools/install_hooks.py`、
-  `tools/sync_global.py` 都沒有變動（hook trust 的 hash 不變，不需要在 Codex 重新核准）。
-- 決定：Codex 的 `SHOAL_GUARD_R1` 預設是 `classified`（3.1.0 的行為：R1／R2 只提醒）。若預設
-  `declare`，Codex 的 `apply_patch` 會被 deny，但 main 的 shell 呼叫到不了 guard，宣告沒有出口，
-  只剩派工與使用者的 `#direct`，等於死路。在 Codex 明確設 `declare` 也一樣當成預設。
-- 要補上的做法（一次真實 Codex 執行）：臨時註冊一個 `PreToolUse` hook，matcher 為 `.*`，
-  只把 `tool_name` 與 `tool_input` 的 key 名稱（不記值）寫到 temp 檔，讓 main 跑一個
-  `echo ok` 與一個 `cat > f <<EOF`。得到工具名稱與欄位後：`adapt_codex` 加一個 shell 分支
-  （`tool_kind: shell`、`command`），`DECLARE_HOSTS` 加 `codex`，`GUARD_TOOL_MATCHER`（含
-  `install_hooks.py` 的說明）加入該工具名稱，並補 Codex 向量。matcher 一改，hook trust 會變，
-  需要在 Codex 用 `/hooks` 重新核准一次；舊註冊由 `tools/install_hooks.py --host codex --apply`
-  與 `install/install.py` 原地升級（沿用 claude 在 v3.0.0 把 `Bash` 加進 matcher 的做法）。
+3.2.0 只啟用 `#direct`：repo 內沒有任何 Codex shell 工具的記錄，所以宣告與 shell 寫檔判斷
+維持關閉，Codex 預設 `classified`（宣告沒有出口，deny 會變死路）。3.2.1 補上證據後完成 M7。
+
+- 證據（2026-10-12，一次真實的 `codex exec`，codex-cli 0.160.1，探針 hook 的 matcher 為 `.*`，
+  隔離的 `CODEX_HOME`，只記 key 與型別）：
+  - `UserPromptSubmit` 的 key：`cwd`、`hook_event_name`、`model`、`permission_mode`、`prompt`、
+    `session_id`、`transcript_path`、`turn_id`。
+  - shell 呼叫的 `PreToolUse`：`tool_name` 是 `Bash`；key 為 `cwd`、`hook_event_name`、`model`、
+    `permission_mode`、`session_id`、`tool_input`、`tool_name`、`tool_use_id`、`transcript_path`、
+    `turn_id`；`tool_input` 是只有一個字串欄位 `command` 的物件（`echo ok` 與 heredoc 寫檔
+    `cat > f.txt <<'EOF'` 都一樣）。main session 的呼叫沒有 `agent_id`；prompt 與 tool 事件的
+    `turn_id` 相同。沒有 `run_in_background`，所以 G4 仍只在 Claude。
+  - fixture：`tests/fixtures/codex_payload_shapes.json`（只有 key 與型別，值是合成的），
+    `test_recorded_payload_shape_is_accepted` 餵給 `adapt_codex`。
+- 啟用：
+  - `adapt_codex`：`tool_name == "Bash"` 且 `tool_input.command` 是字串才轉成 shell 事件；其他維持
+    `other`。有 `agent_id` 的呼叫走 subagent 路徑，不受影響。既不是宣告也沒寫檔的前景 `Bash`
+    沒有意見、不寫 state 與 log。`#direct`（3.2.0 已有）照舊。
+  - `DECLARE_HOSTS` 加 `codex`（Python 與 TypeScript mirror）：Codex 預設 `declare`，`classified`
+    （3.1.0 的提醒行為）與 `off` 可選；grok、agy、opencode 不變。
+  - hook 註冊：新的 projection `shoal-guard-v2`，`PreToolUse` matcher 為
+    `^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$`，維持錨定；`UserPromptSubmit`
+    群組與 v1 相同。`shoal-guard-v1` 留在允許清單，`install/hook_registration.py` 的
+    `merge_registration`（`install/install.py`）與 `tools/install_hooks.py --host codex`
+    （`tools/sync_global.py` 呼叫它）都把 v1 的群組原地換成 v2，其他 entry 不動，重跑沒有差異。
+    state 的 `guard_registration` 接受 v1 或 v2，安裝後記 v2。
+  - 因為 hook 內容變了，Codex 的 hook trust 要使用者在互動式 session 用 `/hooks` 重新核准一次；
+    沒有核准時 Codex 不會執行被改動的 hook。
+- 驗證：Codex 向量 23 筆（Python 與 TypeScript 重放）；`tests/test_hook_registration.py`；
+  `tests/test_install_hooks.py` 的 v1 原地升級與「使用者自己的 `Bash` matcher 不動」；以拋棄式 clone
+  實跑 `install.py`（3.2.0 裝好、手動加一組使用者的 `Bash` matcher，再用 3.2.1 重跑）：PreToolUse 從
+  `[使用者 Bash, v1]` 變成 `[使用者 Bash, v2]`，再跑一次沒有變動。
 
 ## S3（完成，v3.2.0）
 
@@ -68,5 +78,4 @@
 ## S4 live gate（待辦）
 
 尚未執行。範圍依 spec：只跑 Claude 與 Codex，最多 8 次，回答 spec 的三個問題（未宣告被擋、
-被擋後的選擇、小改動與三檔小功能的宣告率）。因為 Codex 的宣告尚未啟用，Codex 這一半在補上
-shell 工具的證據之前只能量 `apply_patch` 的提醒與 `#direct`，不能量宣告。
+被擋後的選擇、小改動與三檔小功能的宣告率）。Codex 的宣告已啟用，兩邊都能量宣告率。

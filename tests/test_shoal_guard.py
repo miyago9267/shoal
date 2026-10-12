@@ -95,12 +95,13 @@ class DeclarationParserTests(unittest.TestCase):
         self.assertEqual(guard.log_reason("\u6539" * 250), "\u6539" * 200)
 
     def test_resolve_r1(self) -> None:
-        for env, want in (({}, "declare"), ({"SHOAL_GUARD_R1": ""}, "declare"), ({"SHOAL_GUARD_R1": "bogus"}, "declare"),
-                          ({"SHOAL_GUARD_R1": "DECLARE"}, "declare"), ({"SHOAL_GUARD_R1": "declare"}, "declare"),
-                          ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
-            self.assertEqual(guard.resolve_r1("claude", env), want, env)
+        for host in ("claude", "codex"):
+            for env, want in (({}, "declare"), ({"SHOAL_GUARD_R1": ""}, "declare"), ({"SHOAL_GUARD_R1": "bogus"}, "declare"),
+                              ({"SHOAL_GUARD_R1": "DECLARE"}, "declare"), ({"SHOAL_GUARD_R1": "declare"}, "declare"),
+                              ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
+                self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
         # hosts that cannot declare keep v3.1.0, whatever is asked
-        for host in ("codex", "grok", "agy", "opencode"):
+        for host in ("grok", "agy", "opencode"):
             for value in ("", "declare", "bogus", "classified"):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")
@@ -628,15 +629,33 @@ class DeclareCliTests(CliCase):
                              SHOAL_GUARD_R1="", SHOAL_GUARD_LANG="zh-TW")
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"], guard.MESSAGES["zh-TW"]["DECLARE"])
 
-    def test_codex_default_is_unchanged_and_shell_calls_stay_unseen(self) -> None:
-        payload = CodexAdapterTests.prompt(cwd=self.work)
-        self.run_guard("codex", payload, SHOAL_GUARD_R1="declare")
-        self.assertIsNone(guard.adapt_codex(CodexAdapterTests.tool("Bash", {"command": ': shoal-direct "x"'}))["command"])
+    def test_codex_declare_end_to_end(self) -> None:
         patch = "*** Begin Patch\n*** Add File: a\n+x\n*** End Patch"
-        for _ in range(3):
-            out = self.run_guard("codex", CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work),
-                                 SHOAL_GUARD_R1="declare")
-            self.assertNotIn("permissionDecision", out)
+
+        def codex(payload) -> str:
+            return self.run_guard("codex", payload, SHOAL_GUARD_R1="")
+
+        codex(CodexAdapterTests.prompt(cwd=self.work))
+        out = json.loads(codex(CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work)))["hookSpecificOutput"]
+        self.assertEqual((out["permissionDecision"], out["permissionDecisionReason"]),
+                         ("deny", guard.MESSAGES["en"]["DECLARE"]))
+        self.assertEqual(codex(CodexAdapterTests.tool("Bash", {"command": 'echo ok'}, cwd=self.work)), "")
+        self.assertEqual([r.get("tool") for r in self.log_records()], [None, "apply_patch"])  # echo ok: no log line
+        self.assertEqual(codex(CodexAdapterTests.tool("Bash", {"command": ' : shoal-direct "tiny fix" '}, cwd=self.work)), "")
+        self.assertEqual(codex(CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work)), "")
+        self.assertEqual(self.log_records()[-1]["rule"], "declared")
+        codex(CodexAdapterTests.prompt(cwd=self.work, turn_id="019f-t2"))
+        heredoc = "cat > f.txt <<'EOF'\nhi\nEOF"
+        out = json.loads(codex(CodexAdapterTests.tool("Bash", {"command": heredoc}, cwd=self.work, turn_id="019f-t2")))
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        # a subagent's declaration is ignored
+        self.assertEqual(codex(CodexAdapterTests.tool("Bash", {"command": ': shoal-direct "x"'}, cwd=self.work,
+                                                      turn_id="019f-t2", agent_id="a1", agent_type="executor")), "")
+        self.assertIn("deny", codex(CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work, turn_id="019f-t2")))
+        # classified on codex keeps the advise-only behaviour
+        out = self.run_guard("codex", CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work, turn_id="019f-t2"),
+                             SHOAL_GUARD_R1="classified")
+        self.assertNotIn("permissionDecision", out)
 
 
 class StateLockTests(CliCase):
@@ -717,6 +736,31 @@ class CodexAdapterTests(CliCase):
         sub = guard.adapt_codex(self.tool("apply_patch", {"command": self.PATCH}, agent_id="a1", agent_type="verifier"))
         self.assertEqual((sub["is_subagent"], sub["role"]), (True, "verifier"))
         self.assertEqual(guard.adapt_codex(self.tool("shell", {"command": "ls"}))["tool_kind"], "other")
+        shell = guard.adapt_codex(self.tool("Bash", {"command": "echo ok"}))
+        self.assertEqual((shell["tool_kind"], shell["command"], shell["turn_id"]), ("shell", "echo ok", "019f-t"))
+        for bad in ({}, {"command": 7}, {"command": ["ls"]}, {"cmd": "ls"}):
+            self.assertEqual(guard.adapt_codex(self.tool("Bash", bad))["tool_kind"], "other", bad)
+        self.assertTrue(guard.adapt_codex(self.tool("Bash", {"command": "ls"}, agent_id="a1", agent_type="executor"))["is_subagent"])
+
+    def test_recorded_payload_shape_is_accepted(self) -> None:
+        # tests/fixtures/codex_payload_shapes.json: keys and types of a real codex-cli 0.160.0/0.160.1 run.
+        shapes = json.loads((ROOT / "tests" / "fixtures" / "codex_payload_shapes.json").read_text(encoding="utf-8"))
+        make = {"str": "synthetic", "dict": {"command": "echo synthetic"}, "NoneType": None}
+        for name, shape in shapes["events"].items():
+            payload = {key: make[kind] for key, kind in shape["keys"].items()}
+            payload["cwd"] = self.work
+            payload["hook_event_name"] = shape["hook_event_name"]
+            if "tool_name" in payload:
+                payload["tool_name"] = shape["tool_name"]
+            if "tool_input" in payload:
+                payload["tool_input"] = {k: make[t] for k, t in shape["tool_input"].items()}
+            with self.subTest(name):
+                event = guard.adapt_codex(payload)
+                self.assertEqual(event["kind"], shape["expect_kind"])
+                self.assertEqual(event["tool_kind"], shape["expect_tool_kind"])
+                self.assertFalse(event["is_subagent"])
+                self.assertEqual((event["session_id"], event["turn_id"]), ("synthetic", "synthetic"))
+                self.assertEqual(event["command"], shape.get("expect_command"))
 
     def test_default_enforce_and_explicit_shadow_off(self) -> None:
         self.run_guard("codex", self.prompt(cwd=self.work))

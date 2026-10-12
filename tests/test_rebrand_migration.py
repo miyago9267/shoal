@@ -156,7 +156,7 @@ class CodexMigrationTests(MigrationCase):
         self.assertIn(f"remove {legacy_codex.LEGACY_GATE_RELATIVE}", line)
         self.assertIn("rename config.toml tables", line)
         self.assertIn(
-            "install shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-guard-v1",
+            "install shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-guard-v2",
             line,
         )
         self.assertEqual(
@@ -171,7 +171,7 @@ class CodexMigrationTests(MigrationCase):
             self.codex_calls(), ["plugin add shoal-jev-router@shoal-codex"]
         )
 
-        # hooks.json：只剩 shoal-autoroute-v1 與 shoal-guard-v1 兩個 projection，使用者的 Stop group 還在
+        # hooks.json：只剩 shoal-autoroute-v1 與 shoal-guard-v2 兩個 projection，使用者的 Stop group 還在
         document = json.loads((self.codex / "hooks.json").read_text())
         hr.validate_owned_projection(document, hr.CURRENT_PROJECTION_ID)
         hr.validate_owned_projection(document, hr.GUARD_PROJECTION_ID)

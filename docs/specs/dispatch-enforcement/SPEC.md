@@ -261,7 +261,8 @@ Miyago 2026-10-12 核准 [`docs/specs/guard-declared-direct`](../guard-declared-
 `classified` 即上一節的行為、`off`）：`declare` 下 main 沒派 write role、沒有 `#direct`、沒有宣告
 （單獨一次 `: shoal-direct "<理由>"` 的 shell 呼叫）就不能改檔，不需要任何分類檔；分類檔變成
 公開的選用介面，只能放寬（`role: parent_local`）。硬規則（LEAF、VERIFY_EDIT）、G4、R2、shadow 與
-fail-open 不變，Codex 預設維持原行為（理由見該 spec 的 PROGRESS）。上一節與本節衝突處，以
+fail-open 不變。Codex 在 3.2.0 維持原行為（沒有 shell 工具的記錄），3.2.1 起同樣預設 `declare`
+（`apply_patch` 與 `Bash` 寫檔；guard 註冊升為 `shoal-guard-v2`，matcher 加 `Bash`）。上一節與本節衝突處，以
 guard-declared-direct 為準。
 
 ## 完結狀態（2026-10-06）

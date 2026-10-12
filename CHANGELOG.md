@@ -3,6 +3,46 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.2.1
+
+Codex 啟用 `declare`（M7，見
+[`docs/specs/guard-declared-direct`](./docs/specs/guard-declared-direct/SPEC.md)）。
+v3.2.0 因為 repo 沒有 Codex shell 工具的記錄而沒有啟用；這次在 codex-cli 0.160.1
+實跑一次 `codex exec`（探針 hook，matcher `.*`，隔離的 `CODEX_HOME`）取得 payload 後補上。
+
+### Features
+
+- 證據：shell 工具的 `tool_name` 是 `Bash`，`tool_input` 只有一個字串欄位 `command`（`echo ok`
+  與 heredoc 寫檔都一樣），沒有 `run_in_background`，main session 的呼叫沒有 `agent_id`，
+  `turn_id` 在 prompt 與 tool 事件上相同。只記 key 與型別的 fixture：
+  `tests/fixtures/codex_payload_shapes.json`。
+- `adapt_codex` 把 `Bash` 且 `tool_input.command` 是字串的呼叫轉成 shell 事件（宣告與 shell 寫檔判斷）；
+  其餘不變。`SHOAL_GUARD_R1` 在 Codex 預設 `declare`，`classified`（3.1.0 的提醒行為）與 `off` 可選。
+  subagent 的呼叫（有 `agent_id`）不受影響；既不是宣告也沒寫檔的 `Bash` 沒有意見、不寫 state 與 log。
+  G4 仍只在 Claude（Codex 沒有 `run_in_background`）。
+- Codex hook 註冊升為 `shoal-guard-v2`：`PreToolUse` 的 matcher 變成
+  `^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$`。`shoal-guard-v1`
+  （3.2.0 以前）仍在允許清單，`install/install.py`、
+  `tools/install_hooks.py --host codex` 與 `tools/sync_global.py` 會把它原地換成 v2，
+  只替換 shoal 自己的群組，使用者自己的 `Bash` matcher 等其他 entry 位置與內容不變；
+  重跑不產生差異。
+- 向量：`tests/fixtures/guard_vectors.json` 取代 3.2.0 的 Codex「維持原行為」向量，
+  新增 23 筆 Codex 向量
+  （declare、宣告、heredoc、不跨輪、`#direct`、派工、subagent、`classified`、`off`、shadow）；
+  `tests/test_hook_registration.py` 測 v1 到 v2 的升級。
+
+### 升級
+
+- Codex 使用者：重跑 `python3 tools/install_hooks.py --host codex --apply`、
+  `install/install.py` 或
+  `tools/sync_global.py`，然後在互動式 Codex 用 `/hooks` **重新核准一次**被改動的 hook；未核准前
+  Codex 不會執行它。想維持提醒就好，設 `SHOAL_GUARD_R1=classified`。
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.2.1` 加回並更新。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.2.1。
+
 ## v3.2.0
 
 guard 的 main 改檔規則（R1、G5）改成「宣告直接做」，不再等外部分類來源

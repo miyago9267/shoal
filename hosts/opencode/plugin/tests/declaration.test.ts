@@ -36,15 +36,17 @@ describe("parseDeclaration", () => {
 });
 
 describe("resolveR1", () => {
-  test("claude declares by default; classified and off are honoured", () => {
-    expect(resolveR1("claude", {})).toBe("declare");
-    for (const value of ["", "bogus", "DECLARE", "declare"]) expect(resolveR1("claude", { SHOAL_GUARD_R1: value })).toBe("declare");
-    expect(resolveR1("claude", { SHOAL_GUARD_R1: "classified" })).toBe("classified");
-    expect(resolveR1("claude", { SHOAL_GUARD_R1: "off" })).toBe("off");
+  test("claude and codex declare by default; classified and off are honoured", () => {
+    for (const host of ["claude", "codex"]) {
+      expect(resolveR1(host, {})).toBe("declare");
+      for (const value of ["", "bogus", "DECLARE", "declare"]) expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe("declare");
+      expect(resolveR1(host, { SHOAL_GUARD_R1: "classified" })).toBe("classified");
+      expect(resolveR1(host, { SHOAL_GUARD_R1: "off" })).toBe("off");
+    }
   });
 
   test("hosts that cannot declare keep the v3.1.0 rule", () => {
-    for (const host of ["codex", "grok", "agy", "opencode"]) {
+    for (const host of ["grok", "agy", "opencode"]) {
       for (const value of ["", "declare", "bogus", "classified"]) {
         expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe("classified");
       }

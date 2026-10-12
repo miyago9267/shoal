@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import legacy_codex
 from hook_registration import (
     CURRENT_PROJECTION_ID,
-    GUARD_PROJECTION_ID,
+    GUARD_PROJECTION_IDS,
     HookRegistrationError,
     legacy_projection_id,
     load_registration,
@@ -121,7 +121,7 @@ class PolicyTargetIdentity:
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
 SHOAL_PLUGIN_NAME = "shoal-codex"
-SHOAL_PLUGIN_VERSION = "3.2.0"
+SHOAL_PLUGIN_VERSION = "3.2.1"
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
@@ -1009,9 +1009,10 @@ def _validate_committed_state(
         )
         validate_owned_projection(registration, hook_projection_id)
         if guard_present:
-            if validate_projection_state(state["guard_registration"]) != GUARD_PROJECTION_ID:
+            recorded_guard = validate_projection_state(state["guard_registration"])
+            if recorded_guard not in GUARD_PROJECTION_IDS:
                 raise HookRegistrationError("guard projection state is malformed")
-            validate_owned_projection(registration, GUARD_PROJECTION_ID)
+            validate_owned_projection(registration, recorded_guard)
     except (OSError, HookRegistrationError) as exc:
         raise InstallAbort(f"committed hook registration is invalid: {exc}") from exc
     config_path = home / "config.toml"
@@ -2104,7 +2105,7 @@ def install(
         if "guard_registration" in state:
             # Validated by _validate_committed_state; its script fingerprint is
             # proven against disk in the same pass.
-            owned_guard_projection = GUARD_PROJECTION_ID
+            owned_guard_projection = state["guard_registration"]["projection_id"]
             proven_guard_script_fingerprint = state["target_fingerprints"][
                 GUARD_SCRIPT_RELATIVE
             ]
