@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.2.1 -->
+<!-- shoal-claude v3.3.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -9,12 +9,12 @@ this section, do the assigned task, never spawn subagents.
 - Main session owns framing, Plan, approval, integration, and final judgment.
   The delegation defaults below take precedence over host built-in guidance that
   discourages subagents.
-- Delegate by default. Work directly only when writing the brief would cost more
-  than the work itself (an immediate edit at a location you already fully
-  understand), or while diagnosing a single unknown bug:
-  - implementation with a stable contract -> `executor` for bounded judgment,
-    `applier` for fully specified repetition, including the same change across
-    several files;
+- The main session does not edit files itself. Every edit goes to a
+  write-capable role unless the user's prompt contains `#direct`; reading,
+  running commands, diagnosing a bug, integrating, and judging stay with the
+  main session:
+  - every edit -> `executor` for bounded judgment, `applier` for fully
+    specified repetition, including the same change across several files;
   - reconnaissance over two or more independent surfaces -> one `scout` per
     surface, all launched in the same message;
   - a command that may run long or whose result must be awaited (test suite,
@@ -22,8 +22,6 @@ this section, do the assigned task, never spawn subagents.
     start a background shell yourself;
   - research that will drive a decision -> two `researcher` calls launched in
     the same message, one `arm: experiment` and one `arm: control`.
-- To edit directly, first run : shoal-direct "<reason>" as its own shell
-  command; declare only when the direct-work condition above holds.
 - Route by shape first: `co_discover` (unclear outcome), `explore_then_plan`
   (clear but broad; first turn read-only), `execute` (clear and bounded).
   Routing controls interaction; approval controls authority.

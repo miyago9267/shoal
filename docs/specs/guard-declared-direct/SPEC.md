@@ -52,6 +52,30 @@ Miyago 2026-10-12：好的策略不分模型、不分廠牌；Jev 的分流要�
 - **M8（Claude bootstrap）**：bootstrap 加一句：要自己改檔，先執行宣告指令，而且只在
   符合直接做的條件時宣告。
 
+### 修訂（2026-10-12，live gate 之後）
+
+live gate 顯示 Claude 在小功能上每次都先宣告再自己做，宣告沒有讓 main 改成派工。
+Miyago 2026-10-12 決定拿掉 main 自己給自己的出口。
+
+- **M9（strict 模式）**：`SHOAL_GUARD_R1` 新增 `strict`，並成為 claude 與 codex 的
+  預設。While 模式是 `strict` 且 guard 為 enforce，when main session 呼叫改檔工具
+  或以 shell 寫檔，the guard shall deny，除非本回合已派出可寫的 role、使用者的
+  prompt 含獨立的 `#direct`（或設定 `SHOAL_GUARD_DIRECT=1`），或目標屬於豁免路徑。
+  宣告指令與分類檔在 `strict` 模式都不放行。`declare`、`classified`、`off` 保留為
+  可選。
+- **M10（訊息）**：`strict` 的 deny 訊息只列兩個出口：派出可寫的 role，或請使用者在
+  prompt 加 `#direct`。
+- **M11（派工要真的啟動）**：Where host 提供 role 已啟動的事件，the guard shall 以
+  該事件而不是派工呼叫本身，作為「已派出可寫的 role」的依據；role 沒能啟動時不
+  放行。沒有這種事件的 host 維持以派工呼叫為準，並在文件寫明這個限制。
+- **M12（條款一致）**：Claude 的 bootstrap 與 policy 不再寫「main 可以自己做小改動」
+  或宣告指令；改成：main 不自己改檔，改檔一律派可寫的 role，除非使用者以
+  `#direct` 授權。讀檔、執行指令、診斷仍由 main 直接做。
+- **D6**：`docs/DESIGN-INVARIANTS.md` 第 2 條改為：「派工不以數字門檻強制。改檔
+  一律由可寫的 role 執行，除非使用者以 `#direct` 授權 main 直接改；互不相干的偵察
+  與長指令預設派工。讀檔、診斷、整合與判斷由 main 直接做。」第 3 條的「未派工、
+  未宣告就改檔（宣告或 `#direct` 可放行）」改為「未派工就改檔（`#direct` 可放行）」。
+
 ## Decisions
 
 - **D1**：用「宣告」而不是分類器決定擋不擋。原因：規則是確定性的，不需要任何

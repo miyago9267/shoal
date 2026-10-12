@@ -3,6 +3,50 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.3.0
+
+live gate（`docs/benchmarks/guard-declared-direct-gate/`）顯示 Claude 在每次改檔前都先宣告，
+包含兩個三檔小功能，一次也沒派工；自己給自己的出口不會改變行為。Miyago 2026-10-12 決定預設拿掉
+（M9 到 M12、D6，見
+[`docs/specs/guard-declared-direct`](./docs/specs/guard-declared-direct/SPEC.md)）。
+
+### Features
+
+- `SHOAL_GUARD_R1` 新增 `strict`，並成為 Claude 與 Codex 的預設（未設定、空字串、無法辨識的值都用它）。
+  enforce 時 main 的改檔工具與 shell 寫檔一律 deny，除非本輪派出了 write role、使用者的 prompt 有
+  獨立的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標是豁免路徑。`: shoal-direct ...` 在這個模式只是
+  普通的空指令（不寫 state、不寫 log、不放行），分類檔（含 `parent_local`）沒有作用。deny 訊息（英文與
+  zh-TW）只列兩個出口。shadow 記 `would_deny`；R2、G4 與硬規則不變，被 deny 的呼叫不計入 R2。
+  `declare`、`classified`、`off` 保留為可選，行為與 3.2.1 相同。Python 與 TypeScript mirror 重放同一份
+  向量（`guard_vectors.json` 新增 42 筆 strict 向量，原本依賴預設的 declare 向量改成明確選 `declare`）。
+- Claude policy（M12）：`bootstrap-direct-declare` 條款移除；
+  `bootstrap-delegate-default` 改為「main 不自己改檔，改檔一律派可寫的 role
+  （`executor`／`applier`），除非使用者的 prompt 有 `#direct`；讀檔、
+  執行指令、診斷、整合與判斷留在 main」，`scout`、`watcher`、`researcher` 的路徑不變。
+  orchestration 的 `direct-when-small`、`delegate-cost-benefit`、`mech-direct-blocker`、
+  `single-bug-direct`、`parallel-writers` 對齊：main 直接改只存在於 `#direct`，診斷留在 main、修正
+  派工，「worker 不可用」不再是自己改的理由（回報使用者）。其他 host 的 policy 不變。
+- `docs/DESIGN-INVARIANTS.md` 第 2、3 條改為 D6 的字句。
+
+### 限制
+
+- M11（派工要真的啟動）沒有實作：guard 仍在派工呼叫發出時放行，role 沒能啟動時放行仍然有效（live
+  gate 中 Codex 就是這樣）。Claude Code 有 `SubagentStart`，但 repo 只記錄過它帶 `agent_type`，不足以
+  安全地把它對應到 main 的那一輪，也不知道啟動失敗時事件會不會出現；Codex 沒有已記錄的啟動事件。
+  需要補的 payload 見 `docs/specs/guard-declared-direct/PROGRESS.md`。
+- hook 註冊沒有變動（沒有新事件、Codex matcher 不變），不需要在 Codex 重新核准 hook。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.3.0。
+- prompt lock：`LOCK.json` 沒有變動（`claude-orchestration-policy` 的單次變動在預算內），commit
+  不需要 `Lock-Renewal: approved`。
+
+### 升級
+
+- 想維持 3.2.x 的宣告行為：設 `SHOAL_GUARD_R1=declare`；只想要提醒：`classified`。
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.3.0` 加回並更新。
+
 ## v3.2.1
 
 Codex 啟用 `declare`（M7，見

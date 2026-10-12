@@ -25,13 +25,17 @@ prompt, or for good by SHOAL_GUARD_DIRECT=1.
 
 The main-session edit rule (R1 for edit tools, G5 for a foreground `Bash` that literally writes a
 file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-declared-direct):
-  declare     (default on claude and codex) deny unless this turn has a dispatched write role, `#direct` /
+  strict      (default on claude and codex) deny unless this turn has a dispatched write role,
+              `#direct` / SHOAL_GUARD_DIRECT=1, or the target is exempt.  A `: shoal-direct` command is an
+              ordinary no-op here and a classification file has no effect (docs/specs/guard-declared-direct,
+              M9).  The only exits are dispatch and the user's `#direct`.
+  declare     (3.2.x default) deny unless this turn has a dispatched write role, `#direct` /
               SHOAL_GUARD_DIRECT=1, a declaration (a shell call that is exactly
               `: shoal-direct <reason>`, see parse_declaration) or a classification file whose role
               is `parent_local`.  No classification file, or any other role, has no effect.
   classified  the v3.1.0 rule: deny (claude) or advise (other hosts) only when the turn is
               classified judgment/mechanical by the optional classification file.  Default on every
-              host that cannot declare (grok, agy, opencode).
+              host that cannot gate (grok, agy, opencode).
   off         no R1/G5; the hard rules, G4 and R2 are untouched.
 """
 
@@ -87,7 +91,8 @@ DENY_MAIN_HOSTS = frozenset({"claude"})
 # SHOAL_GUARD_R1 (main-session edit rule).  `declare` needs a way to declare, so it is selectable only on
 # hosts whose adapter delivers main's shell calls to the guard: claude's `Bash` and, since 3.2.1, codex's
 # `Bash` (recorded payload, docs/specs/guard-declared-direct/PROGRESS.md).  Any other value falls back to
-# the host default; every other host keeps the v3.1.0 behaviour (`classified`).
+# the host default; every other host keeps the v3.1.0 behaviour (`classified`).  `strict` (3.3.0) needs the
+# same events (edit tools plus main's shell calls), so it is selectable on the same hosts and is their default.
 DECLARE_HOSTS = frozenset({"claude", "codex"})
 # `#direct` as an instruction the user typed: a standalone token that follows the start of the text or
 # whitespace and is followed by the end, whitespace or sentence punctuation (ASCII or CJK).  Anything
@@ -181,6 +186,10 @@ MESSAGES = {
             "Shoal dispatch guard: the main session does not start background shells. Dispatch "
             "watcher in the background instead, or add #direct to your prompt."
         ),
+        "STRICT": (
+            "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
+            "write-capable role (executor or applier), or ask the user to add #direct to the prompt."
+        ),
         "DECLARE": (
             "Shoal dispatch guard: the main session delegates edits by default. Dispatch a "
             "write-capable role (executor or applier), or declare direct work first by running "
@@ -203,6 +212,10 @@ MESSAGES = {
         "G4": (
             "Shoal dispatch guard：main session 不自己開背景 shell。"
             "請改在背景派出 watcher，或在 prompt 加上 #direct。"
+        ),
+        "STRICT": (
+            "Shoal dispatch guard：main session 不自己改檔。"
+            "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"
         ),
         "DECLARE": (
             "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
@@ -411,13 +424,16 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
 
 
 def resolve_r1(host: str, env: Dict[str, str]) -> str:
-    """SHOAL_GUARD_R1: `classified` and `off` as given; `declare` where the host can declare.
+    """SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
 
-    Unset, unrecognized, or `declare` on a host that cannot declare -> the host default."""
+    Unset, unrecognized, or `strict` / `declare` on a host that cannot gate -> the host default
+    (`strict` on claude and codex, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw
-    return "declare" if host in DECLARE_HOSTS else "classified"
+    if host not in DECLARE_HOSTS:
+        return "classified"
+    return "declare" if raw == "declare" else "strict"
 
 
 # ---------------------------------------------------------------------------
@@ -903,10 +919,14 @@ class _Guard:
             tool_kind = None  # G4 exists on claude only
         if kind == "tool" and tool_kind == "shell":
             # A foreground shell call that is neither a declaration nor a file write has no opinion,
-            # and touches no state or log.  `declare` hosts read declarations and judge writes (G5);
-            # `classified` judges writes on claude only (v3.1.0); `off` has no G5.
+            # and touches no state or log.  `declare` reads declarations and judges writes (G5);
+            # `strict` only judges writes (a declaration is an ordinary no-op there); `classified` judges
+            # writes on claude only (v3.1.0); `off` has no G5.
             if self.r1 == "declare":
                 if parse_declaration(event.get("command")) is None and self.shell_write_target() is None:
+                    tool_kind = None
+            elif self.r1 == "strict":
+                if self.shell_write_target() is None:
                     tool_kind = None
             elif (
                 self.r1 != "classified"
@@ -1044,6 +1064,11 @@ class _Guard:
             return self.result("allow", "direct", file=target)
         if state["dispatched"]:
             return self.result("allow", "dispatched", file=target)
+        if self.r1 == "strict":
+            return self.result(
+                "deny" if self.mode == "enforce" else "would_deny", "R1",
+                reason=_text(self.env, "STRICT"), file=target
+            )
         if self.r1 == "declare":
             if self._declared(state, guard):
                 return self.result("allow", "declared", file=target)
@@ -1088,6 +1113,7 @@ class _Guard:
         direct = self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]
         limit = _max_files(self.env)
         declare = self.r1 == "declare"
+        strict = self.r1 == "strict"
         classified: Optional[str] = None
         declared = False
         if not direct and not state["dispatched"]:
@@ -1108,7 +1134,7 @@ class _Guard:
                 rule = "dispatched"
             else:
                 rule = "declared" if declared else "count"
-                if classified or (declare and not declared):
+                if classified or strict or (declare and not declared):
                     fired: Optional[str] = "R1"
                 elif path not in edited and (limit is None or len(edited) >= limit):
                     if limit is None:
@@ -1116,7 +1142,7 @@ class _Guard:
                     fired = "R2"
                 else:
                     fired = None
-                if fired == "R1" and (declare or self.host in DENY_MAIN_HOSTS):
+                if fired == "R1" and (declare or strict or self.host in DENY_MAIN_HOSTS):
                     deny_r1 = True  # G1: R1 denies on claude; everywhere else it only reminds
                 elif fired and advise_rule is None:
                     advise_rule = fired  # R2 (and R1 off claude) only remind; the edit goes ahead
@@ -1128,7 +1154,8 @@ class _Guard:
             return self.result("allow", first_rule, file=raw_paths[0])
         if deny_r1 and self.mode == "enforce":
             return self.result(
-                "deny", "R1", reason=_text(self.env, "DECLARE" if declare else "R1"), file=raw_paths[0]
+                "deny", "R1", reason=_text(self.env, "STRICT" if strict else "DECLARE" if declare else "R1"),
+                file=raw_paths[0],
             )
         state["edited"] = edited
         notify = (

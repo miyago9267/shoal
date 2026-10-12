@@ -96,13 +96,14 @@ class DeclarationParserTests(unittest.TestCase):
 
     def test_resolve_r1(self) -> None:
         for host in ("claude", "codex"):
-            for env, want in (({}, "declare"), ({"SHOAL_GUARD_R1": ""}, "declare"), ({"SHOAL_GUARD_R1": "bogus"}, "declare"),
-                              ({"SHOAL_GUARD_R1": "DECLARE"}, "declare"), ({"SHOAL_GUARD_R1": "declare"}, "declare"),
+            for env, want in (({}, "strict"), ({"SHOAL_GUARD_R1": ""}, "strict"), ({"SHOAL_GUARD_R1": "bogus"}, "strict"),
+                              ({"SHOAL_GUARD_R1": "STRICT"}, "strict"), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
+                              ({"SHOAL_GUARD_R1": "declare"}, "declare"),
                               ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
                 self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
         # hosts that cannot declare keep v3.1.0, whatever is asked
         for host in ("grok", "agy", "opencode"):
-            for value in ("", "declare", "bogus", "classified"):
+            for value in ("", "declare", "strict", "bogus", "classified"):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")
 
@@ -187,7 +188,7 @@ class CliCase(unittest.TestCase):
         self.guard_dir = os.path.join(self.state, "shoal", "guard")
 
     def env(self, **extra: str) -> dict:
-        # The v3.1.0 tests run in `classified` mode; the declare tests pass SHOAL_GUARD_R1="" (host default).
+        # The v3.1.0 tests run in `classified` mode; the declare tests pass SHOAL_GUARD_R1="declare", the strict tests "" (host default).
         env = {"HOME": self.home, "XDG_STATE_HOME": self.state, "TMPDIR": self.sandbox.tmpdir,
                "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "SHOAL_GUARD_R1": "classified"}
         env.update(extra)
@@ -530,10 +531,10 @@ class ClaudeAdapterTests(CliCase):
 
 
 class DeclareCliTests(CliCase):
-    """`declare` mode through the real script (the claude default; no classification file anywhere)."""
+    """`declare` mode through the real script (SHOAL_GUARD_R1=declare; no classification file anywhere)."""
 
     def guard_run(self, payload) -> str:
-        return self.run_guard("claude", payload, SHOAL_GUARD_R1="")
+        return self.run_guard("claude", payload, SHOAL_GUARD_R1="declare")
 
     def edit(self, name="a.py", **kw) -> str:
         return self.guard_run(claude_tool("Edit", {"file_path": name}, cwd=self.work, **kw))
@@ -613,7 +614,7 @@ class DeclareCliTests(CliCase):
         self.write_turn("sess-1", "p-3", "parent_local")
         self.assertEqual(self.edit(prompt_id="p-3"), "")
         self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": "z.py"}, cwd=self.work, prompt_id="p-4"),
-                                        SHOAL_GUARD_R1="", SHOAL_GUARD_DIRECT="1"), "")
+                                        SHOAL_GUARD_R1="declare", SHOAL_GUARD_DIRECT="1"), "")
 
     def test_off_and_classified_modes_do_not_deny_without_a_classification(self) -> None:
         self.start()
@@ -626,14 +627,14 @@ class DeclareCliTests(CliCase):
     def test_zh_tw_message(self) -> None:
         self.start()
         out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work),
-                             SHOAL_GUARD_R1="", SHOAL_GUARD_LANG="zh-TW")
+                             SHOAL_GUARD_R1="declare", SHOAL_GUARD_LANG="zh-TW")
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"], guard.MESSAGES["zh-TW"]["DECLARE"])
 
     def test_codex_declare_end_to_end(self) -> None:
         patch = "*** Begin Patch\n*** Add File: a\n+x\n*** End Patch"
 
         def codex(payload) -> str:
-            return self.run_guard("codex", payload, SHOAL_GUARD_R1="")
+            return self.run_guard("codex", payload, SHOAL_GUARD_R1="declare")
 
         codex(CodexAdapterTests.prompt(cwd=self.work))
         out = json.loads(codex(CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work)))["hookSpecificOutput"]
@@ -656,6 +657,77 @@ class DeclareCliTests(CliCase):
         out = self.run_guard("codex", CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work, turn_id="019f-t2"),
                              SHOAL_GUARD_R1="classified")
         self.assertNotIn("permissionDecision", out)
+
+
+class StrictCliTests(CliCase):
+    """`strict` (the claude and codex default since 3.3.0) through the real script, claude and codex payloads."""
+
+    PATCH = "*** Begin Patch\n*** Add File: a\n+x\n*** End Patch"
+
+    def claude(self, payload) -> str:
+        return self.run_guard("claude", payload, SHOAL_GUARD_R1="")
+
+    def codex(self, payload) -> str:
+        return self.run_guard("codex", payload, SHOAL_GUARD_R1="")
+
+    def deny_reason(self, out: str) -> str:
+        body = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(body["permissionDecision"], "deny")
+        return body["permissionDecisionReason"]
+
+    def test_messages(self) -> None:
+        self.assertEqual(
+            guard.MESSAGES["en"]["STRICT"],
+            "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role "
+            "(executor or applier), or ask the user to add #direct to the prompt.")
+        for lang in ("en", "zh-TW"):
+            text = guard.MESSAGES[lang]["STRICT"]
+            for needle in ("executor", "applier", "#direct"):
+                self.assertIn(needle, text)
+            self.assertNotIn("shoal-direct", text)
+
+    def test_claude_exits_are_dispatch_and_hash_direct_only(self) -> None:
+        self.claude(claude_prompt(cwd=self.work))
+        edit = claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)
+        self.assertEqual(self.deny_reason(self.claude(edit)), guard.MESSAGES["en"]["STRICT"])
+        before = self.log_records()
+        self.assertEqual(self.claude(claude_tool("Bash", {"command": ': shoal-direct "tiny fix"'}, cwd=self.work)), "")
+        self.assertEqual(self.log_records(), before)  # a declaration is an ordinary no-op: no state, no log
+        self.assertIn("deny", self.claude(edit))
+        self.write_turn("sess-1", "p-1", "parent_local")
+        self.assertIn("deny", self.claude(edit))
+        self.assertIn("deny", self.claude(claude_tool("Bash", {"command": "echo x > a.py"}, cwd=self.work)))
+        self.assertEqual(self.claude(claude_tool("Agent", {"subagent_type": "scout"}, cwd=self.work)), "")
+        self.assertIn("deny", self.claude(edit))
+        self.assertEqual(self.claude(claude_tool("Agent", {"subagent_type": "executor"}, cwd=self.work)), "")
+        self.assertEqual(self.claude(edit), "")
+        self.claude(claude_prompt(cwd=self.work, prompt_id="p-2", prompt="fix it #direct"))
+        self.assertEqual(self.claude(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2")), "")
+        self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": "b.py"}, cwd=self.work, prompt_id="p-3"),
+                                        SHOAL_GUARD_R1="", SHOAL_GUARD_DIRECT="1"), "")
+
+    def test_codex_exits_are_dispatch_and_hash_direct_only(self) -> None:
+        self.codex(CodexAdapterTests.prompt(cwd=self.work))
+        patch = CodexAdapterTests.tool("apply_patch", {"command": self.PATCH}, cwd=self.work)
+        self.assertEqual(self.deny_reason(self.codex(patch)), guard.MESSAGES["en"]["STRICT"])
+        self.assertEqual(self.codex(CodexAdapterTests.tool("Bash", {"command": ': shoal-direct "x"'}, cwd=self.work)), "")
+        self.assertIn("deny", self.codex(patch))
+        self.assertIn("deny", self.codex(CodexAdapterTests.tool("Bash", {"command": "cat > f <<'EOF'\nhi\nEOF"}, cwd=self.work)))
+        self.assertEqual(self.codex(CodexAdapterTests.tool("Bash", {"command": "echo ok"}, cwd=self.work)), "")
+        self.assertEqual(self.codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "scout"}, cwd=self.work)), "")
+        self.assertIn("deny", self.codex(patch))
+        self.assertEqual(self.codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor"}, cwd=self.work)), "")
+        self.assertEqual(self.codex(patch), "")
+        self.codex(CodexAdapterTests.prompt(cwd=self.work, turn_id="019f-t2", prompt="do it #direct"))
+        self.assertEqual(self.codex(CodexAdapterTests.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, turn_id="019f-t2")), "")
+
+    def test_selectable_modes_keep_their_behavior(self) -> None:
+        self.claude(claude_prompt(cwd=self.work))
+        edit = claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)
+        self.assertEqual(self.run_guard("claude", edit, SHOAL_GUARD_R1="off"), "")
+        self.assertEqual(self.run_guard("claude", edit, SHOAL_GUARD_R1="classified"), "")
+        self.assertEqual(self.deny_reason(self.run_guard("claude", edit, SHOAL_GUARD_R1="declare")),
+                         guard.MESSAGES["en"]["DECLARE"])
 
 
 class StateLockTests(CliCase):

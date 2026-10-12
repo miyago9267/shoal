@@ -273,20 +273,20 @@ reads `#direct`, and a `PreToolUse` group with matcher
 enforce mode by default (`SHOAL_GUARD=shadow` logs `would_deny` and `advise`
 records under `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`;
 `SHOAL_GUARD=off` disables it). The subagent rules (LEAF, VERIFY_EDIT) deny.
-Since 3.2.1 the main-session edit rule is the same declaration rule as on
-Claude (`SHOAL_GUARD_R1=declare`, the default): `apply_patch` and a `Bash`
-call that literally writes a file are denied unless the turn has a dispatched
-write role, a standalone `#direct` in the prompt (or `SHOAL_GUARD_DIRECT=1`),
-or a declaration, which is a `Bash` call that is exactly `: shoal-direct
-"<reason>"` (see the Claude guard section below for the grammar and the
-optional classification file). `SHOAL_GUARD_R1=classified` restores the
-earlier reminder-only behavior (R1 and R2 remind once per turn as
-`additionalContext`) and `SHOAL_GUARD_R1=off` disables the rule. R2 still only
-reminds. The background-shell rule G4 does not exist on Codex (its shell calls
-carry no `run_in_background`). The rule is built on a recorded payload of
-Codex CLI 0.160.1: the shell tool is `Bash` with `tool_input.command`, the
-same `turn_id` is on the prompt and tool events, and main-session calls have
-no `agent_id` (keys and types: `tests/fixtures/codex_payload_shapes.json`;
+Since 3.3.0 the main-session edit rule is the same `strict` rule as on Claude
+(`SHOAL_GUARD_R1=strict`, the default; 3.2.1 and 3.2.x defaulted to
+`declare`): `apply_patch` and a `Bash` call that literally writes a file are
+denied unless the turn has a dispatched write role or a standalone `#direct`
+in the prompt (or `SHOAL_GUARD_DIRECT=1`). A declaration is no exit in
+`strict`. The earlier `declare` rule (exit: a `Bash` call that is exactly `:
+shoal-direct "<reason>"`; see the Claude guard section below), the
+reminder-only `SHOAL_GUARD_R1=classified` and `SHOAL_GUARD_R1=off` stay
+selectable. R2 still only reminds. The background-shell rule G4 does not exist
+on Codex (its shell calls carry no `run_in_background`). The rule is built on
+a recorded payload of Codex CLI 0.160.1: the shell tool is `Bash` with
+`tool_input.command`, the same `turn_id` is on the prompt and tool events, and
+main-session calls have no `agent_id` (keys and types:
+`tests/fixtures/codex_payload_shapes.json`;
 [`docs/specs/guard-declared-direct/PROGRESS.md`](./docs/specs/guard-declared-direct/PROGRESS.md)).
 A foreground `Bash` call that neither declares nor writes a file gets no
 opinion and leaves no state or log line. An existing home that predates the
@@ -300,7 +300,10 @@ changed hook once in an interactive Codex session with `/hooks`, as for the
 autoroute gate. Without that approval Codex does not run it, and an upgraded
 group that is not re-approved leaves the guard blind to `Bash` (declarations
 then have no way in, so keep `#direct` and dispatch in mind until you
-approve). A launch probe (must exit 0, prints nothing):
+approve). Dispatch unlocks at the `spawn_agent` call itself: Codex has no
+recorded event that proves the role started, so a role that fails to start
+still unlocks the turn (docs/specs/guard-declared-direct, M11). A launch probe
+(must exit 0, prints nothing):
 
 ```bash
 echo '{}' | /usr/bin/env python3 "$SHOAL_TARGET_HOME/hooks/shoal_guard.py" --host codex
@@ -528,23 +531,28 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 [`docs/specs/delegation-default`](./docs/specs/delegation-default/SPEC.md)
 讓 Claude 上的 main session 規則回到 deny；Grok、agy、OpenCode 的行為不變（R1、R2 只提醒）。
 3.2.1 起 Codex 的 R1 與 G5 和 Claude 一樣（見下）。
-3.2.0 起 R1 與 G5 不再等分類來源：預設改成「main 沒派工也沒宣告就不能改檔」
+3.2.0 起 R1 與 G5 不再等分類來源（宣告）；3.3.0 起預設改成 `strict`：main 沒派 write role、
+使用者也沒有 `#direct` 就不能改檔，宣告不再是出口
 （[`docs/specs/guard-declared-direct`](./docs/specs/guard-declared-direct/SPEC.md)）。
 
 #### main 改檔規則的模式：`SHOAL_GUARD_R1`
 
 | 值 | 預設於 | R1（改檔工具）與 G5（寫檔的 `Bash`） |
 | --- | --- | --- |
-| `declare` | Claude、Codex（3.2.1 起） | enforce 時 deny，除非本輪有：已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告（下一節），或分類檔的 `role` 是 `parent_local`。沒有分類檔、或其他 `role`，都不影響結果。shadow 記 `would_deny` |
+| `strict` | Claude、Codex（3.3.0 起） | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
+| `declare` | 無（3.2.x 的預設，可選） | enforce 時 deny，除非本輪有：已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告（下一節），或分類檔的 `role` 是 `parent_local`。沒有分類檔、或其他 `role`，都不影響結果。shadow 記 `would_deny` |
 | `classified` | 其他 host（Grok、agy、OpenCode） | 3.1.0 的規則：只有分類檔把本輪標成 `judgment` 或 `mechanical` 時才擋（Claude：deny；其他 host 只提醒） |
 | `off` | 無 | 關掉 R1 與 G5。硬規則（LEAF、VERIFY_EDIT）、G4、R2 不受影響 |
 
-未設定、空字串、無法辨識的值，或在不能宣告的 host 上設 `declare`，都用該 host 的預設。
+未設定、空字串、無法辨識的值，或在不能閘控的 host 上設 `strict`／`declare`，都用該 host 的預設
+（Claude、Codex 是 `strict`，其他是 `classified`）。
+`declare`、`classified`、`off` 的行為與 3.2.1 相同。
 被 deny 的改檔與 shell 寫檔不計入 R2 的檔案數，也不會在同一次呼叫送出 R2 提醒。
 
 #### 宣告
 
-要自己改檔時，main 先單獨執行一次 shell 指令：
+`declare` 模式（`SHOAL_GUARD_R1=declare`）下，要自己改檔時 main 先單獨執行一次 shell 指令
+（`strict` 下這個指令是普通的空指令，不放行）：
 
 ```bash
 : shoal-direct "改一個錯字，寫 brief 比直接改貴"
@@ -578,19 +586,19 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
 - 內容：`{"turn_id": "<這一輪的 id>", "role": "judgment" | "mechanical" | "parent_local"}`。
   `turn_id` 是 Claude 的 `prompt_id`，要等於 guard 目前記錄的那一輪，不同就當成過期而忽略
   （舊鍵名 `prompt_id` 也接受）。其他欄位忽略，檔案上限 64 KiB。
-- `declare` 模式下它只能放寬：`parent_local` 視同已宣告；`judgment`、`mechanical`、其他值、
+- `strict` 模式下分類檔沒有作用（`parent_local` 也不放行）。`declare` 模式下它只能放寬：`parent_local` 視同已宣告；`judgment`、`mechanical`、其他值、
   或沒有檔案，結果與「沒有檔案」相同。`classified` 模式下行為與 3.1.0 相同（見下表）。
 
 #### 規則總表
 
 | 規則 | 條件 | Claude／Codex（enforce） | Claude／Codex（shadow） | Grok、agy、OpenCode |
 | --- | --- | --- | --- | --- |
-| R1 | `declare`：本輪沒有派工、`#direct`、宣告或 `parent_local`；`classified`：分類檔把本輪標成 `judgment` 或 `mechanical` 且沒派工。路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | 只提醒（`advise`） |
+| R1 | `strict`：本輪沒有派工或 `#direct`；`declare`：本輪沒有派工、`#direct`、宣告或 `parent_local`；`classified`：分類檔把本輪標成 `judgment` 或 `mechanical` 且沒派工。路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | 只提醒（`advise`） |
 | R2 | 本輪 main 直接改到第 3 個不同的檔案 | 只提醒 | 只提醒 | 只提醒 |
 | G4 | main（payload 沒有 `agent_id`）呼叫 `Bash` 且 `run_in_background: true`（只有 Claude；Codex 沒有這個欄位） | deny，訊息要求改派背景的 `watcher` | 記 `would_deny` | 無此規則 |
 | G5（3.0.1 起） | R1 的條件成立，且 main 前景呼叫的 `Bash` 指令字面上寫檔（見下） | 以 R1 的規則 id 與訊息 deny | 記 `would_deny`（規則 `R1`） | 無此規則 |
 
-- 派出 `watcher`、`researcher`、`scout` 等非 write role 不會解除 R1；G4 不因任何派工解除。
+- 派出 `watcher`、`researcher`、`scout` 等非 write role 不會解除 R1（任何模式）；G4 不因任何派工解除。
   派出 `executor`、`applier`、`security-executor` 之後，本輪的改檔與 shell 寫檔放行。
 - 放行：使用者 prompt 內獨立的 `#direct`（區分大小寫的字面比對；`#directory`、
   `x#direct`、`#direct-ly` 不算）只放行那一輪，下一輪失效，同時關掉那一輪的 R1、R2 與 G4；
@@ -604,11 +612,16 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   全域 `settings.json` 的 matcher 有沒有涵蓋該工具：舊 matcher 不含 `Bash` 時，`Bash` 事件由 plugin
   那份處理，每個事件仍只判一次。
 - 訊息預設英文，`SHOAL_GUARD_LANG=zh-TW` 切繁中；`SHOAL_GUARD=shadow|off` 照常有效。
-- Codex（3.2.1 起）：`declare` 也是預設。`apply_patch` 與 `Bash` 的寫檔被擋，宣告走 Codex 的 `Bash`
-  工具（`tool_input.command`），`UserPromptSubmit` 的 `prompt` 讀 `#direct`；沒有 G4。
-  hook 註冊升到
-  `shoal-guard-v2`（matcher 加 `Bash`），升級後要在 Codex 用 `/hooks` 再核准一次，見上方 Codex
-  的 Dispatch guard 一節。
+- Codex（3.2.1 起）：`apply_patch` 與 `Bash` 的寫檔被擋（3.3.0 起預設 `strict`），`Bash` 工具是
+  `tool_input.command`，`UserPromptSubmit` 的 `prompt` 讀 `#direct`；沒有 G4。
+  hook 註冊在 3.2.1
+  升到 `shoal-guard-v2`（matcher 加 `Bash`）；3.3.0 沒有改任何 hook 註冊，不需要再核准。
+- **派工要真的啟動（M11）：目前兩個 host 都做不到。** guard 在派工呼叫（Claude 的 `Agent`、Codex 的
+  `spawn_agent`）發出時就記為已派工；role 之後沒能啟動時，這一輪的放行仍然有效。Claude Code 有
+  `SubagentStart` 事件（repo 內只記錄過 `agent_type: shoal:executor`），但 payload 有沒有
+  `session_id`、`agent_id`、能不能對應到 main 的那一輪，以及 role 啟動失敗時事件會不會出現，都沒有
+  記錄，所以沒有改用該事件放行；補法見 `docs/specs/guard-declared-direct/PROGRESS.md`。Codex 沒有已記錄
+  的啟動事件。
 
 G5 補的是 R1 看不到的缺口：main 用 `cat > 檔案 <<EOF` 之類的 shell 指令寫檔，沒走任何改檔工具
 （2026-10-10 實測）。它只看 `Bash` 的指令字串，是字面判斷，不是 shell parser：
@@ -641,12 +654,12 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 
 ```bash
 # 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v3.2.1
+claude plugin marketplace add miyago9267/shoal#v3.3.0
 claude plugin install shoal@shoal
 
 # 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v3.2.1
+claude plugin marketplace add miyago9267/shoal#v3.3.0
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -661,7 +674,7 @@ claude --plugin-dir ./claude-plugin
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
   `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
   `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v3.2.1` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  上面的 `#v3.3.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是

@@ -63,7 +63,7 @@ class GrokRenderTests(rh.HostRenderCase):
         rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-grok v.+ -->$", rules),
                          [f"<!-- shoal-grok v{version} -->"])
-        self.assertEqual(version, "3.2.1")
+        self.assertEqual(version, "3.3.0")
 
     def test_rules_equal_upstream_except_the_rename(self) -> None:  # AC-GW-003
         # 2.0.0 起 rules 不再逐字等於上游：只差 docs/specs/shoal-rebrand/RENAME.md 的名稱替換與版本 marker。
@@ -95,7 +95,7 @@ class GrokRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:  # AC-GW-005
         src = self.root / "hosts" / "grok" / "src" / "rules" / "shoal-grok.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-grok v3.2.1 -->\n"
+        marker = "<!-- shoal-grok v3.3.0 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")

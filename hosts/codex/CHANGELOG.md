@@ -9,6 +9,19 @@ written.
 
 ## Unreleased
 
+## v3.3.0
+
+- The guard's default for the main-session edit rule on Codex is now `strict`
+  (`SHOAL_GUARD_R1`): an `apply_patch`, or a `Bash` call that literally writes
+  a file, is denied unless the turn has a dispatched write role or a standalone
+  `#direct` in the prompt (or `SHOAL_GUARD_DIRECT=1`). A `: shoal-direct`
+  declaration is an ordinary no-op in this mode. `declare`, `classified` and
+  `off` stay selectable and behave as in 3.2.1.
+- Dispatch still unlocks at the `spawn_agent` call itself: no start event is
+  recorded for Codex, so a role that fails to start still unlocks the turn.
+- No hook registration changed (`shoal-guard-v2` as in 3.2.1); no new `/hooks`
+  approval is needed. The Codex policy text changes only by the marker.
+
 ## v3.2.1
 
 - The guard's `declare` rule is enabled on Codex (default

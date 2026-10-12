@@ -34,10 +34,10 @@ fresh-context review.
   mutation; data/schema/serialization/migration; release; material
   cross-component acceptance. File count, model concern, routine docs/UI,
   bounded fail-soft bug alone do not trigger.
-- Without a risk trigger, work stays direct only when writing the brief would
-  cost more than doing it: an immediate edit at a location main already fully
-  understands. Cross-file repetition is never direct by default. Otherwise use
-  phase-aware lifecycle below.
+- Without a risk trigger, the main session still does not edit files itself:
+  every edit goes to a write-capable role. Direct main edits exist only under
+  the user's `#direct`. Reading, running commands, diagnosis, integration, and
+  judgment stay with main. Otherwise use phase-aware lifecycle below.
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
   may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.
@@ -85,15 +85,16 @@ fresh-context review.
 - Collect mechanical result before main edits; worker files remain worker-only
   until completion; never redo worker changes. Main retains per-item triage,
   exceptions, integration, acceptance.
-- Direct main execution of qualifying mechanical work requires prior concrete
-  blocker: evolving/coupled evidence, ownership/integration conflict, worker
-  unavailable, or non-positive net benefit.
+- Direct main execution of qualifying mechanical work exists only under the
+  user's `#direct`. Evolving/coupled evidence, ownership/integration conflict,
+  or an unavailable worker is reported to the user, not worked around.
 - Implementation with a stable execution contract (goal, scope, constraints, done
   criteria known without rediscovery) is delegated by default: `applier` for
   fully specified repetition, `executor` for bounded judgment,
-  `security-executor` for approved security work. Main edits directly only under
-  the direct-work rule or a concrete blocker: evolving/coupled evidence,
-  ownership/integration conflict, or worker unavailable.
+  `security-executor` for approved security work. Main edits directly only
+  under the user's `#direct`; evolving/coupled evidence or an unavailable worker
+  is not a licence to edit: diagnose in main, delegate the fix, and report an
+  unavailable worker to the user.
 - Dispatch brakes judge one call at a time. Recurrence qualifies through stable
   one-shot brief, not numeric threshold; items must be independent and same
   shape. Main retains diagnosis, exceptions, integration, acceptance; never
@@ -105,8 +106,8 @@ fresh-context review.
   the other's output. Treat as the conclusion only what both arms support or what
   main has checked. `researcher` stays a leaf.
 - Single unknown bug stays main-session work through root-cause discovery,
-  trace-driven debugging, coupled state propagation, patch design, first minimal
-  fix, live verification when one path owns them. Never build sequential
+  trace-driven debugging, coupled state propagation, patch design, live
+  verification when one path owns them. Never build sequential
   `scout`→`executor` pipeline. Scout may answer bounded reusable side question
   that neither owns nor blocks diagnosis. Once root cause and remedy are known,
   the fix is Execution work and is delegated.
@@ -257,7 +258,7 @@ Final report separates confirmed/fixed/deferred/regraded findings
   Foreground only when next action blocks on result, no useful independent work
   remains, net benefit is positive. Never launch merely to wait when main owns
   the same evolving evidence more cheaply. Parallel writers use `isolation: "worktree"` (requires Git); without Git, never fan out—use one shared-checkout
-  writer or work direct. Read-only roles may share checkout. Integrate every
+  writer. Read-only roles may share checkout. Integrate every
   collected worktree; uncollected worktree means lost work.
 - Commands that may run long or whose result must be awaited (test suites, builds,
   CI, measurements) go to `watcher` through Agent with

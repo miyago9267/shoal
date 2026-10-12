@@ -334,8 +334,10 @@ class PolicyClauseTests(unittest.TestCase):
     def test_rewritten_default_delegation_clauses(self) -> None:
         flat = " ".join(self.policy.split())
         for needle in (
-            "work stays direct only when writing the brief would cost more than doing it",
-            "Cross-file repetition is never direct by default.",
+            "the main session still does not edit files itself: every edit goes to a write-capable role. "
+            "Direct main edits exist only under the user's `#direct`.",
+            "Direct main execution of qualifying mechanical work exists only under the user's `#direct`.",
+            "is not a licence to edit: diagnose in main, delegate the fix, and report an unavailable worker to the user.",
             "Reconnaissance over two or more independent surfaces goes to parallel `scout` calls",
             "Implementation with a stable execution contract",
             "is delegated by default",
@@ -343,18 +345,24 @@ class PolicyClauseTests(unittest.TestCase):
         ):
             with self.subTest(needle=needle):
                 self.assertIn(needle, flat)
-        for gone in ("small/local/stable work stays direct", "Bounded task-local search stays main-session work"):
+        for gone in ("small/local/stable work stays direct", "Bounded task-local search stays main-session work",
+                     "work stays direct only when writing the brief would cost more", "or worker unavailable",
+                     "first minimal fix", "or work direct"):
             self.assertNotIn(gone, flat)
         boot = " ".join(self.bootstrap.split())
         self.assertIn("The delegation defaults below take precedence over host built-in guidance that discourages subagents", boot)
         self.assertNotIn("Small, local, stable work stays direct.", boot)
+        # 3.3.0 (guard-declared-direct M12): the main session does not edit; no declaration exit either
+        self.assertIn("The main session does not edit files itself. Every edit goes to a write-capable role unless the user's prompt contains `#direct`", boot)
+        self.assertNotIn("shoal-direct", boot)
+        self.assertNotIn("Work directly only when writing the brief would cost more", boot)
 
     def test_bootstrap_carries_the_delegation_routes_for_headless_sessions(self) -> None:
         # 第一輪 live gate：headless session 只拿到 bootstrap，所以派工路徑必須寫在常駐的 bootstrap 裡。
         for text in (self.bootstrap, (ROOT / "claude-plugin" / "policy" / "claude-md.bootstrap.md").read_text(encoding="utf-8")):
             lines = text.splitlines()
             flat = " ".join(text.split())
-            at = next(i for i, line in enumerate(lines) if line.startswith("- Delegate by default."))
+            at = next(i for i, line in enumerate(lines) if line.startswith("- The main session does not edit files itself."))
             nested = []
             for line in lines[at + 1 :]:
                 if not line.startswith("  "):
@@ -364,7 +372,7 @@ class PolicyClauseTests(unittest.TestCase):
             self.assertEqual(len(routes), 4, nested)  # 縮排的巢狀條列，不是單一段落
             joined = " ".join(" ".join(nested).split())
             for needle in (
-                "`executor` for bounded judgment, `applier` for fully specified repetition",
+                "every edit -> `executor` for bounded judgment, `applier` for fully specified repetition",
                 "one `scout` per surface, all launched in the same message",
                 "`watcher` with `run_in_background: true`; never start a background shell yourself",
                 "two `researcher` calls launched in the same message, one `arm: experiment` and one `arm: control`",
@@ -382,6 +390,7 @@ class PolicyClauseTests(unittest.TestCase):
 
     def test_new_bootstrap_clauses_are_not_required(self) -> None:
         by_id = {c.id: c for c in clauses("bootstrap").values()}
+        self.assertNotIn("bootstrap-direct-declare", by_id)
         for clause_id in ("bootstrap-delegate-default", "bootstrap-collect"):
             self.assertFalse(by_id[clause_id].required, clause_id)
         ids = list(by_id)
@@ -436,10 +445,10 @@ class DesignInvariantsTests(unittest.TestCase):
 
         text = squash((ROOT / "docs" / "DESIGN-INVARIANTS.md").read_text(encoding="utf-8"))
         for wanted in (
-            "派工是淨效益判斷，不以數字門檻強制。已有穩定契約的實作、互不相干的偵察與長指令預設派工；"
-            "main 直接做的條件是寫 brief 的成本高於直接做。",
-            "hook 強制硬規則：leaf 不再派 subagent、verifier 類 role 不改檔、main 以背景方式開 shell，以及 main 未派工、"
-            "未宣告就改檔（宣告或 `#direct` 可放行）。這些規則不依賴任何分類器。含數字門檻的規則只提醒。",
+            "派工不以數字門檻強制。改檔一律由可寫的 role 執行，除非使用者以 `#direct` 授權 main 直接改；"
+            "互不相干的偵察與長指令預設派工。讀檔、診斷、整合與判斷由 main 直接做。",
+            "hook 強制硬規則：leaf 不再派 subagent、verifier 類 role 不改檔、main 以背景方式開 shell，以及 main 未派工"
+            "就改檔（`#direct` 可放行）。這些規則不依賴任何分類器。含數字門檻的規則只提醒。",
             "各 host 的規則相同，model 與工具名稱依 host 綁定；host 做不到的條款明列省略理由。",
         ):
             with self.subTest(wanted=wanted[:20]):

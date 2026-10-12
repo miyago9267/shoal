@@ -108,7 +108,8 @@ const DENY_MAIN_HOSTS = new Set(["claude"]);
 // SHOAL_GUARD_R1 (main-session edit rule; docs/specs/guard-declared-direct).  `declare` needs a way to
 // declare, so it is selectable only on hosts whose adapter delivers main's shell calls to the guard
 // (claude's and, since 3.2.1, codex's `Bash`); every other host keeps the v3.1.0 rule (`classified`).
-// The OpenCode adapter never produces main-session shell events.
+// The OpenCode adapter never produces main-session shell events.  `strict` (3.3.0) needs the same events
+// and is selectable on the same hosts, where it is the default.
 const DECLARE_HOSTS = new Set(["claude", "codex"]);
 
 // `#direct` as an instruction the user typed (mirrors hooks/shoal_guard.py has_direct_token): a
@@ -203,6 +204,9 @@ const MESSAGES: Record<string, Record<string, string>> = {
     G4:
       "Shoal dispatch guard: the main session does not start background shells. Dispatch " +
       "watcher in the background instead, or add #direct to your prompt.",
+    STRICT:
+      "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
+      "write-capable role (executor or applier), or ask the user to add #direct to the prompt.",
     DECLARE:
       "Shoal dispatch guard: the main session delegates edits by default. Dispatch a " +
       "write-capable role (executor or applier), or declare direct work first by running " +
@@ -222,6 +226,9 @@ const MESSAGES: Record<string, Record<string, string>> = {
     G4:
       "Shoal dispatch guard：main session 不自己開背景 shell。" +
       "請改在背景派出 watcher，或在 prompt 加上 #direct。",
+    STRICT:
+      "Shoal dispatch guard：main session 不自己改檔。" +
+      "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。",
     DECLARE:
       "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
       "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
@@ -448,11 +455,16 @@ export function resolveMode(host: string, env: Env): string {
   return mode;
 }
 
-/** SHOAL_GUARD_R1: `classified` and `off` as given; `declare` where the host can declare. */
+/**
+ * SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
+ * Unset, unrecognized, or `strict` / `declare` on another host -> the host default (`strict` on
+ * claude and codex, `classified` elsewhere).
+ */
 export function resolveR1(host: string, env: Env): string {
   const raw = env.SHOAL_GUARD_R1 || "";
   if (raw === "classified" || raw === "off") return raw;
-  return DECLARE_HOSTS.has(host) ? "declare" : "classified";
+  if (!DECLARE_HOSTS.has(host)) return "classified";
+  return raw === "declare" ? "declare" : "strict";
 }
 
 /** null when the configured value is not an integer (the guard then fails open). */
@@ -609,9 +621,12 @@ class Guard {
     if (event.kind === "tool" && toolKind === "shell") {
       // A foreground shell call that is neither a declaration nor a file write has no opinion, and
       // touches no state or log.  `declare` hosts read declarations and judge writes (G5);
-      // `classified` judges writes on claude only (v3.1.0); `off` has no G5.
+      // `strict` only judges writes (a declaration is an ordinary no-op there); `classified` judges
+      // writes on claude only (v3.1.0); `off` has no G5.
       if (this.r1 === "declare") {
         if (parseDeclaration(event.command) === null && this.shellWriteTarget() === null) toolKind = null;
+      } else if (this.r1 === "strict") {
+        if (this.shellWriteTarget() === null) toolKind = null;
       } else if (this.r1 !== "classified" || !DENY_MAIN_HOSTS.has(this.host) || this.shellWriteTarget() === null) {
         toolKind = null;
       }
@@ -759,6 +774,13 @@ class Guard {
     const file = this.shellWriteTarget() ?? undefined;
     if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) return this.result("allow", { rule: "direct", file });
     if (state.dispatched) return this.result("allow", { rule: "dispatched", file });
+    if (this.r1 === "strict") {
+      return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
+        rule: "R1",
+        reason: text(this.env, "STRICT"),
+        file,
+      });
+    }
     if (this.r1 === "declare") {
       if (this.declared(state, dir)) return this.result("allow", { rule: "declared", file });
       return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
@@ -808,6 +830,7 @@ class Guard {
     const direct = this.env.SHOAL_GUARD_DIRECT === "1" || state.direct;
     const limit = maxFiles(this.env);
     const declare = this.r1 === "declare";
+    const strict = this.r1 === "strict";
     let classified: string | null = null;
     let declared = false;
     if (!direct && !state.dispatched) {
@@ -826,13 +849,13 @@ class Guard {
       else {
         rule = declared ? "declared" : "count";
         let fired: string | null = null;
-        if (classified || (declare && !declared)) fired = "R1";
+        if (classified || strict || (declare && !declared)) fired = "R1";
         else if (!edited.includes(path) && (limit === null || edited.length >= limit)) {
           if (limit === null) return this.result("skip", { skip: "invalid_config" });
           fired = "R2";
         }
         // G1: R1 denies on claude; everywhere else R1 and R2 only remind and the edit goes ahead.
-        if (fired === "R1" && (declare || DENY_MAIN_HOSTS.has(this.host))) denyR1 = true;
+        if (fired === "R1" && (declare || strict || DENY_MAIN_HOSTS.has(this.host))) denyR1 = true;
         else if (fired !== null && adviseRule === null) adviseRule = fired;
       }
       if (firstRule === "exempt") firstRule = rule;
@@ -840,7 +863,7 @@ class Guard {
     }
     if (firstRule === "exempt") return this.result("allow", { rule: firstRule, file: rawPaths[0] });
     if (denyR1 && this.mode === "enforce") {
-      return this.result("deny", { rule: "R1", reason: text(this.env, declare ? "DECLARE" : "R1"), file: rawPaths[0] });
+      return this.result("deny", { rule: "R1", reason: text(this.env, strict ? "STRICT" : declare ? "DECLARE" : "R1"), file: rawPaths[0] });
     }
     state.edited = edited;
     const notify =

@@ -671,7 +671,7 @@ class CodexTests(Case):
             return subprocess.run(command, shell=True, input=json.dumps(payload).encode(),
                                   capture_output=True, env=env, timeout=30)
 
-        denied = run({})  # codex declares by default (3.2.1): an undeclared apply_patch is denied
+        denied = run({})  # codex is strict by default (3.3.0): an undeclared apply_patch is denied
         self.assertEqual(denied.returncode, 0, denied.stderr)
         self.assertEqual(json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
         enforced = run({"SHOAL_GUARD_R1": "classified"})

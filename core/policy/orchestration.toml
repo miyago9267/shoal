@@ -81,10 +81,10 @@ id = "direct-when-small"
 kind = "routing"
 sep = "newline"
 text = '''
-- Without a risk trigger, work stays direct only when writing the brief would
-  cost more than doing it: an immediate edit at a location main already fully
-  understands. Cross-file repetition is never direct by default. Otherwise use
-  phase-aware lifecycle below.'''
+- Without a risk trigger, the main session still does not edit files itself:
+  every edit goes to a write-capable role. Direct main edits exist only under
+  the user's `#direct`. Reading, running commands, diagnosis, integration, and
+  judgment stay with main. Otherwise use phase-aware lifecycle below.'''
 
 [[clause]]
 id = "discovery-gate"
@@ -215,9 +215,9 @@ id = "mech-direct-blocker"
 kind = "dispatch"
 sep = "newline"
 text = '''
-- Direct main execution of qualifying mechanical work requires prior concrete
-  blocker: evolving/coupled evidence, ownership/integration conflict, worker
-  unavailable, or non-positive net benefit.'''
+- Direct main execution of qualifying mechanical work exists only under the
+  user's `#direct`. Evolving/coupled evidence, ownership/integration conflict,
+  or an unavailable worker is reported to the user, not worked around.'''
 
 [[clause]]
 id = "delegate-cost-benefit"
@@ -227,9 +227,10 @@ text = '''
 - Implementation with a stable execution contract (goal, scope, constraints, done
   criteria known without rediscovery) is delegated by default: `applier` for
   fully specified repetition, `executor` for bounded judgment,
-  `security-executor` for approved security work. Main edits directly only under
-  the direct-work rule or a concrete blocker: evolving/coupled evidence,
-  ownership/integration conflict, or worker unavailable.'''
+  `security-executor` for approved security work. Main edits directly only
+  under the user's `#direct`; evolving/coupled evidence or an unavailable worker
+  is not a licence to edit: diagnose in main, delegate the fix, and report an
+  unavailable worker to the user.'''
 
 [[clause]]
 id = "brake-per-call"
@@ -259,8 +260,8 @@ kind = "dispatch"
 sep = "newline"
 text = '''
 - Single unknown bug stays main-session work through root-cause discovery,
-  trace-driven debugging, coupled state propagation, patch design, first minimal
-  fix, live verification when one path owns them. Never build sequential
+  trace-driven debugging, coupled state propagation, patch design, live
+  verification when one path owns them. Never build sequential
   `scout`→`executor` pipeline. Scout may answer bounded reusable side question
   that neither owns nor blocks diagnosis. Once root cause and remedy are known,
   the fix is Execution work and is delegated.'''
@@ -591,7 +592,7 @@ kind = "mechanics"
 sep = "newline"
 text = '''
 Parallel writers use `{{worktree_option}}` (requires Git); without Git, never fan out—use one shared-checkout
-  writer or work direct. Read-only roles may share checkout. Integrate every
+  writer. Read-only roles may share checkout. Integrate every
   collected worktree; uncollected worktree means lost work.'''
 
 [[clause]]

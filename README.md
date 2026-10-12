@@ -110,16 +110,16 @@ dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex
 `SHOAL_GUARD=off` 關閉。
 main session 的直接編輯在 Claude 與 Codex 以外只會被提醒：R1、R2 不擋（其餘 host 只記 log，
 `SHOAL_GUARD_DIRECT=1` 或 prompt 內的 `#direct` 關閉提醒），只有 subagent 的 LEAF、VERIFY_EDIT
-會擋。Claude 上（3.2.0 起）main 沒派
-write role、也沒宣告就改檔（R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）
-會被擋，不需要任何分類來源；宣告是單獨執行一次 `: shoal-direct "<理由>"`，deny 訊息會
-寫明這個出口。main 自己開背景 shell（G4）同樣被擋，宣告不解除；R2 仍只提醒。`SHOAL_GUARD_R1`
-選規則：`declare`（Claude 預設）、`classified`（3.1.0 的行為：只在外部分類來源標出實作工作時擋）、
-`off`。prompt 內的 `#direct` 放行那一輪，分類檔是公開的選用介面，見
-[INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 從 3.2.1 起也是
-`declare`（`apply_patch` 與
-`Bash` 寫檔會被擋，宣告走 Codex 的 `Bash` 工具；沒有 G4），hook 註冊升到 `shoal-guard-v2`，升級後要在
-Codex 用 `/hooks` 再核准一次。
+會擋。Claude 與 Codex 上（3.3.0 起，預設 `strict`）main 沒派 write role、使用者也沒有 `#direct` 就改檔
+（R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）會被擋，不需要任何分類來源；
+出口只有兩個：派 `executor`／`applier`，或請使用者在 prompt 加 `#direct`。main 自己宣告的出口
+（`: shoal-direct "<理由>"`，3.2.x 的 `declare`）在 live gate 中被 Claude 每次拿來自己做，所以預設拿掉，
+但仍可用 `SHOAL_GUARD_R1=declare` 選回。main 自己開背景 shell（G4，只有 Claude）同樣被擋；R2 仍只提醒。
+`SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：只在外部分類來源標出
+實作工作時擋）、`off`。分類檔是公開的選用介面，見
+[INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
+`shoal-guard-v2`（matcher 加 `Bash`），3.3.0 沒有再改。guard 目前在派工呼叫發出時就放行，role 沒能
+啟動也一樣（M11 尚未實作，原因見 INSTALL.md）。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
 每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [INSTALL.md](./INSTALL.md#每日同步)。
@@ -128,12 +128,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.2.1 |
-| codex host | 3.2.1（`hosts/codex/VERSION`） |
-| claude host | 3.2.1（`hosts/claude/VERSION`） |
-| agy host | 3.2.1（`hosts/agy/VERSION`） |
-| grok host | 3.2.1（`hosts/grok/VERSION`） |
-| opencode host | 3.2.1（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.3.0 |
+| codex host | 3.3.0（`hosts/codex/VERSION`） |
+| claude host | 3.3.0（`hosts/claude/VERSION`） |
+| agy host | 3.3.0（`hosts/agy/VERSION`） |
+| grok host | 3.3.0（`hosts/grok/VERSION`） |
+| opencode host | 3.3.0（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

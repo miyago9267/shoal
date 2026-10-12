@@ -106,3 +106,59 @@ Codex 3 次有效、1 次因 Codex 設定的 model 被帳號拒絕而作廢。�
 - 每格只有 1 次，單一 fixture；Codex 以 `--dangerously-bypass-hook-trust` 執行。
 
 下一步需要 Miyago 決定：是否把 main 自己宣告的出口拿掉（只留派工與 `#direct`）。
+
+## 修訂（2026-10-12，live gate 之後，v3.3.0）
+
+SPEC 的 M9 到 M12、D6。結果：guard 與 policy 已改，M11 沒有實作（原因與要補的證據在下方）。
+live 重測尚未做。
+
+- **M9／M10（完成）**：`SHOAL_GUARD_R1` 新增 `strict`，成為 claude 與 codex 的預設。deny 條件、
+  訊息（英文與 zh-TW）、`: shoal-direct` 與分類檔無作用、shadow、R2／G4／硬規則不變，都以
+  `guard_vectors.json` 的 42 筆新向量（claude 與 codex 各一組，Python 與 TypeScript 重放）固定。
+  `declare`、`classified`、`off` 原樣保留；原本靠預設值的 declare 向量改成明確選 `declare`，
+  其餘既有向量沒有改寫。
+- **M12（完成）**：Claude policy 的前後（每條一行；其他 host 的 policy 不動）：
+  - `bootstrap-direct-declare`：「要自己改檔先執行宣告指令」→ 移除。
+  - `bootstrap-delegate-default`：「預設派工；寫 brief 比工作貴或診斷單一未知 bug 時才直接做」→
+    「main 不自己改檔，改檔一律派 `executor`／`applier`，除非 prompt 有 `#direct`；讀檔、執行指令、
+    診斷、整合、判斷留在 main」，四條路徑（改檔、`scout`、`watcher`、`researcher`）保留。
+  - `direct-when-small`：「brief 成本高於直接做時維持直接」→「main 仍不自己改檔，直接改只存在於
+    `#direct`；讀檔、指令、診斷、整合、判斷留在 main」。
+  - `delegate-cost-benefit`：「main 只在直接做規則或具體 blocker（含 worker unavailable）下直接改」→
+    「只在 `#direct` 下直接改；耦合證據或 worker 不可用都不是理由：main 診斷、修正派工、回報使用者」。
+  - `mech-direct-blocker`：「直接做機械工作要先有 blocker」→「只存在於 `#direct`；blocker 或 worker
+    不可用要回報使用者，不繞過」。
+  - `single-bug-direct`：移除「first minimal fix」（診斷留在 main，修正本來就派工）。
+  - `parallel-writers`：「沒有 Git 時用單一 writer 或直接做」→ 只留單一 writer。
+  - 未動：`baton-dispatch` 的「Baton 可能選擇直接做」（那是另一個 skill 的決定，且 `#direct` 以外的
+    直接改仍被 guard 擋下）。
+  - legacy 來源（`hosts/claude/src` 的 bootstrap 與 orchestration policy）同步改相同文字。
+- **D6（完成）**：`docs/DESIGN-INVARIANTS.md` 第 2、3 條，測試同步。
+- **prompt lock**：`claude-orchestration-policy` 的單次變動在 32 行、4000 字元、0.2 比例的預算內，
+  不需要 migration 標記，`LOCK.json` 沒有變動，commit 不需要 `Lock-Renewal: approved`。
+- **hook 註冊**：沒有變動（沒有新事件，Codex matcher 仍是 3.2.1 的 `shoal-guard-v2`），Codex 不需要
+  再用 `/hooks` 核准。
+
+### M11 結果：維持以派工呼叫放行，兩個 host 都是
+
+- **Claude**：repo 內的證據只有 `docs/specs/generic-shoal/PROGRESS.md` 的 namespace 實測：Claude
+  Code 有 `SubagentStart` 事件，probe 記到的欄位只有 `hook_event_name` 與 `agent_type`（值
+  `shoal:executor`）。沒有記錄的有：payload 有沒有 `session_id`（以及是不是 main 的）、有沒有
+  `agent_id`、有沒有 `prompt_id` 或任何能對應到 main 那一輪的欄位；role 啟動失敗（例如指定的
+  model 被拒）時事件會不會出現；事件與派工呼叫的先後。plugin 的 `hooks.json` 目前只註冊
+  `SessionStart`、`UserPromptSubmit`、`PreToolUse`。若 `session_id` 不在 payload 裡，改成
+  「看到啟動事件才放行」會讓派工後的改檔永遠被擋，不能猜，所以沒有實作。
+- **Codex**：repo 沒有任何啟動事件的記錄（`dispatch-verification` 的 SPEC 明寫 `SubagentStart`
+  不在實作內）。
+- **要補的 payload（Claude，一次真實執行）**：臨時註冊 `SubagentStart` 與 `SubagentStop`
+  （matcher `.*`）的 probe，只記 payload 的 key 名稱與型別，以及 `session_id` 是否等於同一次
+  執行 `UserPromptSubmit` 的 `session_id`、`agent_id` 與 `prompt_id` 是否存在；一次派
+  `shoal:executor`，一次派一個一定啟動失敗的 role（例如暫時指定不存在的 model），記錄第二次有沒有
+  `SubagentStart`。有了這些，做法是：`SubagentStart` 且 `agent_type` 是 write 等級時，把同 session
+  下最近一次待處理的 write 派工標為已啟動並放行；read-only 與 verify 等級的啟動事件不放行。
+- 限制已寫入 INSTALL.md、CHANGELOG 與 hosts/codex/CHANGELOG.md。
+
+### 待辦
+
+- live 重測：`strict` 下 Claude 與 Codex 各跑小改動與三檔小功能，看 main 被擋後是否改派 role。
+  Codex 的 role 要先能啟動（見 live gate 一節的 model 問題），否則結果不具代表性。
