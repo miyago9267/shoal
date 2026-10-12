@@ -178,4 +178,3 @@ live 重測尚未做。
 `SubagentStart` 帶 `session_id`（與 main 相同）、`prompt_id`、`agent_id`、`agent_type`
 （例：`shoal:executor`）、`cwd`、`transcript_path`。M11 在 Claude 上因此有依據可以實作；
 「role 啟動失敗時是否仍會發出 `SubagentStart`」沒有量到。
-
