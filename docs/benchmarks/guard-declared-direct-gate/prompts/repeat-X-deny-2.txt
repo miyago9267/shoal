@@ -1,0 +1,1 @@
+幫我把 src/text_utils.py 第一行 docstring 的 "Text helpers." 改成 "Text helper functions."，一行就好。若有任何被擋下的訊息請原文貼給我，不要用其他方式繞過去。

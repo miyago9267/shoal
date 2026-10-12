@@ -56,3 +56,30 @@
   CX-feature-2）。這不算 `#direct` 或宣告，也不是 role 實作；規格沒有定義 spawn 失敗的情形。
 - CL-feature-2 有 Jev 的 `judgment` 分類檔；declare 模式下它不放寬，結果不受影響。
 - Codex 的 deny 訊息文字不在 stream 內，無法確認 main 讀到的是哪一句。
+
+## 重複實測（v3.3.1）
+
+`strict` 預設、plugin 3.3.1 與已核准的 Codex hook；10 次 headless（上限 11），Claude 6 次共 USD 2.87
+（Codex 不回報金額）。結果在 `results-repeat.json`，題目在 `prompts/repeat-*.txt`。
+
+| 案例 | 預期成立 | 決定性 guard 記錄 | 檔案改動 |
+| --- | --- | --- | --- |
+| C-fail 1（`applier`） | 否 | main 自行改成 `shoal:applier`，pending 後 started | 子 agent 改了 |
+| C-fail 2（`executor`） | 是 | Agent 找不到；`dispatch_pending` 無 started；Edit R1 deny | 未改 |
+| C-release 1、2 | 是、是 | pending、started，main 的 Edit 為 `dispatched` allow | README 與程式都改，測試通過 |
+| C-jevoff 1、2 | 是、是 | Jev log 與分類檔 0 新增；pending、started | 功能完成，測試通過 |
+| X-deny 1、2 | 是、是 | host `codex`，`apply_patch` R1 deny，訊息逐字回報 | 皆未改 |
+| X-direct 1 | 是 | `apply_patch` rule `direct` allow | README 改了 |
+
+- **與預期不符**：C-fail 1。prompt 指定 `applier`，main 自行補成 `shoal:applier`，派工沒有失敗，
+  所以失敗路徑沒走到。第 2 次把 prompt 改成要求逐字使用名稱，才得到失敗；也就是說這個案例取決於
+  main 是否自動更正名稱。
+- **設定偏差**：Codex 預設 model（`gpt-6-sol`）仍被帳號拒絕（HTTP 400），該次無效（1 次備用），
+  之後三次沿用先前的 `-m gpt-5.6-sol`；hook 仍用核准版，沒有帶 bypass 旗標。
+- **觀察次數**（先前 PROGRESS 加本次）：派工 pending 後 started 4 加 5 為 9；派工失敗無 started 且
+  Edit deny 1 加 1 為 2（C-fail 1 沒走到失敗路徑）；派工後 main Edit 為
+  `dispatched` 1 加 2 為 3；Jev 關閉零紀錄 1 加 2 為 3；Codex strict 的 R1 deny
+  1 加 2 為 3；Codex `#direct` 放行 0 加 1 為 1。
+- **限制**：每個行為仍只有個位數 session；Claude 的 `strict` deny 只涵蓋「agent 不存在」這一種失敗；
+  Codex 的 `#direct` 只有 1 次；Jev 在這些短 prompt 上只有 C-fail 1 產生分類檔（mechanical），
+  其他 Claude 回合沒有分類檔，不影響 strict 的結果；兩次 Exit 127 是 shell 別名噪音，與 guard 無關。

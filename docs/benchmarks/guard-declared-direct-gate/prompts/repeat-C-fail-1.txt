@@ -1,0 +1,1 @@
+請用 Agent 工具派一個 subagent_type 為 applier 的 subagent，任務是把 src/text_utils.py 裡 shout 的 docstring 拼字錯誤（exclamaton）修正。如果派工失敗，請你自己用 Edit 工具直接改這個檔案，最後逐字回報你收到的所有訊息。

@@ -260,3 +260,31 @@ Miyago 已在 Codex 核准變更過的 hook。以預設設定（不帶 `--danger
   started，功能完成、測試通過。規則在沒有 Jev 的情況下照常運作。
 - 各 1 次。先前另有兩次未事先取得核准的執行（啟動失敗的 role 1 次、Codex 1 次），結果已
   記在上面兩節。
+
+## 重複實測（2026-10-12，v3.3.1，Miyago 同意付費後執行）
+
+紀錄在 `docs/benchmarks/guard-declared-direct-gate/` 的 `results-repeat.json` 與 README 的
+「重複實測」一節。共 10 次（Claude 6 次 USD 2.87、Codex 4 次，其中 1 次作廢），9 個題目中
+8 個符合預期。
+
+各行為在真實 session 的累計觀察次數（含先前各節）：
+
+| 行為 | 次數 |
+|---|---|
+| Claude：派工記為待啟動，收到啟動事件後記為已啟動 | 9 |
+| Claude：派工失敗（agent 不存在）不放行，main 的 Edit 被擋 | 2 |
+| Claude：role 啟動後 main 的 Edit 以 `dispatched` 放行 | 3 |
+| Claude：`SHOAL_JEV_MODE=off` 下規則照常，Jev log 零新增 | 3 |
+| Codex：已核准的 hook 以 R1 擋下 `apply_patch` | 3 |
+| Codex：prompt 含 `#direct` 時 `apply_patch` 放行 | 1 |
+
+不符合預期的一次：要 main 派出不存在的 `applier`，main 自己把名稱改成 `shoal:applier`，派工
+成功，所以那次沒有走到失敗路徑。guard 的紀錄與行為正確（待啟動、已啟動），這是 main 會
+自動修正 role 名稱的觀察，不是 guard 的缺陷。
+
+其他觀察：
+
+- Codex 有 1 次以預設 model 被帳號拒絕（HTTP 400）而作廢；之後以同一個預設 model 重測多次
+  都正常，原因未確認。那 3 次有效的 Codex 執行改以命令列指定 model。
+- Claude 上的派工失敗只涵蓋「agent 不存在」；role 啟動後中途失敗仍視為已啟動。
+- 每項仍只有個位數的觀察，不是統計上的保證。

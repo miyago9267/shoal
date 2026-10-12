@@ -1,0 +1,2 @@
+第一步：請派 shoal:executor 為 src/text_utils.py 新增 count_words(text) 函式（回傳以空白分隔的單字數），並在 tests/test_text_utils.py 補一個測試，python3 -m unittest discover -s tests 要通過。
+第二步：等它完成後，我明確要求由你這個主 session 自己用 Edit 工具在 README.md 最後補一行「Supports count_words.」。這是我明確指定要你親手做的，請不要再派工。
