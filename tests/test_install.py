@@ -536,7 +536,10 @@ class NativeInstallTests(unittest.TestCase):
                 self.assertEqual(self.run_install(home), 0)
             self.assertEqual(
                 {p.stem for p in (home / "agents").glob("*.toml")},
-                {"executor", "applier", "plan-critic", "scout", "sol-executor", "security-executor", "security-reviewer", "verifier"},
+                {
+                    "executor", "applier", "plan-critic", "scout", "sol-executor",
+                    "security-executor", "security-reviewer", "verifier", "watcher", "researcher",
+                },
             )
 
     def test_windows_crlf_policy_preserves_original_bytes_for_commit(self) -> None:
