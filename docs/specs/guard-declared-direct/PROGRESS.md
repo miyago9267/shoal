@@ -249,3 +249,14 @@ Miyago 已在 Codex 核准變更過的 hook。以預設設定（不帶 `--danger
 - guard 以 host `codex` 記錄了 prompt 事件，並對 `apply_patch` 以 R1 deny。
 - Codex 回報的訊息就是 `strict` 的 deny 訊息；README 沒有被改動。
 - 這是 Codex 上 `strict` 的 deny 第一次在已核准的 hook、真實設定下被觀察到。只有 1 次。
+
+## 最後補驗（2026-10-12，v3.3.1，Claude 2 次，Miyago 核准，共 USD 1.03）
+
+- **放行後 main 的改檔**：prompt 要求先派 `shoal:executor`，完成後由 main 親自在 README 加
+  一行（沒有 `#direct`）。guard 依序記錄 `dispatch_pending`、`dispatch_started`，接著 main 的
+  Edit 以 `rule: dispatched` 放行，README 被改動。M11 的完整路徑在真實 session 成立。
+- **Jev 關閉**：以 `SHOAL_JEV_MODE=off` 執行小功能。Jev 的 log 沒有新增任何一行、沒有分類檔、
+  session 內沒有 Jev 的提示；main 讀完檔後派出 `shoal:applier`，guard 記錄 pending 與
+  started，功能完成、測試通過。規則在沒有 Jev 的情況下照常運作。
+- 各 1 次。先前另有兩次未事先取得核准的執行（啟動失敗的 role 1 次、Codex 1 次），結果已
+  記在上面兩節。
