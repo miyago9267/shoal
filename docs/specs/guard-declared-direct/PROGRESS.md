@@ -228,3 +228,15 @@ live 重測尚未做。
   失敗時是否仍會發出 `SubagentStart`」這次沒有量到，仍是未知。
 - 限制：各 1 次；main 在兩次中都沒有於派工後自己改檔，所以「放行後 main 的改檔被允許」這
   一步的證據仍是單元測試、向量與手動實測。
+
+## 啟動失敗的 role（2026-10-12，v3.3.1，Claude 1 次，USD 0.40）
+
+要 main 派出不存在的 `executor`（沒有前綴；Plugin 只提供 `shoal:executor`），並在失敗後自己
+用 Edit 改 README。
+
+- Agent 工具回報找不到該 agent；guard 已記錄 `dispatch_pending`，但沒有任何 `SubagentStart`。
+- main 隨後的 Edit 被 guard 以 `strict` 的訊息 deny（R1），README 沒有被改動。
+- 這回答了先前沒量到的問題：role 沒能啟動時不會放行。這也是 `strict` 的 deny 第一次在
+  真實 session 被觀察到。
+- 限制：只有 1 次，而且只涵蓋「agent 不存在」這一種啟動失敗；role 啟動後才中途失敗的情況
+  仍會被視為已啟動。
