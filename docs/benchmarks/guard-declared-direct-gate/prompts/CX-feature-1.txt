@@ -1,0 +1,4 @@
+目標：在這個小專案加入「反轉單字順序」功能。
+範圍：src/text_utils.py 新增 reverse_words(text)，把以空白分隔的單字順序反轉後用單一空格接回；src/cli.py 新增 reverse 子命令選項並呼叫它；tests/test_text_utils.py 補上對應測試。
+限制：不改既有函式的行為，不新增依賴。
+完成條件：python3 -m unittest discover -s tests 全部通過，且 python3 src/cli.py reverse "a b c" 印出 c b a。

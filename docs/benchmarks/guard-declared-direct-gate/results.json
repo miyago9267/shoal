@@ -1,0 +1,295 @@
+{
+ "meta": {
+  "date": "2026-10-12",
+  "shoal": "3.2.1 (68179d9)",
+  "claude_flags": "claude -p <prompt> --model opus --permission-mode acceptEdits --output-format stream-json --verbose --max-budget-usd 2",
+  "codex_flags": "codex exec -m gpt-5.6-sol --json --dangerously-bypass-hook-trust --skip-git-repo-check -s workspace-write <prompt> < /dev/null",
+  "runs_used": 7,
+  "run_cap": 8,
+  "invalid_runs": [
+   "CX-small first attempt: configured model gpt-6.1-sol rejected by the account (HTTP 400), no tool call, hook saw only the prompt; rerun with -m gpt-5.6-sol"
+  ],
+  "claude_cost_usd": 1.2618,
+  "fixture": "python package: src/text_utils.py, src/cli.py, tests/test_text_utils.py"
+ },
+ "runs": [
+  {
+   "tool": "claude",
+   "case": "CL-small",
+   "prompt": "prompts/CL-small.txt",
+   "session_id": "466a5b18-5463-4d70-8b2a-1f33d3342d57",
+   "classifier_role": "none",
+   "actions": [
+    "declaration",
+    "shell read",
+    "edit-tool"
+   ],
+   "guard_lines": [
+    [
+     "Bash",
+     "declare",
+     "state"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ]
+   ],
+   "first_write_denied": false,
+   "exit_after_deny": "n/a (no deny)",
+   "classification": "declared",
+   "completed": true,
+   "tests_pass": true,
+   "turns": 4,
+   "cost_usd": 0.4423,
+   "subagent_models": [],
+   "main_model": "claude-opus-5-5",
+   "declaration_reason": "single docstring typo fix in one known file"
+  },
+  {
+   "tool": "claude",
+   "case": "CL-feature-1",
+   "prompt": "prompts/CL-feature-1.txt",
+   "session_id": "e6ded728-da40-4a08-93ab-a2e015f6fd8e",
+   "classifier_role": "none",
+   "actions": [
+    "declaration",
+    "reads x3",
+    "edit-tool x7",
+    "other shell x2 (unittest, cli)"
+   ],
+   "guard_lines": [
+    [
+     "Bash",
+     "declare",
+     "state"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ],
+    [
+     "Edit",
+     "R2",
+     "advise"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ]
+   ],
+   "first_write_denied": false,
+   "exit_after_deny": "n/a (no deny)",
+   "classification": "declared",
+   "completed": true,
+   "tests_pass": true,
+   "turns": 13,
+   "cost_usd": 0.4234,
+   "subagent_models": [],
+   "main_model": "claude-opus-5-5",
+   "declaration_reason": "三個小檔的局部新增，寫 brief 比直接改還貴"
+  },
+  {
+   "tool": "claude",
+   "case": "CL-feature-2",
+   "prompt": "prompts/CL-feature-2.txt",
+   "session_id": "a30de2f6-caab-45e4-921a-b7638b477a3c",
+   "classifier_role": "judgment (does not relax in declare mode)",
+   "actions": [
+    "declaration",
+    "reads x3",
+    "edit-tool x4",
+    "other shell x1"
+   ],
+   "guard_lines": [
+    [
+     "Bash",
+     "declare",
+     "state"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ],
+    [
+     "Edit",
+     "declared",
+     "allow"
+    ],
+    [
+     "Edit",
+     "R2",
+     "advise"
+    ]
+   ],
+   "first_write_denied": false,
+   "exit_after_deny": "n/a (no deny)",
+   "classification": "declared",
+   "completed": true,
+   "tests_pass": true,
+   "turns": 10,
+   "cost_usd": 0.3961,
+   "subagent_models": [],
+   "main_model": "claude-opus-5-5",
+   "declaration_reason": "三個檔案的小型局部修改，寫 brief 比直接改更貴"
+  },
+  {
+   "tool": "codex",
+   "case": "CX-small",
+   "prompt": "prompts/CX-small.txt",
+   "session_id": "01a12e5d-8b75-7803-9da0-1ecc6ffde286",
+   "classifier_role": "none",
+   "actions": [
+    "shell read x3",
+    "bare `shoal-direct \"single-word docstring typo fix with no other changes\"` (no `:`, exit 127, not a declaration)",
+    "dispatch applier (failed to start)",
+    "dispatch sol-executor (failed to start)",
+    "edit-tool (apply_patch)",
+    "shell read (git diff)"
+   ],
+   "guard_lines": [
+    [
+     "apply_patch",
+     "R1",
+     "deny"
+    ],
+    [
+     "collaborationspawn_agent",
+     "dispatch",
+     "allow"
+    ],
+    [
+     "collaborationspawn_agent",
+     "dispatch",
+     "allow"
+    ],
+    [
+     "apply_patch",
+     "dispatched",
+     "allow"
+    ]
+   ],
+   "first_write_denied": true,
+   "exit_after_deny": "tried a malformed declaration (failed), then dispatched twice (both roles failed), then edited itself",
+   "classification": "other",
+   "classification_note": "no valid declaration, no role ran; the edit was admitted by a dispatch that never started (roles failed to start: the bound model is not supported on the ChatGPT account; the guard had already logged the spawn as dispatch/allow). Guard-hole candidate: a failed spawn unlocks the edit.",
+   "completed": true,
+   "tests_pass": true,
+   "turns": 1,
+   "tokens": {
+    "input": 366875,
+    "cached": 335104,
+    "output": 1818
+   }
+  },
+  {
+   "tool": "codex",
+   "case": "CX-feature-1",
+   "prompt": "prompts/CX-feature-1.txt",
+   "session_id": "01a12e5e-462d-7493-bcdb-f46f19d14648",
+   "classifier_role": "none",
+   "actions": [
+    "shell read x4",
+    "dispatch sol executor (failed to start)",
+    "edit-tool (apply_patch) x3",
+    "other shell (unittest, cli)"
+   ],
+   "guard_lines": [
+    [
+     "collaborationspawn_agent",
+     "dispatch",
+     "allow"
+    ],
+    [
+     "apply_patch",
+     "dispatched",
+     "allow"
+    ],
+    [
+     "apply_patch",
+     "dispatched",
+     "allow"
+    ]
+   ],
+   "first_write_denied": false,
+   "exit_after_deny": "n/a (no deny)",
+   "classification": "other",
+   "classification_note": "main dispatched first, the role did not start (roles failed to start: the bound model is not supported on the ChatGPT account; the guard had already logged the spawn as dispatch/allow), main then edited all three files itself.",
+   "completed": true,
+   "tests_pass": true,
+   "turns": 1,
+   "tokens": {
+    "input": 286983,
+    "cached": 254848,
+    "output": 2008
+   }
+  },
+  {
+   "tool": "codex",
+   "case": "CX-feature-2",
+   "prompt": "prompts/CX-feature-2.txt",
+   "session_id": "01a12e5e-e654-7550-b052-7864188e1949",
+   "classifier_role": "none",
+   "actions": [
+    "shell read x4",
+    "dispatch sol executor (failed to start)",
+    "edit-tool (apply_patch) x3",
+    "other shell x3",
+    "second dispatch after Stop hook (rejected: same-name task exists)"
+   ],
+   "guard_lines": [
+    [
+     "collaborationspawn_agent",
+     "dispatch",
+     "allow"
+    ],
+    [
+     "apply_patch",
+     "dispatched",
+     "allow"
+    ],
+    [
+     "collaborationspawn_agent",
+     "dispatch",
+     "allow"
+    ]
+   ],
+   "first_write_denied": false,
+   "exit_after_deny": "n/a (no deny)",
+   "classification": "other",
+   "classification_note": "same as CX-feature-1 (roles failed to start: the bound model is not supported on the ChatGPT account; the guard had already logged the spawn as dispatch/allow).",
+   "completed": true,
+   "tests_pass": true,
+   "turns": 1,
+   "tokens": {
+    "input": 312941,
+    "cached": 251136,
+    "output": 2039
+   }
+  }
+ ]
+}

@@ -75,7 +75,34 @@
   且 log 記 `rule: declare`；同一輪的 `Edit` 放行（`rule: declared`）；下一輪的 `Edit` 再被擋；
   `: shoal-direct "x"; rm -rf foo` 不算宣告（之後的 `Edit` 仍被擋）；未宣告的 heredoc 寫檔被 deny。
 
-## S4 live gate（待辦）
+## S4 live gate（2026-10-12，完成，結論是規則沒有改變行為）
 
-尚未執行。範圍依 spec：只跑 Claude 與 Codex，最多 8 次，回答 spec 的三個問題（未宣告被擋、
-被擋後的選擇、小改動與三檔小功能的宣告率）。Codex 的宣告已啟用，兩邊都能量宣告率。
+紀錄在 `docs/benchmarks/guard-declared-direct-gate/`。用了 7 次（上限 8 次），Claude 3 次、
+Codex 3 次有效、1 次因 Codex 設定的 model 被帳號拒絕而作廢。六個題目最後都完成、測試都過。
+
+- **Claude**：3 次都在動手前就先宣告，錯字修正宣告、兩個小功能也宣告，理由都是「寫 brief 的
+  成本高於直接改」；沒有任何一次派工，也沒有任何一次被擋。
+- **Codex**：一次未宣告的 `apply_patch` 被擋（R1）。之後 main 打錯宣告指令（少了開頭的 `:`），
+  改派 role；另外兩題一開始就派 role。派出的 role 都沒能啟動（回報為帳號不支援綁定的
+  model，未逐一查證），main 隨後自己改檔。
+
+對 spec 三個問題的回答：
+
+1. 未宣告就改檔會被擋：Codex 觀察到一次；Claude 沒有機會觀察到，因為它每次都先宣告。
+2. 被擋之後：只有 Codex 一次，main 沒有卡住，改走派工。
+3. 宣告率：Claude 小改動 1/1、小功能 2/2；Codex 有效宣告 0/3。
+
+**結論**：spec 的頭號風險成立。宣告是 main 可以自己給自己的出口，Claude 在小功能上每次都
+用了，規則只留下紀錄，沒有讓 main 改成派工。對照 `delegation-default` 的第三、四輪：出口
+只有派工與使用者的 `#direct` 時，main 被擋後會派工。
+
+另外找到的問題：
+
+- guard 在派工呼叫發出時就記為已派工並放行後續改檔；role 沒能啟動時這個放行仍然有效。
+  Codex 的三次都是這樣改到檔的。
+- 這台機器的 Codex 設定用的 model（`gpt-6.1-sol`）被 ChatGPT 帳號拒絕（HTTP 400）；實測
+  改用命令列指定 `gpt-5.6-sol`。Codex 的 role 無法啟動，所以 Codex 的數字不代表 role 可用時
+  的行為。
+- 每格只有 1 次，單一 fixture；Codex 以 `--dangerously-bypass-hook-trust` 執行。
+
+下一步需要 Miyago 決定：是否把 main 自己宣告的出口拿掉（只留派工與 `#direct`）。
