@@ -124,15 +124,28 @@ class HooksJsonTests(unittest.TestCase):
 
     def test_events_and_matchers(self) -> None:
         self.assertEqual(
-            sorted(self.hooks), ["PreToolUse", "SessionStart", "UserPromptSubmit"]
+            sorted(self.hooks), ["PreToolUse", "SessionStart", "SubagentStart", "UserPromptSubmit"]
         )
+        self.assertNotIn("matcher", self.hooks["SubagentStart"][0])
         (pre,) = self.hooks["PreToolUse"]
         self.assertEqual(pre["matcher"], install_hooks.CLAUDE_MATCHER)
         self.assertNotIn("matcher", self.hooks["UserPromptSubmit"][0])
 
+    def test_start_event_is_registered_whenever_the_guard_unlocks_on_it(self) -> None:
+        # M11: the guard (claude) unlocks a write dispatch only on SubagentStart; without this registration the
+        # unlock would never come.  The script and the registration ship together.
+        self.assertIn("claude", guard.START_UNLOCK_HOSTS)
+        (handler,) = self.hooks["SubagentStart"][0]["hooks"]
+        self.assertIn("shoal_guard.py", handler["command"])
+        self.assertIn("--host claude --plugin", handler["command"])
+        self.assertEqual(self.hooks["SubagentStart"][0].get("matcher"), None)  # every agent_type; the guard filters
+        self.assertEqual(
+            set(self.hooks), {"SessionStart", "UserPromptSubmit", "PreToolUse", "SubagentStart"}
+        )
+
     def test_every_command_quotes_the_plugin_root(self) -> None:
         guard_cmd = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
-        for event in ("UserPromptSubmit", "PreToolUse"):
+        for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart"):
             (handler,) = self.hooks[event][0]["hooks"]
             self.assertEqual(handler["command"], guard_cmd, event)
         (start,) = self.hooks["SessionStart"][0]["hooks"]
@@ -551,6 +564,7 @@ class PluginDeferralTests(unittest.TestCase):
             "claude", name, tool, env, self.home
         )  # noqa: E731
         self.assertTrue(covers("UserPromptSubmit", None))
+        self.assertTrue(covers("SubagentStart", None))  # install_hooks registers it next to the other two
         self.assertTrue(covers("PreToolUse", "Edit"))
         self.assertTrue(covers("PreToolUse", "Workflow"))
         self.assertTrue(covers("PreToolUse", "Bash"))  # G4 needs the shell tool

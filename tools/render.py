@@ -1237,6 +1237,9 @@ def _plugin_hooks() -> dict:
                 "hooks": [{"type": "command", "command": CLAUDE_PLUGIN_SESSIONSTART}],
             }],
             "UserPromptSubmit": [{"hooks": [dict(guard)]}],
+            # M11: the guard unlocks a write dispatch only when the role has started (no matcher: the guard
+            # ignores every other agent_type itself).  This registration and the guard script ship together.
+            "SubagentStart": [{"hooks": [dict(guard)]}],
             "PreToolUse": [{"matcher": CLAUDE_PLUGIN_MATCHER, "hooks": [dict(guard)]}],
         },
     }

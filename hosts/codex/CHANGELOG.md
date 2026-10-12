@@ -9,6 +9,13 @@ written.
 
 ## Unreleased
 
+## v3.3.1
+
+- No Codex behavior change. The guard now unlocks a write dispatch on Claude only
+  when the role has started (`SubagentStart`); Codex has no recorded start event,
+  so a write dispatch still unlocks at the `spawn_agent` call. No hook
+  registration changed. The Codex policy text changes only by the marker.
+
 ## v3.3.0
 
 - The guard's default for the main-session edit rule on Codex is now `strict`

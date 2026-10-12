@@ -3,6 +3,47 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.3.1
+
+M11（派工要真的啟動）在 Claude 上實作。live 重測時 Claude 的 `SubagentStart` payload 取得後（
+`session_id` 與 main 相同，另有 `agent_id`、`agent_type`、`prompt_id`；形狀記在
+`tests/fixtures/claude_subagent_start_shape.json`），v3.3.0 留下的限制可以補上。
+
+### Features
+
+- Claude：派工呼叫不再直接放行改檔，只記一筆待啟動的 write 派工（log：`allow`／`dispatch_pending`，
+  呼叫本身仍然永遠放行）。同一個 session 的 `SubagentStart`，其 `agent_type`（`normalize_role`，含
+  `shoal:` 前綴）是 write 等級 role 且有待啟動派工時，才設為已派工（log：`state`／`dispatch_started`），
+  一次事件釋放一筆。read-only 或 verify 等級的啟動、沒有待啟動派工的啟動不改變任何東西。待啟動
+  派工隨回合重置。`strict`、`declare`、`classified` 一視同仁。
+- 對應規則：以 session 為準；事件的 `prompt_id` 與 guard 記錄的本輪不同時仍然釋放，並在 log 的
+  `skip_reason` 寫 `prompt_id_mismatch`，讓之後的實測可以確定兩者是否相等。壞 payload 失敗開放，
+  不改狀態。log 欄位沒有新增，只有新的值。
+- 註冊：plugin 的 `hooks.json`（`tools/render.py`）與全域的
+  `tools/install_hooks.py --host claude`
+  新增沒有 matcher 的 `SubagentStart`，重跑冪等，舊的 settings 原地補上，其他 entry 不動。測試固定
+  「guard 以啟動事件解鎖時，plugin 一定註冊該事件」。
+- 其他 host 不變：Codex 與 grok、agy、opencode 仍在派工呼叫時放行（沒有已記錄的啟動事件）。
+
+### 限制
+
+- **guard 腳本與 hook 註冊必須一起更新。** 沒有註冊 `SubagentStart` 的 Claude 安裝（只更新了腳本）
+  收不到事件，派工後會一直被擋，只剩 `#direct`；沒有加時間啟發式。更新 plugin
+  （`#v3.3.1`）或重跑 `install_hooks.py --host claude --apply` 即可。
+- 沒有量過：role 啟動失敗時是否仍發出 `SubagentStart`（若仍發出，失敗的啟動也會放行）；`prompt_id`
+  是否等於 guard 看到的本輪 id。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.3.1。
+- prompt lock：`LOCK.json` 沒有變動，commit 不需要 `Lock-Renewal: approved`。
+
+### 升級
+
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.3.1` 加回並更新。
+- 全域 guard：重跑 `python3 tools/install_hooks.py --host claude --apply`。Codex 不需要任何動作
+  （hook 註冊沒有變，不用重新核准）。
+
 ## v3.3.0
 
 live gate（`docs/benchmarks/guard-declared-direct-gate/`）顯示 Claude 在每次改檔前都先宣告，

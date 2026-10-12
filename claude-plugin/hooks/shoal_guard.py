@@ -37,6 +37,10 @@ file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-dec
               classified judgment/mechanical by the optional classification file.  Default on every
               host that cannot gate (grok, agy, opencode).
   off         no R1/G5; the hard rules, G4 and R2 are untouched.
+
+"A write-level role was dispatched" (the unlock in every mode) means, on claude, that the role has started
+(M11): the dispatch call records a pending write dispatch and the SubagentStart event of the same session
+releases it.  On every other host the dispatch call itself unlocks.  See START_UNLOCK_HOSTS.
 """
 
 from __future__ import annotations
@@ -94,6 +98,14 @@ DENY_MAIN_HOSTS = frozenset({"claude"})
 # the host default; every other host keeps the v3.1.0 behaviour (`classified`).  `strict` (3.3.0) needs the
 # same events (edit tools plus main's shell calls), so it is selectable on the same hosts and is their default.
 DECLARE_HOSTS = frozenset({"claude", "codex"})
+# Hosts where "a write-level role was dispatched" unlocks only once the role has actually started (M11):
+# the PreToolUse of the dispatch call records a pending write dispatch and the SubagentStart event of the
+# same session releases it.  Claude's SubagentStart payload (session_id equal to main's, agent_id, agent_type,
+# prompt_id) is recorded in tests/fixtures/claude_subagent_start_shape.json.  Every other host unlocks at the
+# dispatch call itself, as before: no start event is recorded for it, and without one a pending dispatch
+# would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
+# together; a Claude install whose registration lacks SubagentStart has no start event and would stay locked.
+START_UNLOCK_HOSTS = frozenset({"claude"})
 # `#direct` as an instruction the user typed: a standalone token that follows the start of the text or
 # whitespace and is followed by the end, whitespace or sentence punctuation (ASCII or CJK).  Anything
 # else (`x#direct`, `(#direct)`, `#directly`, a URL fragment) is not.  Code the user quoted does not
@@ -825,6 +837,11 @@ def _fd_prefix(text: str, i: int) -> bool:
     return i < n and text[i] in "<>"
 
 
+def _pending(state: Dict[str, Any]) -> int:
+    value = state.get("pending")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
 def _text(env: Dict[str, str], key: str, **fmt: Any) -> str:
     lang = "zh-TW" if env.get("SHOAL_GUARD_LANG") == "zh-TW" else "en"
     return MESSAGES[lang][key].format(**fmt)
@@ -912,6 +929,8 @@ class _Guard:
     def main(self) -> Dict[str, Any]:
         event = self.event
         kind = event.get("kind")
+        if kind == "subagent_start":
+            return self.subagent_start()
         sid, tid = event.get("session_id"), event.get("turn_id")
         is_boundary = kind in ("prompt", "turn_boundary")
         tool_kind = event.get("tool_kind")
@@ -977,10 +996,10 @@ class _Guard:
                 prior_tid = prior.get("turn_id")
                 state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
                          "dispatched": False, "advised": False, "edited": edited,
-                         "direct": event.get("direct") is True, "declared": False}
+                         "direct": event.get("direct") is True, "declared": False, "pending": 0}
             else:
                 state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
-                         "direct": event.get("direct") is True, "declared": False}
+                         "direct": event.get("direct") is True, "declared": False, "pending": 0}
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
@@ -996,10 +1015,15 @@ class _Guard:
             "edited": edited,
             "direct": state.get("direct") is True,  # this turn's prompt carried #direct
             "declared": state.get("declared") is True,  # main declared direct work this turn (M3)
+            "pending": _pending(state),  # write dispatches whose role has not started yet (M11)
         }
 
         if event.get("tool_kind") == "dispatch":
             if role_access(event.get("dispatched_role")) == "write":
+                if self.host in START_UNLOCK_HOSTS:
+                    state["pending"] += 1  # released by the role's SubagentStart; the call itself is allowed
+                    _write_json(state_path, state)
+                    return self.result("allow", "dispatch_pending")
                 state["dispatched"] = True
                 _write_json(state_path, state)
             return self.result("allow", "dispatch")
@@ -1008,6 +1032,39 @@ class _Guard:
         if event.get("tool_kind") == "shell":
             return self.shell(state, state_path, guard)
         return self.edit(state, state_path, guard)
+
+    def subagent_start(self) -> Dict[str, Any]:
+        """M11: a role has started.  A write-level role of the main session's session releases one pending
+        write dispatch and unlocks the turn; any other start (read-only or verify role, no pending dispatch,
+        a host without this rule) changes nothing.
+
+        The event is tied to the main session by session id.  Its `prompt_id` is only compared with the
+        guard's current turn: a different one still releases (the association stays the session) and the
+        log line says so (skip_reason prompt_id_mismatch).  Bad ids fail open with a skip record."""
+        event = self.event
+        if self.host not in START_UNLOCK_HOSTS or role_access(event.get("role")) != "write":
+            return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
+        sid, tid = event.get("session_id"), event.get("turn_id")
+        if sid is None:
+            return self.result("skip", skip="missing_id")
+        if not valid_id(sid):
+            return self.result("skip", skip="invalid_id")
+        guard = self.guard_dir
+        if guard is None:
+            return self.result("skip", skip="state_unavailable")
+        state_path = guard / "state" / (sid + ".json")
+        with _state_lock(guard / "state" / (sid + ".lock")) as lock_skip:
+            if lock_skip is not None:
+                return self.result("skip", skip=lock_skip)
+            state = _read_json(state_path)
+            if _pending(state) < 1:
+                return self.result("skip", skip="start_without_pending")
+            mismatch = isinstance(tid, str) and state.get("turn_id") != tid
+            state["pending"] = _pending(state) - 1
+            state["dispatched"] = True
+            if not _write_json(state_path, state):
+                return self.result("skip", skip="state_write_failed")
+            return self.result("state", "dispatch_started", skip="prompt_id_mismatch" if mismatch else None)
 
     def background_shell(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """G4: main starting a background shell.  Reads state only; nothing is recorded."""
@@ -1263,6 +1320,11 @@ def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     ):  # grok running Claude-compat hooks: grok's own entry handles it
         return None
     name = payload.get("hook_event_name")
+    if name == "SubagentStart":
+        # Its agent_id/agent_type name the NEW subagent; the event belongs to the main session's session
+        # (payload keys recorded in tests/fixtures/claude_subagent_start_shape.json), so it is not a subagent call.
+        return _event("claude", "subagent_start", payload.get("session_id"), payload.get("prompt_id"),
+                      payload.get("cwd"), False, payload.get("agent_type"))
     sub = bool(payload.get("agent_id"))
     base = (
         payload.get("session_id"),

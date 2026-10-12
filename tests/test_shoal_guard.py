@@ -227,6 +227,12 @@ def claude_tool(tool, tool_input, **kw):
             "tool_name": tool, "tool_input": tool_input, "tool_use_id": "tu-1", **kw}
 
 
+def claude_start(role="shoal:executor", **kw):
+    """The SubagentStart payload (tests/fixtures/claude_subagent_start_shape.json): the new subagent's id and type."""
+    return {"session_id": "sess-1", "prompt_id": "p-1", "cwd": "WORK", "hook_event_name": "SubagentStart",
+            "agent_id": "ag-1", "agent_type": role, "transcript_path": "/x/y.jsonl", **kw}
+
+
 class ClaudeAdapterTests(CliCase):
     def test_normalizes_main_edit_and_dispatch(self) -> None:
         event = guard.adapt_claude(claude_tool("MultiEdit", {"file_path": "/r/a.py", "edits": []}))
@@ -246,6 +252,29 @@ class ClaudeAdapterTests(CliCase):
         background = guard.adapt_claude(claude_tool("Bash", {"command": "ls > f", "run_in_background": True}))
         self.assertEqual((background["tool_kind"], background["command"]), ("background_shell", None))
         self.assertIsNone(guard.adapt_claude(claude_tool("Bash", {"command": 7}))["command"])
+
+    def test_recorded_subagent_start_shape_is_accepted(self) -> None:
+        shape = json.loads((ROOT / "tests" / "fixtures" / "claude_subagent_start_shape.json").read_text(encoding="utf-8"))
+        make = {"str": "synthetic"}
+        for agent_type in shape["agent_types"]:
+            payload = {key: make[kind] for key, kind in shape["keys"].items()}
+            payload["hook_event_name"] = shape["hook_event_name"]
+            payload["agent_type"] = agent_type
+            with self.subTest(agent_type):
+                event = guard.adapt_claude(payload)
+                # the payload's agent_id names the NEW subagent: the event is the main session's, not a subagent call
+                self.assertEqual((event["kind"], event["is_subagent"], event["tool_kind"]), ("subagent_start", False, None))
+                self.assertEqual((event["session_id"], event["turn_id"], event["role"]), ("synthetic", "synthetic", agent_type))
+        self.assertEqual(guard.adapt_claude({"hook_event_name": "SubagentStart"})["role"], None)
+
+    def test_malformed_subagent_start_payloads_fail_open(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        for payload in ({"hook_event_name": "SubagentStart"}, claude_start(7), claude_start(None), claude_start(session_id=None),
+                        claude_start(session_id="bad id/x"), claude_start(prompt_id=["x"]),
+                        {"hook_event_name": "SubagentStart", "agent_type": "shoal:executor", "session_id": {}}):
+            self.assertEqual(self.run_guard("claude", payload), "", payload)
+        state = json.loads(Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8"))
+        self.assertEqual((state["dispatched"], state["pending"]), (False, 0))
 
     def test_subagent_identified_by_agent_id(self) -> None:
         event = guard.adapt_claude(claude_tool("Edit", {"file_path": "/r/a"}, agent_id="ag-1", agent_type="verifier"))
@@ -279,11 +308,16 @@ class ClaudeAdapterTests(CliCase):
             self.assertEqual(self.run_guard("claude", claude_tool("Agent", {"subagent_type": role}, cwd=cwd)), "")
         self.assertIn("deny", self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)))
         self.assertEqual(self.run_guard("claude", claude_tool("Agent", {"subagent_type": "executor"}, cwd=cwd)), "")
+        self.assertIn("deny", self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)))  # not started
+        self.assertEqual(self.run_guard("claude", claude_start("scout", cwd=cwd)), "")
+        self.assertIn("deny", self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)))
+        self.assertEqual(self.run_guard("claude", claude_start("shoal:executor", cwd=cwd)), "")
         self.assertEqual(self.run_guard("claude", claude_tool("Write", {"file_path": "a.py"}, cwd=cwd)), "")
         decisions = [(r.get("decision"), r.get("rule")) for r in self.log_records()]
         self.assertEqual(decisions, [("state", None), ("deny", "R1"), ("allow", "dispatch"), ("deny", "R1"),
                                      ("allow", "dispatch"), ("allow", "dispatch"), ("deny", "R1"),
-                                     ("allow", "dispatch"), ("allow", "dispatched")])
+                                     ("allow", "dispatch_pending"), ("deny", "R1"), ("deny", "R1"),
+                                     ("state", "dispatch_started"), ("allow", "dispatched")])
 
     def test_r1_stays_advise_on_codex_and_never_prints_a_deny(self) -> None:
         payload = {"session_id": "sess-1", "turn_id": "t-1", "cwd": self.work, "hook_event_name": "UserPromptSubmit"}
@@ -607,6 +641,8 @@ class DeclareCliTests(CliCase):
         self.guard_run(claude_tool("Agent", {"subagent_type": "scout"}, cwd=self.work, prompt_id="p-2"))
         self.assertIn("deny", self.edit(prompt_id="p-2"))
         self.guard_run(claude_tool("Agent", {"subagent_type": "executor"}, cwd=self.work, prompt_id="p-2"))
+        self.assertIn("deny", self.edit(prompt_id="p-2"))  # dispatched but not started
+        self.guard_run(claude_start("shoal:executor", cwd=self.work, prompt_id="p-2"))
         self.assertEqual(self.edit(prompt_id="p-2"), "")
         self.start(prompt_id="p-3", prompt="plain")
         self.write_turn("sess-1", "p-3", "judgment")
@@ -700,6 +736,8 @@ class StrictCliTests(CliCase):
         self.assertEqual(self.claude(claude_tool("Agent", {"subagent_type": "scout"}, cwd=self.work)), "")
         self.assertIn("deny", self.claude(edit))
         self.assertEqual(self.claude(claude_tool("Agent", {"subagent_type": "executor"}, cwd=self.work)), "")
+        self.assertIn("deny", self.claude(edit))  # the role has not started yet
+        self.assertEqual(self.claude(claude_start("shoal:executor", cwd=self.work)), "")
         self.assertEqual(self.claude(edit), "")
         self.claude(claude_prompt(cwd=self.work, prompt_id="p-2", prompt="fix it #direct"))
         self.assertEqual(self.claude(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2")), "")

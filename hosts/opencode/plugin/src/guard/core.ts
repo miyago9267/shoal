@@ -42,7 +42,7 @@ export type Env = Record<string, string | undefined>;
 
 export type GuardEvent = {
   host: string;
-  kind: "prompt" | "turn_boundary" | "tool";
+  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start";
   session_id: string | null;
   turn_id: string | null;
   cwd: string | null;
@@ -74,6 +74,8 @@ type StateFile = {
   advised: boolean;
   edited: string[];
   direct: boolean;
+  /** write dispatches whose role has not started yet (M11; START_UNLOCK_HOSTS only). */
+  pending: number;
   /** main declared direct work this turn (`: shoal-direct <reason>`, M3). */
   declared: boolean;
 };
@@ -111,6 +113,11 @@ const DENY_MAIN_HOSTS = new Set(["claude"]);
 // The OpenCode adapter never produces main-session shell events.  `strict` (3.3.0) needs the same events
 // and is selectable on the same hosts, where it is the default.
 const DECLARE_HOSTS = new Set(["claude", "codex"]);
+// Hosts where "a write-level role was dispatched" unlocks only once the role has started (M11): the dispatch
+// call records a pending write dispatch and the SubagentStart event of the same session releases it.  Every
+// other host unlocks at the dispatch call itself (no start event is recorded for it).  The registration and
+// the guard script ship together; see hooks/shoal_guard.py.
+const START_UNLOCK_HOSTS = new Set(["claude"]);
 
 // `#direct` as an instruction the user typed (mirrors hooks/shoal_guard.py has_direct_token): a
 // standalone token after the start of the text or whitespace, followed by the end, whitespace or
@@ -398,6 +405,11 @@ function writeJson(path: string, value: unknown): boolean {
   return true;
 }
 
+function pendingCount(state: Record<string, unknown>): number {
+  const value = state.pending;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -613,6 +625,7 @@ class Guard {
   // -- main session ---------------------------------------------------------
   main(): GuardResult {
     const event = this.event;
+    if (event.kind === "subagent_start") return this.subagentStart();
     const isBoundary = event.kind === "prompt" || event.kind === "turn_boundary";
     let toolKind = event.tool_kind;
     if (event.kind === "tool" && toolKind === "background_shell" && !DENY_MAIN_HOSTS.has(this.host)) {
@@ -676,9 +689,18 @@ class Guard {
           edited: Array.isArray(prior.edited) ? (prior.edited as string[]) : [],
           direct: event.direct === true,
           declared: false,
+          pending: 0,
         };
       } else {
-        next = { turn_id: tid, dispatched: false, advised: false, edited: [], direct: event.direct === true, declared: false };
+        next = {
+          turn_id: tid,
+          dispatched: false,
+          advised: false,
+          edited: [],
+          direct: event.direct === true,
+          declared: false,
+          pending: 0,
+        };
       }
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
       return this.result("state");
@@ -694,10 +716,16 @@ class Guard {
       edited,
       direct: prior.direct === true, // this turn's prompt carried #direct
       declared: prior.declared === true, // main declared direct work this turn (M3)
+      pending: pendingCount(prior), // write dispatches whose role has not started yet (M11)
     };
 
     if (event.tool_kind === "dispatch") {
       if (roleAccess(event.dispatched_role) === "write") {
+        if (START_UNLOCK_HOSTS.has(this.host)) {
+          state.pending += 1; // released by the role's SubagentStart; the call itself is allowed
+          writeJson(statePath, state);
+          return this.result("allow", { rule: "dispatch_pending" });
+        }
         state.dispatched = true;
         writeJson(statePath, state);
       }
@@ -706,6 +734,36 @@ class Guard {
     if (event.tool_kind === "background_shell") return this.backgroundShell(state);
     if (event.tool_kind === "shell") return this.shell(state, statePath, dir);
     return this.edit(state, statePath, dir);
+  }
+
+  /**
+   * M11: a role has started.  A write-level role of the main session's session releases one pending write
+   * dispatch and unlocks the turn; any other start changes nothing.  The event is tied to the main session by
+   * session id; a `prompt_id` that differs from the guard's current turn still releases and the log line says
+   * so (skip_reason prompt_id_mismatch).  Bad ids fail open with a skip record.
+   */
+  private subagentStart(): GuardResult {
+    const event = this.event;
+    if (!START_UNLOCK_HOSTS.has(this.host) || roleAccess(event.role) !== "write") return none(this.mode);
+    const sid = event.session_id;
+    if (sid == null) return this.result("skip", { skip: "missing_id" });
+    if (!validId(sid)) return this.result("skip", { skip: "invalid_id" });
+    const dir = this.guardDirectory;
+    if (dir === null) return this.result("skip", { skip: "state_unavailable" });
+    const statePath = join(dir, "state", sid + ".json");
+    return withStateLock(
+      join(dir, "state", sid + ".tslock"),
+      () => {
+        const state = readJson(statePath);
+        if (pendingCount(state) < 1) return this.result("skip", { skip: "start_without_pending" });
+        const mismatch = typeof event.turn_id === "string" && state.turn_id !== event.turn_id;
+        state.pending = pendingCount(state) - 1;
+        state.dispatched = true;
+        if (!writeJson(statePath, state)) return this.result("skip", { skip: "state_write_failed" });
+        return this.result("state", { rule: "dispatch_started", skip: mismatch ? "prompt_id_mismatch" : undefined });
+      },
+      (reason) => this.result("skip", { skip: reason }),
+    );
   }
 
   /** G4: main starting a background shell.  Reads state only; nothing is recorded. */

@@ -1,0 +1,13 @@
+{
+ "_doc": [
+  "Keys and value types of the Claude Code SubagentStart hook payload recorded in one real run (plugin shoal",
+  "3.3.0, probe hook, 2026-10-12); values are synthetic.  session_id equals the main session's id; agent_id and",
+  "agent_type describe the NEW subagent (agent_type carries the plugin prefix, e.g. `shoal:executor`; a global",
+  "install shows the bare name).  Not measured: whether a role that fails to start still emits the event, and",
+  "whether prompt_id equals the id the guard sees on the main session's events for the same turn.",
+  "tests/test_shoal_guard.py feeds payloads built from this shape to adapt_claude."
+ ],
+ "keys": {"agent_id": "str", "agent_type": "str", "cwd": "str", "hook_event_name": "str", "prompt_id": "str", "session_id": "str", "transcript_path": "str"},
+ "hook_event_name": "SubagentStart",
+ "agent_types": ["shoal:executor", "executor", "shoal:applier", "shoal:scout", "shoal:watcher"]
+}

@@ -118,8 +118,9 @@ main session 的直接編輯在 Claude 與 Codex 以外只會被提醒：R1、R2
 `SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：只在外部分類來源標出
 實作工作時擋）、`off`。分類檔是公開的選用介面，見
 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
-`shoal-guard-v2`（matcher 加 `Bash`），3.3.0 沒有再改。guard 目前在派工呼叫發出時就放行，role 沒能
-啟動也一樣（M11 尚未實作，原因見 INSTALL.md）。
+`shoal-guard-v2`（matcher 加 `Bash`），3.3.x 沒有再改。Claude 從 3.3.1 起在 role 真的啟動
+（`SubagentStart`）後才放行派工，guard 腳本與 hook 註冊必須一起更新；Codex 與其他 host 仍在派工呼叫
+時放行（見 INSTALL.md）。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
 每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [INSTALL.md](./INSTALL.md#每日同步)。
@@ -128,12 +129,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.3.0 |
-| codex host | 3.3.0（`hosts/codex/VERSION`） |
-| claude host | 3.3.0（`hosts/claude/VERSION`） |
-| agy host | 3.3.0（`hosts/agy/VERSION`） |
-| grok host | 3.3.0（`hosts/grok/VERSION`） |
-| opencode host | 3.3.0（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.3.1 |
+| codex host | 3.3.1（`hosts/codex/VERSION`） |
+| claude host | 3.3.1（`hosts/claude/VERSION`） |
+| agy host | 3.3.1（`hosts/agy/VERSION`） |
+| grok host | 3.3.1（`hosts/grok/VERSION`） |
+| opencode host | 3.3.1（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

@@ -10,7 +10,8 @@
 來源是 repo committed HEAD 的 hooks/shoal_guard.py（git show，不是工作樹；HEAD 沒有就中止）。
 腳本裝到 ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py（0755），entry 寫進：
   claude  <home>/settings.json（--home，其次 CLAUDE_CONFIG_DIR，預設 ~/.claude）：
-          UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse
+          UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse，
+          以及 SubagentStart（3.3.1 起；舊設定重跑 --apply 會原地補上，其他 entry 不動）
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
           PreToolUse（matcher "*"）與 PreInvocation
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
@@ -218,6 +219,9 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
         "PreToolUse": None
         if command is None
         else {"matcher": CLAUDE_MATCHER, "hooks": [_handler(command)]},
+        # M11: the guard unlocks a write dispatch only when the role has started; shoal_guard.py and this
+        # registration ship together (a settings.json from before 3.3.1 has no SubagentStart entry).
+        "SubagentStart": None if command is None else {"hooks": [_handler(command)]},
     }
     for event, group in desired.items():
         existing = hooks.get(event)

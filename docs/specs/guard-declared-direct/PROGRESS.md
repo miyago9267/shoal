@@ -178,3 +178,38 @@ live 重測尚未做。
 `SubagentStart` 帶 `session_id`（與 main 相同）、`prompt_id`、`agent_id`、`agent_type`
 （例：`shoal:executor`）、`cwd`、`transcript_path`。M11 在 Claude 上因此有依據可以實作；
 「role 啟動失敗時是否仍會發出 `SubagentStart`」沒有量到。
+
+## M11 在 Claude 上實作（2026-10-12，v3.3.1）
+
+依據是 strict 複測時取得的 `SubagentStart` payload（上一節）：key 為 `agent_id`、`agent_type`、
+`cwd`、`hook_event_name`、`prompt_id`、`session_id`、`transcript_path`，
+`session_id` 與 main 相同，
+`agent_type` 帶 plugin 前綴；主 session 的順序是派工呼叫的 `PreToolUse` 在前、`SubagentStart` 在後。
+形狀固定在 `tests/fixtures/claude_subagent_start_shape.json`，`adapt_claude` 的測試餵它。
+
+- **規則**：派工呼叫（write 等級 role）永遠放行，只把 state 的 `pending` 加一（log：`allow`／
+  `dispatch_pending`）；`SubagentStart` 的 `agent_type` 經
+  `normalize_role` 是 write 等級、同一個 session 的 `pending` 大於零時，`pending` 減一並設
+  `dispatched`（log：`state`／`dispatch_started`）。
+  read-only 與 verify 等級的啟動、沒有待啟動派工的啟動（log：`skip`／`start_without_pending`）、
+  非字串或缺 id 的壞 payload，都不改變 state。待啟動派工隨回合重置，不跨輪。
+- **對應**：以 `session_id` 為準。`prompt_id` 與 guard 記錄的本輪不同時仍然釋放，log 的
+  `skip_reason` 寫 `prompt_id_mismatch`；一致或事件沒帶時不寫。沒有時間啟發式。
+- **事件的 `agent_id`**：`SubagentStart` 的 `agent_id`/`agent_type` 描述新啟動的 subagent，所以
+  `adapt_claude` 把它轉成 main session 的 `subagent_start` 事件，不是 subagent 的呼叫。
+- **範圍**：只有 `START_UNLOCK_HOSTS = {claude}`；Codex 與其他 host 維持派工呼叫放行。三種模式
+  （`strict`、`declare`、`classified`）一視同仁。
+- **註冊**：plugin `hooks.json` 與全域 `install_hooks.py --host claude` 都加了沒有
+  matcher 的
+  `SubagentStart`（原地補上，冪等）；測試固定「guard 以啟動事件解鎖時 plugin 一定註冊該事件」。
+  腳本與註冊必須一起更新，否則收不到事件，派工後會一直被擋（只剩 `#direct`）。Codex 不需重新核准。
+- **向量**：`guard_vectors.json` 新增 `subagent_start` 步驟與 21 筆 `m11_*` 向量（Python 與 TypeScript
+  重放），既有 claude 向量在寫 role 派工後補上啟動步驟。
+
+仍然沒有量到的：
+
+1. role 啟動失敗時是否仍會發出 `SubagentStart`。若仍發出，失敗的啟動也會放行，M11 在那種情況擋不住；
+   量法：派一個一定啟動失敗的 role（例如暫時指定不存在的 model），看有沒有 `SubagentStart`。
+2. `SubagentStart` 的 `prompt_id` 是否等於 guard 在主 session 事件上看到的本輪 id。log 的
+   `prompt_id_mismatch` 會在正常使用時留下答案。
+3. Codex 沒有任何啟動事件的記錄，M11 對 Codex 仍未實作。

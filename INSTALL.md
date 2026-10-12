@@ -512,7 +512,9 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 - `--host claude` 改 `settings.json`（`--home`，其次 `CLAUDE_CONFIG_DIR`，預設
   `~/.claude`）：`UserPromptSubmit`，以及 matcher 為
   `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash` 的 `PreToolUse`（`Bash`
-  是 3.0.0 起為 G4 加的，舊安裝重跑一次就會換成這個 matcher）。`settings.json` 若是 symlink（dotfile 管理）
+  是 3.0.0 起為 G4 加的，舊安裝重跑一次就會換成這個 matcher），以及沒有 matcher 的
+  `SubagentStart`（3.3.1 起，M11；舊的 settings 重跑 `--apply` 會原地補上，其他 entry 不動）。
+  `settings.json` 若是 symlink（dotfile 管理）
   就寫進它指向的檔案，權限不變。Claude 預設 enforce。
 - `--host agy` 改 `~/.gemini/config/hooks.json`（`--home` 指 `~/.gemini`）：新增具名
   群組 `shoal-guard`，含 `PreToolUse`（matcher `*`）與 `PreInvocation`。agy 無法分辨
@@ -616,12 +618,23 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   `tool_input.command`，`UserPromptSubmit` 的 `prompt` 讀 `#direct`；沒有 G4。
   hook 註冊在 3.2.1
   升到 `shoal-guard-v2`（matcher 加 `Bash`）；3.3.0 沒有改任何 hook 註冊，不需要再核准。
-- **派工要真的啟動（M11）：目前兩個 host 都做不到。** guard 在派工呼叫（Claude 的 `Agent`、Codex 的
-  `spawn_agent`）發出時就記為已派工；role 之後沒能啟動時，這一輪的放行仍然有效。Claude Code 有
-  `SubagentStart` 事件（repo 內只記錄過 `agent_type: shoal:executor`），但 payload 有沒有
-  `session_id`、`agent_id`、能不能對應到 main 的那一輪，以及 role 啟動失敗時事件會不會出現，都沒有
-  記錄，所以沒有改用該事件放行；補法見 `docs/specs/guard-declared-direct/PROGRESS.md`。Codex 沒有已記錄
-  的啟動事件。
+- **派工要真的啟動（M11）：Claude 從 3.3.1 起實作，Codex 沒有。**
+  - Claude：派工呼叫（`Agent`）本身永遠放行，但只記一筆「待啟動的 write 派工」（log：`allow`／
+    `dispatch_pending`）。`SubagentStart` 事件的 `agent_type`（去掉 `shoal:` 前綴後）是
+    write 等級的
+    role、且同一個 session 有待啟動的派工時，guard 放行這一輪（log：`state`／`dispatch_started`），
+    一次事件只釋放一筆。read-only 或 verify 等級的啟動、沒有待啟動派工的啟動，都不改變任何東西。
+    對應規則：以 `session_id` 為準（實測與 main 相同）；事件的 `prompt_id` 若與 guard 記錄的本輪不同，
+    仍然釋放並在 log 的 `skip_reason` 寫 `prompt_id_mismatch`（兩者是否相等沒有量過）。待啟動的派工
+    不跨輪。啟動失敗時是否仍會發出事件沒有量過；沒有發出事件就不放行。deny 訊息沿用各模式原本的
+    訊息（`strict` 就是 strict 訊息），不新增出口。
+  - **guard 腳本與 hook 註冊必須一起更新**：plugin 的 `hooks.json` 與全域的
+    `tools/install_hooks.py --host claude --apply` 都在 3.3.1 加了 `SubagentStart`。只更新腳本、沒有
+    註冊該事件的 Claude 安裝，收不到啟動事件，派工後會一直被擋（只剩 `#direct`），沒有時間啟發式
+    補救；plugin 與全域 guard 並存時 `--plugin` 的讓出判斷對 `SubagentStart` 同樣看全域 settings 有沒有
+    註冊。
+  - Codex：沒有已記錄的啟動事件，維持在 `spawn_agent` 呼叫時放行；role 沒能啟動時放行仍然有效。
+  - 其他 host 不變（派工呼叫放行）。
 
 G5 補的是 R1 看不到的缺口：main 用 `cat > 檔案 <<EOF` 之類的 shell 指令寫檔，沒走任何改檔工具
 （2026-10-10 實測）。它只看 `Bash` 的指令字串，是字面判斷，不是 shell parser：
@@ -654,12 +667,12 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 
 ```bash
 # 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v3.3.0
+claude plugin marketplace add miyago9267/shoal#v3.3.1
 claude plugin install shoal@shoal
 
 # 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v3.3.0
+claude plugin marketplace add miyago9267/shoal#v3.3.1
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -674,7 +687,7 @@ claude --plugin-dir ./claude-plugin
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
   `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
   `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v3.3.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  上面的 `#v3.3.1` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是

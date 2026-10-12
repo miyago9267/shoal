@@ -153,7 +153,8 @@ class ClaudeTests(Case):
         data = self.load(path)
         # key order and every unrelated value survive
         self.assertEqual(list(data), list(UNRELATED))
-        self.assertEqual(list(data["hooks"]), list(UNRELATED["hooks"]))
+        # existing events keep their order; the new SubagentStart event is appended after them
+        self.assertEqual(list(data["hooks"]), list(UNRELATED["hooks"]) + ["SubagentStart"])
         self.assertEqual(data["permissions"], UNRELATED["permissions"])
         self.assertEqual(data["hooks"]["Stop"], UNRELATED["hooks"]["Stop"])
         prompt, tool = data["hooks"]["UserPromptSubmit"], data["hooks"]["PreToolUse"]
@@ -164,7 +165,9 @@ class ClaudeTests(Case):
         self.assertEqual(
             tool[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
         )
-        for group in (prompt[1], tool[1]):
+        (start,) = data["hooks"]["SubagentStart"]  # M11: the role's start event releases a pending dispatch
+        self.assertNotIn("matcher", start)
+        for group in (prompt[1], tool[1], start):
             (handler,) = group["hooks"]
             self.assertEqual(handler["command"], PORTABLE_CLAUDE)
             self.assertNotIn(str(self.base), handler["command"])
@@ -196,7 +199,7 @@ class ClaudeTests(Case):
         code, _, err = self.cli("claude", "--apply")
         self.assertEqual(code, 0, err)
         data = self.load(self.claude / "settings.json")
-        self.assertEqual(sorted(data["hooks"]), ["PreToolUse", "UserPromptSubmit"])
+        self.assertEqual(sorted(data["hooks"]), ["PreToolUse", "SubagentStart", "UserPromptSubmit"])
         self.assertFalse(self.backups.exists())  # nothing existed to back up
 
     def test_symlinked_settings_are_written_through(self) -> None:
@@ -303,10 +306,31 @@ class ClaudeTests(Case):
                 commands = [
                     h["command"] for e in hooks.values() for g in e for h in g["hooks"]
                 ]
-                self.assertEqual(commands, [PORTABLE_CLAUDE, PORTABLE_CLAUDE])
+                self.assertEqual(commands, [PORTABLE_CLAUDE] * 3)
                 once = path.read_bytes()
                 self.assertEqual(self.cli("claude", "--apply")[0], 0)
                 self.assertEqual(path.read_bytes(), once)
+
+    def test_settings_from_before_subagent_start_gain_it_in_place(self) -> None:
+        # 3.3.0 registered UserPromptSubmit and PreToolUse only; 3.3.1 adds SubagentStart without touching the rest.
+        foreign_start = {"matcher": "reviewer", "hooks": [{"type": "command", "command": "/opt/start.sh"}]}
+        handler = {"type": "command", "command": PORTABLE_CLAUDE, "timeout": 10}
+        before = {"hooks": {
+            "UserPromptSubmit": [FOREIGN_PROMPT, {"hooks": [dict(handler)]}],
+            "PreToolUse": [FOREIGN_TOOL, {"matcher": install_hooks.CLAUDE_MATCHER, "hooks": [dict(handler)]}],
+            "SubagentStart": [foreign_start],
+        }}
+        path = self.settings(before)
+        self.assertEqual(self.cli("claude", "--apply")[0], 0)
+        hooks = self.load(path)["hooks"]
+        self.assertEqual(hooks["UserPromptSubmit"], before["hooks"]["UserPromptSubmit"])
+        self.assertEqual(hooks["PreToolUse"], before["hooks"]["PreToolUse"])
+        self.assertEqual(hooks["SubagentStart"], [foreign_start, {"hooks": [dict(handler)]}])
+        once = path.read_bytes()
+        self.assertEqual(self.cli("claude", "--apply")[0], 0)
+        self.assertEqual(path.read_bytes(), once)
+        self.assertEqual(self.cli("claude", "--uninstall", "--apply")[0], 0)
+        self.assertEqual(self.load(path)["hooks"]["SubagentStart"], [foreign_start])
 
     def run_command(self, command: str, data_home: Path | None, stdin: bytes = b"{}"):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(self.base / "home")}

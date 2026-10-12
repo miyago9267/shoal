@@ -27,7 +27,8 @@
   "`would_deny` (rule R1, message DECLARE) unless the turn is direct, dispatched or declared; a shell event whose command is",
   "exactly `: shoal-direct <reason>` (parse_declaration) decides `state` / rule `declare`, logs the reason in the `reason` field",
   "and releases the turn (allow, rule `declared`); a classification file with role parent_local counts as declared. codex has the same rule (tool `Bash` = shell event, `apply_patch` = edit) since 3.2.1; grok, agy and opencode stay classified.",
-  "3.3.0: `strict` is the default on claude and codex (SHOAL_GUARD_R1 unset, empty or unrecognized): R1 and G5 deny unless the turn is direct, dispatched or exempt; a declaration is an ordinary no-op (no state, no log) and a classification file has no effect (message STRICT). The declare_* and r1_*_selects_declare vectors select `declare` explicitly; grok, agy and opencode stay classified."
+  "3.3.0: `strict` is the default on claude and codex (SHOAL_GUARD_R1 unset, empty or unrecognized): R1 and G5 deny unless the turn is direct, dispatched or exempt; a declaration is an ordinary no-op (no state, no log) and a classification file has no effect (message STRICT). The declare_* and r1_*_selects_declare vectors select `declare` explicitly; grok, agy and opencode stay classified.",
+  "3.3.1 (M11): on claude \"a write role was dispatched\" unlocks when the role has started: the dispatch call decides allow/dispatch_pending (state pending+1) and a step with event kind subagent_start (role = SubagentStart agent_type, turn_id = its prompt_id, same session) decides state/dispatch_started (pending-1, dispatched) for a write role with a pending dispatch, skip/start_without_pending without one, skip_reason prompt_id_mismatch when its turn_id differs from the guard turn (it still releases), and none for any non-write role. Other hosts unlock at the dispatch call and ignore start events."
  ],
  "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason"],
  "env_defaults": {"SHOAL_GUARD_R1": "classified"},
@@ -105,7 +106,8 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/d"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
@@ -116,7 +118,8 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "applier", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/d"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
@@ -127,7 +130,8 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "security-executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "security-executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "security-executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/d"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
@@ -147,7 +151,8 @@
    "name": "r2_dispatch_unlock_ends_with_turn",
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
@@ -282,7 +287,8 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
@@ -959,7 +965,8 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/secret-dir/name.py"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "session_id": null}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
    ]
@@ -1007,7 +1014,8 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "prompt", "turn_id": null}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": null}, "expect": {"decision": "advise", "rule": "R2", "notify": true}},
@@ -1037,7 +1045,8 @@
    "name": "k3_shoal_namespace_executor_unlocks",
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/a"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/b"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "paths": ["$WORK/src/c"], "turn_id": "t1"}, "expect": {"decision": "allow", "rule": "dispatched"}}
@@ -1181,7 +1190,8 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
@@ -1193,7 +1203,8 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "applier", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
@@ -1370,7 +1381,8 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "watcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
     {"event": {"kind": "tool", "tool_kind": "background_shell", "tool_name": "Bash", "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "G4"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "background_shell", "tool_name": "Bash", "turn_id": "t1"}, "expect": {"decision": "deny", "rule": "G4"}}
    ]
   },
@@ -1655,7 +1667,8 @@
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 1 > x1"}, "expect": {"decision": "deny", "rule": "R1"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 2 > x2"}, "expect": {"decision": "deny", "rule": "R1"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo 3 > x3"}, "expect": {"decision": "deny", "rule": "R1"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
@@ -1686,7 +1699,8 @@
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "deny", "rule": "R1"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "sed -i s/a/b/ f"}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
@@ -1696,7 +1710,8 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "mechanical"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:applier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:applier", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > out.txt"}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
@@ -1888,12 +1903,14 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "applier", "turn_id": "t2"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
@@ -2644,14 +2661,16 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "applier", "turn_id": "t2"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
@@ -2714,7 +2733,8 @@
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/x"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
@@ -3019,6 +3039,242 @@
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}}
+   ]
+  },
+  {
+   "name": "m11_dispatch_without_start_does_not_unlock",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "m11_dispatch_then_start_unlocks_edit_and_shell_write",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ],
+   "log_contains": ["\"rule\":\"dispatch_pending\"", "\"rule\":\"dispatch_started\""]
+  },
+  {
+   "name": "m11_bare_role_name_start_releases",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "m11_applier_and_namespaced_roles_release",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "shoal:applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "applier", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "m11_read_only_and_verify_starts_never_release",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "scout", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:watcher", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": "verifier", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": "researcher", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": "plan-critic", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": "unknown", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "m11_scout_dispatch_and_start_do_not_unlock",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "subagent_start", "role": "scout", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "watcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "subagent_start", "role": "watcher", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "m11_start_without_pending_dispatch_does_not_unlock",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "m11_start_without_any_state_does_not_unlock",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": null}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "m11_pending_dispatch_does_not_carry_to_the_next_turn",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t2"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "m11_one_start_releases_one_pending_dispatch",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "subagent_start", "role": "applier", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "m11_start_with_a_different_prompt_id_still_releases_and_logs_the_mismatch",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "other-prompt"}, "expect": {"decision": "state", "rule": "dispatch_started", "skip_reason": "prompt_id_mismatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ],
+   "log_contains": ["\"skip_reason\":\"prompt_id_mismatch\""]
+  },
+  {
+   "name": "m11_start_with_the_matching_prompt_id_logs_no_mismatch",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started", "skip_reason": null}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ],
+   "log_lacks": ["prompt_id_mismatch"]
+  },
+  {
+   "name": "m11_start_without_a_prompt_id_releases_by_session",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started", "skip_reason": null}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "m11_malformed_start_events_fail_open_without_state_change",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": null, "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": 7, "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "session_id": null, "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "session_id": "bad id", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "m11_start_unlocks_in_declare_and_classified_modes_too",
+   "env": {"SHOAL_GUARD_R1": "declare"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "m11_start_unlocks_in_classified_mode",
+   "env": {"SHOAL_GUARD_R1": "classified"},
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "m11_prompt_direct_still_unlocks_without_any_dispatch",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}
+   ]
+  },
+  {
+   "name": "m11_start_is_unlock_only_after_the_dispatch_in_shadow_too",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "shadow"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "R1"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "m11_start_events_are_ignored_when_the_guard_is_off",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "off"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "m11_subagent_calls_are_unaffected",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "codex_m11_dispatch_call_still_unlocks_and_a_start_event_is_ignored",
+   "host": "codex",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "none"}}
    ]
   }
  ]
