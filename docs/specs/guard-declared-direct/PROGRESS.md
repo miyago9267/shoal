@@ -213,3 +213,19 @@ live 重測尚未做。
 2. `SubagentStart` 的 `prompt_id` 是否等於 guard 在主 session 事件上看到的本輪 id。log 的
    `prompt_id_mismatch` 會在正常使用時留下答案。
 3. Codex 沒有任何啟動事件的記錄，M11 對 Codex 仍未實作。
+
+## M11 的 live 補驗（2026-10-12，v3.3.1，Claude 2 次，Miyago 另外核准）
+
+真實設定（Plugin 3.3.1），共 USD 1.15。
+
+- **正常派工**：題目是小功能加上「完成後在 README 補一行」。main 派出 `shoal:executor`，
+  guard 記錄 `dispatch_pending`，隨後收到 `SubagentStart` 並記錄 `dispatch_started`；README
+  那一行 main 也沒有自己改，而是再派 `shoal:applier`，同樣是 pending 後 started。兩次的
+  `prompt_id` 都與 guard 的回合一致（沒有 mismatch 紀錄）。M11 的事件與關聯在真實 session
+  成立。
+- **啟動失敗的 role**：在拋棄式 repo 放一個 model 名稱無效的 `executor`，要 main 派它。結果
+  它照常啟動並完成修改（Claude Code 對無效的 model 名稱沒有讓 role 啟動失敗），所以「啟動
+  失敗時是否仍會發出 `SubagentStart`」這次沒有量到，仍是未知。
+- 限制：各 1 次；main 在兩次中都沒有於派工後自己改檔，所以「放行後 main 的改檔被允許」這
+  一步的證據仍是單元測試、向量與手動實測。
+
