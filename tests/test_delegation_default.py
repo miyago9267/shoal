@@ -103,7 +103,7 @@ class OtherHostsRoleTests(unittest.TestCase):
     POLICY_SHA256 = {
         "codex": {
             "agents-md.bootstrap.md": "05506fc776f399ac88365375e9f3cf9a2dda285929a737cd1949bdc80eb67943",
-            "agents-md.orchestration.md": "abebecc5ac56ba5fb3c7d1403a677f7c89077a8115a752972dd4f94f99119e8d",
+            "agents-md.orchestration.md": "b4fe958250f6059cc06bd2d87be776bd00e0c0aec27538215b9fffcc93f30491",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {

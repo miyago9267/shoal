@@ -32,6 +32,14 @@ class PluginPackageTests(unittest.TestCase):
             self.assertTrue((skill / "references" / reference).is_file())
         self.assertTrue((skill / "agents" / "openai.yaml").is_file())
 
+    def test_skill_never_lets_main_implement_itself(self) -> None:
+        text = (
+            (PLUGIN / "skills" / "shoal-orchestration" / "SKILL.md").read_text().lower()
+        )
+        self.assertNotIn("implement directly", text)
+        self.assertNotIn("cheap parent", text)
+        self.assertIn("write-capable role", text)
+
     def test_skill_names_every_on_demand_reference(self) -> None:
         skill = PLUGIN / "skills" / "shoal-orchestration"
         text = (skill / "SKILL.md").read_text()

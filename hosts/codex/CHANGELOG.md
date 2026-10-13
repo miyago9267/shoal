@@ -18,6 +18,7 @@ written.
   role unless the prompt contains `#direct`); an unavailable role is reported
   instead of main taking over; long commands go to `watcher`; decision
   research uses two `researcher` arms.
+- plugin 的 `SKILL.md` 不再讓 main 自己直接實作，也不再把單指令工作交給 cheap parent；改檔一律派給可寫入的 role。
 - The low-risk "one targeted acceptance check, no independent verifier"
   sentence is kept as the addendum `pending-shared-low-risk-targeted-check`.
 - The plugin `SKILL.md` reference list now names `workflow-extensions.md`, so

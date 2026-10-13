@@ -128,7 +128,7 @@ projection never bypasses typed dispatch or host approval.
 
 | Work surface | Default candidate | Conditional Astra candidate |
 |---|---|---|
-| Atomic one-command/one-action work | `applier` Luna binding | Never open a child |
+| Atomic one-command/one-action work | `applier` Luna binding | Never Astra |
 | Pure Plan or semantic judgment | Sol where the existing contract requires it | Do not replace `plan-critic` |
 | Security review with cross-file or cross-system evidence | Current reviewer binding | `security-reviewer` at Astra `high`, read-only |
 | Routine design, ordinary tools, bounded multi-step, or uncertainty | `applier` Luna binding | Keep on the cheap guarded path |

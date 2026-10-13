@@ -15,7 +15,7 @@ contract.
 Classify the request before acting:
 
 - `execute`: clear, bounded, reversible work; inspect the smallest relevant seam
-  and implement directly or use one bounded executor.
+  and dispatch one bounded write-capable role.
 - `explore_then_plan`: broad, cross-module, migration-heavy, high-impact, or
   costly-to-reverse work; establish evidence and a provisional Plan first.
 - `co_discover`: unclear product intent, target user, MVP, or acceptance; ask only
@@ -24,8 +24,8 @@ Classify the request before acting:
 Keep the task boundary as `goal -> in-scope -> stop condition`. Do not expand
 into adjacent cleanup unless correctness or safety requires it.
 
-Before the first tool action, route one-command/one-action work to the cheap
-parent or `applier`. Route normal design, tool choice, interpretation,
+Before the first tool action, route one-command/one-action work to
+`applier`. Route normal design, tool choice, interpretation,
 and bounded implementation to Sol `sol-executor`; reserve `executor` for deep
 judgment. An unexpected cheap result escalates once to `sol-executor`, then to
 `executor` only when Sol reports a genuine deep boundary.

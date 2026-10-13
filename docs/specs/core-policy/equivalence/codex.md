@@ -1512,3 +1512,7 @@ cheap parent」，與 A3 規則 1 衝突；逐字搬入會把矛盾帶進 addend
   `hosts/codex/VERSION`；上限 270 行／15600 bytes，per-change budget 同
   `claude-workflow-extensions`（30 行、4000 字元、0.2）。
 - `hosts/codex/VERSION` 已提升到 3.5.0。
+- 修正 8.11（d）留下的矛盾：plugin `SKILL.md` 移除「implement
+  directly」與「cheap parent」，改為派給一個可寫入的 role；orchestration
+  addendum 表中單指令列的 Astra 欄由「Never open a child」改為
+  「Never Astra」。
