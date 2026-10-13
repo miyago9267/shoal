@@ -118,11 +118,13 @@ main session 的直接編輯在 Claude 與 Codex 以外只會被提醒：R1、R2
 `SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：只在外部分類來源標出
 實作工作時擋）、`off`。
 `SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的 subagent 改檔
-（Claude 預設 `on`，其他 host 預設 `off`；Claude 上啟動該工作的 prompt 帶 `#direct` 可放行，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
+（Claude、Codex 預設 `on`，其他 host 預設 `off`；Claude、Codex 上啟動該工作的
+prompt 帶 `#direct` 可放行，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
-`shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組，升級後要在
-Codex 用 `/hooks` 再核准一次）。Claude 從 3.3.1 起在 role 真的啟動（`SubagentStart`）後才放行派工，
-guard 腳本與 hook 註冊必須一起更新；Codex 與其他 host 仍在派工呼叫時放行（見 INSTALL.md）。
+`shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組），之後升到
+`shoal-guard-v4`（加 `SubagentStart` 群組；每次新增群組都要在 Codex 用 `/hooks` 再核准一次）。Claude
+從 3.3.1 起、Codex 從 `shoal-guard-v4` 起，在 role 真的啟動（`SubagentStart`）後才放行派工，guard 腳本與
+hook 註冊必須一起更新；其他 host 仍在派工呼叫時放行（見 INSTALL.md）。
 3.4.0 起 Claude 與 Codex 多一道完成檢查：guard 逐回合記下 main 有沒有改檔、改檔之後有沒有跑過
 檢查（派出 `verifier`／`watcher`，或 main 執行任何不寫檔的前景 shell 指令），回合結束時若改過檔
 卻沒有任何檢查，`Stop` 會擋一次，要求補做驗證，或在回報中明寫未驗證；同一回合只擋一次，

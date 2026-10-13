@@ -756,6 +756,8 @@ class StrictCliTests(CliCase):
         self.assertEqual(self.codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "scout"}, cwd=self.work)), "")
         self.assertIn("deny", self.codex(patch))
         self.assertEqual(self.codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor"}, cwd=self.work)), "")
+        self.assertIn("deny", self.codex(patch))  # a dispatched role unlocks once it has started (SubagentStart), not at the call
+        self.assertEqual(self.codex(CodexAdapterTests.start("executor", cwd=self.work)), "")
         self.assertEqual(self.codex(patch), "")
         self.codex(CodexAdapterTests.prompt(cwd=self.work, turn_id="019f-t2", prompt="do it #direct"))
         self.assertEqual(self.codex(CodexAdapterTests.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, turn_id="019f-t2")), "")
@@ -984,6 +986,46 @@ class CodexAdapterTests(CliCase):
         return {"session_id": "019f-s", "turn_id": "019f-t", "cwd": "WORK", "hook_event_name": "PreToolUse",
                 "tool_name": name, "tool_input": tool_input, "tool_use_id": "c1", **kw}
 
+    @staticmethod
+    def start(agent_type, agent_id="019f-a1", **kw):
+        """tests/fixtures/codex_subagent_tool_shapes.json: SubagentStart keys; turn_id is the subagent's own."""
+        return {"session_id": "019f-s", "turn_id": "019f-sub", "cwd": "WORK", "hook_event_name": "SubagentStart",
+                "agent_id": agent_id, "agent_type": agent_type, "model": "gpt", "permission_mode": "never",
+                "transcript_path": "x", **kw}
+
+    def test_recorded_subagent_start_shape_is_accepted(self) -> None:
+        event = guard.adapt_codex(self.start("applier"))
+        self.assertEqual((event["kind"], event["role"], event["agent_id"], event["session_id"], event["is_subagent"]),
+                         ("subagent_start", "applier", "019f-a1", "019f-s", False))
+        self.assertIsNone(event["turn_id"])  # the subagent's own turn says nothing about main's
+        sub = guard.adapt_codex(self.tool("apply_patch", {"command": self.PATCH}, agent_id="019f-a1", agent_type="worker"))
+        self.assertEqual((sub["is_subagent"], sub["role"], sub["agent_id"]), (True, "worker", "019f-a1"))
+        self.assertIsNone(guard.adapt_codex(self.tool("Bash", {"command": "ls"}))["agent_id"])
+        for bad in ({"hook_event_name": "SubagentStart"}, self.start(7, agent_id=None), self.start("applier", agent_id={})):
+            self.assertEqual(guard.adapt_codex(bad)["kind"], "subagent_start")
+
+    def test_worker_subagent_edit_is_denied_by_default_and_applier_is_not(self) -> None:
+        env = {"SHOAL_GUARD": "enforce"}
+        worker = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, agent_id="019f-w1", agent_type="worker")
+        out = self.run_guard("codex", worker, **env)
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(self.log_records()[-1]["rule"], "E1")
+        applier = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, agent_id="019f-a1", agent_type="applier")
+        self.assertEqual(self.run_guard("codex", applier, **env), "")
+        self.assertEqual(self.run_guard("codex", worker, SHOAL_GUARD_SUBAGENT_WRITE="off", **env), "")
+
+    def test_direct_turn_releases_the_agent_started_in_it_through_the_real_script(self) -> None:
+        env = {"SHOAL_GUARD": "enforce"}
+        self.run_guard("codex", self.prompt(cwd=self.work, prompt="fix it #direct"), **env)
+        self.assertEqual(self.run_guard("codex", self.start("worker", agent_id="019f-w1", cwd=self.work), **env), "")
+        released = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, agent_id="019f-w1", agent_type="worker",
+                             turn_id="019f-sub")
+        self.assertEqual(self.run_guard("codex", released, **env), "")
+        other = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, agent_id="019f-w2", agent_type="worker",
+                          turn_id="019f-sub2")
+        out = json.loads(self.run_guard("codex", other, **env))
+        self.assertIn("#direct", out["hookSpecificOutput"]["permissionDecisionReason"])
+
     def test_patch_headers_parsed(self) -> None:
         self.assertEqual(guard.patch_paths(self.PATCH), ["new/a.py", "src/b.py", "old.py", "src/c.py", "src/d.py"])
         self.assertEqual(guard.patch_paths(None), [])
@@ -1048,10 +1090,13 @@ class CodexAdapterTests(CliCase):
         self.assertNotIn("permissionDecision", out)
 
     def test_dispatch_write_role_unlocks(self) -> None:
-        env = {"SHOAL_GUARD": "enforce"}
+        env = {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "strict"}
         self.run_guard("codex", self.prompt(cwd=self.work), **env)
         self.assertEqual(self.run_guard("codex", self.tool("collaborationspawn_agent", {"agent_type": "executor"}, cwd=self.work), **env), "")
-        self.assertEqual(self.run_guard("codex", self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work), **env), "")
+        patch = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work)
+        self.assertIn("deny", self.run_guard("codex", patch, **env))  # the dispatch call alone no longer unlocks (E3)
+        self.assertEqual(self.run_guard("codex", self.start("executor", cwd=self.work), **env), "")
+        self.assertEqual(self.run_guard("codex", patch, **env), "")
 
     def test_verifier_subagent_apply_patch_denied(self) -> None:
         payload = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, agent_id="a1", agent_type="verifier")

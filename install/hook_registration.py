@@ -22,10 +22,14 @@ CURRENT_PROJECTION_ID = "shoal-autoroute-v1"
 # upgraded in place instead of being rejected.
 # v3 (3.4.0, docs/specs/shared-rules B3) adds a `Stop` group for the completion check; v1 and v2 stay
 # allowlisted for the same reason.  The autoroute gate's own Stop group is a different group and is never touched.
-GUARD_PROJECTION_ID = "shoal-guard-v3"
+# v4 (docs/specs/guard-every-gate E3) adds a `SubagentStart` group so the guard learns that a dispatched role really
+# started (Codex fires it with agent_id and agent_type; tests/fixtures/codex_subagent_tool_shapes.json); v1-v3 stay
+# allowlisted for the same reason.  The new group is a separate hook, so Codex asks for a `/hooks` approval of it.
+GUARD_PROJECTION_ID = "shoal-guard-v4"
 GUARD_PROJECTION_ID_V1 = "shoal-guard-v1"
 GUARD_PROJECTION_ID_V2 = "shoal-guard-v2"
-GUARD_PROJECTION_IDS = (GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID)
+GUARD_PROJECTION_ID_V3 = "shoal-guard-v3"
+GUARD_PROJECTION_IDS = (GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID)
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
@@ -95,10 +99,16 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
     },
+    GUARD_PROJECTION_ID_V3: {
+        "UserPromptSubmit": _GUARD_PROMPT_GROUP,
+        "Stop": _GUARD_PROMPT_GROUP,
+        "PreToolUse": _GUARD_TOOL_GROUP,
+    },
     GUARD_PROJECTION_ID: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "Stop": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
+        "SubagentStart": _GUARD_PROMPT_GROUP,
     },
 }
 
@@ -449,7 +459,7 @@ def _upgrade_guard(merged: dict[str, Any], owned_id: str, desired_id: str) -> No
         if event in prior and _type_strict_equal(prior[event], group):
             continue
         # The group may already be present only as part of the owned projection (v3's Stop group has the body of
-        # its UserPromptSubmit group); a copy anywhere else, notably in the new event, is not ours.
+        # its UserPromptSubmit group, v4's SubagentStart group likewise); a copy anywhere else, notably in the new event, is not ours.
         owned_elsewhere = {e for e, candidate in prior.items() if _type_strict_equal(candidate, group)}
         if any(location_event not in owned_elsewhere for location_event, _ in _locations(merged, group)):
             raise HookRegistrationError("desired guard group collides with an unowned canonical group")
@@ -550,7 +560,7 @@ def merge_registration(
     older_registered = next(
         (
             guard_id
-            for guard_id in (GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V1)
+            for guard_id in (GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V1)
             if owned_guard_projection_id is None and _guard_already_registered(merged, guard_id)
         ),
         None,
@@ -558,7 +568,7 @@ def merge_registration(
     if owned_guard_projection_id is None and _guard_already_registered(merged):
         pass  # adopted: placed by tools/install_hooks.py --host codex
     elif older_registered is not None:
-        _upgrade_guard(merged, older_registered, desired_guard)  # placed by 3.2.1 (v2) or 3.2.0 and earlier (v1)
+        _upgrade_guard(merged, older_registered, desired_guard)  # placed by 3.4.0 (v3), 3.2.1 (v2) or 3.2.0 and earlier (v1)
     elif owned_guard_projection_id is None:
         if any(
             _locations(document, group)

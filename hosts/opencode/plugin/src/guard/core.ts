@@ -58,6 +58,8 @@ export type GuardEvent = {
   direct?: boolean;
   /** stop events: the host's raw `stop_hook_active` value; only exactly `false` lets the guard block. */
   stop_hook_active?: unknown;
+  /** codex: the subagent's id on its events and on `subagent_start` (its own turn_id differs from main's). */
+  agent_id?: string | null;
 };
 
 export type GuardResult = {
@@ -88,6 +90,10 @@ type StateFile = {
   stop_blocked: boolean;
   /** E1: the last DIRECT_TURNS_MAX turn ids whose prompt carried `#direct` (omitted when empty). */
   direct_turns?: string[];
+  /** codex: agent ids released from E1 by a `#direct` turn at their start (the last AGENTS_MAX). */
+  direct_agents?: string[];
+  /** codex: agent ids that already released a pending dispatch (the last AGENTS_MAX). */
+  started_agents?: string[];
 };
 type LogRecord = Record<string, unknown>;
 
@@ -132,7 +138,9 @@ const DECLARE_HOSTS = new Set(["claude", "codex"]);
 // call records a pending write dispatch and the SubagentStart event of the same session releases it.  Every
 // other host unlocks at the dispatch call itself (no start event is recorded for it).  The registration and
 // the guard script ship together; see hooks/shoal_guard.py.
-const START_UNLOCK_HOSTS = new Set(["claude"]);
+const START_UNLOCK_HOSTS = new Set(["claude", "codex"]);
+// Codex: the first tool call of a write-level role's agent is start evidence as well (the SubagentStart hook may not be
+// approved yet); each agent_id releases at most one pending dispatch (`started_agents`).  See hooks/shoal_guard.py.
 
 // `#direct` as an instruction the user typed (mirrors hooks/shoal_guard.py has_direct_token): a
 // standalone token after the start of the text or whitespace, followed by the end, whitespace or
@@ -516,8 +524,14 @@ export function resolveMode(host: string, env: Env): string {
  * subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it, so the
  * user's `#direct` can release a subagent.
  */
-const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude"]);
-const SUBAGENT_DIRECT_HOSTS = new Set(["claude"]);
+const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude", "codex"]);
+const SUBAGENT_DIRECT_HOSTS = new Set(["claude", "codex"]);
+/**
+ * Codex: a subagent runs in its own turn, so `#direct` is looked up by agent_id: a SubagentStart while main's current
+ * turn carried `#direct` records the id in `direct_agents`.
+ */
+const AGENT_KEYED_HOSTS = new Set(["codex"]);
+const AGENTS_MAX = 32;
 /** The state file remembers this many most recent turn ids that carried `#direct`. */
 const DIRECT_TURNS_MAX = 16;
 
@@ -532,6 +546,21 @@ function directTurns(state: Record<string, unknown>): string[] {
   const raw = state.direct_turns;
   if (!Array.isArray(raw)) return [];
   return raw.filter((t): t is string => typeof t === "string").slice(-DIRECT_TURNS_MAX);
+}
+
+/** `direct_agents` / `started_agents` of a state file: ids that pass validId, the last AGENTS_MAX. */
+function agentList(state: Record<string, unknown>, key: string): string[] {
+  const raw = state[key];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((a): a is string => validId(a)).slice(-AGENTS_MAX);
+}
+
+/** Keep the two agent lists of `prior` in `state` (they live across turns, like `direct_turns`). */
+function carryAgents(state: StateFile, prior: Record<string, unknown>): void {
+  const direct = agentList(prior, "direct_agents");
+  if (direct.length > 0) state.direct_agents = direct;
+  const started = agentList(prior, "started_agents");
+  if (started.length > 0) state.started_agents = started;
 }
 
 /** SHOAL_GUARD_WRITE_AGENTS: the raw agent type, or the type without a `shoal:` prefix, is in the list. */
@@ -693,6 +722,9 @@ class Guard {
   // -- subagent backstop (spec R6) ------------------------------------------
   subagent(): GuardResult {
     const { role, tool_kind: toolKind } = this.event;
+    if (AGENT_KEYED_HOSTS.has(this.host) && roleAccess(role) === "write" && (toolKind === "edit" || toolKind === "shell")) {
+      this.noteStartedByTool(); // logs its own record; the call itself is judged below as before
+    }
     let rule: string | null = null;
     if (toolKind === "dispatch") rule = "LEAF";
     else if (toolKind === "edit" && roleAccess(role) === "verify") rule = "VERIFY_EDIT";
@@ -733,6 +765,13 @@ class Guard {
   subagentDirectReleased(): boolean {
     try {
       if (!SUBAGENT_DIRECT_HOSTS.has(this.host)) return false;
+      if (AGENT_KEYED_HOSTS.has(this.host)) {
+        const agent = this.event.agent_id;
+        const asid = this.event.session_id;
+        const adir = this.guardDirectory;
+        if (!validId(asid) || !validId(agent) || adir === null) return false;
+        return agentList(readJson(join(adir, "state", asid + ".json")), "direct_agents").includes(agent as string);
+      }
       const sid = this.event.session_id;
       const tid = this.event.turn_id;
       if (!validId(sid) || !validId(tid)) return false;
@@ -918,8 +957,10 @@ class Guard {
           stop_blocked: false,
         };
         if (turns.length > 0) next.direct_turns = turns;
+        carryAgents(next, prior);
       } else {
-        let turns = directTurns(readJson(statePath));
+        const priorState = readJson(statePath);
+        let turns = directTurns(priorState);
         if (event.direct === true && typeof tid === "string") turns = [...turns, tid].slice(-DIRECT_TURNS_MAX);
         next = {
           turn_id: tid,
@@ -934,6 +975,7 @@ class Guard {
           stop_blocked: false,
         };
         if (turns.length > 0) next.direct_turns = turns;
+        carryAgents(next, priorState);
       }
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
       return this.result("state");
@@ -941,6 +983,7 @@ class Guard {
 
     let prior = readJson(statePath);
     const keptTurns = directTurns(prior);
+    const priorState = prior;
     if (tid != null && prior.turn_id !== tid) prior = {};
     const edited = Array.isArray(prior.edited) ? (prior.edited as string[]) : [];
     const state: StateFile = {
@@ -956,6 +999,7 @@ class Guard {
       stop_blocked: prior.stop_blocked === true, // B3: this turn's one block is spent
     };
     if (keptTurns.length > 0) state.direct_turns = keptTurns; // E1: turns that carried #direct
+    carryAgents(state, priorState); // codex: agents released by #direct / already counted as started
 
     if (event.tool_kind === "dispatch") {
       const access = roleAccess(event.dispatched_role);
@@ -984,18 +1028,29 @@ class Guard {
    * dispatch and unlocks the turn; any other start changes nothing.  The event is tied to the main session by
    * session id; a `prompt_id` that differs from the guard's current turn still releases and the log line says
    * so (skip_reason prompt_id_mismatch).  Bad ids fail open with a skip record.
+   *
+   * Codex (AGENT_KEYED_HOSTS): the started agent's own turn_id says nothing about main's turn, so it is not
+   * compared; the agent is released from E1 when main's current turn carried `#direct` (`direct_agents`), and a write
+   * role counts once per agent_id (`started_agents`).
    */
   private subagentStart(): GuardResult {
     const event = this.event;
     const access = roleAccess(event.role);
+    if (AGENT_KEYED_HOSTS.has(this.host)) this.noteDirectAgent();
     if (!START_UNLOCK_HOSTS.has(this.host) || (access !== "write" && access !== "verify")) return none(this.mode);
     if (access === "verify") {
       this.noteVerifyStarted();
       return none(this.mode);
     }
-    const sid = event.session_id;
+    return this.releasePending(event.session_id, event.turn_id, event.agent_id);
+  }
+
+  /** A write role has started: one pending dispatch of session `sid` is released, once per codex agent_id. */
+  private releasePending(sid: string | null | undefined, tid: string | null | undefined, agent: string | null | undefined): GuardResult {
+    const keyed = AGENT_KEYED_HOSTS.has(this.host);
     if (sid == null) return this.result("skip", { skip: "missing_id" });
     if (!validId(sid)) return this.result("skip", { skip: "invalid_id" });
+    if (keyed && !validId(agent)) return this.result("skip", { skip: "missing_id" });
     const dir = this.guardDirectory;
     if (dir === null) return this.result("skip", { skip: "state_unavailable" });
     const statePath = join(dir, "state", sid + ".json");
@@ -1003,17 +1058,66 @@ class Guard {
       join(dir, "state", sid + ".tslock"),
       () => {
         const state = readJson(statePath);
+        const started = agentList(state, "started_agents");
+        if (keyed && started.includes(agent as string)) return this.result("skip", { skip: "agent_already_started" });
         if (pendingCount(state) < 1) return this.result("skip", { skip: "start_without_pending" });
-        const mismatch = typeof event.turn_id === "string" && state.turn_id !== event.turn_id;
+        const mismatch = typeof tid === "string" && !keyed && state.turn_id !== tid;
         state.pending = pendingCount(state) - 1;
         state.dispatched = true;
         state.changed = true; // B2: the write role has started, so the turn counts as changed
         state.checked = false;
+        if (keyed) state.started_agents = [...started, agent as string].slice(-AGENTS_MAX);
         if (!writeJson(statePath, state)) return this.result("skip", { skip: "state_write_failed" });
         return this.result("state", { rule: "dispatch_started", skip: mismatch ? "prompt_id_mismatch" : undefined });
       },
       (reason) => this.result("skip", { skip: reason }),
     );
+  }
+
+  /**
+   * Codex SubagentStart: when main's current turn carried `#direct`, remember the new agent_id as released (E1; the
+   * last AGENTS_MAX).  Silent and best effort: any problem leaves the agent unreleased.
+   */
+  private noteDirectAgent(): void {
+    try {
+      const sid = this.event.session_id;
+      const agent = this.event.agent_id;
+      const dir = this.guardDirectory;
+      if (!validId(sid) || !validId(agent) || dir === null) return;
+      const statePath = join(dir, "state", sid + ".json");
+      if (readJson(statePath).direct !== true) return;
+      withStateLock(
+        join(dir, "state", sid + ".tslock"),
+        () => {
+          const state = readJson(statePath);
+          if (state.direct !== true) return none(this.mode);
+          state.direct_agents = [...agentList(state, "direct_agents"), agent as string].slice(-AGENTS_MAX);
+          writeJson(statePath, state);
+          return none(this.mode);
+        },
+        () => none(this.mode),
+      );
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /**
+   * Codex: the first tool call of a write-level role's agent releases one pending dispatch when its SubagentStart has
+   * not (hook not approved yet).  Cheap: one unlocked read decides.
+   */
+  private noteStartedByTool(): void {
+    try {
+      const sid = this.event.session_id;
+      const agent = this.event.agent_id;
+      const dir = this.guardDirectory;
+      if (!validId(sid) || !validId(agent) || dir === null) return;
+      const state = readJson(join(dir, "state", sid + ".json"));
+      if (pendingCount(state) < 1 || agentList(state, "started_agents").includes(agent as string)) return;
+      this.releasePending(sid, null, agent);
+    } catch {
+      /* best effort */
+    }
   }
 
   /** G4: main starting a background shell.  Reads state only; nothing is recorded. */

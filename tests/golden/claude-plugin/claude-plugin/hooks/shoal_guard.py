@@ -38,19 +38,22 @@ file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-dec
               host that cannot gate (grok, agy, opencode).
   off         no R1/G5; the hard rules, G4 and R2 are untouched.
 
-"A write-level role was dispatched" (the unlock in every mode) means, on claude, that the role has started
-(M11): the dispatch call records a pending write dispatch and the SubagentStart event of the same session
-releases it.  On every other host the dispatch call itself unlocks.  See START_UNLOCK_HOSTS.
+"A write-level role was dispatched" (the unlock in every mode) means, on claude and codex, that the role has
+started (M11, E3): the dispatch call records a pending write dispatch and the SubagentStart event of the same
+session releases it (codex: once per agent_id; its subagent's first edit or shell call also counts, see
+START_UNLOCK_HOSTS).  On every other host the dispatch call itself unlocks.
 
 Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` (default on every host
-but claude) leaves the subagent rules exactly as they were; `on` (default on claude) makes a subagent that is not a shoal write-capable role (an edit
+but claude and codex) leaves the subagent rules exactly as they were; `on` (default on claude and codex) makes a subagent that is not a shoal write-capable role (an edit
 tool or a literal shell write, as in G5, outside the exempt paths) get E1: deny in enforce, `would_deny` in shadow.
 Exits: dispatch a shoal write role, put the agent type in SHOAL_GUARD_WRITE_AGENTS (comma-separated, exact match on the
 raw type or the type without a `shoal:` prefix), or SHOAL_GUARD_DIRECT=1.  On claude a user's `#direct`
 also releases it: the subagent event carries the main session's session_id and the prompt_id of the turn that started
 it, and the prompt event keeps the last DIRECT_TURNS_MAX turn ids that carried `#direct` in the state file
 (`direct_turns`), so a background Workflow child that edits after the main session moved on is still judged by the turn
-that launched it.  Other hosts have no such payload evidence: not released.  Verify-level roles keep VERIFY_EDIT.
+that launched it.  Codex: a subagent has its own turn id, so the SubagentStart event of an agent records its agent_id when main's
+current turn carried `#direct` (`direct_agents`, the last AGENTS_MAX) and that agent is released.  Other hosts have no
+such payload evidence: not released.  Verify-level roles keep VERIFY_EDIT.
 
 Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
 shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
@@ -128,12 +131,23 @@ DECLARE_HOSTS = frozenset({"claude", "codex"})
 # dispatch call itself, as before: no start event is recorded for it, and without one a pending dispatch
 # would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
 # together; a Claude install whose registration lacks SubagentStart has no start event and would stay locked.
-START_UNLOCK_HOSTS = frozenset({"claude"})
+START_UNLOCK_HOSTS = frozenset({"claude", "codex"})
+# Codex (docs/specs/guard-every-gate E3; tests/fixtures/codex_subagent_tool_shapes.json): SubagentStart carries the new
+# agent's agent_id and agent_type with the main session's session_id, and fires only when the role really started (a
+# spawn of an unknown agent_type fires none).  The registration is a separate hook group that the user approves in
+# `/hooks`; until then no start event arrives.  So the first tool call of a write-level role that carries an agent_id is
+# start evidence as well (it needs only the PreToolUse registration that already exists): each agent_id releases at
+# most one pending dispatch, whichever of the two arrives first (`started_agents`).
 # E1 (docs/specs/guard-every-gate): hosts where SHOAL_GUARD_SUBAGENT_WRITE defaults to `on`, and hosts whose
 # subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it
 # (claude: tests/fixtures/claude_subagent_tool_shapes.json), so the user's `#direct` can release a subagent.
-SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude"})
-SUBAGENT_DIRECT_HOSTS = frozenset({"claude"})
+SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude", "codex"})
+SUBAGENT_DIRECT_HOSTS = frozenset({"claude", "codex"})
+# Codex: a subagent runs in its own turn (turn_id differs from main's, constant for that agent), so `#direct` cannot be
+# looked up by turn.  SubagentStart records the agent_id as released when main's current turn carried `#direct`
+# (`direct_agents`); the subagent's later events are judged by their agent_id.
+AGENT_KEYED_HOSTS = frozenset({"codex"})
+AGENTS_MAX = 32
 # The state file remembers this many most recent turn ids that carried `#direct`.
 DIRECT_TURNS_MAX = 16
 
@@ -510,6 +524,22 @@ def _direct_turns(state: Dict[str, Any]) -> List[str]:
     if not isinstance(raw, list):
         return []
     return [t for t in raw if isinstance(t, str)][-DIRECT_TURNS_MAX:]
+
+
+def _agents(state: Dict[str, Any], key: str) -> List[str]:
+    """`direct_agents` / `started_agents` of a state file (codex): ids that pass valid_id, the last AGENTS_MAX."""
+    raw = state.get(key)
+    if not isinstance(raw, list):
+        return []
+    return [a for a in raw if valid_id(a)][-AGENTS_MAX:]
+
+
+def _carry_agents(state: Dict[str, Any], prior: Dict[str, Any]) -> None:
+    """Keep the two agent lists of `prior` in `state` (they live across turns, like `direct_turns`)."""
+    for key in ("direct_agents", "started_agents"):
+        kept = _agents(prior, key)
+        if kept:
+            state[key] = kept
 
 
 def write_agent_allowed(role: Any, env: Dict[str, str]) -> bool:
@@ -1001,6 +1031,8 @@ class _Guard:
     def subagent(self) -> Dict[str, Any]:
         role = self.event.get("role")
         tool_kind = self.event.get("tool_kind")
+        if self.host in AGENT_KEYED_HOSTS and role_access(role) == "write" and tool_kind in ("edit", "shell"):
+            self.note_started_by_tool()  # logs its own record; the call itself is judged below as before
         rule = None
         if tool_kind == "dispatch":
             rule = "LEAF"
@@ -1048,11 +1080,17 @@ class _Guard:
 
     def subagent_direct_released(self) -> bool:
         """The user's `#direct` releases a subagent when the turn named by the subagent event's (session_id,
-        turn_id) is in the main session's `direct_turns`.  Read-only; any problem (host without the payload
+        turn_id) is in the main session's `direct_turns` (codex: when its agent_id is in `direct_agents`).  Read-only; any problem (host without the payload
         evidence, bad ids, no state dir, unreadable or corrupt state) means "not released", never an exception."""
         try:
             if self.host not in SUBAGENT_DIRECT_HOSTS:
                 return False
+            if self.host in AGENT_KEYED_HOSTS:
+                sid, agent = self.event.get("session_id"), self.event.get("agent_id")
+                guard = self.guard_dir
+                if not valid_id(sid) or not valid_id(agent) or guard is None:
+                    return False
+                return agent in _agents(_read_json(guard / "state" / (sid + ".json")), "direct_agents")
             sid, tid = self.event.get("session_id"), self.event.get("turn_id")
             if not valid_id(sid) or not valid_id(tid):
                 return False
@@ -1252,8 +1290,10 @@ class _Guard:
                     prior_turns = (prior_turns + [prior_tid])[-DIRECT_TURNS_MAX:]
                 if prior_turns:
                     state["direct_turns"] = prior_turns
+                _carry_agents(state, prior)
             else:
-                prior_turns = _direct_turns(_read_json(state_path))
+                prior = _read_json(state_path)
+                prior_turns = _direct_turns(prior)
                 if event.get("direct") is True and isinstance(tid, str):
                     prior_turns = (prior_turns + [tid])[-DIRECT_TURNS_MAX:]
                 state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
@@ -1261,12 +1301,14 @@ class _Guard:
                          "changed": False, "checked": False, "stop_blocked": False}
                 if prior_turns:
                     state["direct_turns"] = prior_turns
+                _carry_agents(state, prior)
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
 
         state = _read_json(state_path)
         kept_turns = _direct_turns(state)
+        prior_state = state
         if tid is not None and state.get("turn_id") != tid:
             state = {}
         edited = state.get("edited") if isinstance(state.get("edited"), list) else []
@@ -1284,6 +1326,7 @@ class _Guard:
         }
         if kept_turns:
             state["direct_turns"] = kept_turns  # E1: turns that carried #direct, kept across turns
+        _carry_agents(state, prior_state)  # codex: agents released by #direct / already counted as started
 
         if event.get("tool_kind") == "dispatch":
             access = role_access(event.get("dispatched_role"))
@@ -1312,19 +1355,31 @@ class _Guard:
 
         The event is tied to the main session by session id.  Its `prompt_id` is only compared with the
         guard's current turn: a different one still releases (the association stays the session) and the
-        log line says so (skip_reason prompt_id_mismatch).  Bad ids fail open with a skip record."""
+        log line says so (skip_reason prompt_id_mismatch).  Bad ids fail open with a skip record.
+
+        Codex (AGENT_KEYED_HOSTS): the started agent's own turn_id says nothing about main's turn, so it is not
+        compared; the agent is released from E1 when main's current turn carried `#direct` (`direct_agents`), and a
+        write role counts once per agent_id (`started_agents`)."""
         event = self.event
         access = role_access(event.get("role"))
+        if self.host in AGENT_KEYED_HOSTS:
+            self.note_direct_agent()
         if self.host not in START_UNLOCK_HOSTS or access not in ("write", "verify"):
             return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
         if access == "verify":
             self.note_verify_started()
             return self._none()
-        sid, tid = event.get("session_id"), event.get("turn_id")
+        return self._release_pending(event.get("session_id"), event.get("turn_id"), event.get("agent_id"))
+
+    def _release_pending(self, sid: Any, tid: Any, agent: Any) -> Dict[str, Any]:
+        """A write role has started: one pending dispatch of session `sid` is released, once per codex agent_id."""
+        keyed = self.host in AGENT_KEYED_HOSTS
         if sid is None:
             return self.result("skip", skip="missing_id")
         if not valid_id(sid):
             return self.result("skip", skip="invalid_id")
+        if keyed and not valid_id(agent):
+            return self.result("skip", skip="missing_id")  # no agent_id: nothing to count the start by
         guard = self.guard_dir
         if guard is None:
             return self.result("skip", skip="state_unavailable")
@@ -1333,15 +1388,57 @@ class _Guard:
             if lock_skip is not None:
                 return self.result("skip", skip=lock_skip)
             state = _read_json(state_path)
+            started = _agents(state, "started_agents")
+            if keyed and agent in started:
+                return self.result("skip", skip="agent_already_started")
             if _pending(state) < 1:
                 return self.result("skip", skip="start_without_pending")
-            mismatch = isinstance(tid, str) and state.get("turn_id") != tid
+            mismatch = isinstance(tid, str) and not keyed and state.get("turn_id") != tid
             state["pending"] = _pending(state) - 1
             state["dispatched"] = True
             _mark_changed(state)  # B2: the write role has started, so the turn counts as changed
+            if keyed:
+                state["started_agents"] = (started + [agent])[-AGENTS_MAX:]
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state", "dispatch_started", skip="prompt_id_mismatch" if mismatch else None)
+
+    def note_direct_agent(self) -> None:
+        """Codex SubagentStart: when main's current turn carried `#direct`, remember the new agent_id as released
+        (E1; the last AGENTS_MAX).  Silent and best effort: any problem leaves the agent unreleased."""
+        try:
+            sid, agent = self.event.get("session_id"), self.event.get("agent_id")
+            guard = self.guard_dir
+            if not valid_id(sid) or not valid_id(agent) or guard is None:
+                return
+            state_path = guard / "state" / (sid + ".json")
+            if _read_json(state_path).get("direct") is not True:
+                return
+            with _state_lock(guard / "state" / (sid + ".lock")) as lock_skip:
+                if lock_skip is not None:
+                    return
+                state = _read_json(state_path)
+                if state.get("direct") is not True:
+                    return
+                state["direct_agents"] = (_agents(state, "direct_agents") + [agent])[-AGENTS_MAX:]
+                _write_json(state_path, state)
+        except Exception:
+            return
+
+    def note_started_by_tool(self) -> Optional[Dict[str, Any]]:
+        """Codex: the first tool call of a write-level role's agent releases one pending dispatch when its
+        SubagentStart has not (hook not approved yet).  Cheap: one unlocked read decides; None = nothing to do."""
+        try:
+            sid, agent = self.event.get("session_id"), self.event.get("agent_id")
+            guard = self.guard_dir
+            if not valid_id(sid) or not valid_id(agent) or guard is None:
+                return None
+            state = _read_json(guard / "state" / (sid + ".json"))
+            if _pending(state) < 1 or agent in _agents(state, "started_agents"):
+                return None
+            return self._release_pending(sid, None, agent)
+        except Exception:
+            return None
 
     def background_shell(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """G4: main starting a background shell.  Reads state only; nothing is recorded."""
@@ -1585,6 +1682,7 @@ def _event(
     direct: bool = False,
     command: Any = None,
     stop_hook_active: Any = None,
+    agent_id: Any = None,
 ) -> Dict[str, Any]:
     return {
         "host": host,
@@ -1594,6 +1692,7 @@ def _event(
         "cwd": _str(cwd),
         "is_subagent": subagent,
         "role": _str(role),
+        "agent_id": _str(agent_id),  # codex only: the subagent's id (its own turn_id differs from main's)
         "tool_name": _str(tool),
         "tool_kind": tool_kind,
         "paths": paths or [],
@@ -1668,8 +1767,22 @@ def patch_paths(command: Any) -> List[str]:
 
 
 def adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    event = _adapt_codex(payload)
+    if event is not None:
+        event["agent_id"] = _str(payload.get("agent_id"))  # present on every subagent event (and SubagentStart)
+    return event
+
+
+def _adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     name = payload.get("hook_event_name")
     sub = bool(payload.get("agent_id"))
+    agent_id = payload.get("agent_id")
+    if name == "SubagentStart":
+        # tests/fixtures/codex_subagent_tool_shapes.json: agent_id/agent_type name the NEW subagent, session_id is
+        # main's, turn_id is the subagent's own (not main's), so it is not passed on.  The event belongs to the
+        # main session, so it is not a subagent call.
+        return _event("codex", "subagent_start", payload.get("session_id"), None, payload.get("cwd"), False,
+                      payload.get("agent_type"), agent_id=agent_id)
     base = (
         payload.get("session_id"),
         payload.get("turn_id"),

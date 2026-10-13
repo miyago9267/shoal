@@ -1381,7 +1381,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(hooks.read_bytes(), hooks_before)
 
     def test_home_registered_as_guard_v2_is_upgraded_to_v3_in_place(self) -> None:
-        # 3.2.1 to 3.3.1 recorded shoal-guard-v2 (no Stop group).  3.4.0 appends the guard's Stop group and records v3;
+        # 3.2.1 to 3.3.1 recorded shoal-guard-v2 (no Stop group).  3.4.0 appends the guard's Stop group and records v3, and shoal-guard-v4 then adds SubagentStart;
         # the foreign entry, the autoroute gate and the guard's other two groups keep their place.
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
@@ -1392,6 +1392,7 @@ class NativeInstallTests(unittest.TestCase):
             document["hooks"]["Stop"] = [g for g in document["hooks"]["Stop"] if g != guard_stop]
             foreign = _foreign_group("/keep-me")
             document["hooks"]["Stop"].insert(0, foreign)
+            del document["hooks"]["SubagentStart"]  # v2 predates it as well
             _write_registration(hooks, document)
             state = json.loads(_state_path(home).read_text())
             state["guard_registration"] = hook_registration.projection_state("shoal-guard-v2")
@@ -1404,6 +1405,33 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(installed["Stop"][2], guard_stop)
             self.assertEqual(len(installed["Stop"]), 3)
             for event in ("UserPromptSubmit", "PreToolUse"):
+                self.assertEqual(installed[event], document["hooks"][event], event)
+            state = json.loads(_state_path(home).read_text())
+            self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
+            before = (hooks.read_bytes(), _state_path(home).read_bytes())
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual((hooks.read_bytes(), _state_path(home).read_bytes()), before)
+
+    def test_home_registered_as_guard_v3_gains_the_subagent_start_group_in_place(self) -> None:
+        # 3.4.0 recorded shoal-guard-v3 (no SubagentStart group).  shoal-guard-v4 appends it and records v4; the foreign
+        # entry, the autoroute gate and the three groups the user already approved keep their bytes and positions.
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            hooks = home / "hooks.json"
+            document = json.loads(hooks.read_text())
+            del document["hooks"]["SubagentStart"]
+            foreign = _foreign_group("/keep-me")
+            document["hooks"]["SubagentStart"] = [foreign]
+            _write_registration(hooks, document)
+            state = json.loads(_state_path(home).read_text())
+            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v3")
+            _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
+
+            self.assertEqual(self.run_install(home), 0)
+            installed = json.loads(hooks.read_text())["hooks"]
+            self.assertEqual(installed["SubagentStart"], [foreign, TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["SubagentStart"]])
+            for event in ("UserPromptSubmit", "PreToolUse", "Stop"):
                 self.assertEqual(installed[event], document["hooks"][event], event)
             state = json.loads(_state_path(home).read_text())
             self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)

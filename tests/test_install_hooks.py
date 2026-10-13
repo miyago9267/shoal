@@ -784,7 +784,7 @@ class CodexInstallPyInteropTests(Case):
     def test_install_hooks_then_install_py_adopts_without_duplicates_or_drift(self) -> None:
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         self.assertEqual(self.install_py(), 0)
-        self.assertEqual(len(self.guard_commands()), 3)  # UserPromptSubmit + Stop + PreToolUse
+        self.assertEqual(len(self.guard_commands()), 4)  # UserPromptSubmit + Stop + PreToolUse + SubagentStart
         state = self.load(self.codex.with_name("codex-home.shoal-install-state.json"))
         self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
         self.assertIn("hooks/shoal_guard.py", state["target_fingerprints"])
@@ -792,7 +792,7 @@ class CodexInstallPyInteropTests(Case):
         self.assertEqual(self.install_py(), 0)  # idempotent
         self.assertEqual(self.cli("codex", "--apply")[0], 0)  # install_hooks is a no-op now
         self.assertEqual((self.codex / "hooks.json").read_bytes(), before)
-        self.assertEqual(len(self.guard_commands()), 3)
+        self.assertEqual(len(self.guard_commands()), 4)
         # install.py owns the guard now: bypassing its state is refused
         code, _, err = self.cli("codex", "--uninstall", "--apply")
         self.assertEqual(code, 2)
@@ -806,7 +806,7 @@ class CodexInstallPyInteropTests(Case):
         self.assertEqual(code, 0, err)
         self.assertEqual((self.codex / "hooks.json").read_bytes(), hooks)
         self.assertEqual(self.codex_script_bytes(), script)
-        self.assertEqual(len(self.guard_commands()), 3)
+        self.assertEqual(len(self.guard_commands()), 4)
         self.assertEqual(self.install_py(), 0)
 
     def test_install_hooks_on_a_pre_guard_installed_home_then_install_py(self) -> None:
@@ -816,7 +816,7 @@ class CodexInstallPyInteropTests(Case):
         test_install._make_pre_guard(self.codex)
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         self.assertEqual(self.install_py(), 0)  # no installed_hook_drift, no duplicates
-        self.assertEqual(len(self.guard_commands()), 3)
+        self.assertEqual(len(self.guard_commands()), 4)
 
     def codex_script_bytes(self) -> bytes:
         return (self.codex / "hooks" / "shoal_guard.py").read_bytes()

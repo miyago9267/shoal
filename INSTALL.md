@@ -266,11 +266,13 @@ Since host 1.8.3 the installer also registers the dispatch guard
 (`hooks/shoal_guard.py --host codex`,
 [`docs/specs/dispatch-enforcement`](./docs/specs/dispatch-enforcement/SPEC.md))
 next to the autoroute gate. It is a separate script with its own projection ID
-(`shoal-guard-v3`) and its own state entry (`guard_registration`), so the gate
+(`shoal-guard-v4`) and its own state entry (`guard_registration`), so the gate
 is unchanged. It adds a `UserPromptSubmit` group that records the turn and
 reads `#direct`, a `PreToolUse` group with matcher
 `^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$`, and, since 3.4.0,
-a `Stop` group for the completion check (below). The guard is in
+a `Stop` group for the completion check (below), and, since `shoal-guard-v4`, a
+`SubagentStart` group without a matcher that tells the guard a dispatched role
+has really started (below). The guard is in
 enforce mode by default (`SHOAL_GUARD=shadow` logs `would_deny` and `advise`
 records under `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`;
 `SHOAL_GUARD=off` disables it). The subagent rules (LEAF, VERIFY_EDIT) deny.
@@ -293,10 +295,11 @@ A foreground `Bash` call that neither declares nor writes a file gets no
 opinion and writes no log line (after a change in the turn it records that a
 check ran, see the completion check below). An existing home that predates the
 guard gains the script and all three groups on the next install; a home
-registered by 3.3.x or earlier is upgraded in place: `shoal-guard-v1` (3.2.0 or
+registered by an earlier release is upgraded in place: `shoal-guard-v1` (3.2.0 or
 earlier, matcher without `Bash`) has its `PreToolUse` group replaced at the same
-position, and both `v1` and `v2` (3.2.1 to 3.3.1) gain the guard's own `Stop`
-group, appended after the existing `Stop` entries. Every other entry (your own
+position, `v1` and `v2` (3.2.1 to 3.3.1) gain the guard's own `Stop`
+group, appended after the existing `Stop` entries, and `v1` to `v3` gain the
+`SubagentStart` group (`v3` changes nothing else). Every other entry (your own
 `Bash` matcher, your own `Stop` hook, the autoroute gate's own `Stop` group) is
 left untouched. Re-runs change nothing. The installer does not write hook
 trust: after installing **or upgrading to 3.4.0**, approve the new `Stop` hook
@@ -305,9 +308,24 @@ Without that approval Codex does not run it and the completion check never
 fires (nothing else changes). A `PreToolUse` group that is not re-approved
 after an upgrade from `v1` leaves the guard blind to `Bash` (declarations then
 have no way in, so keep `#direct` and dispatch in mind until you approve).
-Dispatch unlocks at the `spawn_agent` call itself: Codex has no
-recorded event that proves the role started, so a role that fails to start
-still unlocks the turn (docs/specs/guard-declared-direct, M11). A launch probe
+**Approve the new `SubagentStart` hook once with `/hooks` after upgrading to
+`shoal-guard-v4`.** The groups you approved before keep their bytes and stay approved.
+A dispatched write role unlocks the main session's edit once the role has
+started, not at the `spawn_agent` call (docs/specs/guard-every-gate, E3; the
+payloads are in `tests/fixtures/codex_subagent_tool_shapes.json`, Codex CLI
+0.160.1): the dispatch call is always allowed and only records a pending
+dispatch (log `dispatch_pending`); `SubagentStart` (`agent_id`, `agent_type`,
+and the main session's `session_id`) releases one pending dispatch per
+`agent_id` when its `agent_type` is a write-level role (log `dispatch_started`).
+A spawn of an unknown `agent_type` fires no `SubagentStart`, so it never
+unlocks. Until you approve the hook the start event never arrives, so the
+guard also accepts the first `apply_patch` or `Bash` call that carries an
+`agent_id` and a write-level `agent_type` as proof that the role started (that
+call is covered by the `PreToolUse` group you already approved); a write role
+that makes neither call leaves the main session locked, and `#direct` or
+`SHOAL_GUARD_DIRECT=1` still work. The guard cannot read Codex's approval state
+(`hooks.state`), so it does not try to detect an old or unapproved
+registration. A launch probe
 (must exit 0, prints nothing):
 
 ```bash
@@ -341,8 +359,8 @@ changed.
 When `install/install.py` cannot be reconciled with the Codex home (for
 example a locally modified `shoal_autoroute_gate.py` that the installer
 would replace), `tools/install_hooks.py --host codex` manages only the guard.
-It writes the same `shoal-guard-v3` groups (including `commandWindows`; a
-`shoal-guard-v1` or `v2` group is replaced in place) into
+It writes the same `shoal-guard-v4` groups (including `commandWindows`; a
+`shoal-guard-v1`, `v2` or `v3` group is replaced in place) into
 `<codex-home>/hooks.json` and the committed-`HEAD` script to
 `<codex-home>/hooks/shoal_guard.py` (0600). The codex home is `--home`, then
 `CODEX_HOME`, then `~/.codex`. Dry-run is the default:
@@ -589,17 +607,23 @@ shadow 記 `would_deny`（規則 id `E1`）。verify 等級的 role 的編輯仍
 
 | 值 | 效果 |
 | --- | --- |
-| `on`（Claude 的預設） | 啟用 E1 |
+| `on`（Claude、Codex 的預設） | 啟用 E1 |
 | `off`（其他 host 的預設） | 沒有 E1，行為與以前完全相同 |
 
-未設定時 Claude 為 `on`，其他 host 為 `off`；明確設 `on` 或 `off` 在任何 host 都優先。
+未設定時 Claude 與 Codex 為 `on`（Codex 從 `shoal-guard-v4` 起），其他 host 為
+`off`；明確設 `on` 或 `off` 在任何 host 都優先。Codex 的內建 `worker`、`default`、
+`explorer` 與其他不是 shoal 可寫 role 的 agent type 都適用同一條規則。
 
 出口：派 shoal 可寫的 role；把 agent type 加進 `SHOAL_GUARD_WRITE_AGENTS`（逗號分隔，去掉空白，
 比對原始 type 或去掉 `shoal:` 前綴的 type，例如 Workflow 預設的 `workflow-subagent`）；設
-`SHOAL_GUARD_DIRECT=1`；或在 Claude 上，啟動這項工作的那一回合 prompt 帶 `#direct`。
+`SHOAL_GUARD_DIRECT=1`；或在 Claude、Codex 上，啟動這項工作的那一回合 prompt 帶 `#direct`。
 最後一項靠 subagent 事件帶的 `session_id` 與 `prompt_id` 對到主 session 的 state 檔，其中
 `direct_turns` 保存最近 16 個帶 `#direct` 的回合 id，所以背景 Workflow 的子 agent 在主 session 已進入
 下一回合後才改檔，仍以啟動它的那一回合為準。state 檔讀不到或內容壞掉一律視為未放行。
+Codex 的 subagent 有自己的 `turn_id`（和主 session 不同，同一個 subagent 內不變），所以改用
+`agent_id`：`SubagentStart`（帶主 session 的 `session_id`）發生時，若主 session 當下這一回合帶 `#direct`，
+就把該 `agent_id` 記進 state 檔的 `direct_agents`（最近 32 個），之後這個 agent 的改檔以此放行；
+之後的非 `#direct` 回合才啟動的 agent、其他 session 的 agent 都不放行，state 讀不到或壞掉一律視為未放行。
 其他 host 的 subagent 事件沒有這組證據，`#direct` 不放行 subagent。
 派出非 shoal 的 agent type 仍然允許，也不會解鎖 main 的改檔。
 Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TMPDIR`（含 Claude 的 scratchpad）
@@ -673,7 +697,7 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   `tool_input.command`，`UserPromptSubmit` 的 `prompt` 讀 `#direct`；沒有 G4。
   hook 註冊在 3.2.1
   升到 `shoal-guard-v2`（matcher 加 `Bash`）；3.3.0 沒有改任何 hook 註冊，不需要再核准。
-- **派工要真的啟動（M11）：Claude 從 3.3.1 起實作，Codex 沒有。**
+- **派工要真的啟動（M11）：Claude 從 3.3.1 起實作，Codex 從 `shoal-guard-v4` 起實作。**
   - Claude：派工呼叫（`Agent`）本身永遠放行，但只記一筆「待啟動的 write 派工」（log：`allow`／
     `dispatch_pending`）。`SubagentStart` 事件的 `agent_type`（去掉 `shoal:` 前綴後）是
     write 等級的
@@ -688,11 +712,17 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
     註冊該事件的 Claude 安裝，收不到啟動事件，派工後會一直被擋（只剩 `#direct`），沒有時間啟發式
     補救；plugin 與全域 guard 並存時 `--plugin` 的讓出判斷對 `SubagentStart` 同樣看全域 settings 有沒有
     註冊。
-  - Codex：沒有已記錄的啟動事件，維持在 `spawn_agent` 呼叫時放行；role 沒能啟動時放行仍然有效。
+  - Codex（`shoal-guard-v4` 起）：同樣只記待啟動的派工，`SubagentStart` 的
+    `agent_type` 是 write 等級
+    才釋放，每個 `agent_id` 只釋放一筆（log：`skip`／`agent_already_started` 表示重複）。事件的 `turn_id`
+    是 subagent 自己的回合，不拿來和主 session 比對。啟動失敗（未知的 `agent_type`）沒有 `SubagentStart`，
+    所以不放行。舊註冊或尚未在 `/hooks` 核准新 hook 時收不到啟動事件：guard 也接受該 role 的第一個帶
+    `agent_id` 與 write 等級 `agent_type` 的 `apply_patch`／`Bash` 呼叫當作啟動證據；兩者都沒有就保持鎖住，
+    出口只剩 `#direct` 與 `SHOAL_GUARD_DIRECT=1`。guard 讀不到 Codex 的核准狀態，不做舊註冊偵測。
   - 其他 host 不變（派工呼叫放行）。
 - **完成檢查（3.4.0 起，Claude 與 Codex；docs/specs/shared-rules B2 到 B4）。** guard 逐回合記兩件事：
   - `changed`：main 的改檔工具或 shell 寫檔被放行且目標不是豁免路徑；或可寫的 role 算「已派工」
-    （Claude 在 `SubagentStart` 釋放待啟動派工的那一刻，Codex 在派工呼叫）。
+    （Claude 與 Codex 都在啟動事件釋放待啟動派工的那一刻；其他 host 在派工呼叫）。
   - `checked`：在最近一次 `changed` 之後，派出或啟動了 verify 等級的 role（`verifier`、`watcher`），
     或 main 執行了前景 `Bash`、而且那個指令既不寫檔也不是 `: shoal-direct` 宣告。之後再發生一次
     `changed` 會清掉 `checked`；改檔之前的前景指令不算。判斷只看有沒有跑，不判斷指令是不是測試

@@ -15,9 +15,11 @@
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
           PreToolUse（matcher "*"）與 PreInvocation
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
-          shoal-guard-v3 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
+          shoal-guard-v4 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
           ^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$ 的 PreToolUse，含 commandWindows；
-          舊的 shoal-guard-v1（matcher 沒有 Bash）與 v2（沒有 Stop）重跑會原地換成 v3，需要在 Codex 用 /hooks 再核准一次），
+          另有沒有 matcher 的 SubagentStart（確認 role 真的啟動，v4 起）；
+          舊的 shoal-guard-v1（matcher 沒有 Bash）、v2（沒有 Stop）與 v3（沒有 SubagentStart）重跑會原地換成 v4，
+          需要在 Codex 用 /hooks 再核准一次），
           腳本裝到 <home>/hooks/shoal_guard.py（0600）。這是不能跑 install.py 時的窄路徑：
           不碰 shoal_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
           裝完要在互動式 Codex 用 /hooks 核准一次。install.py 之後會收編這些 entry。
@@ -245,7 +247,7 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
 
 
 def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
-    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v3 群組（舊的 v1、v2 shoal handler 被原地取代）（command 為 None 時移除）。
+    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v4 群組（舊的 v1、v2、v3 shoal handler 被原地取代）（command 為 None 時移除）。
 
     command 只當安裝／移除的開關；寫入的是 canonical 群組本身，install.py 才認得它。
     """
