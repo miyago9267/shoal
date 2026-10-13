@@ -14,7 +14,38 @@ supports_effort = false
 # omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
 [policy]
 policy_text = "legacy"
-omit = []
+omit = [
+  { id = "bootstrap-effort", reason = "agy has no per-dispatch effort setting" },
+  { id = "effort-per-delegation", reason = "agy has no per-dispatch effort setting" },
+  { id = "parallel-writers", reason = "not evidenced on agy" },
+  { id = "auto-ask-selection", reason = "not evidenced on agy" },
+]
+
+# 值來自 2026-10-13 的 headless agy 實測（工具清單與呼叫）。effort_param、worktree_option、goal_command
+# 沒有證據：用到它們的條款已 omit，這裡只填 renderer 要求的非空字串，不會出現在輸出。
+[policy.placeholders]
+dispatch_tool = "invoke_subagent"
+question_tool = "ask_question"
+named_roles = "`scout`, `plan-critic`, `security-reviewer`, `applier`, `executor`, `verifier`, `security-executor`, `watcher`, `researcher`"
+shell_tool = "run_command"
+write_tools = "write_to_file/replace_file_content/multi_replace_file_content"
+read_tools = "view_file/grep_search/find_by_name/list_dir"
+background_option = "as is (invoke_subagent returns at once and results arrive later)"
+worktree_option = "not evidenced on agy"
+model_param = "Model"
+effort_param = "not supported on agy"
+label_param = "Role"
+goal_command = "not evidenced on agy"
+skill_term = "skill"
+policy_doc = "orchestration-policy.md"
+extensions_doc = "workflow-extensions.md"
+references_dir = "references/"
+
+[policy.documents]
+bootstrap = "rules/shoal-agy.md"
+skill = "skills/shoal-orchestration/SKILL.md"
+orchestration = "skills/shoal-orchestration/references/orchestration-policy.md"
+extensions = "skills/shoal-orchestration/references/workflow-extensions.md"
 
 # 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
 # model 欄位只接受 flash / pro / inherit。
