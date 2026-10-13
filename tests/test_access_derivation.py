@@ -285,8 +285,10 @@ class ShippedBindingTests(unittest.TestCase):
             perms["security-reviewer"],
             {"tools": [*base, "read_url_content", "search_web"]},
         )
+        # agy 1.3.3 省略 tools 時子 agent 拿不到寫檔與 shell 工具，write 必須明列
+        write = [*base, "run_command", "write_to_file", "replace_file_content", "multi_replace_file_content"]
         for name in ("applier", "executor", "security-executor"):
-            self.assertEqual(perms[name], {}, name)
+            self.assertEqual(perms[name], {"tools": write}, name)
 
     def test_grok_derivation(self) -> None:
         modes = {n: p.fields["capability_mode"] for n, p in derive("grok").items()}

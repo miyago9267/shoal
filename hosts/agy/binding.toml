@@ -53,17 +53,20 @@ extensions = "skills/shoal-orchestration/references/workflow-extensions.md"
 "google/gemini-flash" = "flash"
 "google/gemini-pro" = "pro"
 
-# 存取等級 -> tools。read-only 與 verify 是 allowlist；write 不寫 tools（不限制）。
+# 存取等級 -> tools。三個等級都明列 allowlist。
+# write 也必須明列：agy 1.3.3 省略 tools 不代表不限制，子 agent 只拿到 view_file 與
+# send_message，回報缺少寫檔與 shell 工具（2026-10-13 實測）；明列後才有 write_to_file。
 # role 要例外時才在 [roles.<name>] 寫 tools 覆寫；read-only 的結果不可含 run_command。
 [access.read-only]
 tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message"]
 
 [access.write]
+tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message", "run_command", "write_to_file", "replace_file_content", "multi_replace_file_content"]
 
 [access.verify]
 tools = ["view_file", "grep_search", "find_by_name", "list_dir", "send_message", "run_command"]
 
-# capability 的 tools 附加到 access 表的 tools allowlist；write 沒有 allowlist，不輸出。
+# capability 的 tools 附加到 access 表的 tools allowlist；附加到該等級的 allowlist。
 [capabilities.web]
 tools = ["read_url_content", "search_web"]
 

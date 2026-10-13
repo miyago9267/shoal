@@ -5,6 +5,16 @@ description: >
   local design decisions, integration work. Give it the goal, constraints, and
   done criteria.
 model: pro
+tools:
+    - view_file
+    - grep_search
+    - find_by_name
+    - list_dir
+    - send_message
+    - run_command
+    - write_to_file
+    - replace_file_content
+    - multi_replace_file_content
 ---
 
 # Agent System Instructions

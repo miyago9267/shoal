@@ -5,6 +5,16 @@ description: >
   renames, tests that follow existing conventions, documentation updates, bulk
   edits from an explicit spec. Needs no design decisions.
 model: flash
+tools:
+    - view_file
+    - grep_search
+    - find_by_name
+    - list_dir
+    - send_message
+    - run_command
+    - write_to_file
+    - replace_file_content
+    - multi_replace_file_content
 ---
 
 # Agent System Instructions
