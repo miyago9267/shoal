@@ -97,3 +97,52 @@
 - 測試：bootstrap 三條獨立、`small-parallel-units` 位置與渲染、Claude 渲染結果不含 take over／
   takeover。
 - 其他 host 的 legacy 文字（Codex、agy、Grok）仍是合併的舊 bullet，待 S4 起改由 core 產生。
+
+## S4（Codex）與 S5（agy）（2026-10-13）
+
+### S5 agy
+
+- 條款改由 core 產生（commits `aac0a5a`、`6243852`）；常駐文字不再有
+  「role 不可用就忽略整節」。
+- live 實測（agy 1.3.3，共 4 次付費執行）：
+  - 長指令派 `watcher`：符合。
+  - main 全程沒有自己改檔：符合。
+  - 兩個小檔的偵察，main 直接讀、沒派 `scout`：不符合，僅記錄未修改。
+- 實測發現的缺陷：可寫 role（`applier`、`executor`、`security-executor`）
+  在 binding 沒寫 `tools`，agy 上實際沒有寫檔與 shell 工具，main 以
+  `define_subagent` 自造 role 才完成。修正 `e15a443`：`[access.write]`
+  明列 9 個工具；重測時 `executor` 自己完成修改，main 沒有自造 role。
+- 本機安裝：skill 目錄是 symlink 到 `hosts/agy/dist`；常駐文字由 dotfile
+  的 `setup_gemini.sh` 重新產生。
+
+### S4 Codex
+
+- 條款改由 core 產生，v3.5.0。Codex 專屬內容在
+  `hosts/codex/policy-addenda/`；通用但 core 沒有的規則以 `pending-shared-*`
+  保留，含這次補上的 `pending-shared-low-risk-targeted-check`。
+- 常駐文字 48 行／2991 bytes（上限 48／3000，沒有餘裕）。
+- prompt lock：三個 policy surface 以 migration `shared-rules-codex-core`
+  更新必要片段；新增兩個 surface（`extensions-template`、
+  `packaged-workflow-extensions`），上限 270 行／15600 bytes（Miyago
+  2026-10-13 核准）；共 33 個 surface。
+- 產生的 Codex 條款檔（templates 三份、plugin references 兩份）加入
+  markdownlint 忽略清單，比照其他 host 的 render 輸出；原因是在來源換行會
+  超過上限，且部分過長的行來自 core 條款本身。core 條款的換行與 `sep`
+  問題尚未處理。
+- 缺陷與修正 `3d772d4`：extensions 文件有出貨但沒有任何地方指向它；plugin
+  `SKILL.md` 補上參考行，並加測試要求 `references/` 的每份文件都被列出。
+- live 實測（codex-cli 0.160.x，預設 model，3 次有效執行）：小功能與小修正
+  都派 `sol-executor`，role 正常啟動並改檔，main 沒有自己改；長指令派
+  `watcher`，main 沒有自己執行。未觸發、因此未驗證：role 啟動失敗時回報而不
+  接手；Stop 的完成檢查。
+- 本機安裝：`install/install.py` 在這台不適用（`~/.codex/AGENTS.md` 是
+  dotfile 的 symlink，`~/.codex.shoal-install-state.json` 過期）；實際由
+  dotfile 的 `setup_codex.sh` 產生常駐文字、`codex plugin add` 更新 plugin。
+  過期的安裝狀態檔未處理。
+- 整合檢查（`3d772d4`）：unittest 1568 個通過（skipped 2）、六個 render
+  檢查、lock、lint、OpenCode plugin 的 bun test 671 通過。
+
+### 未完成
+
+S6 OpenCode、S7 Grok、S8 收尾（`verifier` 方向檢查與逐句核對）；host 專屬的
+通用規則去重後升到 core。
