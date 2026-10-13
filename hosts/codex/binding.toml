@@ -12,7 +12,54 @@ role_text = "core"
 # omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
 [policy]
 policy_text = "legacy"
-omit = []
+omit = [
+  { id = "bootstrap-effort", reason = "Codex does not let the caller set a child's reasoning effort" },
+  { id = "effort-per-delegation", reason = "Codex does not let the caller set a child's reasoning effort" },
+  { id = "bootstrap-kind-label", reason = "Codex `task_name` must match [a-z0-9_]+ and its values are reserved by the autoroute gate" },
+  { id = "dispatch-kind-label", reason = "Codex `task_name` must match [a-z0-9_]+ and its values are reserved by the autoroute gate" },
+  { id = "parallel-writers", reason = "Codex spawn_agent has no worktree isolation option" },
+  { id = "discovery-scope-exclusive", reason = "Codex has no known read-tool names to name in the mixed-command check" },
+  { id = "skill-intro", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "skill-bootstrap-authority", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "first-move-heading", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "first-move-steps", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "references-heading", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "references-intro", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "reference-policy", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "reference-extensions", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "reference-fail-soft", reason = "Codex plugin SKILL.md is hand-maintained" },
+]
+
+[policy.placeholders]
+dispatch_tool = "spawn_agent"
+question_tool = "request_user_input"
+named_roles = "`scout`, `plan-critic`, `security-reviewer`, `applier`, `executor`, `verifier`, `security-executor`, `watcher`, `researcher`, `sol-executor`"
+shell_tool = "Bash"
+write_tools = "apply_patch"
+# 無證據：Codex 的讀檔工具名在 repo 內找不到；唯一使用它的 discovery-scope-exclusive 已省略。
+read_tools = "Bash"
+background_option = "without waiting (collect it later with wait_agent)"
+# 無證據：Codex spawn_agent 沒有 worktree 參數；唯一使用它的 parallel-writers 已省略，值只為滿足詞彙完整性。
+worktree_option = "not available in Codex"
+model_param = "model"
+# effort_param、label_param 的條款已省略，值只為滿足詞彙完整性。
+effort_param = "reasoning_effort"
+label_param = "task_name"
+goal_command = "/goal"
+skill_term = "Skill"
+policy_doc = "orchestration-policy.md"
+extensions_doc = "workflow-extensions.md"
+references_dir = "references/"
+
+# core 文件 -> 輸出路徑（相對 dist = templates/）；extensions 另外鏡像到 plugin reference。
+[policy.documents]
+bootstrap = "agents-md.bootstrap.md"
+skill = "skills/shoal-orchestration/SKILL.md"
+orchestration = "agents-md.orchestration.md"
+extensions = "agents-md.extensions.md"
+
+[policy.mirrors]
+"agents-md.extensions.md" = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
 
 # 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
 [models]
