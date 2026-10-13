@@ -1,0 +1,64 @@
+{
+ "_doc": [
+  "Keys and value types of Codex hook payloads for SUBAGENT activity, from three real `codex exec` runs",
+  "(codex-cli 0.160.1, 2026-10-13, default model, capture hook registered with matcher `.*` for every event",
+  "Codex supports, next to the shoal guard).  Shapes only; no prompt text, file contents or real ids.",
+  "docs/specs/guard-every-gate/SPEC.md S0 / E0.  Run A = applier (apply_patch then shell), B = built-in worker",
+  "(shell, apply_patch, shell), C = spawn of a role that does not exist."
+ ],
+ "captured": {"date": "2026-10-13", "codex_version": "codex-cli 0.160.1", "runs": 3,
+  "events_codex_supports": ["PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "SubagentStart", "SubagentStop"],
+  "events_seen": ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStart", "SubagentStop", "Stop", "SessionEnd"]},
+ "common_keys": {"cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "session_id": "str", "transcript_path": "str"},
+ "events": {
+  "session_start": {"hook_event_name": "SessionStart", "keys": {"cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "session_id": "str", "source": "str", "transcript_path": "str"}},
+  "main_spawn_pre": {"hook_event_name": "PreToolUse", "tool_name": "collaborationspawn_agent",
+   "keys": {"cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "session_id": "str", "tool_input": "dict", "tool_name": "str", "tool_use_id": "str", "transcript_path": "str", "turn_id": "str"},
+   "tool_input": {"agent_type": "str", "message": "str", "task_name": "str"}, "has_agent_id": false},
+  "main_spawn_post_success": {"hook_event_name": "PostToolUse", "tool_name": "collaborationspawn_agent",
+   "keys": {"cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "session_id": "str", "tool_input": "dict", "tool_name": "str", "tool_response": "str", "tool_use_id": "str", "transcript_path": "str", "turn_id": "str"},
+   "tool_input": {"agent_type": "str", "message": "str", "task_name": "str"},
+   "tool_response": {"type": "str", "len": "33-34", "parses_as_json": true, "json_keys": {"task_name": "str"}, "note": "no agent_id, no agent_type in the response"}},
+  "main_spawn_post_failure": {"fires": false, "note": "unknown agent_type: PreToolUse fired, PostToolUse did NOT fire, no SubagentStart; the spawn tool returned an error string `unknown agent_type '<name>'` (seen only in the session rollout function_call_output, plain str)"},
+  "main_wait_pre": {"hook_event_name": "PreToolUse", "tool_name": "collaborationwait_agent", "tool_input": {"timeout_ms": "int"}, "has_agent_id": false},
+  "main_wait_post": {"hook_event_name": "PostToolUse", "tool_name": "collaborationwait_agent", "tool_response": {"type": "str", "parses_as_json": true, "json_keys": {"message": "str", "timed_out": "bool"}}},
+  "subagent_start": {"hook_event_name": "SubagentStart",
+   "keys": {"agent_id": "str", "agent_type": "str", "cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "session_id": "str", "transcript_path": "str", "turn_id": "str"},
+   "agent_type_values_seen": ["applier", "worker"], "no_tool_name": true},
+  "subagent_stop": {"hook_event_name": "SubagentStop",
+   "keys": {"agent_id": "str", "agent_transcript_path": "str", "agent_type": "str", "cwd": "str", "hook_event_name": "str", "last_assistant_message": "str", "model": "str", "permission_mode": "str", "session_id": "str", "stop_hook_active": "bool", "transcript_path": "str", "turn_id": "str"},
+   "agent_type_values_seen": ["applier", "worker"]},
+  "subagent_apply_patch_pre": {"hook_event_name": "PreToolUse", "tool_name": "apply_patch",
+   "keys": {"agent_id": "str", "agent_type": "str", "cwd": "str", "hook_event_name": "str", "model": "str", "permission_mode": "str", "session_id": "str", "tool_input": "dict", "tool_name": "str", "tool_use_id": "str", "transcript_path": "str", "turn_id": "str"},
+   "tool_input": {"command": "str"}, "has_agent_id": true, "agent_type_values_seen": ["applier", "worker"]},
+  "subagent_apply_patch_post": {"hook_event_name": "PostToolUse", "tool_name": "apply_patch", "has_agent_id": true,
+   "tool_response": {"type": "str", "len": 92, "parses_as_json": false}},
+  "subagent_bash_pre": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "str"}, "has_agent_id": true, "agent_type_values_seen": ["applier", "worker"]},
+  "subagent_bash_post": {"hook_event_name": "PostToolUse", "tool_name": "Bash", "has_agent_id": true,
+   "tool_response": {"type": "str", "len": "0-100", "parses_as_json": false, "note": "len 0 for `echo hi >> notes.txt`"}},
+  "main_stop": {"hook_event_name": "Stop", "keys": {"cwd": "str", "hook_event_name": "str", "last_assistant_message": "str", "model": "str", "permission_mode": "str", "session_id": "str", "stop_hook_active": "bool", "transcript_path": "str", "turn_id": "str"}, "has_agent_id": false},
+  "session_end": {"hook_event_name": "SessionEnd", "has_turn_id": false}
+ },
+ "equalities": {
+  "subagent_session_id_equals_main_session_id": true,
+  "subagent_turn_id_equals_main_turn_id": false,
+  "subagent_turn_id_note": "the subagent has its own turn_id, constant across its SubagentStart, tool calls and SubagentStop; the main's spawn/wait events keep the main turn_id",
+  "agent_id_present_on": ["SubagentStart", "SubagentStop", "subagent PreToolUse", "subagent PostToolUse"],
+  "agent_id_absent_on": ["every main-session event"],
+  "agent_id_equal_within_one_subagent": true,
+  "agent_id_equals_session_id": false,
+  "agent_id_in_spawn_tool_response": false,
+  "ordering_seen": "spawn Pre, spawn Post, SubagentStart, (main wait Pre), subagent tool Pre/Post..., SubagentStop, wait Post, Stop"
+ },
+ "guard_observations": {
+  "run_A_applier": "prompt state; tool collaborationspawn_agent rule=dispatch decision=allow; Stop rule=STOP decision=block reason=unverified_change (main then ran one read-only Bash check, second Stop passed)",
+  "run_B_worker": "prompt state; collaborationspawn_agent dispatch allow; no Stop block",
+  "run_C_missing_role": "prompt state; collaborationspawn_agent dispatch allow (spawn then failed); no Stop block",
+  "note": "guard.jsonl has no lines for the subagent's own apply_patch/Bash calls (they matched the registered PreToolUse matcher; no deny/log line was written)"
+ },
+ "role_started_candidates": {
+  "spawn_post_response": "weak: success is a PostToolUse with tool_response = JSON string {task_name}; failure is NO PostToolUse; neither carries agent_id/agent_type, and the failure text is not visible to hooks",
+  "subagent_start_event": "strongest: SubagentStart carries agent_id + agent_type, session_id equal to main's; it fires only when the role actually started",
+  "first_event_with_agent_id": "also works (subagent PreToolUse carries agent_id + agent_type + main session_id) but a role that edits nothing would never show it"
+ }
+}

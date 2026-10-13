@@ -1,6 +1,7 @@
 ---
 title: 每個 gate 都掛上 guard：改檔只來自可寫的 shoal role
-status: proposed
+status: approved
+approved_by: Miyago (2026-10-13)
 created: 2026-10-13
 updated: 2026-10-13
 ---

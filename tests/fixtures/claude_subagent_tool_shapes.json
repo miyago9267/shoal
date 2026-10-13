@@ -1,0 +1,55 @@
+{
+ "_doc": [
+  "Keys and value types of Claude Code hook payloads for tool calls made by SUBAGENTS, recorded in two real `claude -p` runs",
+  "(probe hook on PreToolUse/PostToolUse/SubagentStart/SubagentStop/Stop/UserPromptSubmit, matcher `.*`, plugin shoal guard active,",
+  "scratch git repo, 2026-10-13); values are synthetic.  Only key names, types and id-equality are recorded.",
+  "Run A: main dispatched general-purpose (Write, Bash redirect) and shoal:applier (Edit).  Run B: Workflow script with two agent()",
+  "calls, default type and agentType 'shoal:applier'.  The guard allowed every subagent tool call (no denial in either run)."
+ ],
+ "captured": {"date": "2026-10-13", "claude_code_version": "2.1.296", "runs": 2},
+ "common_tool_keys": ["cwd", "effort", "hook_event_name", "permission_mode", "prompt_id", "session_id", "tool_input", "tool_name", "tool_use_id", "transcript_path"],
+ "subagent_extra_keys": ["agent_id", "agent_type"],
+ "types": {"agent_id": "str", "agent_type": "str", "prompt_id": "str", "session_id": "str", "effort": "dict", "tool_input": "dict", "duration_ms": "int (PostToolUse only)", "tool_response": "dict (PostToolUse only)"},
+ "events": {
+  "PreToolUse": {"keys": ["agent_id", "agent_type", "cwd", "effort", "hook_event_name", "permission_mode", "prompt_id", "session_id", "tool_input", "tool_name", "tool_use_id", "transcript_path"],
+                 "main_session_has_agent_keys": false},
+  "PostToolUse": {"keys": ["agent_id", "agent_type", "cwd", "duration_ms", "effort", "hook_event_name", "permission_mode", "prompt_id", "session_id", "tool_input", "tool_name", "tool_response", "tool_use_id", "transcript_path"]},
+  "SubagentStart": {"keys": ["agent_id", "agent_type", "cwd", "hook_event_name", "prompt_id", "session_id", "transcript_path"]},
+  "SubagentStop": {"keys": ["agent_id", "agent_transcript_path", "agent_type", "background_tasks", "cwd", "effort", "hook_event_name", "last_assistant_message", "permission_mode", "prompt_id", "session_crons", "session_id", "stop_hook_active", "transcript_path"]},
+  "Stop (main)": {"keys": ["background_tasks", "cwd", "effort", "hook_event_name", "last_assistant_message", "permission_mode", "prompt_id", "session_crons", "session_id", "stop_hook_active", "transcript_path"]},
+  "UserPromptSubmit": {"keys": ["cwd", "hook_event_name", "permission_mode", "prompt", "prompt_id", "session_id", "transcript_path"]}
+ },
+ "tool_input_keys": {
+  "Write": ["content", "file_path"],
+  "Edit": ["file_path", "new_string", "old_string", "replace_all"],
+  "Bash": ["command", "description"],
+  "Read": ["file_path"],
+  "Agent": ["description", "effort(optional)", "prompt", "run_in_background", "subagent_type"],
+  "Workflow": ["script"]
+ },
+ "agent_types_seen": {
+  "Agent tool, subagent_type general-purpose": "general-purpose",
+  "Agent tool, subagent_type shoal:applier": "shoal:applier",
+  "Workflow agent() default": "workflow-subagent",
+  "Workflow agent() with agentType 'shoal:applier'": "shoal:applier"
+ },
+ "equalities": {
+  "subagent.session_id == main.session_id": true,
+  "subagent.prompt_id == main turn prompt_id (turn that dispatched it)": true,
+  "workflow_child.session_id == main.session_id": true,
+  "workflow_child.prompt_id == prompt_id of the turn that launched the Workflow": true,
+  "workflow_child.prompt_id == prompt_id of the later turn that received the completion notice": false,
+  "agent_id == SubagentStart.agent_id for the same agent's tool calls and SubagentStop": true,
+  "two different subagents share agent_id": false
+ },
+ "facts": {
+  "bash_redirect_reaches_hook_with_tool_input_command": true,
+  "subagent_write_edit_bash_all_fire_PreToolUse": true,
+  "workflow_child_SubagentStart_fires": true,
+  "workflow_runs_in_background_main_Stop_fires_before_children_finish": true,
+  "workflow_default_child_runs_its_own_bash_and_read_before_edit": true,
+  "workflow_child_can_be_shoal_role_via_agentType": true,
+  "guard_denied_any_subagent_tool_call": false,
+  "guard_blocked_main_Stop_once_run_A": "completion check (changed files, no check run); main-session Stop only"
+ }
+}

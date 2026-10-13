@@ -1,0 +1,340 @@
+{
+  "captured": {
+    "date": "2026-10-13",
+    "opencode_version": "1.18.31",
+    "method": "standalone capture plugin (project .opencode/plugin/capture.js in a scratch git repo) subscribing to every Hooks key; `opencode run --agent build` on gpt-5.6-luna; user's global shoal plugin active (enforce mode)",
+    "runs": {
+      "A": "default agent (monika): main bash ok; task->applier denied by native permission before child creation (monika's task allowlist excludes applier)",
+      "B": "--agent build: task->applier auto-rejected by `opencode run` (task permission is ask); env failure",
+      "C": "--agent build + project opencode.json permission task/edit/bash/write allow: task applier ok, task general ok, task no-such-role-xyz failed; prompt contained literal #direct"
+    },
+    "note": "shapes only; ids are equal/not-equal notes; values kept only for enumerations (tool, agent, status, type)"
+  },
+  "hooks_offered_by_plugin_api_1_18": [
+    "event",
+    "config",
+    "tool",
+    "auth",
+    "provider",
+    "chat.message",
+    "chat.params",
+    "chat.headers",
+    "permission.ask",
+    "command.execute.before",
+    "tool.execute.before",
+    "shell.env",
+    "tool.execute.after",
+    "experimental.chat.messages.transform",
+    "experimental.chat.system.transform",
+    "experimental.provider.small_model",
+    "experimental.session.compacting",
+    "experimental.compaction.autocontinue",
+    "experimental.text.complete",
+    "tool.definition",
+    "dispose"
+  ],
+  "hooks_observed_firing": [
+    "event",
+    "chat.message",
+    "chat.params",
+    "tool.execute.before",
+    "tool.execute.after",
+    "shell.env",
+    "experimental.chat.system.transform",
+    "experimental.text.complete"
+  ],
+  "event_types_observed": [
+    "session.created",
+    "session.updated",
+    "session.status",
+    "session.idle",
+    "session.diff",
+    "message.updated",
+    "message.part.updated",
+    "message.part.delta",
+    "file.edited",
+    "file.watcher.updated",
+    "plugin.added",
+    "catalog.updated",
+    "integration.updated",
+    "reference.updated"
+  ],
+  "shapes": {
+    "plugin_input_keys": [
+      "client",
+      "project",
+      "worktree",
+      "directory",
+      "experimental_workspace",
+      "serverUrl",
+      "$"
+    ],
+    "tool.execute.before": {
+      "input": {
+        "tool": "string",
+        "sessionID": "string ses_*",
+        "callID": "string call_*"
+      },
+      "output": {
+        "args": "object, tool-specific"
+      },
+      "args_by_tool": {
+        "bash": {
+          "command": "string",
+          "workdir": "string",
+          "timeout": "number (optional, model-supplied)"
+        },
+        "task": {
+          "description": "string",
+          "prompt": "string",
+          "subagent_type": "string (not validated before the hook)",
+          "command": "string (optional, model-supplied extra)"
+        },
+        "apply_patch": {
+          "patchText": "string"
+        },
+        "read": {
+          "filePath": "string",
+          "offset": "number",
+          "limit": "number"
+        },
+        "edit_write": "NOT OBSERVED: with this model every edit arrived as apply_patch"
+      },
+      "no_message_id_or_parent_or_agent_in_input": true
+    },
+    "tool.execute.after": {
+      "input": {
+        "tool": "string",
+        "sessionID": "string",
+        "callID": "string",
+        "args": "same object as before.output.args"
+      },
+      "output": {
+        "title": "string",
+        "output": "string",
+        "metadata": "object",
+        "attachments": "undefined"
+      },
+      "metadata_by_tool": {
+        "bash": {
+          "output": "string",
+          "exit": "number",
+          "truncated": "boolean"
+        },
+        "apply_patch": {
+          "diff": "string",
+          "files": "array<{filePath,relativePath,type,patch,additions,deletions}>",
+          "diagnostics": "object",
+          "truncated": "boolean"
+        },
+        "task_success": {
+          "parentSessionId": "string ses_* (main)",
+          "sessionId": "string ses_* (child)",
+          "model": {
+            "modelID": "string",
+            "providerID": "string"
+          },
+          "truncated": "boolean"
+        }
+      },
+      "task_failure": "tool.execute.after does NOT fire"
+    },
+    "chat.message": {
+      "input": {
+        "sessionID": "string",
+        "agent": "string | undefined (main in default run: undefined; with --agent: the agent; child: always the role)",
+        "model": "undefined for main, {modelID,providerID} for child",
+        "messageID": "undefined for main, string msg_* for child",
+        "variant": "undefined"
+      },
+      "output": {
+        "message": {
+          "id": "string msg_*",
+          "role": "user",
+          "sessionID": "string",
+          "time": {
+            "created": "number"
+          },
+          "agent": "string",
+          "model": {
+            "providerID": "string",
+            "modelID": "string"
+          }
+        },
+        "parts": "array<{type:'text',text:'string (full prompt)',messageID,sessionID,id}>"
+      },
+      "fires_for_child_session": true,
+      "child_prompt_text_is_the_task_prompt_arg": true
+    },
+    "session.get_result_via_client": {
+      "keys": [
+        "id",
+        "slug",
+        "projectID",
+        "directory",
+        "path",
+        "parentID (only when child)",
+        "title",
+        "agent",
+        "model",
+        "summary",
+        "cost",
+        "tokens",
+        "version",
+        "time"
+      ],
+      "child_title": "string '<description> (@<role> subagent)'"
+    },
+    "event.session.created": {
+      "properties": {
+        "sessionID": "string",
+        "info": {
+          "id": "string",
+          "parentID": "undefined for main | main sessionID for child",
+          "title": "string",
+          "agent": "undefined for main | role name for child",
+          "model": "undefined",
+          "permission": "array<{permission,pattern,action}>"
+        }
+      }
+    },
+    "event.session.updated": {
+      "properties": {
+        "sessionID": "string",
+        "info": "same as session.get result; main gets agent set after first prompt"
+      }
+    },
+    "event.session.status": {
+      "properties": {
+        "sessionID": "string",
+        "status": {
+          "type": "'busy'|'idle'"
+        }
+      }
+    },
+    "event.session.idle": {
+      "properties": {
+        "sessionID": "string"
+      }
+    },
+    "event.message.updated": {
+      "properties": {
+        "sessionID": "string",
+        "info": {
+          "user": {
+            "id": "msg_*",
+            "role": "user",
+            "agent": "string"
+          },
+          "assistant": {
+            "id": "msg_*",
+            "parentID": "user msg id of the turn",
+            "role": "assistant",
+            "mode": "string",
+            "agent": "string",
+            "finish": "string on completion",
+            "modelID": "string",
+            "providerID": "string"
+          }
+        }
+      }
+    },
+    "event.message.part.updated(tool part)": {
+      "properties": {
+        "sessionID": "string",
+        "part": {
+          "type": "tool",
+          "tool": "string",
+          "callID": "string (equals tool hook callID)",
+          "messageID": "assistant msg id",
+          "state": {
+            "status": "pending|running|completed|error",
+            "input": "object",
+            "error": "string (status=error)",
+            "metadata": "task: {parentSessionId,sessionId,model} once running"
+          }
+        }
+      }
+    }
+  },
+  "equalities": {
+    "tool_hook_callID == message.part.updated.part.callID": true,
+    "tool_hook_sessionID(main task call) == child session.created.parentID == task.after.output.metadata.parentSessionId": true,
+    "child session.created.info.id == task.after.output.metadata.sessionId == child chat.message sessionID": true,
+    "main chat.message.output.message.id == main chat.message.output.parts[0].messageID == later assistant message.info.parentID (turn id)": true,
+    "main chat.message.input.messageID": "undefined (use output.message.id)",
+    "child chat.message.input.messageID == output.message.id": true,
+    "tool.execute.before carries message id": false,
+    "session.idle sessionID for main fires once per run at end; child sessions each fire their own session.idle before the parent task.after": true,
+    "order_main_task": [
+      "tool.execute.before(task, main session)",
+      "session.created(child, parentID=main, agent=role)",
+      "chat.message(child)",
+      "child tool hooks...",
+      "session.idle(child)",
+      "tool.execute.after(task, main session)"
+    ]
+  },
+  "facts": {
+    "q1_session_identity": "tool hooks give only sessionID; parentID and agent come from client.session.get({path:{id}}) (works inside the hook, returns {data} wrapper-compatible object) or from a cache built from event session.created (parentID, agent set at creation, before the child's first tool call)",
+    "q1_throw_denies": "not re-tested live; existing evidence: opencode.ts header 'E0 verified', E0-RESULTS.md:15, guard-opencode.test.ts:212 (LEAF thrown)",
+    "q1_child_edit_tool": "gpt-5.6-luna children edited via apply_patch (args.patchText), never edit/write; mirror already handles apply_patch",
+    "q2_subagent_bash_reaches_before_hook_with_command": true,
+    "q2_bash_before_args_command_field": "command (string, full text); main and child identical shape",
+    "q3_chat_message_carries_prompt_text": "yes: output.parts[].text; literal #direct detected in main chat.message (promptContainsDirect=true); child's chat.message text is the task prompt, no #direct",
+    "q3_chat_message_turn_id": "output.message.id; tool hooks have no message id, only the same sessionID; turn id of a tool call is derivable via message.part.updated(callID->assistant messageID->parentID)",
+    "q4_task_success_signal": "tool.execute.after fires with output.metadata.sessionId; plus event session.created(child, parentID, agent) and message.part.updated state.status=completed",
+    "q4_task_failure_signal": "tool.execute.before fired (subagent_type not validated yet, shoal logged allow); NO session.created, NO chat.message, NO tool.execute.after; only message.part.updated state.status='error' with state.error string",
+    "q4_failure_messages": {
+      "unknown_agent": "Unknown agent type: <name> is not a valid agent type",
+      "permission_denied_by_ruleset": "The user has specified a rule which prevents ... (lists task allowlist)",
+      "run_auto_reject": "permission requested: task (<role>); auto-rejecting -> The user rejected permission to use this specific tool call"
+    },
+    "q4_role_really_started": "event session.created with info.parentID==main and info.agent==role (or task.after metadata.sessionId)",
+    "q5_turn_end_event": "main: session.status {status:{type:'busy'}} then {type:'idle'} then session.idle {sessionID}; fires once per run for main (not between tool steps); also fires per child session",
+    "q5_can_block_at_idle": "event hook type is (input:{event})=>Promise<void>: no return value or output object, cannot block. SDK client has session.prompt/promptAsync/abort methods (types only; behavior after idle NOT tested)",
+    "q5_no_stop_hook_active_flag": true,
+    "q6_builtin_agents": {
+      "primary": [
+        "build",
+        "plan",
+        "compaction",
+        "summary",
+        "title"
+      ],
+      "subagent": [
+        "general",
+        "explore"
+      ],
+      "child_agent_value_seen": {
+        "general": "general",
+        "applier": "applier"
+      },
+      "shoal_roles_seen_in_agent_list": [
+        "applier",
+        "executor",
+        "plan-critic",
+        "quick-explorer",
+        "quick-mech",
+        "quick-reviewer",
+        "researcher",
+        "scout",
+        "security-executor",
+        "security-reviewer",
+        "vault-librarian",
+        "verifier",
+        "watcher"
+      ],
+      "primary_user_agent": "monika (default agent here)"
+    },
+    "q6_internal_agents_via_chat.params": "chat.params agent='title' fires for the title generation call in main session (no tool hooks)",
+    "q7_shoal_plugin_observed": "guard.jsonl (enforce mode) logged prompt state and task dispatch allow for each task call, including subagent_type=no-such-role-xyz (shoal does not validate role existence); no deny or throw seen",
+    "permission_environment": "monika (default agent) task allowlist excludes applier/plan-critic/researcher/watcher; `opencode run` auto-rejects any 'ask' permission, so run with project opencode.json permission allow for task",
+    "not_determined": [
+      "live throw-deny (not tested by design)",
+      "edit/write tool args (model used apply_patch)",
+      "behavior of session.promptAsync after session.idle",
+      "whether shoal guard saw child bash (it ignores bash)"
+    ]
+  }
+}
