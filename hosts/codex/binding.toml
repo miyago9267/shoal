@@ -38,7 +38,7 @@ shell_tool = "Bash"
 write_tools = "apply_patch"
 # 無證據：Codex 的讀檔工具名在 repo 內找不到；唯一使用它的 discovery-scope-exclusive 已省略。
 read_tools = "Bash"
-background_option = "and collect it later with wait_agent"
+background_option = "and collect it later with `wait_agent`"
 # 無證據：Codex spawn_agent 沒有 worktree 參數；唯一使用它的 parallel-writers 已省略，值只為滿足詞彙完整性。
 worktree_option = "not available in Codex"
 model_param = "model"

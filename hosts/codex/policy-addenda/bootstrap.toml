@@ -5,4 +5,4 @@ id = "codex-orchestration-pointer"
 at = "after:bootstrap-routing"
 sep = "newline"
 text = '''
-- Codex model tiers, `sol-executor`, escalation and the Astra main-session mode are defined in the orchestration reference; load it before deciding any of them.'''
+- Codex tiers, `sol-executor`, escalation and Astra mode: read the orchestration reference first.'''
