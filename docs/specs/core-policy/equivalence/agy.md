@@ -534,3 +534,53 @@ tool_info, subagent_info, text_delta, duration_seconds, usage}`；`state` 為
   - 第 1、6、7、9、10、12、13、14 項：不是 live 實測能解決的，沒有變動。
 - 下一次 live 實測需要 shell 權限（allow-rule 或 `--dangerously-skip-permissions`，
   後者在本次的執行環境被拒），才能測 #8、#6、#16。
+
+## 切換結果（v3.4.x）
+
+`policy_text = "core"` 已在 `hosts/agy/binding.toml` 生效，四份文件由 core 條款加
+`policy-frames/` 與 `policy-addenda/orchestration.toml` 產生。
+
+### 省略的條款
+
+| id | 理由 |
+|---|---|
+| `bootstrap-effort` | agy 派工沒有 effort 欄位（實測 #4） |
+| `effort-per-delegation` | 同上 |
+| `parallel-writers` | 條款以 worktree 與 Git 為前提，agy 沒有證據；並行寫入改由 `agy-workspace-isolation` 承接 |
+| `auto-ask-selection` | `/goal` 在 agy 未取得（實測 #19） |
+
+### Addenda（全在 `orchestration` 文件）
+
+- agy 調校：`agy-plan-mode`（S07）、`agy-readiness-brief`（S09）、`agy-concurrent-entries`（S35）、
+  `agy-workspace-isolation`（S36，掛在 `parallel-launch`，因為 `parallel-writers` 已 omit）。
+- 待共用：`pending-shared-auto-approved-permissions`（§2 第 1 項）、`pending-shared-security-proportionate`（2）、
+  `pending-shared-tell-plan-critic`（3）、`pending-shared-brief-adjacent`（4）、
+  `pending-shared-security-executor-failure`（5）、`pending-shared-near-security`（6）、
+  `pending-shared-brief-format`（7）。
+- 十個「行為變更，移除」的列（R02、R12、R14、R16、S11、S23、S25、S29、S38、S48）沒有補回。
+  常駐 frame 原有的「`invoke_subagent` 與 role 不可用就忽略整節」（R02）一併移除，只留「不在 agy 就忽略」。
+
+### 輸出大小（bytes）
+
+| 文件 | 切換前（legacy） | 切換後（core） |
+|---|---|---|
+| `rules/shoal-agy.md` | 1648 | 3043 |
+| `skills/shoal-orchestration/SKILL.md` | 6434 | 1547 |
+| `references/orchestration-policy.md` | 無 | 19403 |
+| `references/workflow-extensions.md` | 無 | 9390 |
+
+### 測試
+
+- 更新：`test_core_policy.py` 的 agy 三個常數與 policy_text；
+  `test_delegation_default.py` 的 agy sha256（改為 core
+  輸出現況，新增 references 兩份）；`test_render_agy.py` 的 golden 數量（13）與「改來源／改版本」兩個測試（改在
+  `policy-frames/bootstrap.md`，因為 marker 現在是 frame 的字面值）。
+- 非 agy 檔案的必要調整：`test_core_policy_hosts.py` 兩個測試原本假設 repo 內的 binding 是 legacy，改為先寫入
+  legacy 設定再取基準，並略過 committed 已是 core 的 host。
+- 刪除：`test_rules_source_needs_exactly_one_marker`（守 `src/rules` 的 marker
+  數量；該檔已不參與 render）；`test_delegation_default.py` 中 agy 不得出現
+  watcher 與 researcher 的斷言（守 D17「policy 不接新 role」；core 的
+  `bootstrap-named-roles` 與 `watcher-long-commands` 本來就會提到，改為斷言 agy
+  常駐文件列出兩者）。
+- 新增：`test_policy_documents_are_core_and_cover_every_mapped_path`、`test_resident_frame_has_no_unavailable_escape_hatch`。
+- `hosts/agy/src/` 的 `rules`、`skills` 與 `agents` legacy 原文保留作對照，不再參與 render。

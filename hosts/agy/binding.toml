@@ -11,9 +11,9 @@ role_text = "core"
 supports_effort = false
 
 # policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
-# omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
+# omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；agy 已切到 core（v3.4.x）。
 [policy]
-policy_text = "legacy"
+policy_text = "core"
 omit = [
   { id = "bootstrap-effort", reason = "agy has no per-dispatch effort setting" },
   { id = "effort-per-delegation", reason = "agy has no per-dispatch effort setting" },
@@ -30,7 +30,7 @@ named_roles = "`scout`, `plan-critic`, `security-reviewer`, `applier`, `executor
 shell_tool = "run_command"
 write_tools = "write_to_file/replace_file_content/multi_replace_file_content"
 read_tools = "view_file/grep_search/find_by_name/list_dir"
-background_option = "as is (invoke_subagent returns at once and results arrive later)"
+background_option = "(`invoke_subagent` returns at once; results arrive later)"
 worktree_option = "not evidenced on agy"
 model_param = "Model"
 effort_param = "not supported on agy"

@@ -37,6 +37,21 @@ EXPECTED_POLICY_REPLACES: dict[str, dict[str, list[str]]] = {host: {} for host i
 # host 專屬的 policy addenda 目前沒有（Claude 是 canonical，其他 host 還沒切）。
 EXPECTED_POLICY_ADDENDA: dict[str, dict[str, list[str]]] = {host: {} for host in HOSTS}
 
+# agy（core-policy P3）：切到 core；省略的條款與 addenda 的理由在 docs/specs/core-policy/equivalence/agy.md。
+EXPECTED_POLICY_TEXT["agy"] = "core"
+EXPECTED_POLICY_OMITS["agy"] = [
+    "auto-ask-selection", "bootstrap-effort", "effort-per-delegation", "parallel-writers",
+]
+EXPECTED_POLICY_ADDENDA["agy"] = {
+    "orchestration": [
+        "agy-plan-mode", "pending-shared-auto-approved-permissions", "agy-readiness-brief",
+        "pending-shared-security-proportionate", "pending-shared-tell-plan-critic",
+        "pending-shared-brief-adjacent", "pending-shared-security-executor-failure",
+        "pending-shared-near-security", "pending-shared-brief-format",
+        "agy-concurrent-entries", "agy-workspace-isolation",
+    ],
+}
+
 # required 條款（不可 omit、不可 replace）；新增或移除要改這裡。
 EXPECTED_REQUIRED = {
     # named-role 豁免

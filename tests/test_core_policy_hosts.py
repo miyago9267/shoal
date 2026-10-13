@@ -56,6 +56,7 @@ class CoreOnEveryHostTests(HostPolicyCase):
         for host in HOSTS:
             with self.subTest(host=host):
                 self.prepare(host)
+                self.configure("legacy")
                 legacy = render.render_host(self.root, host)
                 self.configure()
                 core = render.render_host(self.root, host)
@@ -103,6 +104,8 @@ class CoreOnEveryHostTests(HostPolicyCase):
 
     def test_legacy_with_policy_tables_is_byte_identical_to_the_committed_output(self) -> None:
         for host in HOSTS:
+            if render.policy_text_mode(render.load_toml(ROOT / "hosts" / host / "binding.toml")) == "core":
+                continue  # 已切到 core 的 host，committed 輸出不再是 legacy
             with self.subTest(host=host):
                 self.prepare(host)
                 self.configure("legacy")

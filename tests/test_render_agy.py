@@ -9,10 +9,12 @@ from render_helpers import ROOT, render, run_render
 
 class AgyRenderTests(rh.HostRenderCase):
     HOST = "agy"
-    GOLDEN_COUNT = 11
+    GOLDEN_COUNT = 13
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "agents/scout/agent.md"
-    SRC_FILE = "rules/shoal-agy.md"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
+    # agy 已切到 core：agents/*.md、rules、SKILL.md 的 legacy 原文（hosts/agy/src）都不參與 render，
+    # 所以「改來源」的測試改在下面覆寫，改 policy-frames/bootstrap.md。
+    SRC_FILE = ""
 
     # --- 3.0.0：agy 有自己的 VERSION，rules 的 marker 由它產生（同 grok） ---
     def test_rules_marker_comes_from_host_version(self) -> None:
@@ -21,8 +23,15 @@ class AgyRenderTests(rh.HostRenderCase):
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-agy v.+ -->$", rules), [f"<!-- shoal-agy v{version} -->"])
         self.assertEqual(version, "3.4.2")
 
+    def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
+        frame = self.root / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
+        frame.write_text(frame.read_text(encoding="utf-8") + "extra line\n", encoding="utf-8", newline="\n")
+        self.assertEqual(self.check().returncode, 1)
+
     def test_changing_version_requires_rewriting_dist(self) -> None:
-        (self.root / "hosts" / "agy" / "VERSION").write_text("2.0.1\n", encoding="utf-8", newline="\n")
+        # 常駐文件的 marker 是 policy-frames/bootstrap.md 的字面值（同 claude），VERSION 只做格式檢查。
+        frame = self.root / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
+        self.edit(frame, "<!-- shoal-agy v3.4.2 -->", "<!-- shoal-agy v2.0.1 -->")
         result = self.check()
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("內容不同: rules/shoal-agy.md", result.stderr)
@@ -37,15 +46,18 @@ class AgyRenderTests(rh.HostRenderCase):
         version.unlink()
         self.assert_rejected("VERSION")
 
-    def test_rules_source_needs_exactly_one_marker(self) -> None:
-        src = self.root / "hosts" / "agy" / "src" / "rules" / "shoal-agy.md"
-        text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-agy v3.4.2 -->\n"
-        self.assertIn(marker, text)
-        src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
-        self.assert_rejected("marker")
-        src.write_text(text + marker, encoding="utf-8", newline="\n")
-        self.assert_rejected("marker")
+    def test_policy_documents_are_core_and_cover_every_mapped_path(self) -> None:
+        binding = render.load_toml(ROOT / "hosts" / "agy" / "binding.toml")
+        self.assertEqual(binding["policy"]["policy_text"], "core")
+        rendered = render.RENDERERS["agy"](ROOT)
+        for path in binding["policy"]["documents"].values():
+            self.assertIn(path, rendered)
+        self.assertEqual(len(rendered), 13)
+
+    def test_resident_frame_has_no_unavailable_escape_hatch(self) -> None:
+        # R02：舊文字在 invoke_subagent 不可用時整節忽略（等於 main 自己做）；core 改為回報使用者，frame 不可再放這個出口。
+        rules = render.RENDERERS["agy"](ROOT)["rules/shoal-agy.md"].decode("utf-8")
+        self.assertNotIn("unavailable, ignore it", rules)
 
     def test_effort_is_never_rendered(self) -> None:
         for rel, data in render.RENDERERS["agy"](ROOT).items():
