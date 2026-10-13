@@ -92,3 +92,5 @@ Read the detailed contract only when needed:
 - [role contract](references/role-contract.md)
 - [verification contract](references/verification-contract.md)
 - [recovery contract](references/recovery-contract.md)
+- [workflow extensions](references/workflow-extensions.md): outcome
+  continuation, `execution_scope`, review intent, direction check

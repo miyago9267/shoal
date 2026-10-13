@@ -20,6 +20,9 @@ written.
   research uses two `researcher` arms.
 - The low-risk "one targeted acceptance check, no independent verifier"
   sentence is kept as the addendum `pending-shared-low-risk-targeted-check`.
+- The plugin `SKILL.md` reference list now names `workflow-extensions.md`, so
+  the on-demand extensions (outcome continuation, `execution_scope` route
+  fields, review intent, direction check) are reachable on Codex.
 
 ## v3.4.2
 

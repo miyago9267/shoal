@@ -32,6 +32,18 @@ class PluginPackageTests(unittest.TestCase):
             self.assertTrue((skill / "references" / reference).is_file())
         self.assertTrue((skill / "agents" / "openai.yaml").is_file())
 
+    def test_skill_names_every_on_demand_reference(self) -> None:
+        skill = PLUGIN / "skills" / "shoal-orchestration"
+        text = (skill / "SKILL.md").read_text()
+        references = sorted((skill / "references").glob("*.md"))
+        self.assertTrue(references)
+        for reference in references:
+            self.assertIn(
+                f"](references/{reference.name})",
+                text,
+                f"SKILL.md does not point at references/{reference.name}",
+            )
+
     def test_optional_jev_plugin_manifest_matches_marketplace_entry(self) -> None:
         marketplace = json.loads(
             (ROOT / "plugin" / ".agents" / "plugins" / "marketplace.json").read_text()
@@ -53,6 +65,7 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(entry["source"]["path"], "./plugins/shoal-jev-router")
         self.assertEqual(entry["name"], manifest["name"])
         self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
+
 
 if __name__ == "__main__":
     unittest.main()
