@@ -1,0 +1,136 @@
+{
+  "captured": {
+    "date": "2026-10-13",
+    "cli": "agy 1.3.4 (task said 1.3.3; installed binary reports 1.3.4)",
+    "method": "project-level <repo>/.agents/hooks.json (named groups s0-capture, s0-deny) in a scratch git repo; user ~/.gemini/config/hooks.json (symlink into dotfile) NOT touched; agy -p ... --dangerously-skip-permissions --output-format stream-json; 2 paid runs (A capture, B deny)"
+  },
+  "note_event_name": "payload carries NO event-name field; the event is known only from which registration fired",
+  "events": {
+    "common_keys": {
+      "conversationId": "str",
+      "workspacePaths": "list",
+      "transcriptPath": "str",
+      "artifactDirectoryPath": "str",
+      "modelName": "str"
+    },
+    "SessionStart": {
+      "extra": {},
+      "fires_for": "main conversation and again for each subagent conversation (new conversationId) before its first invocation"
+    },
+    "PreInvocation": {
+      "extra": {
+        "invocationNum": "int",
+        "initialNumSteps": "int"
+      }
+    },
+    "PostInvocation": {
+      "extra": {
+        "invocationNum": "int",
+        "initialNumSteps": "int"
+      },
+      "note": "same shape as PreInvocation"
+    },
+    "PreToolUse": {
+      "extra": {
+        "toolCall": "dict {name:str,args:dict}",
+        "stepIdx": "int"
+      }
+    },
+    "PostToolUse": {
+      "extra": {
+        "toolCall": "dict {name:str,args:dict}",
+        "stepIdx": "int",
+        "error": "str"
+      },
+      "note": "invoke_subagent PostToolUse fires immediately (dispatch is asynchronous), before the subagent's SessionStart/tools"
+    },
+    "Stop": {
+      "extra": {
+        "executionNum": "int",
+        "terminationReason": "str",
+        "error": "str",
+        "fullyIdle": "bool"
+      },
+      "fires_for": "each conversation (subagent first, then main)"
+    }
+  },
+  "tools": {
+    "write_to_file": {
+      "args": {
+        "TargetFile": "str",
+        "CodeContent": "str",
+        "Description": "str",
+        "Overwrite": "bool",
+        "toolAction": "str",
+        "toolSummary": "str"
+      }
+    },
+    "replace_file_content": {
+      "args": {
+        "TargetFile": "str",
+        "TargetContent": "str",
+        "ReplacementContent": "str",
+        "StartLine": "int",
+        "EndLine": "int",
+        "AllowMultiple": "bool",
+        "Instruction": "str",
+        "Description": "str",
+        "toolAction": "str",
+        "toolSummary": "str"
+      }
+    },
+    "view_file": {
+      "args": {
+        "AbsolutePath": "str",
+        "toolAction": "str",
+        "toolSummary": "str"
+      }
+    },
+    "run_command": {
+      "args": {
+        "CommandLine": "str",
+        "Cwd": "str",
+        "WaitMsBeforeAsync": "int",
+        "toolAction": "str",
+        "toolSummary": "str"
+      }
+    },
+    "invoke_subagent": {
+      "args": {
+        "Subagents": "list",
+        "toolAction": "str",
+        "toolSummary": "str"
+      }
+    },
+    "send_message": {
+      "args": {
+        "Recipient": "str",
+        "Message": "str",
+        "toolAction": "str",
+        "toolSummary": "str"
+      },
+      "note": "used by the subagent to report back to main"
+    }
+  },
+  "equalities": {
+    "conversationId_main_vs_subagent": "NOT equal: the subagent runs in its own conversation with a different conversationId on every hook event",
+    "conversationId_within_one_conversation": "equal across all its events",
+    "parent_link": "none: no parent id / agent name / role field in any payload; the subagent conversation id is not in the invoke_subagent payload",
+    "stepIdx": "per-conversation counter (small ints), equal values appear in main and subagent - not an identifier"
+  },
+  "deny": {
+    "format": "{\"decision\":\"deny\",\"reason\":\"...\"} on stdout, exit 0 (shoal deny_output format)",
+    "main_write_denied": true,
+    "subagent_write_denied": true,
+    "honoured_with_dangerously_skip_permissions": true,
+    "model_sees": "tool call denied by pre-tool hook: <reason>",
+    "deny_probe_file_created": false
+  },
+  "facts": {
+    "main_vs_subagent_distinguishable": "yes by conversationId: first SessionStart-seen conversation is main; a conversationId first seen after an invoke_subagent PreToolUse is a subagent; role name is NOT available",
+    "stop_event": "exists (terminationReason e.g. NO_TOOL_CALL per docs, fullyIdle bool); block/continue is documented via Stop/PostInvocation output (terminationBehavior force_continue) - not exercised",
+    "subagent_start_event": "SessionStart with a new conversationId",
+    "sub_invocation_turn_boundary": "adapt_agy treats invocationNum 0 as a turn start; a subagent conversation also emits PreInvocation, so its turn ids come from its own conversationId",
+    "hook_location": "<workspace>/.agents/hooks.json is loaded in addition to user hooks.json"
+  }
+}

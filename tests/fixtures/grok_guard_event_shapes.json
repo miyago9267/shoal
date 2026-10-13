@@ -1,0 +1,189 @@
+{
+  "captured": {
+    "date": "2026-10-13",
+    "cli": "grok 1.0.46 (2765805b9442)",
+    "method": "project-level .grok/hooks/capture.json in a scratch git repo with --trust; no user config modified; runs: grok --trust -p ... --permission-mode bypassPermissions; 4 paid runs (A capture, B deny main, C wasted by spawn_subagent also matching the deny filter, D deny subagent)"
+  },
+  "events": {
+    "common_keys": {
+      "cwd": "str",
+      "hookEventName": "str (snake_case value)",
+      "hook_event_name": "str (PascalCase value)",
+      "permissionMode": "str",
+      "permission_mode": "str",
+      "sessionId": "str",
+      "session_id": "str",
+      "timestamp": "str",
+      "transcriptPath": "str (all but user_prompt_submit)",
+      "transcript_path": "str",
+      "workspaceRoot": "str"
+    },
+    "session_start": {
+      "extra": {
+        "source": "str"
+      },
+      "main_only": true,
+      "note": "does not fire for a subagent's own session"
+    },
+    "user_prompt_submit": {
+      "extra": {
+        "prompt": "str",
+        "promptId": "str"
+      },
+      "subagentType": "present on a subagent's own prompt event (str)",
+      "prompt_text_present": true
+    },
+    "pre_tool_use": {
+      "extra": {
+        "toolName": "str",
+        "tool_name": "str",
+        "toolInput": "dict",
+        "tool_input": "dict",
+        "toolInputTruncated": "bool",
+        "toolUseId": "str",
+        "tool_use_id": "str"
+      },
+      "subagentType": "present (str) when the call is made inside a subagent, absent for main",
+      "promptId": "not present"
+    },
+    "post_tool_use": {
+      "extra": {
+        "toolName": "str",
+        "toolInput": "dict",
+        "toolResult": "dict",
+        "tool_response": "dict",
+        "toolResultTruncated": "bool",
+        "toolInputTruncated": "bool",
+        "toolUseId": "str",
+        "durationMs": "int",
+        "duration_ms": "int",
+        "isBackgrounded": "bool"
+      },
+      "subagentType": "as pre_tool_use"
+    },
+    "subagent_start": {
+      "extra": {
+        "subagentId": "str",
+        "subagentType": "str",
+        "description": "str"
+      },
+      "note": "fires in the parent session id; sessionId differs from the subagent's own later events"
+    },
+    "subagent_stop": {
+      "extra": {
+        "subagentId": "str",
+        "subagentType": "str",
+        "promptId": "str",
+        "phase": "str",
+        "stopHookActive": "bool",
+        "lastAssistantMessage": "str"
+      }
+    },
+    "stop": {
+      "extra": {
+        "promptId": "str",
+        "reason": "str (end_turn observed)",
+        "stopHookActive": "bool",
+        "lastAssistantMessage": "str",
+        "backgroundTasks": "list",
+        "sessionCrons": "list"
+      },
+      "note": "a second stop fires at session end with only reason + stopHookActive (no promptId, no lastAssistantMessage); filter on reason == end_turn"
+    },
+    "session_end": {
+      "extra": {
+        "reason": "str (shutdown observed)"
+      },
+      "subagentType": "present (str) for a subagent's own session teardown"
+    },
+    "not_observed": [
+      "post_tool_use_failure",
+      "permission_denied",
+      "stop_failure",
+      "stop_cancelled",
+      "notification",
+      "pre_compact",
+      "post_compact"
+    ]
+  },
+  "tools": {
+    "write": {
+      "toolInput_keys": {
+        "file_path": "str",
+        "content": "str"
+      },
+      "toolResult_keys": {
+        "type": "str",
+        "EditsApplied": "dict"
+      }
+    },
+    "read_file": {
+      "toolInput_keys": {
+        "target_file": "str"
+      },
+      "toolResult_keys": {
+        "type": "str",
+        "FileContent": "dict"
+      }
+    },
+    "run_terminal_command": {
+      "toolInput_keys": {
+        "command": "str",
+        "description": "str"
+      },
+      "toolResult_keys": {
+        "type": "str",
+        "command": "str",
+        "exit_code": "int",
+        "output": "list",
+        "output_for_prompt": "str",
+        "timed_out": "bool",
+        "truncated": "bool"
+      }
+    },
+    "spawn_subagent": {
+      "toolInput_keys": {
+        "subagent_type": "str",
+        "prompt": "str",
+        "description": "str",
+        "background": "bool"
+      },
+      "toolResult_keys": {
+        "type": "str",
+        "subagent_id": "str",
+        "subagent_type": "str",
+        "output": "str",
+        "turns": "int",
+        "tool_calls": "int",
+        "duration_ms": "int",
+        "resume_from_hint": "str",
+        "worktree_path": "null"
+      }
+    }
+  },
+  "equalities": {
+    "main_vs_subagent_sessionId": "NOT equal: the subagent's own events carry a new sessionId, equal to subagentId of subagent_start/subagent_stop",
+    "subagent_start_sessionId_vs_main": "equal (subagent_start is emitted in the parent session)",
+    "promptId_main_vs_subagent": "NOT equal",
+    "toolUseId_pre_vs_post": "equal for the same call",
+    "post_tool_use_spawn_subagent_sessionId": "equal to main sessionId"
+  },
+  "deny": {
+    "format_A": "{\"decision\":\"deny\",\"reason\":\"...\"} on stdout, exit 0 (the shoal deny_output format)",
+    "format_B_hookSpecificOutput": "not exercised (documented by grok 10-hooks.md as equivalent)",
+    "main_write_denied": true,
+    "subagent_write_denied": true,
+    "model_sees": "Hook denied: <reason>",
+    "deny_probe_file_created": false,
+    "also_denied": "spawn_subagent when the hook matched its prompt text (confirms PreToolUse deny applies to dispatch)"
+  },
+  "facts": {
+    "stop_event": "exists; payload above; docs say a hook can block via {decision:block,reason} (not exercised)",
+    "subagent_start_event": "exists, carries subagentType and subagentId; matcher is the subagent type",
+    "dispatch_result": "post_tool_use spawn_subagent carries toolResult.subagent_type, subagent_id, turns, tool_calls",
+    "nonexistent_role": "INCONCLUSIVE: the model substituted applier in most attempts; one reply to a no-such-role-xyz spawn looked like a started generic subagent (no error) - needs a harness-driven re-test",
+    "prompt_event_has_prompt_text": true,
+    "subagent_marker": "subagentType on tool/prompt/session_end events inside the subagent; absent on main",
+    "adapt_grok_gaps": "adapt_grok reads hookEventName/toolName/toolInput/subagentType/promptId - all confirmed present; main shell tool is run_terminal_command (not registered by shoal-grok.json today)"
+  }
+}
