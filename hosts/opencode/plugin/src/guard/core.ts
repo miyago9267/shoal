@@ -227,6 +227,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
     STRICT:
       "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
       "write-capable role (executor or applier), or ask the user to add #direct to the prompt.",
+    E1:
+      "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. " +
+      "Dispatch a shoal write-capable role (executor or applier), add this agent type to " +
+      "SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1.",
     STOP:
       "Shoal completion check: this turn changed files and no check ran afterwards. Run a " +
       "verification now (tests, a verifier or watcher role), or say explicitly in your report " +
@@ -253,6 +257,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
     STRICT:
       "Shoal dispatch guard：main session 不自己改檔。" +
       "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。",
+    E1:
+      "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。" +
+      "請派出 shoal 可寫的 role（executor 或 applier）、把這個 agent type 加進 " +
+      "SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
     STOP:
       "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。" +
       "請現在做一次驗證（測試、verifier 或 watcher role），或在回報中明確寫出這次修改尚未驗證。",
@@ -493,6 +501,19 @@ export function resolveMode(host: string, env: Env): string {
   return mode;
 }
 
+/** SHOAL_GUARD_SUBAGENT_WRITE: only the exact value `on` enables E1; unset or anything else is `off`. */
+export function subagentWriteEnabled(env: Env): boolean {
+  return env.SHOAL_GUARD_SUBAGENT_WRITE === "on";
+}
+
+/** SHOAL_GUARD_WRITE_AGENTS: the raw agent type, or the type without a `shoal:` prefix, is in the list. */
+export function writeAgentAllowed(role: string | null | undefined, env: Env): boolean {
+  if (typeof role !== "string" || role === "") return false;
+  const wanted = new Set((env.SHOAL_GUARD_WRITE_AGENTS ?? "").split(",").map((item) => item.trim()));
+  wanted.delete("");
+  return wanted.has(role) || wanted.has(normalizeRole(role) ?? "");
+}
+
 /**
  * SHOAL_GUARD_STOP: `off` disables the completion check on claude and codex; any other value (or none) keeps
  * it on.  No effect on a host outside STOP_HOSTS, which never blocks.
@@ -647,13 +668,41 @@ class Guard {
     let rule: string | null = null;
     if (toolKind === "dispatch") rule = "LEAF";
     else if (toolKind === "edit" && roleAccess(role) === "verify") rule = "VERIFY_EDIT";
+    if (rule === null && subagentWriteEnabled(this.env)) rule = this.subagentWriteRule(role, toolKind);
     if (rule === null) return none(this.mode);
-    const first = this.event.paths?.[0];
+    let file: string | undefined = this.event.paths?.[0];
+    if (rule === "E1" && toolKind === "shell") file = this.shellWriteTarget() ?? undefined;
     return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
       rule,
       reason: text(this.env, rule),
-      file: first,
+      file,
     });
+  }
+
+  /** E1: "E1" when this subagent call writes a non-exempt file and nothing releases it, else null. */
+  private subagentWriteRule(role: string | null | undefined, toolKind: string | null | undefined): string | null {
+    if (roleAccess(role) === "write") return null;
+    let writes: boolean;
+    if (toolKind === "edit") {
+      const cwd = this.event.cwd || process.cwd();
+      writes = (this.event.paths ?? []).some((p) => !isExempt(resolvePath(p, cwd), this.host, this.env, this.home));
+    } else if (toolKind === "shell") {
+      writes = this.shellWriteTarget() !== null;
+    } else {
+      return null;
+    }
+    if (!writes) return null;
+    if (writeAgentAllowed(role, this.env) || this.env.SHOAL_GUARD_DIRECT === "1") return null;
+    if (this.subagentDirectReleased()) return null;
+    return "E1";
+  }
+
+  /**
+   * Hook point for the user's `#direct` releasing a subagent (spec E1).  Not released yet: it needs E0
+   * evidence that the subagent payload lets the guard find the current turn's main state.
+   */
+  subagentDirectReleased(): boolean {
+    return false;
   }
 
   // -- completion check (B2, B3) --------------------------------------------

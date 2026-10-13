@@ -42,6 +42,13 @@ file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-dec
 (M11): the dispatch call records a pending write dispatch and the SubagentStart event of the same session
 releases it.  On every other host the dispatch call itself unlocks.  See START_UNLOCK_HOSTS.
 
+Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` (default on every host)
+leaves the subagent rules exactly as they were; `on` makes a subagent that is not a shoal write-capable role (an edit
+tool or a literal shell write, as in G5, outside the exempt paths) get E1: deny in enforce, `would_deny` in shadow.
+Exits: dispatch a shoal write role, put the agent type in SHOAL_GUARD_WRITE_AGENTS (comma-separated, exact match on the
+raw type or the type without a `shoal:` prefix), or SHOAL_GUARD_DIRECT=1.  A user's `#direct` does not release a
+subagent yet (subagent_direct_released, E1 waits for E0 payload evidence).  Verify-level roles keep VERIFY_EDIT.
+
 Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
 shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
 `checked` (after the latest change, a verify-level role was dispatched or started, or main ran a foreground shell
@@ -215,6 +222,11 @@ MESSAGES = {
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
             "write-capable role (executor or applier), or ask the user to add #direct to the prompt."
         ),
+        "E1": (
+            "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. "
+            "Dispatch a shoal write-capable role (executor or applier), add this agent type to "
+            "SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+        ),
         "STOP": (
             "Shoal completion check: this turn changed files and no check ran afterwards. Run a "
             "verification now (tests, a verifier or watcher role), or say explicitly in your report "
@@ -246,6 +258,11 @@ MESSAGES = {
         "STRICT": (
             "Shoal dispatch guard：main session 不自己改檔。"
             "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"
+        ),
+        "E1": (
+            "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。"
+            "請派出 shoal 可寫的 role（executor 或 applier）、把這個 agent type 加進 "
+            "SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"
         ),
         "STOP": (
             "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。"
@@ -455,6 +472,20 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
     if mode == "enforce" and host in FORCED_SHADOW_HOSTS:
         mode = "shadow"
     return mode
+
+
+def subagent_write_enabled(env: Dict[str, str]) -> bool:
+    """SHOAL_GUARD_SUBAGENT_WRITE: only the exact value `on` enables E1; unset or anything else is `off`."""
+    return env.get("SHOAL_GUARD_SUBAGENT_WRITE") == "on"
+
+
+def write_agent_allowed(role: Any, env: Dict[str, str]) -> bool:
+    """SHOAL_GUARD_WRITE_AGENTS: the raw agent type, or the type without a `shoal:` prefix, is in the list."""
+    if not isinstance(role, str) or not role:
+        return False
+    wanted = {item.strip() for item in (env.get("SHOAL_GUARD_WRITE_AGENTS") or "").split(",")}
+    wanted.discard("")
+    return role in wanted or normalize_role(role) in wanted
 
 
 def stop_enabled(host: str, env: Dict[str, str]) -> bool:
@@ -942,6 +973,8 @@ class _Guard:
             rule = "LEAF"
         elif tool_kind == "edit" and role_access(role) == "verify":
             rule = "VERIFY_EDIT"
+        if rule is None and subagent_write_enabled(self.env):
+            rule = self._subagent_write_rule(role, tool_kind)
         if rule is None:
             return {
                 "decision": "none",
@@ -952,12 +985,37 @@ class _Guard:
             }
         paths = self.event.get("paths") or []
         decision = "deny" if self.mode == "enforce" else "would_deny"
-        return self.result(
-            decision,
-            rule,
-            reason=_text(self.env, rule),
-            file=paths[0] if paths else None,
-        )
+        file = paths[0] if paths else None
+        if rule == "E1" and tool_kind == "shell":
+            file = self.shell_write_target()
+        return self.result(decision, rule, reason=_text(self.env, rule), file=file)
+
+    def _subagent_write_rule(self, role: Any, tool_kind: Any) -> Optional[str]:
+        """E1: "E1" when this subagent call writes a non-exempt file and nothing releases it, else None."""
+        if role_access(role) == "write":
+            return None
+        if tool_kind == "edit":
+            cwd = self.event.get("cwd") or os.getcwd()
+            writes = any(
+                not is_exempt(resolve_path(p, cwd), self.host, self.env, self.home)
+                for p in self.event.get("paths") or []
+            )
+        elif tool_kind == "shell":
+            writes = self.shell_write_target() is not None
+        else:
+            return None
+        if not writes:
+            return None
+        if write_agent_allowed(role, self.env) or self.env.get("SHOAL_GUARD_DIRECT") == "1":
+            return None
+        if self.subagent_direct_released():
+            return None
+        return "E1"
+
+    def subagent_direct_released(self) -> bool:
+        """Hook point for the user's `#direct` releasing a subagent (spec E1).  Not released yet: it needs E0
+        evidence that the subagent payload lets the guard find the current turn's main state."""
+        return False
 
     def _none(self) -> Dict[str, Any]:
         return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}

@@ -579,6 +579,23 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 `declare`、`classified`、`off` 的行為與 3.2.1 相同。
 被 deny 的改檔與 shell 寫檔不計入 R2 的檔案數，也不會在同一次呼叫送出 R2 提醒。
 
+#### subagent 改檔規則：`SHOAL_GUARD_SUBAGENT_WRITE`
+
+E1（見
+[`docs/specs/guard-every-gate`](./docs/specs/guard-every-gate/SPEC.md)）：
+不是 shoal 可寫 role 的
+subagent（含沒有 agent type 的）用編輯工具或 shell 字面寫檔，且目標不在豁免路徑時，enforce 下 deny、
+shadow 記 `would_deny`（規則 id `E1`）。verify 等級的 role 的編輯仍是 `VERIFY_EDIT`。
+
+| 值 | 效果 |
+| --- | --- |
+| `off`（預設，所有 host） | 沒有 E1，行為與以前完全相同 |
+| `on` | 啟用 E1 |
+
+出口：派 shoal 可寫的 role；把 agent type 加進 `SHOAL_GUARD_WRITE_AGENTS`（逗號分隔，去掉空白，
+比對原始 type 或去掉 `shoal:` 前綴的 type）；或設 `SHOAL_GUARD_DIRECT=1`。使用者的 `#direct`
+目前不放行 subagent。派出非 shoal 的 agent type 仍然允許，也不會解鎖 main 的改檔。
+
 #### 宣告
 
 `declare` 模式（`SHOAL_GUARD_R1=declare`）下，要自己改檔時 main 先單獨執行一次 shell 指令
