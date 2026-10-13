@@ -671,7 +671,7 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
 
 #### 規則總表
 
-| 規則 | 條件 | Claude／Codex（enforce） | Claude／Codex（shadow） | Grok、agy、OpenCode |
+| 規則 | 條件 | Claude／Codex（enforce） | Claude／Codex（shadow） | Grok、agy、OpenCode（OpenCode 見下一節） |
 | --- | --- | --- | --- | --- |
 | R1 | `strict`：本輪沒有派工或 `#direct`；`declare`：本輪沒有派工、`#direct`、宣告或 `parent_local`；`classified`：分類檔把本輪標成 `judgment` 或 `mechanical` 且沒派工。路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | 只提醒（`advise`） |
 | R2 | 本輪 main 直接改到第 3 個不同的檔案 | 只提醒 | 只提醒 | 只提醒 |
@@ -719,7 +719,39 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
     所以不放行。舊註冊或尚未在 `/hooks` 核准新 hook 時收不到啟動事件：guard 也接受該 role 的第一個帶
     `agent_id` 與 write 等級 `agent_type` 的 `apply_patch`／`Bash` 呼叫當作啟動證據；兩者都沒有就保持鎖住，
     出口只剩 `#direct` 與 `SHOAL_GUARD_DIRECT=1`。guard 讀不到 Codex 的核准狀態，不做舊註冊偵測。
+  - OpenCode：`task` 呼叫只記待啟動；帶 `parentID`（就是 main session）與 write role 的
+    `agent` 的 `session.created` 才放行（`client.session.get` 看到未知的子 session 時等同啟動）。
+    role 名稱不存在或權限被擋的派工沒有 `session.created`，所以不放行。
   - 其他 host 不變（派工呼叫放行）。
+- **OpenCode（TypeScript 移植）：shell 與 `apply_patch` 也在 guard 內，預設 enforce。**
+  依據是 `tests/fixtures/opencode_guard_event_shapes.json`（opencode 1.18.31，
+  2026-10-13 實測）。
+  - main 與 subagent：`session.created` 事件帶 `parentID`（main session）與 `agent`（role），沒收到事件時
+    用 `client.session.get` 補查；有 `parentID` 的是 subagent，role 就是 `agent`。查不到的未知 session
+    是 fail-open（不擋，log 一筆 `skip`／`exception`）。
+  - main 的 `write`／`edit`／`multiedit`／`apply_patch` 與寫檔的 `bash` 走 `strict`（沒設
+    `SHOAL_GUARD_R1` 時 adapter 自動用 `strict`；明確設 `classified` 或 `off` 照辦）：本輪沒有已啟動的
+    write role、也沒有 `#direct` 就 deny。讀取類 `bash` 不受影響。
+  - subagent 的改檔與 shell 寫檔：role 不是 shoal write role（含內建的 `general`、`explore`）就 deny（E1），
+    預設開（`SHOAL_GUARD_SUBAGENT_WRITE=off` 可關）。出口：`SHOAL_GUARD_WRITE_AGENTS`、
+    `SHOAL_GUARD_DIRECT=1`、豁免路徑，以及 `#direct`。
+  - `#direct`：main 的 `chat.message` 文字有獨立的 `#direct` 就放行那一輪 main 自己的改檔；
+    subagent 則看子 session 建立當下 main 的那一輪，若有 `#direct` 也放行（以 child sessionID 記錄那一輪）。
+  - 完成檢查（Stop）在 OpenCode 不可用，見下表。
+
+OpenCode 事件與 guard 的對照（`docs/DESIGN-INVARIANTS.md` 第 3 條要求的清單）：
+
+| 事件 | 掛上？ | 規則 | 原因或證據 |
+| --- | --- | --- | --- |
+| `tool.execute.before`（`write`、`edit`、`multiedit`、`apply_patch`） | 是 | R1（main）、E1、VERIFY_EDIT | throw 即 deny；`apply_patch` 的路徑取自 `patchText` 標頭 |
+| `tool.execute.before`（`bash`） | 是 | G5（main，以 R1 訊息）、E1 | subagent 的 `bash` 也帶完整 `args.command`（fixture `q2`） |
+| `tool.execute.before`（`task`） | 是 | LEAF、派工待啟動 | `subagent_type` 不會先驗證，失敗的派工只留下這個事件 |
+| `event` `session.created` | 是 | 啟動（M11／E3）、main 與 subagent 的辨識 | 帶 `parentID` 與 `agent`；失敗的派工沒有此事件 |
+| `chat.message` | 是 | 回合邊界、`#direct` | `output.message.id` 是回合 id，`output.parts[].text` 是 prompt |
+| `tool.execute.after` | 否 | 無需 | 失敗的派工不觸發，啟動已由 `session.created` 判斷 |
+| `event` `session.idle`／`session.status` | 否 | 完成檢查（B2、B3） | `event` hook 的型別是 `(input) => Promise<void>`，沒有回傳值也沒有 output，無法擋；`session.idle` 在 turn 結束後才發。以 `session.promptAsync` 重新提示的行為沒有實測，不實作 |
+| `permission.ask` | 否 | 無 | 尚未量測，沒有證據顯示它能區分 main 與 subagent |
+
 - **完成檢查（3.4.0 起，Claude 與 Codex；docs/specs/shared-rules B2 到 B4）。** guard 逐回合記兩件事：
   - `changed`：main 的改檔工具或 shell 寫檔被放行且目標不是豁免路徑；或可寫的 role 算「已派工」
     （Claude 與 Codex 都在啟動事件釋放待啟動派工的那一刻；其他 host 在派工呼叫）。

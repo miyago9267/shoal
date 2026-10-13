@@ -48,7 +48,8 @@ describe("resolveR1", () => {
 
   test("hosts that cannot declare keep the v3.1.0 rule", () => {
     for (const host of ["grok", "agy", "opencode"]) {
-      for (const value of ["", "declare", "strict", "bogus", "classified"]) {
+      // opencode's adapter sets `strict` itself and the core accepts it there (guard-opencode.test.ts)
+      for (const value of host === "opencode" ? ["", "declare", "bogus", "classified"] : ["", "declare", "strict", "bogus", "classified"]) {
         expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe("classified");
       }
       expect(resolveR1(host, { SHOAL_GUARD_R1: "off" })).toBe("off");

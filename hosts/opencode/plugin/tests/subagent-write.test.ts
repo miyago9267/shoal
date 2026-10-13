@@ -30,7 +30,9 @@ describe("E1 subagent write rule (opencode edit tools)", () => {
   const run = (e: GuardEvent, env: Record<string, string>) => evaluate(e, { ...base, ...env }, home);
 
   test("switch off: non-shoal subagent edit is allowed", () => {
-    expect(run(event("build"), { SHOAL_GUARD: "enforce" }).decision).toBe("none");
+    // opencode defaults to on (S3); an explicit off still disables the rule
+    expect(run(event("build"), { SHOAL_GUARD: "enforce", SHOAL_GUARD_SUBAGENT_WRITE: "off" }).decision).toBe("none");
+    expect(run(event("build"), { SHOAL_GUARD: "enforce" })).toMatchObject({ decision: "deny", rule: "E1" });
   });
   test("on + enforce: denied; write role, allowlist, DIRECT and exempt path pass", () => {
     const on = { SHOAL_GUARD: "enforce", SHOAL_GUARD_SUBAGENT_WRITE: "on" };

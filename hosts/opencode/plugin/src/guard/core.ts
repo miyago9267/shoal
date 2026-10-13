@@ -138,7 +138,7 @@ const DECLARE_HOSTS = new Set(["claude", "codex"]);
 // call records a pending write dispatch and the SubagentStart event of the same session releases it.  Every
 // other host unlocks at the dispatch call itself (no start event is recorded for it).  The registration and
 // the guard script ship together; see hooks/shoal_guard.py.
-const START_UNLOCK_HOSTS = new Set(["claude", "codex"]);
+const START_UNLOCK_HOSTS = new Set(["claude", "codex", "opencode"]);
 // Codex: the first tool call of a write-level role's agent is start evidence as well (the SubagentStart hook may not be
 // approved yet); each agent_id releases at most one pending dispatch (`started_agents`).  See hooks/shoal_guard.py.
 
@@ -524,8 +524,10 @@ export function resolveMode(host: string, env: Env): string {
  * subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it, so the
  * user's `#direct` can release a subagent.
  */
-const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude", "codex"]);
-const SUBAGENT_DIRECT_HOSTS = new Set(["claude", "codex"]);
+const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude", "codex", "opencode"]);
+// opencode: the adapter reports a subagent under its main session id and the main turn that was current when the
+// child session was created (hosts/opencode/plugin/src/guard/opencode.ts).
+const SUBAGENT_DIRECT_HOSTS = new Set(["claude", "codex", "opencode"]);
 /**
  * Codex: a subagent runs in its own turn, so `#direct` is looked up by agent_id: a SubagentStart while main's current
  * turn carried `#direct` records the id in `direct_agents`.
@@ -587,6 +589,9 @@ export function stopEnabled(host: string, env: Env): boolean {
 export function resolveR1(host: string, env: Env): string {
   const raw = env.SHOAL_GUARD_R1 || "";
   if (raw === "classified" || raw === "off") return raw;
+  // opencode: `strict` is selectable (the adapter delivers shell and apply_patch events and sets it when unset);
+  // its core default stays `classified`, which the shared stop_opencode_never_blocks vector replays.
+  if (host === "opencode" && raw === "strict") return "strict";
   if (!DECLARE_HOSTS.has(host)) return "classified";
   return raw === "declare" ? "declare" : "strict";
 }

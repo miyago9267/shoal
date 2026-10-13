@@ -42,7 +42,7 @@ describe("OpenCode plugin seam", () => {
   test("exposes the route tool and the guard hooks, and does not mutate model hooks", async () => {
     const hooks = await ShoalOpenCodePlugin({} as never);
 
-    expect(Object.keys(hooks).sort()).toEqual(["chat.message", "tool", "tool.execute.before"]);
+    expect(Object.keys(hooks).sort()).toEqual(["chat.message", "event", "tool", "tool.execute.before"]);
     expect(hooks.tool?.shoal_route).toBeDefined();
   });
 
