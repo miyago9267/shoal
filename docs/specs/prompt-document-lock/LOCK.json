@@ -18,11 +18,14 @@
       "max_changed_characters": 1000,
       "max_change_ratio": 0.2,
       "required_fragments": [
-        "Treat a clear request to fix or complete something as one outcome",
-        "Phase updates do not require approval",
-        "AUTO`/`ASK` only for explicit unattended continuation",
-        "material approval, security, release, destructive, external, and irreversible gates"
-      ]
+        "A clear request to fix or finish is one outcome",
+        "Material gates always stop.",
+        "The main session does not edit files itself"
+      ],
+      "migration": {
+        "migration_id": "shared-rules-codex-core",
+        "equivalence": "docs/specs/core-policy/equivalence/codex.md"
+      }
     },
     {
       "id": "orchestration-template",
@@ -34,15 +37,14 @@
       "max_changed_characters": 3000,
       "max_change_ratio": 0.1,
       "required_fragments": [
-        "Outcome-level continuation",
-        "`execution_scope`",
-        "phase boundary is progress reporting",
-        "presence gates for likely long unattended work",
-        "material approval, security, release, destructive, external, or irreversible gates"
+        "Main session owns framing, architecture, ambiguity, Plan synthesis, approval, integration, final judgment",
+        "`explore_then_plan` boundary",
+        "**CONFIRMED**, **REFUTED**, or **INCONCLUSIVE**",
+        "presence gates for likely long unattended work"
       ],
       "migration": {
-        "migration_id": "delegation-default-3-0-0",
-        "equivalence": "docs/specs/delegation-default/RENAME.md"
+        "migration_id": "shared-rules-codex-core",
+        "equivalence": "docs/specs/core-policy/equivalence/codex.md"
       }
     },
     {
@@ -55,16 +57,47 @@
       "max_changed_characters": 3000,
       "max_change_ratio": 0.1,
       "required_fragments": [
+        "Main session owns framing, architecture, ambiguity, Plan synthesis, approval, integration, final judgment",
+        "`explore_then_plan` boundary",
+        "**CONFIRMED**, **REFUTED**, or **INCONCLUSIVE**",
+        "presence gates for likely long unattended work"
+      ],
+      "migration": {
+        "migration_id": "shared-rules-codex-core",
+        "equivalence": "docs/specs/core-policy/equivalence/codex.md"
+      }
+    },
+    {
+      "id": "extensions-template",
+      "path": "templates/agents-md.extensions.md",
+      "version_file": "hosts/codex/VERSION",
+      "max_lines": 270,
+      "max_bytes": 15600,
+      "max_changed_lines": 30,
+      "max_changed_characters": 4000,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
         "Outcome-level continuation",
         "`execution_scope`",
         "phase boundary is progress reporting",
-        "presence gates for likely long unattended work",
         "material approval, security, release, destructive, external, or irreversible gates"
-      ],
-      "migration": {
-        "migration_id": "delegation-default-3-0-0",
-        "equivalence": "docs/specs/delegation-default/RENAME.md"
-      }
+      ]
+    },
+    {
+      "id": "packaged-workflow-extensions",
+      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md",
+      "version_file": "hosts/codex/VERSION",
+      "max_lines": 270,
+      "max_bytes": 15600,
+      "max_changed_lines": 30,
+      "max_changed_characters": 4000,
+      "max_change_ratio": 0.2,
+      "required_fragments": [
+        "Outcome-level continuation",
+        "`execution_scope`",
+        "phase boundary is progress reporting",
+        "material approval, security, release, destructive, external, or irreversible gates"
+      ]
     },
     {
       "id": "orchestration-skill",
@@ -529,6 +562,10 @@
     {
       "left": "templates/agents-md.orchestration.md",
       "right": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md"
+    },
+    {
+      "left": "templates/agents-md.extensions.md",
+      "right": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
     }
   ]
 }

@@ -3,6 +3,20 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.5.0
+
+### Changes
+
+- Codex 的 main-session policy 改由 `core/policy/` 渲染，Codex 專屬的調校移到
+  `hosts/codex/policy-addenda/` 與隨需載入的 extensions 文件。agy 也已改用 core 渲染的 policy。
+- Codex 行為變更：
+  - main 不再自己改檔；改檔交給可寫入的 role，除非 prompt 含 `#direct`。
+  - role 不可用時回報，不由 main 接手。
+  - 長時間指令交給 `watcher`。
+  - 決策型研究用兩個 `researcher` 分頭做。
+- 低風險、本機、可逆的工作維持「main 做一次針對性驗收，不另派 verifier」，
+  以 Codex addendum `pending-shared-low-risk-targeted-check` 保留。
+
 ## v3.4.2
 
 ### Changes

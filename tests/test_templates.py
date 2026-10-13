@@ -11,6 +11,13 @@ sys.path.insert(0, str(ROOT / "install"))
 from validate_agents import ROLES, validate_agents_config, validate_config, validate_dir  # noqa: E402
 
 
+def _rendered(*names: str) -> str:
+    """Whitespace-normalized text of rendered templates, joined in order."""
+    return " ".join(
+        " ".join((ROOT / "templates" / name).read_text(encoding="utf-8").split()) for name in names
+    )
+
+
 class NativeTemplateTests(unittest.TestCase):
     def test_exact_agents_table_has_no_legacy_transport(self) -> None:
         with (ROOT / "templates" / "config.snippet.toml").open("rb") as handle:
@@ -97,27 +104,25 @@ class NativeTemplateTests(unittest.TestCase):
         self.assertNotIn("fork_turns = \"all\"", policy)
 
     def test_policy_exposes_proactive_role_decision_cues(self) -> None:
-        policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
-        policy = " ".join(policy.split())
-        self.assertIn("Decision cues", policy)
-        self.assertIn("classify each bounded workstream", policy)
-        self.assertIn("delegate it to the least expensive", policy)
-        self.assertIn("two or more reconnaissance surfaces are independent", policy)
+        policy = _rendered("agents-md.orchestration.md")
+        self.assertIn("Shoal orchestration is active", policy)
+        self.assertIn("is delegated by default", policy)
+        self.assertIn("Use cheapest plausible role", policy)
+        self.assertIn("Reconnaissance over two or more independent surfaces goes to parallel `scout` calls", policy)
         self.assertIn("bounded implementation requiring judgment to `sol-executor`", policy)
-        self.assertIn("approved security-sensitive implementation to `security-executor`", policy)
-        self.assertIn("After a risk-triggered implementation", policy)
-        self.assertIn("dispatch exactly one `applier`", policy)
-        self.assertIn("choose delegation by net benefit", policy)
-        self.assertIn("stable, complete one-shot brief, not a numeric trigger", policy)
+        self.assertIn("Before required approval and first readiness review, finish tool-enforced read-only `security-reviewer`", policy)
+        self.assertIn("send stable contract to `security-executor`", policy)
+        self.assertIn("Risk-triggered completed work gets one fresh outcome-verifier pass", policy)
+        self.assertIn("defaults to one `applier`", policy)
+        self.assertIn("Weigh lower cost or quota use", policy)
+        self.assertIn("Recurrence qualifies through stable one-shot brief, not numeric threshold", policy)
         self.assertIn("smallest coherent integration boundary", policy)
-        self.assertIn("`spawn_agent` calls back-to-back", policy)
+        self.assertIn("launch all back-to-back without waiting", policy)
 
     def test_policy_exposes_adaptive_route_and_discovery_contract(self) -> None:
-        policy = " ".join(
-            (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8").split()
-        )
+        policy = _rendered("agents-md.orchestration.md", "agents-md.extensions.md")
         for phrase in (
-            "Adaptive intent routing",
+            "classify the request on intent, impact, reversibility, and authority",
             "`execute`",
             "`explore_then_plan`",
             "`co_discover`",
@@ -144,27 +149,27 @@ class NativeTemplateTests(unittest.TestCase):
             self.assertIn(phrase, policy)
 
     def test_policy_preserves_risk_triggered_plan_review(self) -> None:
-        policy = " ".join(
-            (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8").split()
-        )
-        self.assertIn("Independent review is risk-triggered, not a synonym for non-trivial", policy)
-        self.assertIn("a data, schema, serialization, migration, or release boundary", policy)
-        self.assertIn("After two automatic `REVISE` verdicts for the same unit", policy)
-        self.assertIn("not merely to authorize another review round", policy)
+        policy = _rendered("agents-md.orchestration.md")
+        self.assertIn("Risk precedes size. Independent-review triggers", policy)
+        self.assertIn("data/schema/serialization/migration; release", policy)
+        self.assertIn("Two automatic `REVISE` verdicts stop resubmission", policy)
+        self.assertIn("not merely permission for another review round", policy)
         self.assertNotIn("Sol escalation is narrower than the risk trigger", policy)
 
     def test_policy_preserves_parent_ownership_and_no_untyped_fallback(self) -> None:
-        policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
-        policy = " ".join(policy.split())
-        self.assertIn("The parent session remains responsible and accountable throughout", policy)
-        self.assertIn("integrates writes", policy)
-        self.assertIn("makes final judgment", policy)
-        self.assertIn("small, local, already-stable edit", policy)
-        self.assertIn("tightly coupled unknown bug", policy)
+        policy = _rendered("agents-md.orchestration.md")
+        self.assertIn("The root session retains ownership of routing, scope, approval, integration, and finding disposition", policy)
+        self.assertIn("Main retains per-item triage, exceptions, integration, acceptance", policy)
+        self.assertIn("integration, final judgment", policy)
+        self.assertIn("Single unknown bug stays main-session work", policy)
         self.assertIn("Typed dispatch is an all-or-nothing child-creation boundary", policy)
         self.assertIn("No untyped fallback is permitted", policy)
         self.assertIn("must not silently substitute an untyped child", policy)
         self.assertNotIn("retry as an untyped child", policy)
+        # Intended change: no local-edit escape hatch for an unavailable role.
+        self.assertIn("it reports delegation unavailable", policy)
+        self.assertNotIn("small, local, already-stable edit", policy)
+        self.assertNotIn("takes the bounded work locally", policy)
 
     def test_verifier_uses_calibrated_outcomes(self) -> None:
         with (ROOT / "templates" / "agents" / "verifier.toml").open("rb") as handle:

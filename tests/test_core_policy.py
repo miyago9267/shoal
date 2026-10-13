@@ -86,6 +86,7 @@ EXPECTED_POLICY_ADDENDA["codex"] = {
         "pending-shared-regrade-evidence",
         "pending-shared-task-boundary",
         "pending-shared-recovery-preserve",
+        "pending-shared-low-risk-targeted-check",
         "codex-bootstrap-tuning",
         "codex-model-routing",
         "codex-evidence-boundary",

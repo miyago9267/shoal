@@ -9,6 +9,18 @@ written.
 
 ## Unreleased
 
+## v3.5.0
+
+- Codex main-session policy is now rendered from `core/policy/`; Codex-only
+  tuning lives in `hosts/codex/policy-addenda/` and the on-demand extensions
+  document.
+- Behaviour: main no longer edits files itself (edits go to a write-capable
+  role unless the prompt contains `#direct`); an unavailable role is reported
+  instead of main taking over; long commands go to `watcher`; decision
+  research uses two `researcher` arms.
+- The low-risk "one targeted acceptance check, no independent verifier"
+  sentence is kept as the addendum `pending-shared-low-risk-targeted-check`.
+
 ## v3.4.2
 
 - Version marker only; the Codex policy text is unchanged. The shared core

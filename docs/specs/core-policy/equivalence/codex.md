@@ -1488,3 +1488,27 @@ validator，但需要更新 `LOCK.json`（`--allow-lock-update`，且
 `tests/test_prompt_document_lock.py:563-575` 的期望值要改）。（d）`Codex 調校` 列 O8（
 `orch:L38`、`L41`）與 S5（`SKILL.md:L27-31`）寫「Parent or `applier` Luna binding」「
 cheap parent」，與 A3 規則 1 衝突；逐字搬入會把矛盾帶進 addendum。
+
+## 9. LOCK.json 更新紀錄
+
+- 三個 Codex policy surface（`bootstrap-policy`、`orchestration-template`、
+  `packaged-orchestration-policy`）改用 `migration_id`
+  `shared-rules-codex-core`，equivalence 指向本檔。
+- `bootstrap-policy` fragment 換成 core 句子
+  （`A clear request to fix or finish is one outcome`、
+  `Material gates always stop.`、
+  `The main session does not edit files itself`）。
+- 兩個 orchestration surface 移除搬到 extensions 的四個 fragment，保留
+  `presence gates ...`，補上 Claude 對應 surface 的三個逐字 fragment。
+- `test_policy.py` 的 `For low-risk, local, reversible work, use one
+  targeted acceptance check ...` 在 core 沒有等價句（第 1030 列原定改斷言為
+  core 句子，但 core 的 `risk-triggers` 只列觸發條件，沒有「不加 verifier」
+  的正向規則）。處置：保留原句逐字，作為 addendum
+  `pending-shared-low-risk-targeted-check`（`after:risk-triggers`），
+  待升為共用條款。
+- 擁有者決定登錄兩個 Codex extensions surface：`extensions-template`
+  （`templates/agents-md.extensions.md`）與 `packaged-workflow-extensions`
+  （plugin 的 `workflow-extensions.md`），互為 mirror，版本檔
+  `hosts/codex/VERSION`；上限 270 行／15600 bytes，per-change budget 同
+  `claude-workflow-extensions`（30 行、4000 字元、0.2）。
+- `hosts/codex/VERSION` 已提升到 3.5.0。

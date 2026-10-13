@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.4.2 -->
+<!-- shoal-codex v3.5.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -174,6 +174,10 @@ Clear intent does not require `explore_then_plan` by itself: a bounded release r
   mutation; data/schema/serialization/migration; release; material
   cross-component acceptance. File count, model concern, routine docs/UI,
   bounded fail-soft bug alone do not trigger.
+
+For low-risk, local, reversible work, use one targeted acceptance check in the
+main session and do not add an independent verifier.
+
 - Without a risk trigger, the main session still does not edit files itself:
   every edit goes to a write-capable role. Direct main edits exist only under
   the user's `#direct`. Reading, running commands, diagnosis, integration, and

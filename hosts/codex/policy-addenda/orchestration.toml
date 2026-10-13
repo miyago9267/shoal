@@ -83,6 +83,14 @@ text = '''
 - Never overwrite an independently changed user policy or external artifact.'''
 
 [[addendum]]
+id = "pending-shared-low-risk-targeted-check"
+at = "after:risk-triggers"
+join = "paragraph"
+text = '''
+For low-risk, local, reversible work, use one targeted acceptance check in the
+main session and do not add an independent verifier.'''
+
+[[addendum]]
 id = "codex-bootstrap-tuning"
 at = "after:main-session-owns"
 join = "paragraph"
