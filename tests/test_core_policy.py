@@ -69,6 +69,29 @@ KNOWN_WORDING_CHANGES = [
 ]
 
 
+def rewrite_policy_sections(root: Path, host: str, policy_toml: str, frame: bool = False) -> None:
+    """改寫 root 副本中 host binding 的 [policy*] 區段：先移除既有的 [policy]、[policy.*] 表與
+    policy-frames、policy-addenda，再附上 policy_toml，使測試只面對自己寫的最小設定，不受 repo 內 binding 影響。"""
+    binding = root / "hosts" / host / "binding.toml"
+    kept: list[str] = []
+    skipping = False
+    for line in binding.read_text(encoding="utf-8").splitlines():
+        header = re.match(r"\s*\[\[?\s*([A-Za-z0-9_.\"-]+)\s*\]\]?\s*(#.*)?$", line)
+        if header:
+            name = header.group(1)
+            skipping = name == "policy" or name.startswith("policy.")
+        if not skipping:
+            kept.append(line)
+    text = "\n".join(kept).rstrip("\n") + "\n\n" + policy_toml
+    binding.write_text(text, encoding="utf-8", newline="\n")
+    for sub in ("policy-frames", "policy-addenda"):
+        shutil.rmtree(root / "hosts" / host / sub, ignore_errors=True)
+    if frame:
+        frames = root / "hosts" / host / "policy-frames"
+        frames.mkdir()
+        (frames / "default.md").write_text("<!-- frame -->\n{{role_body}}", encoding="utf-8", newline="\n")
+
+
 def policy_doc(text: str) -> list[contracts.Clause]:
     return contracts.parse_contract(
         tomllib.loads(text), kinds=contracts.POLICY_KINDS, allow_required=True
@@ -411,8 +434,8 @@ class PolicyRenderCase(unittest.TestCase):
             with self.subTest(host=host):
                 core = render.load_core(ROOT)
                 binding = render.load_toml(ROOT / "hosts" / host / "binding.toml")
-                binding.setdefault("policy", {})["policy_text"] = "core"
-                binding["policy"].setdefault("placeholders", {})
+                # 不管 repo 內該 host 目前有沒有 policy 表，都以「沒有 documents」的最小設定驗證。
+                binding["policy"] = {"policy_text": "core", "omit": [], "placeholders": {}}
                 with self.assertRaisesRegex(render.RenderError, r"\[policy\.(documents|placeholders)\] 缺少"):
                     render.validate_catalog(core, binding)
 
@@ -599,10 +622,14 @@ class PolicyRenderCase(unittest.TestCase):
 
     def test_preview_is_rejected_for_a_host_without_documents(self) -> None:
         shutil.copytree(ROOT / "hosts" / "codex", self.root / "hosts" / "codex")
+        rewrite_policy_sections(
+            self.root, "codex", '[policy]\npolicy_text = "legacy"\nomit = []\n'
+        )
         result = run_render(
             "codex", self.root, "--policy-preview", str(self.root / "out")
         )
         self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("host codex", result.stderr)
         self.assertIn("[policy.documents] 缺少文件", result.stderr)
 
 

@@ -7,19 +7,18 @@ required 保護、placeholder 缺漏的錯誤與 legacy 的逐位元組不變。
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
 from render_helpers import ROOT, render, run_render
+from test_core_policy import rewrite_policy_sections
 
 HOSTS = ("codex", "grok", "agy", "opencode")
 BOOTSTRAP_PATH = {"codex": "agents-md.orchestration.md", "grok": "rules/shoal-policy.md",
                   "agy": "rules/shoal-policy.md", "opencode": "policy/bootstrap.md"}
 BOOTSTRAP_TEXT = "never spawn subagents"
-LEGACY_POLICY = re.compile(r'\[policy\]\npolicy_text = "legacy"\nomit = \[\]\n')
 
 
 class HostPolicyCase(unittest.TestCase):
@@ -46,13 +45,7 @@ class HostPolicyCase(unittest.TestCase):
         return "\n".join(lines) + "\n" + extra
 
     def configure(self, mode: str = "core", **kw: str) -> None:
-        text = self.binding.read_text(encoding="utf-8")
-        self.assertRegex(text, LEGACY_POLICY)
-        text = LEGACY_POLICY.sub(lambda _m: self.policy_table(mode, **kw), text, count=1)
-        self.binding.write_text(text, encoding="utf-8", newline="\n")
-        frames = self.root / "hosts" / self.host / "policy-frames"
-        frames.mkdir(exist_ok=True)
-        (frames / "default.md").write_text("<!-- frame -->\n{{role_body}}", encoding="utf-8", newline="\n")
+        rewrite_policy_sections(self.root, self.host, self.policy_table(mode, **kw), frame=True)
 
     def run_host(self, *flags: str):
         return run_render(self.host, self.root, *flags)
