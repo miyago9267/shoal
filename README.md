@@ -118,9 +118,14 @@ main session 的直接編輯在 Claude 與 Codex 以外只會被提醒：R1、R2
 `SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：只在外部分類來源標出
 實作工作時擋）、`off`。分類檔是公開的選用介面，見
 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
-`shoal-guard-v2`（matcher 加 `Bash`），3.3.x 沒有再改。Claude 從 3.3.1 起在 role 真的啟動
-（`SubagentStart`）後才放行派工，guard 腳本與 hook 註冊必須一起更新；Codex 與其他 host 仍在派工呼叫
-時放行（見 INSTALL.md）。
+`shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組，升級後要在
+Codex 用 `/hooks` 再核准一次）。Claude 從 3.3.1 起在 role 真的啟動（`SubagentStart`）後才放行派工，
+guard 腳本與 hook 註冊必須一起更新；Codex 與其他 host 仍在派工呼叫時放行（見 INSTALL.md）。
+3.4.0 起 Claude 與 Codex 多一道完成檢查：guard 逐回合記下 main 有沒有改檔、改檔之後有沒有跑過
+檢查（派出 `verifier`／`watcher`，或 main 執行任何不寫檔的前景 shell 指令），回合結束時若改過檔
+卻沒有任何檢查，`Stop` 會擋一次，要求補做驗證，或在回報中明寫未驗證；同一回合只擋一次，
+讀不到資料或 payload 不合預期時一律放行。`SHOAL_GUARD_STOP=off` 關閉（預設 `on`，只對 Claude 與
+Codex 有效）；Grok、agy、OpenCode 沒有已記錄的結束事件，不啟用。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
 每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [INSTALL.md](./INSTALL.md#每日同步)。
@@ -129,12 +134,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.3.1 |
-| codex host | 3.3.1（`hosts/codex/VERSION`） |
-| claude host | 3.3.1（`hosts/claude/VERSION`） |
-| agy host | 3.3.1（`hosts/agy/VERSION`） |
-| grok host | 3.3.1（`hosts/grok/VERSION`） |
-| opencode host | 3.3.1（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.4.0 |
+| codex host | 3.4.0（`hosts/codex/VERSION`） |
+| claude host | 3.4.0（`hosts/claude/VERSION`） |
+| agy host | 3.4.0（`hosts/agy/VERSION`） |
+| grok host | 3.4.0（`hosts/grok/VERSION`） |
+| opencode host | 3.4.0（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

@@ -290,3 +290,10 @@ guard-declared-direct 為準。
    verify 不開。
 3. **（已決定，2026-10-05，採建議）deny 訊息的語言**：英文；
    `SHOAL_GUARD_LANG=zh-TW` 切繁中。
+
+## 補充（2026-10-13）
+
+3.4.0 在同一個 guard 加上完成檢查（逐回合記錄 `changed`／`checked`，Claude 與 Codex 的 `Stop` 在改過檔
+卻沒有檢查時擋一次）。規則與取捨見
+[shared-rules](../shared-rules/SPEC.md) 的 B2 到 B4；本 spec 的 hard rules、模式與 host 表不變。
+Codex 的 guard hook 註冊因此升為 `shoal-guard-v3`（加 `Stop` 群組）。

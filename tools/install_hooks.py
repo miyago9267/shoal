@@ -11,13 +11,13 @@
 腳本裝到 ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py（0755），entry 寫進：
   claude  <home>/settings.json（--home，其次 CLAUDE_CONFIG_DIR，預設 ~/.claude）：
           UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse，
-          以及 SubagentStart（3.3.1 起；舊設定重跑 --apply 會原地補上，其他 entry 不動）
+          以及 SubagentStart（3.3.1 起）與 Stop（3.4.0 起，完成檢查）；舊設定重跑 --apply 會原地補上，其他 entry 不動
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
           PreToolUse（matcher "*"）與 PreInvocation
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
-          shoal-guard-v2 projection 逐位元組相同的群組（UserPromptSubmit，以及 matcher
+          shoal-guard-v3 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
           ^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$ 的 PreToolUse，含 commandWindows；
-          3.2.1 之前的 shoal-guard-v1 matcher 沒有 Bash，重跑會原地換成 v2，需要在 Codex 用 /hooks 再核准一次），
+          舊的 shoal-guard-v1（matcher 沒有 Bash）與 v2（沒有 Stop）重跑會原地換成 v3，需要在 Codex 用 /hooks 再核准一次），
           腳本裝到 <home>/hooks/shoal_guard.py（0600）。這是不能跑 install.py 時的窄路徑：
           不碰 shoal_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
           裝完要在互動式 Codex 用 /hooks 核准一次。install.py 之後會收編這些 entry。
@@ -222,6 +222,9 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
         # M11: the guard unlocks a write dispatch only when the role has started; shoal_guard.py and this
         # registration ship together (a settings.json from before 3.3.1 has no SubagentStart entry).
         "SubagentStart": None if command is None else {"hooks": [_handler(command)]},
+        # B3: the completion check; a settings.json from before 3.4.0 has no Stop entry of shoal's.  Other Stop
+        # entries of the user stay where they are: only shoal's own handler is replaced or appended.
+        "Stop": None if command is None else {"hooks": [_handler(command)]},
     }
     for event, group in desired.items():
         existing = hooks.get(event)
@@ -242,7 +245,7 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
 
 
 def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
-    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v2 群組（舊的 v1 shoal handler 被原地取代）（command 為 None 時移除）。
+    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v3 群組（舊的 v1、v2 shoal handler 被原地取代）（command 為 None 時移除）。
 
     command 只當安裝／移除的開關；寫入的是 canonical 群組本身，install.py 才認得它。
     """

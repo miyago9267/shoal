@@ -3,6 +3,64 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.4.0
+
+規則共用的第一步（[`docs/specs/shared-rules`](./docs/specs/shared-rules/SPEC.md) 的 S1 到 S3，Miyago
+2026-10-13 核准）：文件改為「規則由 core 定義、所有 host 共用」，加上「宣告完成前要有驗證」的條款
+與 guard 的完成檢查。Codex、agy、OpenCode、Grok 改由 core 產生條款是後續切片（S4 起），本版沒有改
+它們的行為。
+
+### Features
+
+- 文件（S1）：`docs/DESIGN-INVARIANTS.md` 第 4 條改為「規則與策略由 core 定義，所有 host 共用；adapter
+  只放工具與參數名稱、model 綁定、該 host 特有的調校參數」。`core-policy` 與 `milestone-direction-check`
+  加註記：2026-10-06 的「持平優先、不做 P3」被 shared-rules 取代，「同質化」指的是抹平 role 形狀與工具綁定，
+  不是共用規則。`core/README.md` 改指向 shared-rules，渲染器對非 Claude host 的限制保留到 S4。
+- 條款（S2，B1）：常駐 bootstrap 新增一條（非 required）：回報完成前，寫明本回合跑過的驗證與結果、沒跑的
+  檢查，沒有證據的說法標為未驗證。為了放得下，同時縮短了 bootstrap 內其他條款的措辭（規則不刪）。
+- Contract（S2，B5、B6）：`verifier` 的方向檢查（`direction_checkpoint`）在 brief 附上 main 的回報草稿時，
+  逐句對照 repo 與 brief 內的證據，列出沒有證據或講過頭的句子與實際證據；並且每次多回答一題：已核准的設計
+  中哪個前提最可能是錯的、用什麼便宜的方法驗證。Policy 的方向檢查條款寫明多切片工作收尾時 main 把回報草稿
+  交給這個檢查、修正後才回報。這是 core 文字，所有渲染 core role 的 host 都會帶到（Claude、Codex、Grok、
+  agy、OpenCode 的 `verifier`）。
+- Guard（S3，B2 到 B4）：逐回合記錄 `changed` 與 `checked`。main 的改檔被放行且目標非豁免、或可寫的 role
+  算已派工（Claude 在 `SubagentStart` 釋放待啟動派工時，其他 host 在派工呼叫）為 `changed`；之後派出或
+  啟動 `verifier`／`watcher`，或 main 執行不寫檔、也不是 `: shoal-direct` 宣告的前景 `Bash`，為 `checked`；
+  再次 `changed` 會清掉 `checked`。Claude 與 Codex 的 `Stop`：同一回合、`changed` 且未 `checked`、
+  `stop_hook_active` 恰為 `false`、enforce、這回合還沒擋過，輸出一次 `{"decision":"block","reason":...}`；
+  其餘情況（別的回合、state 讀不到、id 缺漏、subagent、shadow 記 `would_block`、`SHOAL_GUARD=off`）
+  一律放行。沒有改檔的回合，前景 `Bash` 不碰 state。
+- 開關：`SHOAL_GUARD_STOP=on|off`，預設 `on`，只對 Claude 與 Codex 有效。Grok、agy、OpenCode 沒有已記錄的
+  結束事件 payload，永遠不擋。
+- Log 只有新的值：決定 `block`／`would_block`、規則 `STOP`；欄位沒有新增。
+- 註冊：Claude plugin 的 `hooks.json` 與全域
+  `tools/install_hooks.py --host claude` 新增沒有 matcher 的 `Stop`（plugin 與全域
+  並存時 plugin 讓出），重跑冪等，舊的 settings 原地補上，你自己的 `Stop` 不動。
+  Codex 的 guard projection 升為 `shoal-guard-v3`（多一個 `Stop` 群組）；`v1`、`v2` 仍在允許清單，升級時
+  原地補上，autoroute gate 自己的 `Stop` 群組與使用者的項目不動。
+
+### 限制
+
+- **Claude 對 Stop block 輸出的處理沒有實測。** 輸出採用 Claude Code 文件的 `decision: "block"` JSON；格式
+  不被接受時只是照常結束（失敗開放）。Stop payload 的形狀已實測
+  （`tests/fixtures/stop_payload_shapes.json`）。S3 的 live 驗收（改檔後直接結束被擋一次、有檢查時不擋）
+  尚未執行。
+- 常駐 bootstrap 渲染後 3103 bytes（3.3.1 為 3046），沒有達到 spec 要的 2900；Codex 切到 core 條款（S4）
+  前要再處理。
+- guard 腳本與 hook 註冊必須一起更新；只更新腳本的安裝沒有完成檢查，其他規則不受影響。
+
+### 版本
+
+- 產品與 claude、codex、grok、agy、opencode 各 host 版本一律是 3.4.0。
+- prompt lock：`LOCK.json` 沒有變動，commit 不需要 `Lock-Renewal: approved`。
+
+### 升級
+
+- 用 plugin 的使用者：`claude plugin marketplace remove shoal`，再用 `#v3.4.0` 加回並更新。
+- 全域 guard：重跑 `python3 tools/install_hooks.py --host claude --apply`（會補上 `Stop`）。
+- Codex：重跑 installer（或 `tools/install_hooks.py --host codex --apply`）後，
+  **在互動 session 用 `/hooks` 再核准一次**新的 `Stop` hook；沒核准時完成檢查不會執行，其他行為不變。
+
 ## v3.3.1
 
 M11（派工要真的啟動）在 Claude 上實作。live 重測時 Claude 的 `SubagentStart` payload 取得後（

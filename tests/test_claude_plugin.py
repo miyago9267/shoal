@@ -124,9 +124,10 @@ class HooksJsonTests(unittest.TestCase):
 
     def test_events_and_matchers(self) -> None:
         self.assertEqual(
-            sorted(self.hooks), ["PreToolUse", "SessionStart", "SubagentStart", "UserPromptSubmit"]
+            sorted(self.hooks), ["PreToolUse", "SessionStart", "Stop", "SubagentStart", "UserPromptSubmit"]
         )
         self.assertNotIn("matcher", self.hooks["SubagentStart"][0])
+        self.assertNotIn("matcher", self.hooks["Stop"][0])
         (pre,) = self.hooks["PreToolUse"]
         self.assertEqual(pre["matcher"], install_hooks.CLAUDE_MATCHER)
         self.assertNotIn("matcher", self.hooks["UserPromptSubmit"][0])
@@ -140,12 +141,20 @@ class HooksJsonTests(unittest.TestCase):
         self.assertIn("--host claude --plugin", handler["command"])
         self.assertEqual(self.hooks["SubagentStart"][0].get("matcher"), None)  # every agent_type; the guard filters
         self.assertEqual(
-            set(self.hooks), {"SessionStart", "UserPromptSubmit", "PreToolUse", "SubagentStart"}
+            set(self.hooks), {"SessionStart", "UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop"}
         )
+
+    def test_stop_event_is_registered_whenever_the_guard_blocks_on_it(self) -> None:
+        # B3 (shared-rules): the completion check blocks on Stop; without this registration it never fires.
+        self.assertIn("claude", guard.STOP_HOSTS)
+        (handler,) = self.hooks["Stop"][0]["hooks"]
+        self.assertIn("shoal_guard.py", handler["command"])
+        self.assertIn("--host claude --plugin", handler["command"])
+        self.assertEqual(self.hooks["Stop"][0].get("matcher"), None)
 
     def test_every_command_quotes_the_plugin_root(self) -> None:
         guard_cmd = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
-        for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart"):
+        for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop"):
             (handler,) = self.hooks[event][0]["hooks"]
             self.assertEqual(handler["command"], guard_cmd, event)
         (start,) = self.hooks["SessionStart"][0]["hooks"]
@@ -565,6 +574,7 @@ class PluginDeferralTests(unittest.TestCase):
         )  # noqa: E731
         self.assertTrue(covers("UserPromptSubmit", None))
         self.assertTrue(covers("SubagentStart", None))  # install_hooks registers it next to the other two
+        self.assertTrue(covers("Stop", None))  # 3.4.0: the completion check, same rule
         self.assertTrue(covers("PreToolUse", "Edit"))
         self.assertTrue(covers("PreToolUse", "Workflow"))
         self.assertTrue(covers("PreToolUse", "Bash"))  # G4 needs the shell tool

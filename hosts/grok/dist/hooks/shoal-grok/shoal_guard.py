@@ -41,6 +41,14 @@ file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-dec
 "A write-level role was dispatched" (the unlock in every mode) means, on claude, that the role has started
 (M11): the dispatch call records a pending write dispatch and the SubagentStart event of the same session
 releases it.  On every other host the dispatch call itself unlocks.  See START_UNLOCK_HOSTS.
+
+Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
+shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
+`checked` (after the latest change, a verify-level role was dispatched or started, or main ran a foreground shell
+call that is neither a file write nor a declaration).  On claude and codex the `Stop` event is blocked once per
+turn when `changed` is set, `checked` is not, `stop_hook_active` is exactly false, the mode is enforce and
+SHOAL_GUARD_STOP is not `off`; everything else (other turn, bad payload, unreadable state, shadow, off) fails
+open.  Other hosts never block: their adapters receive no end-of-turn event that carries a verified payload.
 """
 
 from __future__ import annotations
@@ -79,6 +87,11 @@ HOST_DEFAULT_MODE = {
 FORCED_SHADOW_HOSTS = frozenset({"agy"})
 # Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
 ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
+# Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
+# `{"decision": "block", "reason": ...}`: only they block an unverified completion (B4).  grok, agy and opencode
+# have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches the
+# check off on these two hosts and has no effect elsewhere.
+STOP_HOSTS = frozenset({"claude", "codex"})
 # agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 COMPOSED_TURN_HOSTS = frozenset({"agy"})
 # Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId; claude
@@ -202,6 +215,11 @@ MESSAGES = {
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
             "write-capable role (executor or applier), or ask the user to add #direct to the prompt."
         ),
+        "STOP": (
+            "Shoal completion check: this turn changed files and no check ran afterwards. Run a "
+            "verification now (tests, a verifier or watcher role), or say explicitly in your report "
+            "that the change is unverified."
+        ),
         "DECLARE": (
             "Shoal dispatch guard: the main session delegates edits by default. Dispatch a "
             "write-capable role (executor or applier), or declare direct work first by running "
@@ -228,6 +246,10 @@ MESSAGES = {
         "STRICT": (
             "Shoal dispatch guard：main session 不自己改檔。"
             "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"
+        ),
+        "STOP": (
+            "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。"
+            "請現在做一次驗證（測試、verifier 或 watcher role），或在回報中明確寫出這次修改尚未驗證。"
         ),
         "DECLARE": (
             "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
@@ -433,6 +455,12 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
     if mode == "enforce" and host in FORCED_SHADOW_HOSTS:
         mode = "shadow"
     return mode
+
+
+def stop_enabled(host: str, env: Dict[str, str]) -> bool:
+    """SHOAL_GUARD_STOP: `off` disables the completion check on claude and codex; any other value (or none)
+    keeps it on.  No effect on a host outside STOP_HOSTS, which never blocks."""
+    return host in STOP_HOSTS and env.get("SHOAL_GUARD_STOP") != "off"
 
 
 def resolve_r1(host: str, env: Dict[str, str]) -> str:
@@ -842,6 +870,12 @@ def _pending(state: Dict[str, Any]) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
+def _mark_changed(state: Dict[str, Any]) -> None:
+    """B2: a change after a check puts the turn back to "unchecked"."""
+    state["changed"] = True
+    state["checked"] = False
+
+
 def _text(env: Dict[str, str], key: str, **fmt: Any) -> str:
     lang = "zh-TW" if env.get("SHOAL_GUARD_LANG") == "zh-TW" else "en"
     return MESSAGES[lang][key].format(**fmt)
@@ -888,7 +922,7 @@ class _Guard:
         notify: bool = False,
         note: Optional[str] = None,
     ) -> Dict[str, Any]:
-        if decision in ("skip", "deny", "would_deny", "advise", "allow", "state"):
+        if decision in ("skip", "deny", "would_deny", "advise", "allow", "state", "block", "would_block"):
             self.log(decision, rule=rule, skip_reason=skip, file=file, reason=note)
         return {
             "decision": decision,
@@ -925,12 +959,122 @@ class _Guard:
             file=paths[0] if paths else None,
         )
 
+    def _none(self) -> Dict[str, Any]:
+        return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
+
+    # -- completion check (B2, B3) -------------------------------------------
+    def _check_state_path(self, wanted_turn: Optional[str]) -> Optional[Tuple[Path, Path]]:
+        """(state file, lock file) of this event's session for a silent state update, or None.  `wanted_turn`
+        is only used to validate its shape; the caller compares the turn recorded in the state."""
+        sid = self.event.get("session_id")
+        if not valid_id(sid) or (wanted_turn is not None and not valid_id(wanted_turn)):
+            return None
+        guard = self.guard_dir
+        if guard is None:
+            return None
+        return guard / "state" / (str(sid) + ".json"), guard / "state" / (str(sid) + ".lock")
+
+    def note_check(self) -> None:
+        """B2: main ran a plain foreground shell call.  When the turn is changed and unchecked, mark it checked.
+
+        Cheap by construction: hosts outside STOP_HOSTS, SHOAL_GUARD_STOP=off and a missing or invalid id return
+        at once; otherwise one unlocked read of the state file, and the lock and the write only happen when the
+        turn is changed and not yet checked.  Never logs, never raises into the caller's decision."""
+        if not stop_enabled(self.host, self.env):
+            return
+        tid = self.event.get("turn_id")
+        paths = self._check_state_path(tid)
+        if paths is None:
+            return
+        state_path, lock_path = paths
+
+        def pending_check(state: Dict[str, Any]) -> bool:
+            return (
+                state.get("changed") is True
+                and state.get("checked") is not True
+                and (tid is None or state.get("turn_id") == tid)
+            )
+
+        if not pending_check(_read_json(state_path)):
+            return
+        with _state_lock(lock_path) as lock_skip:
+            if lock_skip is not None:
+                return
+            state = _read_json(state_path)
+            if not pending_check(state):
+                return
+            state["checked"] = True
+            _write_json(state_path, state)
+
+    def note_verify_started(self) -> None:
+        """B2 on claude: the SubagentStart of a verify-level role counts as a check, like its dispatch call."""
+        if not stop_enabled(self.host, self.env):
+            return
+        paths = self._check_state_path(None)
+        if paths is None:
+            return
+        state_path, lock_path = paths
+        with _state_lock(lock_path) as lock_skip:
+            if lock_skip is not None:
+                return
+            state = _read_json(state_path)
+            if state.get("changed") is not True or state.get("checked") is True:
+                return
+            state["checked"] = True
+            _write_json(state_path, state)
+
+    def stop(self) -> Dict[str, Any]:
+        """B3: the main session is about to end its turn.  Blocks once per turn when files changed and nothing
+        checked them (see the module docstring); every other path has no opinion (fail open)."""
+        event = self.event
+        if not stop_enabled(self.host, self.env):
+            return self._none()
+        flag = event.get("stop_hook_active")
+        if flag is True:
+            return self._none()  # the host says this stop is the retry after a block
+        sid, tid = event.get("session_id"), event.get("turn_id")
+        if sid is None or tid is None:
+            return self.result("skip", skip="missing_id")
+        if not valid_id(sid) or not valid_id(tid):
+            return self.result("skip", skip="invalid_id")
+        if flag is not False:
+            return self.result("skip", skip="bad_payload")
+        guard = self.guard_dir
+        if guard is None:
+            return self.result("skip", skip="state_unavailable")
+        state_path = guard / "state" / (sid + ".json")
+
+        def due(state: Dict[str, Any]) -> bool:
+            return (
+                state.get("turn_id") == tid
+                and state.get("changed") is True
+                and state.get("checked") is not True
+                and state.get("stop_blocked") is not True
+            )
+
+        if not due(_read_json(state_path)):
+            return self._none()  # not this turn's state, no change, already checked or already blocked
+        with _state_lock(guard / "state" / (sid + ".lock")) as lock_skip:
+            if lock_skip is not None:
+                return self.result("skip", skip=lock_skip)
+            state = _read_json(state_path)
+            if not due(state):
+                return self._none()
+            if self.mode != "enforce":
+                return self.result("would_block", "STOP", note="unverified_change")
+            state["stop_blocked"] = True
+            if not _write_json(state_path, state):  # without the flag a block could repeat: do not block
+                return self.result("skip", skip="state_write_failed")
+            return self.result("block", "STOP", reason=_text(self.env, "STOP"), note="unverified_change")
+
     # -- main session -------------------------------------------------------
     def main(self) -> Dict[str, Any]:
         event = self.event
         kind = event.get("kind")
         if kind == "subagent_start":
             return self.subagent_start()
+        if kind == "stop":
+            return self.stop()
         sid, tid = event.get("session_id"), event.get("turn_id")
         is_boundary = kind in ("prompt", "turn_boundary")
         tool_kind = event.get("tool_kind")
@@ -938,21 +1082,21 @@ class _Guard:
             tool_kind = None  # G4 exists on claude only
         if kind == "tool" and tool_kind == "shell":
             # A foreground shell call that is neither a declaration nor a file write has no opinion,
-            # and touches no state or log.  `declare` reads declarations and judges writes (G5);
+            # and touches no log.  `declare` reads declarations and judges writes (G5);
             # `strict` only judges writes (a declaration is an ordinary no-op there); `classified` judges
             # writes on claude only (v3.1.0); `off` has no G5.
+            declaration = parse_declaration(event.get("command")) is not None
+            write_target = self.shell_write_target()
             if self.r1 == "declare":
-                if parse_declaration(event.get("command")) is None and self.shell_write_target() is None:
+                if not declaration and write_target is None:
                     tool_kind = None
             elif self.r1 == "strict":
-                if self.shell_write_target() is None:
+                if write_target is None:
                     tool_kind = None
-            elif (
-                self.r1 != "classified"
-                or self.host not in DENY_MAIN_HOSTS
-                or self.shell_write_target() is None
-            ):
+            elif self.r1 != "classified" or self.host not in DENY_MAIN_HOSTS or write_target is None:
                 tool_kind = None
+            if tool_kind is None and write_target is None and not declaration:
+                self.note_check()  # B2: a plain foreground call after a change counts as a check
         if kind == "tool" and tool_kind not in ("edit", "dispatch", "background_shell", "shell"):
             return {
                 "decision": "none",
@@ -996,10 +1140,12 @@ class _Guard:
                 prior_tid = prior.get("turn_id")
                 state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
                          "dispatched": False, "advised": False, "edited": edited,
-                         "direct": event.get("direct") is True, "declared": False, "pending": 0}
+                         "direct": event.get("direct") is True, "declared": False, "pending": 0,
+                         "changed": False, "checked": False, "stop_blocked": False}
             else:
                 state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
-                         "direct": event.get("direct") is True, "declared": False, "pending": 0}
+                         "direct": event.get("direct") is True, "declared": False, "pending": 0,
+                         "changed": False, "checked": False, "stop_blocked": False}
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
@@ -1016,15 +1162,23 @@ class _Guard:
             "direct": state.get("direct") is True,  # this turn's prompt carried #direct
             "declared": state.get("declared") is True,  # main declared direct work this turn (M3)
             "pending": _pending(state),  # write dispatches whose role has not started yet (M11)
+            "changed": state.get("changed") is True,  # B2: a change this turn (see _mark_changed)
+            "checked": state.get("checked") is True,  # B2: a check after the latest change
+            "stop_blocked": state.get("stop_blocked") is True,  # B3: this turn's one block is spent
         }
 
         if event.get("tool_kind") == "dispatch":
-            if role_access(event.get("dispatched_role")) == "write":
+            access = role_access(event.get("dispatched_role"))
+            if access == "write":
                 if self.host in START_UNLOCK_HOSTS:
                     state["pending"] += 1  # released by the role's SubagentStart; the call itself is allowed
                     _write_json(state_path, state)
                     return self.result("allow", "dispatch_pending")
                 state["dispatched"] = True
+                _mark_changed(state)
+                _write_json(state_path, state)
+            elif access == "verify":
+                state["checked"] = True  # B2: a verify-level role was dispatched
                 _write_json(state_path, state)
             return self.result("allow", "dispatch")
         if event.get("tool_kind") == "background_shell":
@@ -1042,8 +1196,12 @@ class _Guard:
         guard's current turn: a different one still releases (the association stays the session) and the
         log line says so (skip_reason prompt_id_mismatch).  Bad ids fail open with a skip record."""
         event = self.event
-        if self.host not in START_UNLOCK_HOSTS or role_access(event.get("role")) != "write":
+        access = role_access(event.get("role"))
+        if self.host not in START_UNLOCK_HOSTS or access not in ("write", "verify"):
             return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
+        if access == "verify":
+            self.note_verify_started()
+            return self._none()
         sid, tid = event.get("session_id"), event.get("turn_id")
         if sid is None:
             return self.result("skip", skip="missing_id")
@@ -1062,6 +1220,7 @@ class _Guard:
             mismatch = isinstance(tid, str) and state.get("turn_id") != tid
             state["pending"] = _pending(state) - 1
             state["dispatched"] = True
+            _mark_changed(state)  # B2: the write role has started, so the turn counts as changed
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state", "dispatch_started", skip="prompt_id_mismatch" if mismatch else None)
@@ -1118,26 +1277,36 @@ class _Guard:
                 return self.result("state", "declare", note=log_reason(reason))
         target = self.shell_write_target()
         if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
+            self._shell_wrote(state, state_path, target)
             return self.result("allow", "direct", file=target)
         if state["dispatched"]:
+            self._shell_wrote(state, state_path, target)
             return self.result("allow", "dispatched", file=target)
         if self.r1 == "strict":
-            return self.result(
-                "deny" if self.mode == "enforce" else "would_deny", "R1",
-                reason=_text(self.env, "STRICT"), file=target
-            )
+            return self._shell_r1(state, state_path, target, _text(self.env, "STRICT"))
         if self.r1 == "declare":
             if self._declared(state, guard):
+                self._shell_wrote(state, state_path, target)
                 return self.result("allow", "declared", file=target)
-            return self.result(
-                "deny" if self.mode == "enforce" else "would_deny", "R1",
-                reason=_text(self.env, "DECLARE"), file=target
-            )
+            return self._shell_r1(state, state_path, target, _text(self.env, "DECLARE"))
         if self._classified(state, guard) is None:
+            self._shell_wrote(state, state_path, target)
             return self.result("allow", "uncounted", file=target)
-        return self.result(
-            "deny" if self.mode == "enforce" else "would_deny", "R1", reason=_text(self.env, "R1"), file=target
-        )
+        return self._shell_r1(state, state_path, target, _text(self.env, "R1"))
+
+    def _shell_r1(self, state: Dict[str, Any], state_path: Path, target: Optional[str], reason: str) -> Dict[str, Any]:
+        """R1 on a shell write: enforce denies (nothing was written); shadow lets it through and logs it."""
+        if self.mode == "enforce":
+            return self.result("deny", "R1", reason=reason, file=target)
+        self._shell_wrote(state, state_path, target)
+        return self.result("would_deny", "R1", reason=reason, file=target)
+
+    def _shell_wrote(self, state: Dict[str, Any], state_path: Path, target: Optional[str]) -> None:
+        """B2: an allowed shell write counts as a change.  Best effort: a failed write only loses the record."""
+        if target is None:
+            return
+        _mark_changed(state)
+        _write_json(state_path, state)
 
     def _turn_role(self, state: Dict[str, Any], guard: Path) -> Optional[str]:
         """The role in this turn's classification file, or None (no, stale or unreadable file)."""
@@ -1215,6 +1384,7 @@ class _Guard:
                 file=raw_paths[0],
             )
         state["edited"] = edited
+        _mark_changed(state)  # B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
         notify = (
             advise_rule is not None
             and not state["advised"]
@@ -1296,6 +1466,7 @@ def _event(
     dispatched_role: Any = None,
     direct: bool = False,
     command: Any = None,
+    stop_hook_active: Any = None,
 ) -> Dict[str, Any]:
     return {
         "host": host,
@@ -1311,6 +1482,7 @@ def _event(
         "dispatched_role": _str(dispatched_role),
         "direct": direct,
         "command": command if isinstance(command, str) else None,
+        "stop_hook_active": stop_hook_active,  # `stop` events only: the host's raw value, judged by the guard
     }
 
 
@@ -1333,6 +1505,9 @@ def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         sub,
         payload.get("agent_type"),
     )
+    if name == "Stop":
+        # tests/fixtures/stop_payload_shapes.json: session_id, prompt_id, stop_hook_active (bool), ...
+        return _event("claude", "stop", *base, stop_hook_active=payload.get("stop_hook_active"))
     if name == "UserPromptSubmit":
         prompt = payload.get("prompt")  # read for the #direct token only; never stored or logged
         has_direct = has_direct_token(prompt)
@@ -1384,6 +1559,9 @@ def adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         sub,
         payload.get("agent_type"),
     )
+    if name == "Stop":
+        # tests/fixtures/stop_payload_shapes.json: session_id, turn_id, stop_hook_active (bool), ...
+        return _event("codex", "stop", *base, stop_hook_active=payload.get("stop_hook_active"))
     if name == "UserPromptSubmit":
         # The payload's `prompt` field is what shoal_autoroute_gate.py reads on Codex too.
         return _event("codex", "prompt", *base, direct=has_direct_token(payload.get("prompt")))
@@ -1509,6 +1687,13 @@ def advise_output(reason: str) -> str:
     return json.dumps(
         {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": reason}}
     )
+
+
+def block_output(reason: str) -> str:
+    """A `Stop` block: the documented `{"decision": "block", "reason": ...}` on stdout, exit 0 (claude and
+    codex alike).  The model receives `reason` and continues.  If a host ignored this shape the turn would just
+    end: the check can only fail open."""
+    return json.dumps({"decision": "block", "reason": reason})
 
 
 def deny_output(host: str, reason: str) -> str:
@@ -1695,6 +1880,8 @@ def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
         result = evaluate(event, env, home)
         if result["decision"] == "deny":
             return deny_output(host, result["reason"])
+        if result["decision"] == "block":
+            return block_output(result["reason"])
         if result["decision"] == "advise" and result.get("notify"):
             return advise_output(result["reason"])
     except BaseException:

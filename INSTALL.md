@@ -266,10 +266,11 @@ Since host 1.8.3 the installer also registers the dispatch guard
 (`hooks/shoal_guard.py --host codex`,
 [`docs/specs/dispatch-enforcement`](./docs/specs/dispatch-enforcement/SPEC.md))
 next to the autoroute gate. It is a separate script with its own projection ID
-(`shoal-guard-v2`) and its own state entry (`guard_registration`), so the gate
+(`shoal-guard-v3`) and its own state entry (`guard_registration`), so the gate
 is unchanged. It adds a `UserPromptSubmit` group that records the turn and
-reads `#direct`, and a `PreToolUse` group with matcher
-`^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$`. The guard is in
+reads `#direct`, a `PreToolUse` group with matcher
+`^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$`, and, since 3.4.0,
+a `Stop` group for the completion check (below). The guard is in
 enforce mode by default (`SHOAL_GUARD=shadow` logs `would_deny` and `advise`
 records under `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`;
 `SHOAL_GUARD=off` disables it). The subagent rules (LEAF, VERIFY_EDIT) deny.
@@ -289,18 +290,22 @@ main-session calls have no `agent_id` (keys and types:
 `tests/fixtures/codex_payload_shapes.json`;
 [`docs/specs/guard-declared-direct/PROGRESS.md`](./docs/specs/guard-declared-direct/PROGRESS.md)).
 A foreground `Bash` call that neither declares nor writes a file gets no
-opinion and leaves no state or log line. An existing home that predates the
-guard gains the script and both groups on the next install; a home registered
-by 3.2.0 or earlier (`shoal-guard-v1`, matcher without `Bash`) is upgraded in
-place: only the guard's own `PreToolUse` group is replaced, at the same
-position, and every other entry (including your own `Bash` matcher that runs
-another script) is left untouched. Re-runs change nothing. The installer does
-not write hook trust: after installing **or upgrading**, approve the new or
-changed hook once in an interactive Codex session with `/hooks`, as for the
-autoroute gate. Without that approval Codex does not run it, and an upgraded
-group that is not re-approved leaves the guard blind to `Bash` (declarations
-then have no way in, so keep `#direct` and dispatch in mind until you
-approve). Dispatch unlocks at the `spawn_agent` call itself: Codex has no
+opinion and writes no log line (after a change in the turn it records that a
+check ran, see the completion check below). An existing home that predates the
+guard gains the script and all three groups on the next install; a home
+registered by 3.3.x or earlier is upgraded in place: `shoal-guard-v1` (3.2.0 or
+earlier, matcher without `Bash`) has its `PreToolUse` group replaced at the same
+position, and both `v1` and `v2` (3.2.1 to 3.3.1) gain the guard's own `Stop`
+group, appended after the existing `Stop` entries. Every other entry (your own
+`Bash` matcher, your own `Stop` hook, the autoroute gate's own `Stop` group) is
+left untouched. Re-runs change nothing. The installer does not write hook
+trust: after installing **or upgrading to 3.4.0**, approve the new `Stop` hook
+once in an interactive Codex session with `/hooks`, as for the autoroute gate.
+Without that approval Codex does not run it and the completion check never
+fires (nothing else changes). A `PreToolUse` group that is not re-approved
+after an upgrade from `v1` leaves the guard blind to `Bash` (declarations then
+have no way in, so keep `#direct` and dispatch in mind until you approve).
+Dispatch unlocks at the `spawn_agent` call itself: Codex has no
 recorded event that proves the role started, so a role that fails to start
 still unlocks the turn (docs/specs/guard-declared-direct, M11). A launch probe
 (must exit 0, prints nothing):
@@ -309,13 +314,35 @@ still unlocks the turn (docs/specs/guard-declared-direct, M11). A launch probe
 echo '{}' | /usr/bin/env python3 "$SHOAL_TARGET_HOME/hooks/shoal_guard.py" --host codex
 ```
 
+#### Completion check
+
+Since 3.4.0 the guard records, per turn, whether the main session changed files
+and whether anything checked the change afterwards (docs/specs/shared-rules,
+B2 to B4). A change is a non-exempt `apply_patch` or `Bash` file write that the
+guard allowed, or a dispatched write-level role (`executor`, `applier`,
+`security-executor`, `sol-executor`; on Codex the dispatch call counts). A check
+is a dispatched `verifier` or `watcher`, or a foreground `Bash` call that is
+neither a file write nor a `: shoal-direct` declaration, made after the latest
+change; a later change clears it. When the main session ends the turn with a
+change and no check, the `Stop` hook answers
+`{"decision":"block","reason":"..."}` once per turn: run a verification, or say
+in the report that the change is unverified. The block is skipped when Codex
+reports `stop_hook_active` (the retry after a block), for a `Stop` of another
+turn, for unreadable state or an unexpected payload, in `SHOAL_GUARD=shadow`
+(the log gets `would_block`), with `SHOAL_GUARD=off`, and with
+`SHOAL_GUARD_STOP=off`. The switch defaults to `on`, exists on Claude and Codex
+only, and has no effect elsewhere: Grok, agy and OpenCode never block because
+no end-of-turn payload of theirs is recorded. The autoroute gate's `Stop`
+group (Plan review and model escalation) is a separate script and is not
+changed.
+
 #### Guard only, without running the installer
 
 When `install/install.py` cannot be reconciled with the Codex home (for
 example a locally modified `shoal_autoroute_gate.py` that the installer
 would replace), `tools/install_hooks.py --host codex` manages only the guard.
-It writes the same `shoal-guard-v2` groups (including `commandWindows`; a
-`shoal-guard-v1` group is replaced in place) into
+It writes the same `shoal-guard-v3` groups (including `commandWindows`; a
+`shoal-guard-v1` or `v2` group is replaced in place) into
 `<codex-home>/hooks.json` and the committed-`HEAD` script to
 `<codex-home>/hooks/shoal_guard.py` (0600). The codex home is `--home`, then
 `CODEX_HOME`, then `~/.codex`. Dry-run is the default:
@@ -513,7 +540,8 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   `~/.claude`）：`UserPromptSubmit`，以及 matcher 為
   `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash` 的 `PreToolUse`（`Bash`
   是 3.0.0 起為 G4 加的，舊安裝重跑一次就會換成這個 matcher），以及沒有 matcher 的
-  `SubagentStart`（3.3.1 起，M11；舊的 settings 重跑 `--apply` 會原地補上，其他 entry 不動）。
+  `SubagentStart`（3.3.1 起，M11），以及沒有 matcher 的 `Stop`（3.4.0 起，完成檢查）；舊的
+  settings 重跑 `--apply` 會原地補上，你自己的 `Stop` 與其他 entry 不動。
   `settings.json` 若是 symlink（dotfile 管理）
   就寫進它指向的檔案，權限不變。Claude 預設 enforce。
 - `--host agy` 改 `~/.gemini/config/hooks.json`（`--home` 指 `~/.gemini`）：新增具名
@@ -607,7 +635,8 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   `SHOAL_GUARD_DIRECT=1` 對整個 session 放行 R1、R2、G4。guard 只記「這輪有 `#direct`」的旗標，
   不記錄 prompt 內容。
 - subagent 不受 R1、G4、G5 影響（它們是 main session 規則）；既不是宣告也沒有寫檔的前景 `Bash`
-  與其他工具不會被 guard 計入、改變狀態或寫 log。
+  與其他工具不會被 guard 計入或寫 log；3.4.0 起，本回合已有改檔且尚未檢查時，前景 `Bash` 會把
+  state 的 `checked` 設為真（見下面的完成檢查），其他情況不碰 state。
 - `Bash` 是 3.0.0 起加進 `PreToolUse` matcher 的工具名稱，所以 3.0.0 之前裝的全域 guard
   要重跑 `tools/install_hooks.py --host claude --apply` 才有 G4（宣告同樣走 `Bash`，沒有 `Bash`
   就沒有宣告出口，這時 `declare` 只能靠 `#direct` 與派工放行）。plugin 的 `--plugin` 判斷看的是
@@ -635,6 +664,32 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
     註冊。
   - Codex：沒有已記錄的啟動事件，維持在 `spawn_agent` 呼叫時放行；role 沒能啟動時放行仍然有效。
   - 其他 host 不變（派工呼叫放行）。
+- **完成檢查（3.4.0 起，Claude 與 Codex；docs/specs/shared-rules B2 到 B4）。** guard 逐回合記兩件事：
+  - `changed`：main 的改檔工具或 shell 寫檔被放行且目標不是豁免路徑；或可寫的 role 算「已派工」
+    （Claude 在 `SubagentStart` 釋放待啟動派工的那一刻，Codex 在派工呼叫）。
+  - `checked`：在最近一次 `changed` 之後，派出或啟動了 verify 等級的 role（`verifier`、`watcher`），
+    或 main 執行了前景 `Bash`、而且那個指令既不寫檔也不是 `: shoal-direct` 宣告。之後再發生一次
+    `changed` 會清掉 `checked`；改檔之前的前景指令不算。判斷只看有沒有跑，不判斷指令是不是測試
+    （spec D3）。沒有改檔的回合，前景 `Bash` 不碰 state，也不寫 log。
+  - `Stop` 事件：同一回合的 state、`changed` 且沒有 `checked`、`stop_hook_active` 恰為 `false`、模式為
+    enforce、這一回合還沒擋過，guard 在 stdout 輸出一次 `{"decision":"block","reason":"..."}`
+    （先把「已擋」存進 state，寫入失敗就不擋）。訊息：「Shoal completion check: this turn
+    changed files and no check ran afterwards. Run a verification now (tests, a
+    verifier or watcher role), or say explicitly in your report that the change
+    is unverified.」
+    （`SHOAL_GUARD_LANG=zh-TW` 為繁中）。
+    其他情況一律不表態（失敗開放）：別的回合的 `Stop`、state 讀不到或超過上限、id 缺漏、
+    `stop_hook_active` 不是 `false`、subagent 的 `Stop`、shadow（log 記 `would_block`）、
+    `SHOAL_GUARD=off`。
+  - 開關：`SHOAL_GUARD_STOP=on|off`（預設 `on`；其他值視為 `on`），只對 Claude 與 Codex
+    有效。其他 host（Grok、agy、OpenCode）沒有已記錄的結束事件 payload，不啟用，永遠不擋。
+  - 註冊：plugin 的 `hooks.json` 與全域 `install_hooks.py --host claude` 都加了沒有
+    matcher 的 `Stop`；
+    plugin 與全域並存時，`--plugin` 的讓出判斷對 `Stop` 同樣看全域 settings 有沒有註冊。guard 腳本與
+    註冊必須一起更新，只更新腳本的安裝只是沒有完成檢查，其他規則不受影響。
+  - **未量到：Claude 對 Stop block 輸出的處理。** 輸出用 Claude Code 文件的 Stop hook 格式
+    （JSON `decision: "block"` 加 `reason`，exit 0）；repo 內沒有實測紀錄。格式不被接受時 Claude 只是
+    照常結束，檢查失效但不會卡住。payload 形狀已實測（`tests/fixtures/stop_payload_shapes.json`）。
 
 G5 補的是 R1 看不到的缺口：main 用 `cat > 檔案 <<EOF` 之類的 shell 指令寫檔，沒走任何改檔工具
 （2026-10-10 實測）。它只看 `Bash` 的指令字串，是字面判斷，不是 shell parser：
@@ -667,12 +722,12 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 
 ```bash
 # 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v3.3.1
+claude plugin marketplace add miyago9267/shoal#v3.4.0
 claude plugin install shoal@shoal
 
 # 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v3.3.1
+claude plugin marketplace add miyago9267/shoal#v3.4.0
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -687,7 +742,7 @@ claude --plugin-dir ./claude-plugin
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
   `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
   `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v3.3.1` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  上面的 `#v3.4.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是

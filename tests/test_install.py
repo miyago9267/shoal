@@ -1064,7 +1064,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "3.3.2",
+                            "version": "3.4.1",
                             "enabled": True,
                         }
                     ]
@@ -1333,11 +1333,13 @@ class NativeInstallTests(unittest.TestCase):
                 command = group["hooks"][0]["command"]
                 self.assertIn("hooks/shoal_guard.py", command)
                 self.assertTrue(command.endswith("--host codex"))
-            # the autoroute gate keeps its own events and PreToolUse is guard-only
-            self.assertNotIn("Stop", {
-                event for event, groups in document["hooks"].items()
-                if any(g in groups for g in TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID].values())
-            })
+            # the autoroute gate keeps its own Stop group (a different command); the guard's completion-check
+            # group (3.4.0) sits next to it, and PreToolUse is guard-only
+            stop_groups = document["hooks"]["Stop"]
+            self.assertEqual(len(stop_groups), 2)
+            self.assertIn("shoal_autoroute_gate.py", stop_groups[0]["hooks"][0]["command"])
+            self.assertEqual(stop_groups[1], TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["Stop"])
+            self.assertTrue(stop_groups[1]["hooks"][0]["command"].endswith("--host codex"))
             # the installer never writes hook trust
             self.assertNotIn("hooks.state", (home / "config.toml").read_text())
 
@@ -1377,6 +1379,37 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             self.assertEqual(_state_path(home).read_bytes(), state_before)
             self.assertEqual(hooks.read_bytes(), hooks_before)
+
+    def test_home_registered_as_guard_v2_is_upgraded_to_v3_in_place(self) -> None:
+        # 3.2.1 to 3.3.1 recorded shoal-guard-v2 (no Stop group).  3.4.0 appends the guard's Stop group and records v3;
+        # the foreign entry, the autoroute gate and the guard's other two groups keep their place.
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            hooks = home / "hooks.json"
+            document = json.loads(hooks.read_text())
+            guard_stop = TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["Stop"]
+            document["hooks"]["Stop"] = [g for g in document["hooks"]["Stop"] if g != guard_stop]
+            foreign = _foreign_group("/keep-me")
+            document["hooks"]["Stop"].insert(0, foreign)
+            _write_registration(hooks, document)
+            state = json.loads(_state_path(home).read_text())
+            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v2")
+            _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
+
+            self.assertEqual(self.run_install(home), 0)
+            installed = json.loads(hooks.read_text())["hooks"]
+            self.assertEqual(installed["Stop"][0], foreign)
+            self.assertIn("shoal_autoroute_gate.py", installed["Stop"][1]["hooks"][0]["command"])
+            self.assertEqual(installed["Stop"][2], guard_stop)
+            self.assertEqual(len(installed["Stop"]), 3)
+            for event in ("UserPromptSubmit", "PreToolUse"):
+                self.assertEqual(installed[event], document["hooks"][event], event)
+            state = json.loads(_state_path(home).read_text())
+            self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
+            before = (hooks.read_bytes(), _state_path(home).read_bytes())
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual((hooks.read_bytes(), _state_path(home).read_bytes()), before)
 
     def test_dry_run_on_pre_guard_home_plans_guard_and_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

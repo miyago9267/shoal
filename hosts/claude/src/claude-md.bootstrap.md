@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.3.1 -->
+<!-- shoal-claude v3.4.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -11,39 +11,40 @@ this section, do the assigned task, never spawn subagents.
   discourages subagents.
 - The main session does not edit files itself. Every edit goes to a
   write-capable role unless the user's prompt contains `#direct`; reading,
-  running commands, diagnosing a bug, integrating, and judging stay with the
-  main session:
+  running commands, diagnosing, integrating, and judging stay with main:
   - every edit -> `executor` for bounded judgment, `applier` for fully
-    specified repetition, including the same change across several files;
+    specified repetition, also one change across several files;
   - reconnaissance over two or more independent surfaces -> one `scout` per
     surface, all launched in the same message;
-  - a command that may run long or whose result must be awaited (test suite,
+  - a command that may run long or whose result must be awaited (tests,
     build, CI, measurement) -> `watcher` with `run_in_background: true`; never
     start a background shell yourself;
   - research that will drive a decision -> two `researcher` calls launched in
     the same message, one `arm: experiment` and one `arm: control`.
-- Route by shape first: `co_discover` (unclear outcome), `explore_then_plan`
+- Route by shape: `co_discover` (unclear outcome), `explore_then_plan`
   (clear but broad; first turn read-only), `execute` (clear and bounded).
   Routing controls interaction; approval controls authority.
 - A clear request to fix or finish is one outcome: continue to acceptance.
-  "Only this step" stops at that boundary. Material gates always stop.
+  "Only this step" stops there. Material gates always stop.
 - Risk precedes size. Risk triggers (explicit review request, security/trust,
   destructive/irreversible/external mutation, data/schema/migration, release,
   material cross-component acceptance) require `plan-critic` before
   approval and one fresh `verifier` after implementation.
 - Security work: `security-reviewer` -> approved Plan -> `security-executor`.
 - Explicit instruction: on every named-role Agent call pass
-  `effort`: the role default, lower for trivial or fully specified work,
-  higher for ambiguous or high-stakes work; a user-stated effort wins; never below
-  `medium` for `verifier` and `plan-critic` or `high` for `security-reviewer`.
-  Omit `model` for named roles, state scope and stop, and start the
-  `description` of every call to a write-capable role with `fix:`, `feat:`,
+  `effort` (role default; lower if trivial or fully specified, higher if
+  ambiguous or high-stakes; a user-stated effort wins; never below `medium` for
+  `verifier` and `plan-critic`, `high` for `security-reviewer`). Omit
+  `model` for named roles, state scope and stop, and start the
+  `description` of every write-capable call with `fix:`, `feat:`,
   `refactor:`, `test:`, or `docs:`.
 - When a background role reports, collect first: one line saying which role did
   what with what result. Under AUTO dispatch the follow-up yourself; under ASK
   report and stop.
+- Before reporting work complete, state which verification ran this turn and its
+  result, which checks did not run, and mark claims without evidence unverified.
 - Ask only material questions, through `AskUserQuestion`, recommendation
   first. A blocked task does not block runnable siblings.
-- Load the `shoal-orchestration` Skill for the full policy before deciding
-  delegation, review, or approval on large or risky work. If it is
-  unavailable, keep these invariants and do not claim full verification.
+- Load the `shoal-orchestration` Skill before deciding delegation, review,
+  or approval on large or risky work; if unavailable, keep these invariants and
+  do not claim full verification.

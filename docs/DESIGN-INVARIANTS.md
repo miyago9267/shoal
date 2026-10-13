@@ -14,7 +14,8 @@
 3. **hook 強制硬規則**：leaf 不再派 subagent、verifier 類 role 不改檔、main
    以背景方式開 shell，以及 main 未派工就改檔（`#direct` 可放行）。
    這些規則不依賴任何分類器。含數字門檻的規則只提醒。
-4. **各 host 的規則相同**，model 與工具名稱依 host 綁定；host 做不到的條款明列
+4. **規則與策略由 core 定義，所有 host 共用。** host 的 adapter 只放三類內容：
+   工具與參數名稱、model 綁定、該 host 特有的調校參數。host 做不到的條款明列
    省略理由。
 5. **core 條款不綁具體模型**：core／host 中立條款不寫具體 model ID；host
    addenda、role frontmatter 與 alias（例如 Luna／Sol／Astra、tier）不在此限。

@@ -148,3 +148,14 @@ policy surface 切到 core 條款，一次必然超過上限。
    - hard ceiling 本身不變。
 2. **（已決定，2026-10-06）OpenCode policy 的掛載點**：`opencode.json` 的
    `instructions`，不碰使用者的 AGENTS.md。
+
+## 修訂：規則共用（2026-10-13）
+
+上面「修訂：持平優先（2026-10-06）」的「不做 P3、其他 host 維持 legacy」已被
+[shared-rules](../shared-rules/SPEC.md) 取代（Miyago 2026-10-13 核准）：
+
+- 規則共用是原則；其他 host 逐一改由 core 產生條款，順序是 Codex、agy、OpenCode、
+  Grok（見 shared-rules 的 D2 與 Slices）。
+- 切換的行為變更不再要求為空；對照表的「行為變更」每一項都要列出並標明是預期變更。
+- 本 spec 的 `completed` 只指 Claude 的切換；其他 host 的切換由 shared-rules 追蹤。
+- 較早一節保留原文，不改寫。

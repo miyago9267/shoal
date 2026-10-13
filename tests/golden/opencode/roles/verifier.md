@@ -76,7 +76,11 @@ disposition:
   writes and identify the latest verified good checkpoint.
 
 If the checkpoint evidence is insufficient to distinguish these dispositions,
-return `INCONCLUSIVE` with the missing evidence and retry condition. Do not
+return `INCONCLUSIVE` with the missing evidence and retry condition. When the brief includes the main session's draft final report, check it
+sentence by sentence against evidence available in the repository and the
+brief, and list each sentence that is unsupported or overstated with what the
+evidence actually shows. In every direction checkpoint, also answer one extra question: which premise of
+the approved design is most likely wrong, and what cheap check would show it. Do not
 claim rollback for an unavailable target or an irreversible external action;
 report the limitation and required containment or user decision instead.
 

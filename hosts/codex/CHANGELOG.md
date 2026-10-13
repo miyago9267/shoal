@@ -9,6 +9,27 @@ written.
 
 ## Unreleased
 
+## v3.4.0
+
+- The guard gains a completion check on Codex: it records per turn whether
+  files were changed (an allowed non-exempt `apply_patch` or `Bash` file
+  write, or a write-level role dispatch) and whether anything checked the
+  change afterwards (a dispatched `verifier` or `watcher`, or a foreground
+  `Bash` call that writes nothing and is not a declaration). A `Stop` with a
+  change and no check is blocked once per turn
+  (`{"decision":"block","reason":...}`); the retry (`stop_hook_active`), other
+  turns, unreadable state, `SHOAL_GUARD=shadow|off` and `SHOAL_GUARD_STOP=off`
+  never block. The autoroute gate is unchanged.
+- The hook registration moves from `shoal-guard-v2` to `shoal-guard-v3`: a new
+  `Stop` group for the guard. `v1` and `v2` registrations are upgraded in
+  place; other entries are untouched. **Approve the new `Stop` hook once with
+  `/hooks`** in an interactive session; until then the completion check does
+  not run.
+- `verifier` roles carry two more `direction_checkpoint` sentences
+  (draft-report check, most likely wrong premise). The Codex policy text
+  changes only by the marker; Codex still uses its own policy clauses (the
+  switch to shared core clauses is a later slice).
+
 ## v3.3.1
 
 - No Codex behavior change. The guard now unlocks a write dispatch on Claude only

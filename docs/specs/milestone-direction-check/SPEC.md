@@ -106,6 +106,12 @@ host 被同質化），直到 Miyago 指出才停下。
 
 revert M2 的 commit；`docs/DESIGN-INVARIANTS.md` 可保留（文件不影響行為）。
 
+## 註記（2026-10-13）
+
+Background 的「host 被同質化」指的是把 role 形狀與工具綁定抹平，不是共用規則。
+規則在各 host 之間共用是預期的方向（見
+[shared-rules](../shared-rules/SPEC.md) 與 `docs/DESIGN-INVARIANTS.md` 第 4 條）。
+
 ## 完結狀態
 
 - M1：0141e06

@@ -1240,6 +1240,9 @@ def _plugin_hooks() -> dict:
             # M11: the guard unlocks a write dispatch only when the role has started (no matcher: the guard
             # ignores every other agent_type itself).  This registration and the guard script ship together.
             "SubagentStart": [{"hooks": [dict(guard)]}],
+            # B3 (shared-rules): the completion check blocks a Stop once per turn.  No matcher; like the others it
+            # defers to a global guard that already registers the event (shoal_guard.py global_guard_covers).
+            "Stop": [{"hooks": [dict(guard)]}],
             "PreToolUse": [{"matcher": CLAUDE_PLUGIN_MATCHER, "hooks": [dict(guard)]}],
         },
     }

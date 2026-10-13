@@ -149,7 +149,9 @@ or `ROLLBACK` (an invariant or acceptance condition is broken); insufficient
 evidence stays `INCONCLUSIVE`. Required when one objective reaches its third
 slice (a new spec continuing it counts) and at every later milestone close:
 once per milestone, separate from outcome verification, not skipped by `fast`
-review intent. Before closing a single-slice spec or dispatching architecture
+review intent. At the wrap-up of multi-slice work, main also sends its draft
+final report to that checkpoint and corrects the report before sending it to the
+user. Before closing a single-slice spec or dispatching architecture
 or design work, main runs the same comparison itself; otherwise optional. On
 deviation or `ROLLBACK`, stop new writes and report it with a recommendation
 (`stop_condition=decision`, or `PAUSED_NEEDS_USER` without interaction);

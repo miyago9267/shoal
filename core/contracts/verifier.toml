@@ -228,6 +228,24 @@ If the checkpoint evidence is insufficient to distinguish these dispositions,
 return `INCONCLUSIVE` with the missing evidence and retry condition.'''
 
 [[clause]]
+id = "checkpoint-draft-report"
+kind = "scope"
+sep = "space"
+text = '''
+When the brief includes the main session's draft final report, check it
+sentence by sentence against evidence available in the repository and the
+brief, and list each sentence that is unsupported or overstated with what the
+evidence actually shows.'''
+
+[[clause]]
+id = "checkpoint-premise"
+kind = "scope"
+sep = "space"
+text = '''
+In every direction checkpoint, also answer one extra question: which premise of
+the approved design is most likely wrong, and what cheap check would show it.'''
+
+[[clause]]
 id = "no-false-rollback"
 kind = "boundary"
 text = '''

@@ -42,7 +42,7 @@ export type Env = Record<string, string | undefined>;
 
 export type GuardEvent = {
   host: string;
-  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start";
+  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start" | "stop";
   session_id: string | null;
   turn_id: string | null;
   cwd: string | null;
@@ -56,6 +56,8 @@ export type GuardEvent = {
   command?: string | null;
   /** prompt events (claude): the user's prompt carried a standalone `#direct` token. */
   direct?: boolean;
+  /** stop events: the host's raw `stop_hook_active` value; only exactly `false` lets the guard block. */
+  stop_hook_active?: unknown;
 };
 
 export type GuardResult = {
@@ -78,6 +80,12 @@ type StateFile = {
   pending: number;
   /** main declared direct work this turn (`: shoal-direct <reason>`, M3). */
   declared: boolean;
+  /** B2: an allowed, non-exempt change happened this turn (see markChanged). */
+  changed: boolean;
+  /** B2: after the latest change a verify-level role was dispatched or started, or main ran a plain foreground shell call. */
+  checked: boolean;
+  /** B3: this turn's one completion block has been spent. */
+  stop_blocked: boolean;
 };
 type LogRecord = Record<string, unknown>;
 
@@ -93,6 +101,11 @@ const HOST_DEFAULT_MODE: Record<string, string> = {
 const FORCED_SHADOW_HOSTS = new Set(["agy"]);
 // Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
 const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
+// Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
+// {"decision": "block", "reason": ...}: only they block an unverified completion (B4).  grok, agy and opencode
+// have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches
+// the check off on these two hosts and has no effect elsewhere.
+const STOP_HOSTS = new Set(["claude", "codex"]);
 // agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 const COMPOSED_TURN_HOSTS = new Set(["agy"]);
 // Hosts whose tool hooks carry no turn id: the turn recorded at the prompt boundary is used
@@ -214,6 +227,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
     STRICT:
       "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
       "write-capable role (executor or applier), or ask the user to add #direct to the prompt.",
+    STOP:
+      "Shoal completion check: this turn changed files and no check ran afterwards. Run a " +
+      "verification now (tests, a verifier or watcher role), or say explicitly in your report " +
+      "that the change is unverified.",
     DECLARE:
       "Shoal dispatch guard: the main session delegates edits by default. Dispatch a " +
       "write-capable role (executor or applier), or declare direct work first by running " +
@@ -236,6 +253,9 @@ const MESSAGES: Record<string, Record<string, string>> = {
     STRICT:
       "Shoal dispatch guard：main session 不自己改檔。" +
       "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。",
+    STOP:
+      "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。" +
+      "請現在做一次驗證（測試、verifier 或 watcher role），或在回報中明確寫出這次修改尚未驗證。",
     DECLARE:
       "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
       "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
@@ -410,6 +430,12 @@ function pendingCount(state: Record<string, unknown>): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
 }
 
+/** B2: a change after a check puts the turn back to "unchecked". */
+function markChanged(state: StateFile): void {
+  state.changed = true;
+  state.checked = false;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -465,6 +491,14 @@ export function resolveMode(host: string, env: Env): string {
   else mode = raw === "enforce" || raw === "shadow" || raw === "off" ? raw : "shadow";
   if (mode === "enforce" && FORCED_SHADOW_HOSTS.has(host)) mode = "shadow";
   return mode;
+}
+
+/**
+ * SHOAL_GUARD_STOP: `off` disables the completion check on claude and codex; any other value (or none) keeps
+ * it on.  No effect on a host outside STOP_HOSTS, which never blocks.
+ */
+export function stopEnabled(host: string, env: Env): boolean {
+  return STOP_HOSTS.has(host) && env.SHOAL_GUARD_STOP !== "off";
 }
 
 /**
@@ -622,10 +656,103 @@ class Guard {
     });
   }
 
+  // -- completion check (B2, B3) --------------------------------------------
+  /** State and lock file of this event's session for a silent state update, or null. */
+  private checkPaths(wantedTurn: string | null): { statePath: string; lockPath: string } | null {
+    const sid = this.event.session_id;
+    if (!validId(sid) || (wantedTurn != null && !validId(wantedTurn))) return null;
+    const dir = this.guardDirectory;
+    if (dir === null) return null;
+    return { statePath: join(dir, "state", sid + ".json"), lockPath: join(dir, "state", sid + ".tslock") };
+  }
+
+  /**
+   * B2: main ran a plain foreground shell call.  When the turn is changed and unchecked, mark it checked.
+   * Cheap by construction: hosts outside STOP_HOSTS, SHOAL_GUARD_STOP=off and a missing or invalid id return at
+   * once; otherwise one unlocked read of the state file, and the lock and the write only happen when the turn is
+   * changed and not yet checked.  Never logs.
+   */
+  private noteCheck(): void {
+    if (!stopEnabled(this.host, this.env)) return;
+    const tid = this.event.turn_id;
+    const paths = this.checkPaths(tid);
+    if (paths === null) return;
+    const pendingCheck = (state: Record<string, unknown>): boolean =>
+      state.changed === true && state.checked !== true && (tid == null || state.turn_id === tid);
+    if (!pendingCheck(readJson(paths.statePath))) return;
+    withStateLock(
+      paths.lockPath,
+      () => {
+        const state = readJson(paths.statePath);
+        if (pendingCheck(state)) {
+          state.checked = true;
+          writeJson(paths.statePath, state);
+        }
+        return none(this.mode);
+      },
+      () => none(this.mode),
+    );
+  }
+
+  /** B2 on claude: the SubagentStart of a verify-level role counts as a check, like its dispatch call. */
+  private noteVerifyStarted(): void {
+    if (!stopEnabled(this.host, this.env)) return;
+    const paths = this.checkPaths(null);
+    if (paths === null) return;
+    withStateLock(
+      paths.lockPath,
+      () => {
+        const state = readJson(paths.statePath);
+        if (state.changed === true && state.checked !== true) {
+          state.checked = true;
+          writeJson(paths.statePath, state);
+        }
+        return none(this.mode);
+      },
+      () => none(this.mode),
+    );
+  }
+
+  /**
+   * B3: the main session is about to end its turn.  Blocks once per turn when files changed and nothing checked
+   * them (see hooks/shoal_guard.py); every other path has no opinion (fail open).
+   */
+  private stop(): GuardResult {
+    const event = this.event;
+    if (!stopEnabled(this.host, this.env)) return none(this.mode);
+    const flag = event.stop_hook_active;
+    if (flag === true) return none(this.mode); // the host says this stop is the retry after a block
+    const sid = event.session_id;
+    const tid = event.turn_id;
+    if (sid == null || tid == null) return this.result("skip", { skip: "missing_id" });
+    if (!validId(sid) || !validId(tid)) return this.result("skip", { skip: "invalid_id" });
+    if (flag !== false) return this.result("skip", { skip: "bad_payload" });
+    const dir = this.guardDirectory;
+    if (dir === null) return this.result("skip", { skip: "state_unavailable" });
+    const statePath = join(dir, "state", sid + ".json");
+    const due = (state: Record<string, unknown>): boolean =>
+      state.turn_id === tid && state.changed === true && state.checked !== true && state.stop_blocked !== true;
+    if (!due(readJson(statePath))) return none(this.mode); // other turn, no change, checked or already blocked
+    return withStateLock(
+      join(dir, "state", sid + ".tslock"),
+      () => {
+        const state = readJson(statePath);
+        if (!due(state)) return none(this.mode);
+        if (this.mode !== "enforce") return this.result("would_block", { rule: "STOP", note: "unverified_change" });
+        state.stop_blocked = true;
+        // without the flag a block could repeat: do not block
+        if (!writeJson(statePath, state)) return this.result("skip", { skip: "state_write_failed" });
+        return this.result("block", { rule: "STOP", reason: text(this.env, "STOP"), note: "unverified_change" });
+      },
+      (reason) => this.result("skip", { skip: reason }),
+    );
+  }
+
   // -- main session ---------------------------------------------------------
   main(): GuardResult {
     const event = this.event;
     if (event.kind === "subagent_start") return this.subagentStart();
+    if (event.kind === "stop") return this.stop();
     const isBoundary = event.kind === "prompt" || event.kind === "turn_boundary";
     let toolKind = event.tool_kind;
     if (event.kind === "tool" && toolKind === "background_shell" && !DENY_MAIN_HOSTS.has(this.host)) {
@@ -633,16 +760,20 @@ class Guard {
     }
     if (event.kind === "tool" && toolKind === "shell") {
       // A foreground shell call that is neither a declaration nor a file write has no opinion, and
-      // touches no state or log.  `declare` hosts read declarations and judge writes (G5);
+      // touches no log.  `declare` hosts read declarations and judge writes (G5);
       // `strict` only judges writes (a declaration is an ordinary no-op there); `classified` judges
       // writes on claude only (v3.1.0); `off` has no G5.
+      const declaration = parseDeclaration(event.command) !== null;
+      const writeTarget = this.shellWriteTarget();
       if (this.r1 === "declare") {
-        if (parseDeclaration(event.command) === null && this.shellWriteTarget() === null) toolKind = null;
+        if (!declaration && writeTarget === null) toolKind = null;
       } else if (this.r1 === "strict") {
-        if (this.shellWriteTarget() === null) toolKind = null;
-      } else if (this.r1 !== "classified" || !DENY_MAIN_HOSTS.has(this.host) || this.shellWriteTarget() === null) {
+        if (writeTarget === null) toolKind = null;
+      } else if (this.r1 !== "classified" || !DENY_MAIN_HOSTS.has(this.host) || writeTarget === null) {
         toolKind = null;
       }
+      // B2: a plain foreground call after a change counts as a check.
+      if (toolKind === null && writeTarget === null && !declaration) this.noteCheck();
     }
     if (
       event.kind === "tool" &&
@@ -690,6 +821,9 @@ class Guard {
           direct: event.direct === true,
           declared: false,
           pending: 0,
+          changed: false,
+          checked: false,
+          stop_blocked: false,
         };
       } else {
         next = {
@@ -700,6 +834,9 @@ class Guard {
           direct: event.direct === true,
           declared: false,
           pending: 0,
+          changed: false,
+          checked: false,
+          stop_blocked: false,
         };
       }
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
@@ -717,16 +854,24 @@ class Guard {
       direct: prior.direct === true, // this turn's prompt carried #direct
       declared: prior.declared === true, // main declared direct work this turn (M3)
       pending: pendingCount(prior), // write dispatches whose role has not started yet (M11)
+      changed: prior.changed === true, // B2: a change this turn (see markChanged)
+      checked: prior.checked === true, // B2: a check after the latest change
+      stop_blocked: prior.stop_blocked === true, // B3: this turn's one block is spent
     };
 
     if (event.tool_kind === "dispatch") {
-      if (roleAccess(event.dispatched_role) === "write") {
+      const access = roleAccess(event.dispatched_role);
+      if (access === "write") {
         if (START_UNLOCK_HOSTS.has(this.host)) {
           state.pending += 1; // released by the role's SubagentStart; the call itself is allowed
           writeJson(statePath, state);
           return this.result("allow", { rule: "dispatch_pending" });
         }
         state.dispatched = true;
+        markChanged(state);
+        writeJson(statePath, state);
+      } else if (access === "verify") {
+        state.checked = true; // B2: a verify-level role was dispatched
         writeJson(statePath, state);
       }
       return this.result("allow", { rule: "dispatch" });
@@ -744,7 +889,12 @@ class Guard {
    */
   private subagentStart(): GuardResult {
     const event = this.event;
-    if (!START_UNLOCK_HOSTS.has(this.host) || roleAccess(event.role) !== "write") return none(this.mode);
+    const access = roleAccess(event.role);
+    if (!START_UNLOCK_HOSTS.has(this.host) || (access !== "write" && access !== "verify")) return none(this.mode);
+    if (access === "verify") {
+      this.noteVerifyStarted();
+      return none(this.mode);
+    }
     const sid = event.session_id;
     if (sid == null) return this.result("skip", { skip: "missing_id" });
     if (!validId(sid)) return this.result("skip", { skip: "invalid_id" });
@@ -759,6 +909,8 @@ class Guard {
         const mismatch = typeof event.turn_id === "string" && state.turn_id !== event.turn_id;
         state.pending = pendingCount(state) - 1;
         state.dispatched = true;
+        state.changed = true; // B2: the write role has started, so the turn counts as changed
+        state.checked = false;
         if (!writeJson(statePath, state)) return this.result("skip", { skip: "state_write_failed" });
         return this.result("state", { rule: "dispatch_started", skip: mismatch ? "prompt_id_mismatch" : undefined });
       },
@@ -830,29 +982,41 @@ class Guard {
       }
     }
     const file = this.shellWriteTarget() ?? undefined;
-    if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) return this.result("allow", { rule: "direct", file });
-    if (state.dispatched) return this.result("allow", { rule: "dispatched", file });
-    if (this.r1 === "strict") {
-      return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
-        rule: "R1",
-        reason: text(this.env, "STRICT"),
-        file,
-      });
+    if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) {
+      this.shellWrote(state, statePath, file);
+      return this.result("allow", { rule: "direct", file });
     }
+    if (state.dispatched) {
+      this.shellWrote(state, statePath, file);
+      return this.result("allow", { rule: "dispatched", file });
+    }
+    if (this.r1 === "strict") return this.shellR1(state, statePath, file, text(this.env, "STRICT"));
     if (this.r1 === "declare") {
-      if (this.declared(state, dir)) return this.result("allow", { rule: "declared", file });
-      return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
-        rule: "R1",
-        reason: text(this.env, "DECLARE"),
-        file,
-      });
+      if (this.declared(state, dir)) {
+        this.shellWrote(state, statePath, file);
+        return this.result("allow", { rule: "declared", file });
+      }
+      return this.shellR1(state, statePath, file, text(this.env, "DECLARE"));
     }
-    if (this.classified(state, dir) === null) return this.result("allow", { rule: "uncounted", file });
-    return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
-      rule: "R1",
-      reason: text(this.env, "R1"),
-      file,
-    });
+    if (this.classified(state, dir) === null) {
+      this.shellWrote(state, statePath, file);
+      return this.result("allow", { rule: "uncounted", file });
+    }
+    return this.shellR1(state, statePath, file, text(this.env, "R1"));
+  }
+
+  /** R1 on a shell write: enforce denies (nothing was written); shadow lets it through and logs it. */
+  private shellR1(state: StateFile, statePath: string, file: string | undefined, reason: string): GuardResult {
+    if (this.mode === "enforce") return this.result("deny", { rule: "R1", reason, file });
+    this.shellWrote(state, statePath, file);
+    return this.result("would_deny", { rule: "R1", reason, file });
+  }
+
+  /** B2: an allowed shell write counts as a change.  Best effort: a failed write only loses the record. */
+  private shellWrote(state: StateFile, statePath: string, file: string | undefined): void {
+    if (file === undefined) return;
+    markChanged(state);
+    writeJson(statePath, state);
   }
 
   /** The role in this turn's classification file, or null (no, stale or unreadable file). */
@@ -924,6 +1088,7 @@ class Guard {
       return this.result("deny", { rule: "R1", reason: text(this.env, strict ? "STRICT" : declare ? "DECLARE" : "R1"), file: rawPaths[0] });
     }
     state.edited = edited;
+    markChanged(state); // B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
     const notify =
       adviseRule !== null && !state.advised && this.mode === "enforce" && ADVISE_OUTPUT_HOSTS.has(this.host);
     if (notify) state.advised = true; // the one reminder of this turn is spent

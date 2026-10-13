@@ -1,0 +1,42 @@
+{
+ "_doc": [
+  "Keys and value types of the Stop hook payloads recorded in one real run each on 2026-10-13 (Claude Code",
+  "2.1.x, codex-cli 0.160.1; docs/specs/shared-rules/SPEC.md D6); values are synthetic.  A main-session Stop",
+  "carries no agent_id.  Claude names the turn `prompt_id`, Codex `turn_id`.  stop_hook_active is a boolean on",
+  "both hosts (false on a first Stop).  Not measured: the payload of a Stop that follows a block (the host",
+  "documents stop_hook_active as true there), and how Claude Code treats the block output below.",
+  "tests/test_shoal_guard.py feeds payloads built from these shapes to adapt_claude / adapt_codex."
+ ],
+ "claude": {
+  "hook_event_name": "Stop",
+  "keys": {
+   "background_tasks": "list",
+   "cwd": "str",
+   "effort": "dict",
+   "hook_event_name": "str",
+   "last_assistant_message": "str",
+   "permission_mode": "str",
+   "prompt_id": "str",
+   "session_crons": "list",
+   "session_id": "str",
+   "stop_hook_active": "bool",
+   "transcript_path": "str"
+  },
+  "turn_key": "prompt_id"
+ },
+ "codex": {
+  "hook_event_name": "Stop",
+  "keys": {
+   "cwd": "str",
+   "hook_event_name": "str",
+   "last_assistant_message": "str",
+   "model": "str",
+   "permission_mode": "str",
+   "session_id": "str",
+   "stop_hook_active": "bool",
+   "transcript_path": "str",
+   "turn_id": "str"
+  },
+  "turn_key": "turn_id"
+ }
+}

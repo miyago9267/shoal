@@ -290,7 +290,8 @@ class ClaudeAdapterTests(CliCase):
         self.assertFalse(os.path.exists(self.guard_dir))
 
     def test_other_events_are_noop(self) -> None:
-        self.assertIsNone(guard.adapt_claude({"hook_event_name": "Stop", "session_id": "s"}))
+        for name in ("SessionStart", "SubagentStop", "PostToolUse", "Notification"):
+            self.assertIsNone(guard.adapt_claude({"hook_event_name": name, "session_id": "s"}), name)
 
     def test_end_to_end_enforce_then_dispatch_unlocks(self) -> None:
         cwd = self.work
@@ -766,6 +767,159 @@ class StrictCliTests(CliCase):
         self.assertEqual(self.run_guard("claude", edit, SHOAL_GUARD_R1="classified"), "")
         self.assertEqual(self.deny_reason(self.run_guard("claude", edit, SHOAL_GUARD_R1="declare")),
                          guard.MESSAGES["en"]["DECLARE"])
+
+
+class StopCheckCliTests(CliCase):
+    """B2-B4 (docs/specs/shared-rules): the completion check, run through the real script.  The vectors carry the
+    rule table for both implementations; these tests cover the output format, the recorded payload shapes, the
+    one-block-per-turn persistence and the fail-open paths that need a real process or a patched write."""
+
+    SHAPES = json.loads((ROOT / "tests" / "fixtures" / "stop_payload_shapes.json").read_text(encoding="utf-8"))
+    TEXT = ("Shoal completion check: this turn changed files and no check ran afterwards. Run a verification now "
+            "(tests, a verifier or watcher role), or say explicitly in your report that the change is unverified.")
+
+    def env(self, **extra: str) -> dict:
+        return super().env(**{"SHOAL_GUARD_R1": "", **extra})  # the host default: strict
+
+    def claude_stop(self, turn: str = "p-1", **kw) -> dict:
+        return {"session_id": "sess-1", "prompt_id": turn, "cwd": self.work, "hook_event_name": "Stop",
+                "stop_hook_active": False, "permission_mode": "default", **kw}
+
+    def codex_stop(self, turn: str = "t-1", **kw) -> dict:
+        return {"session_id": "019f-s", "turn_id": turn, "cwd": self.work, "hook_event_name": "Stop",
+                "stop_hook_active": False, "model": "m", **kw}
+
+    def test_recorded_stop_shapes_are_accepted(self) -> None:
+        make = {"str": "synthetic", "bool": False, "dict": {}, "list": []}
+        for host, adapt in (("claude", guard.adapt_claude), ("codex", guard.adapt_codex)):
+            shape = self.SHAPES[host]
+            payload = {key: make[kind] for key, kind in shape["keys"].items()}
+            payload["hook_event_name"] = shape["hook_event_name"]
+            with self.subTest(host):
+                event = adapt(payload)
+                self.assertEqual((event["kind"], event["is_subagent"], event["tool_kind"]), ("stop", False, None))
+                self.assertEqual((event["session_id"], event["turn_id"]), ("synthetic", "synthetic"))
+                self.assertIs(event["stop_hook_active"], False)
+                self.assertIn(shape["turn_key"], payload)
+                payload["stop_hook_active"] = True
+                self.assertIs(adapt(payload)["stop_hook_active"], True)
+                del payload["stop_hook_active"]
+                self.assertIsNone(adapt(payload)["stop_hook_active"])
+
+    def test_claude_flow_blocks_once_and_a_check_releases_it(self) -> None:
+        def turn(turn_id: str, edit: bool, check: str = "") -> list:
+            outs = [self.run_guard("claude", claude_prompt(cwd=self.work, prompt_id=turn_id, prompt="#direct do it"))]
+            if edit:
+                outs.append(self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id=turn_id)))
+            if check:
+                outs.append(self.run_guard("claude", claude_tool("Bash", {"command": check}, cwd=self.work, prompt_id=turn_id)))
+            outs.append(self.run_guard("claude", self.claude_stop(turn_id)))
+            return outs
+
+        first = turn("p-1", edit=True)
+        self.assertEqual(first[:-1], ["", ""])
+        self.assertEqual(json.loads(first[-1]), {"decision": "block", "reason": self.TEXT})  # (a)
+        self.assertEqual(self.run_guard("claude", self.claude_stop("p-1")), "")  # (b) one block per turn
+        self.assertEqual(self.run_guard("claude", self.claude_stop("p-1", stop_hook_active=True)), "")
+        self.assertEqual(turn("p-2", edit=True, check="python3 -m unittest")[-1], "")  # (c)
+        self.assertEqual(turn("p-3", edit=False)[-1], "")  # (d)
+        records = [r for r in self.log_records() if r.get("event") == "stop"]
+        self.assertEqual([(r["decision"], r.get("rule")) for r in records if r["decision"] == "block"], [("block", "STOP")])
+
+    def test_codex_flow_blocks_once_and_a_check_releases_it(self) -> None:
+        patch = "*** Begin Patch\n*** Update File: a.py\n@@\n-a\n+b\n*** End Patch"
+
+        def turn(turn_id: str, edit: bool, check: str = "") -> list:
+            outs = [self.run_guard("codex", CodexAdapterTests.prompt(cwd=self.work, turn_id=turn_id, prompt="#direct do it"))]
+            if edit:
+                outs.append(self.run_guard("codex", CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work, turn_id=turn_id)))
+            if check:
+                outs.append(self.run_guard("codex", CodexAdapterTests.tool("Bash", {"command": check}, cwd=self.work, turn_id=turn_id)))
+            outs.append(self.run_guard("codex", self.codex_stop(turn_id)))
+            return outs
+
+        first = turn("t-1", edit=True)
+        self.assertEqual(first[:-1], ["", ""])
+        self.assertEqual(json.loads(first[-1]), {"decision": "block", "reason": self.TEXT})
+        self.assertEqual(self.run_guard("codex", self.codex_stop("t-1")), "")
+        self.assertEqual(turn("t-2", edit=True, check="python3 -m unittest")[-1], "")
+        self.assertEqual(turn("t-3", edit=False)[-1], "")
+
+    def test_nothing_is_printed_for_a_subagent_stop_or_another_session(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct"))
+        self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work))
+        self.assertEqual(self.run_guard("claude", self.claude_stop(agent_id="ag-1", agent_type="executor")), "")
+        self.assertEqual(self.run_guard("claude", self.claude_stop(session_id="sess-2")), "")
+        self.assertEqual(self.run_guard("claude", self.claude_stop(stop_hook_active="false")), "")
+        self.assertEqual(json.loads(self.run_guard("claude", self.claude_stop()))["decision"], "block")
+
+    def test_other_hosts_never_print_a_block(self) -> None:
+        grok_prompt = {"hookEventName": "user_prompt_submit", "sessionId": "sess-1", "promptId": "p-1", "cwd": self.work}
+        grok_edit = {"hookEventName": "pre_tool_use", "sessionId": "sess-1", "promptId": "p-1", "cwd": self.work,
+                     "toolName": "write", "toolInput": {"file_path": "a.py"}}
+        self.run_guard("grok", grok_prompt, SHOAL_GUARD="enforce")
+        self.run_guard("grok", grok_edit, SHOAL_GUARD="enforce")
+        self.assertEqual(self.run_guard("grok", {"hookEventName": "stop", "sessionId": "sess-1", "promptId": "p-1",
+                                                  "stop_hook_active": False}, SHOAL_GUARD="enforce"), "")
+        self.assertEqual(self.run_guard("agy", {"conversationId": "c", "invocationNum": 1}), "")
+
+    def test_a_failed_state_write_does_not_block_and_does_not_spend_the_turn(self) -> None:
+        env = self.env()
+        for payload in (claude_prompt(cwd=self.work, prompt="#direct"),
+                        claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)):
+            guard.run("claude", json.dumps(payload).encode(), env)
+        raw = json.dumps(self.claude_stop()).encode()
+        with mock.patch.object(guard, "_write_json", return_value=False):
+            self.assertIsNone(guard.run("claude", raw, env))
+        self.assertEqual(self.log_records()[-1]["skip_reason"], "state_write_failed")
+        self.assertEqual(json.loads(guard.run("claude", raw, env))["decision"], "block")  # the failed write spent nothing
+        self.assertIsNone(guard.run("claude", raw, env))
+
+    def test_plain_shell_calls_touch_neither_state_nor_log_unless_a_check_is_due(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct"))
+        state_file = Path(self.guard_dir, "state", "sess-1.json")
+        before = (state_file.read_bytes(), len(self.log_records()), os.stat(state_file).st_mtime_ns)
+        self.assertEqual(self.run_guard("claude", claude_tool("Bash", {"command": "ls"}, cwd=self.work)), "")
+        self.assertEqual((state_file.read_bytes(), len(self.log_records()), os.stat(state_file).st_mtime_ns), before)
+        self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work))
+        changed = json.loads(state_file.read_text(encoding="utf-8"))
+        self.assertEqual((changed["changed"], changed["checked"]), (True, False))
+        logged = len(self.log_records())
+        self.assertEqual(self.run_guard("claude", claude_tool("Bash", {"command": "ls"}, cwd=self.work)), "")
+        checked = json.loads(state_file.read_text(encoding="utf-8"))
+        self.assertEqual((checked["changed"], checked["checked"]), (True, True))
+        self.assertEqual(len(self.log_records()), logged)  # the bookkeeping never logs
+
+    def test_stop_switch_table(self) -> None:
+        for host in ("claude", "codex"):
+            for value, want in ((None, True), ("on", True), ("maybe", True), ("", True), ("off", False)):
+                env = {} if value is None else {"SHOAL_GUARD_STOP": value}
+                self.assertIs(guard.stop_enabled(host, env), want, (host, value))
+        for host in ("grok", "agy", "opencode", ""):
+            self.assertIs(guard.stop_enabled(host, {}), False, host)
+            self.assertIs(guard.stop_enabled(host, {"SHOAL_GUARD_STOP": "on"}), False, host)
+        self.assertEqual(guard.STOP_HOSTS, frozenset({"claude", "codex"}))
+
+    def test_the_switch_and_the_guard_mode_silence_the_check(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct"))
+        self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work))
+        self.assertEqual(self.run_guard("claude", self.claude_stop(), SHOAL_GUARD_STOP="off"), "")
+        self.assertEqual(self.run_guard("claude", self.claude_stop(), SHOAL_GUARD="shadow"), "")
+        self.assertEqual(self.log_records()[-1]["decision"], "would_block")
+        self.assertEqual(self.run_guard("claude", self.claude_stop(), SHOAL_GUARD="off"), "")
+        self.assertEqual(json.loads(self.run_guard("claude", self.claude_stop()))["decision"], "block")
+
+    def test_zh_tw_message_and_state_never_hold_the_last_message(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct"))
+        self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work))
+        out = json.loads(self.run_guard("claude", self.claude_stop(last_assistant_message="SECRET-LAST-MESSAGE"),
+                                        SHOAL_GUARD_LANG="zh-TW"))
+        self.assertIn("本回合改過檔案", out["reason"])
+        blob = ""
+        for dirpath, _, names in os.walk(self.guard_dir):
+            for name in names:
+                blob += Path(dirpath, name).read_text(encoding="utf-8")
+        self.assertNotIn("SECRET-LAST-MESSAGE", blob)
 
 
 class StateLockTests(CliCase):

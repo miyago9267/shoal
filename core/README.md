@@ -70,8 +70,11 @@ role 只在 `roles.toml` 宣告 `access` 與 `capabilities`；各 host 的權限
 - `--explain` 對每個 role 印出 `access`、`capabilities`、套用的對應表、
   覆寫與推導出的欄位。
 
-orchestration policy 的條款在 `core/policy/`（見下一節）；各 host 目前仍輸出
-`hosts/<h>/src/` 內的 legacy 原文，切換是逐 host 的 migration。
+orchestration policy 的條款在 `core/policy/`（見下一節）；目前只有 Claude 輸出
+core 條款，其他 host 仍輸出 `hosts/<h>/src/` 內的 legacy 原文。規則共用是既定方向，
+其他 host 逐 host 改為 core 的計畫見
+[docs/specs/shared-rules/SPEC.md](../docs/specs/shared-rules/SPEC.md)；切換是逐 host
+的 migration。
 
 ## role 條款（core/contracts）
 
@@ -133,8 +136,9 @@ role 條款的機制（`tools/contracts.py` 的 `compose`、`load_frame`、
   `HOST_SPECIFIC_TERMS`（`tests/test_role_contracts.py`）。
 - binding 的 `[policy]`：
   - `policy_text = "legacy" | "core"`：與 `role_text` 相同的開關，`legacy` 輸出 src
-    原文，是逐 host 的 rollback。目前五個 host 都是 `legacy`；只有 Claude 的
-    renderer 支援 `core`，其他 host 設 `core` 會失敗（P3 才開放）。
+    原文，是逐 host 的 rollback。目前只有 Claude 是 `core`，其餘四個是 `legacy`；
+    只有 Claude 的 renderer 支援 `core`，其他 host 設 `core` 會失敗。這個限制保留到
+    shared-rules 的 S4 起逐 host 開放（計畫見 `docs/specs/shared-rules/SPEC.md`）。
   - `omit = [{ id, reason }]`：該 host 省略的條款，每項都要有理由；未列出的條款一律
     輸出。整份文件的條款都被省略（且沒有 addendum）時，該文件不輸出。
   - `[policy.placeholders]`：詞彙內每個 key 的值。

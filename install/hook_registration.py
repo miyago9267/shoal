@@ -20,9 +20,12 @@ CURRENT_PROJECTION_ID = "shoal-autoroute-v1"
 # v2 (3.2.1, docs/specs/guard-declared-direct M7) adds Codex's shell tool `Bash` to the
 # PreToolUse matcher; v1 stays allowlisted so a registration made by 3.2.0 or earlier is
 # upgraded in place instead of being rejected.
-GUARD_PROJECTION_ID = "shoal-guard-v2"
+# v3 (3.4.0, docs/specs/shared-rules B3) adds a `Stop` group for the completion check; v1 and v2 stay
+# allowlisted for the same reason.  The autoroute gate's own Stop group is a different group and is never touched.
+GUARD_PROJECTION_ID = "shoal-guard-v3"
 GUARD_PROJECTION_ID_V1 = "shoal-guard-v1"
-GUARD_PROJECTION_IDS = (GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID)
+GUARD_PROJECTION_ID_V2 = "shoal-guard-v2"
+GUARD_PROJECTION_IDS = (GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID)
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
@@ -88,8 +91,13 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP_V1,
     },
+    GUARD_PROJECTION_ID_V2: {
+        "UserPromptSubmit": _GUARD_PROMPT_GROUP,
+        "PreToolUse": _GUARD_TOOL_GROUP,
+    },
     GUARD_PROJECTION_ID: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
+        "Stop": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
     },
 }
@@ -438,17 +446,23 @@ def _upgrade_guard(merged: dict[str, Any], owned_id: str, desired_id: str) -> No
         return
     prior, desired = TRUSTED_PROJECTIONS[owned_id], TRUSTED_PROJECTIONS[desired_id]
     for event, group in desired.items():
-        if not _type_strict_equal(prior[event], group) and _locations(merged, group):
-            raise HookRegistrationError("desired guard group collides with an unowned canonical group")
-    for event, group in prior.items():
-        if _type_strict_equal(group, desired[event]):
+        if event in prior and _type_strict_equal(prior[event], group):
             continue
-        index = next(
-            index
-            for index, candidate in enumerate(merged["hooks"][event])
-            if _type_strict_equal(candidate, group)
-        )
-        merged["hooks"][event][index] = copy.deepcopy(desired[event])
+        # The group may already be present only as part of the owned projection (v3's Stop group has the body of
+        # its UserPromptSubmit group); a copy anywhere else, notably in the new event, is not ours.
+        owned_elsewhere = {e for e, candidate in prior.items() if _type_strict_equal(candidate, group)}
+        if any(location_event not in owned_elsewhere for location_event, _ in _locations(merged, group)):
+            raise HookRegistrationError("desired guard group collides with an unowned canonical group")
+    for event, group in desired.items():
+        if event not in prior:
+            merged["hooks"].setdefault(event, []).append(copy.deepcopy(group))  # an event the prior lacked
+        elif not _type_strict_equal(prior[event], group):
+            index = next(
+                index
+                for index, candidate in enumerate(merged["hooks"][event])
+                if _type_strict_equal(candidate, prior[event])
+            )
+            merged["hooks"][event][index] = copy.deepcopy(group)
 
 
 def validate_source_registration(payload: bytes) -> dict[str, Any]:
@@ -533,10 +547,18 @@ def merge_registration(
     else:
         _upgrade_autoroute(merged, owned_projection_id, desired_id)
 
+    older_registered = next(
+        (
+            guard_id
+            for guard_id in (GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V1)
+            if owned_guard_projection_id is None and _guard_already_registered(merged, guard_id)
+        ),
+        None,
+    )
     if owned_guard_projection_id is None and _guard_already_registered(merged):
         pass  # adopted: placed by tools/install_hooks.py --host codex
-    elif owned_guard_projection_id is None and _guard_already_registered(merged, GUARD_PROJECTION_ID_V1):
-        _upgrade_guard(merged, GUARD_PROJECTION_ID_V1, desired_guard)  # placed by 3.2.0 or earlier
+    elif older_registered is not None:
+        _upgrade_guard(merged, older_registered, desired_guard)  # placed by 3.2.1 (v2) or 3.2.0 and earlier (v1)
     elif owned_guard_projection_id is None:
         if any(
             _locations(document, group)
