@@ -128,7 +128,7 @@ class OtherHostsRoleTests(unittest.TestCase):
                 self.assertTrue(set(NEW_ROLES) <= set(binding["roles"]))
                 self.assertFalse(set(NEW_ROLES) & set(binding.get("omitted_roles", [])))
         opencode = render.load_toml(ROOT / "hosts" / "opencode" / "binding.toml")
-        self.assertEqual(opencode["omitted_roles"], ["applier", "plan-critic"])
+        self.assertEqual(opencode["omitted_roles"], [])
 
     def test_every_host_renders_both_roles_with_the_core_contract(self) -> None:
         core = render.load_core(ROOT)["contracts"]
@@ -241,7 +241,9 @@ class PlanCriticGapModeTests(unittest.TestCase):
             with self.subTest(host=host):
                 self.assertIn("`mode: gaps`", data)
                 self.assertIn("up to three materially", data)
-        self.assertNotIn("roles/plan-critic.md", render.RENDERERS["opencode"](ROOT))
+        opencode = render.RENDERERS["opencode"](ROOT)["roles/plan-critic.md"].decode("utf-8")
+        self.assertIn("`mode: gaps`", opencode)
+        self.assertIn("up to three materially", opencode)
 
 
 class PolicyClauseTests(unittest.TestCase):
