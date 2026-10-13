@@ -75,6 +75,7 @@ EXPECTED_POLICY_ADDENDA["codex"] = {
         "codex-checkpoint-resume",
         "codex-mcp-elicitation-adapter",
         "codex-no-authority-hook-trust",
+        "pending-shared-card-no-implied-authorization",
     ],
     "orchestration": [
         "pending-shared-persona-precedence",

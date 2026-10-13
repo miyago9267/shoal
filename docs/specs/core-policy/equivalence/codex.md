@@ -1516,3 +1516,11 @@ cheap parent」，與 A3 規則 1 衝突；逐字搬入會把矛盾帶進 addend
   directly」與「cheap parent」，改為派給一個可寫入的 role；orchestration
   addendum 表中單指令列的 Astra 欄由「Never open a child」改為
   「Never Astra」。
+- 補回 legacy 決策卡的 `Do not include credentials, external writes,
+  destructive work, release, or irreversible work in the card's implied
+  authorization.`：core 的 `explicit-approval-only` 只涵蓋自由文字回答，
+  沒有等價句。處置：保留原句逐字，作為 addendum
+  `pending-shared-card-no-implied-authorization`
+  （`after:explicit-approval-only`，`join = "space"`），待升為共用條款；
+  `test_policy.py` 恢復對 `card's implied authorization` 的斷言。
+  extensions 檔為 265 行／15199 bytes。

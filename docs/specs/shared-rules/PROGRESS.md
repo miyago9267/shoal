@@ -141,6 +141,22 @@
   過期的安裝狀態檔未處理。
 - 整合檢查（`3d772d4`）：unittest 1568 個通過（skipped 2）、六個 render
   檢查、lock、lint、OpenCode plugin 的 bun test 671 通過。
+- push 前的 `verifier` 檢查發現 Codex plugin 的 `SKILL.md` 是手寫舊文字，
+  仍允許 main「implement directly」、把小事交給「the cheap parent」，與 A3
+  矛盾；`ef71cbf` 已改掉並加測試。所以「Codex 條款由 core 產生」只適用三份
+  條款檔，`SKILL.md` 仍是手寫。
+- role 啟動失敗路徑的 live 實測（1 次，暫時移走四個可寫 role 的 TOML，事後
+  sha256 核對還原無誤）：不符合。main 沒有回報、也沒有自己改檔，而是改派
+  Codex 內建的 `worker`（不是 shoal 的 role）完成修改；guard 把任何
+  `spawn_agent` 都視為派工而放行。尚未處理；候選做法是 guard 在 Codex 上
+  只允許 shoal 的具名 role，需 Miyago 決定。
+- 第二次 `verifier`（測試遷移）：CONFIRMED；`test_policy.py` 21 個 legacy
+  test 都有對應，lock 測試的行為測試未變。補回一條遺漏的規則
+  （`pending-shared-card-no-implied-authorization`）與兩處釘選。
+- 已知未處理：core `small-parallel-units` 提到 writers 各自的 worktree，但
+  Codex 的 `spawn_agent` 沒有 worktree 隔離選項；
+  `hosts/codex/src/agents-md.orchestration.md` 的 legacy 列仍有舊措辭（不參與
+  render）。
 
 ### 未完成
 

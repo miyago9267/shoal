@@ -135,6 +135,7 @@ class PolicyTests(unittest.TestCase):
             "One high-level question whose answer changes the next gate",
             "Do not turn a general-mode checkpoint into a Plan-mode questionnaire",
             "defer secondary implementation details",
+            "card's implied authorization",
         ):
             self.assertIn(phrase, policy)
 
@@ -320,7 +321,7 @@ class PolicyTests(unittest.TestCase):
         for phrase in (
             "program envelope",
             "next executable slice",
-            "non-goals",
+            "scope, non-goals",
             "acceptance proving outcome",
             "rollback, budget, stops",
             "Risk-triggered units use fresh `plan-critic`",
@@ -331,6 +332,7 @@ class PolicyTests(unittest.TestCase):
             "not merely permission for another review round",
             "Never resubmit substantially unchanged Plan",
             "carry findings/dispositions into Plan",
+            "returns **READY** or **REVISE** under its role contract; malformed output is protocol failure",
         ):
             self.assertIn(phrase, normalized_policy)
         self.assertNotIn("Plan epoch", policy)

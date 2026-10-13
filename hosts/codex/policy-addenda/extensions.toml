@@ -163,3 +163,12 @@ at = "after:ext-no-authority"
 join = "paragraph"
 text = '''
 Never treat role approval, hook trust, or Plugin availability as authorization for policy integration, external mutation, destructive action, release, or security-sensitive work.'''
+
+[[addendum]]
+id = "pending-shared-card-no-implied-authorization"
+at = "after:explicit-approval-only"
+join = "space"
+text = '''
+Do not include
+credentials, external writes, destructive work, release, or irreversible work
+in the card's implied authorization.'''

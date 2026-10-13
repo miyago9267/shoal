@@ -121,7 +121,11 @@ Resolve replies conservatively: an exact option confirms only that option; a
 rejection keeps the affected tasks pending; an ambiguous or multiple reply
 stays pending and gets one concise clarification. Never treat a plausible
 free-text answer as approval of credentials, external writes, destructive
-work, release, or irreversible work. Ask follow-ups only after the selected
+work, release, or irreversible work. Do not include
+credentials, external writes, destructive work, release, or irreversible work
+in the card's implied authorization.
+
+Ask follow-ups only after the selected
 direction resumes and a new material boundary appears. If `request_user_input`
 is unavailable, end with `PAUSED_NEEDS_USER`, one question, choices, and a
 recommendation.
