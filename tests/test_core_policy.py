@@ -1,7 +1,7 @@
 """core/policy 機制：條款格式、placeholder、omit、required、policy_text 開關與 preview（core-policy P1）。
 
 機制測試用 temp 目錄的假條款與 repo 的 Claude 設定副本；鎖定測試（EXPECTED_*）直接檢查 repo 目前的
-core/policy 與各 host 的 binding / policy-addenda，變更要同時改這裡。P1 時所有 host 都是 legacy。
+core/policy 與各 host 的 binding / policy-addenda，變更要同時改這裡。所有 host 的 renderer 都能輸出 core，repo 內只有 claude 是 core。
 """
 
 from __future__ import annotations
@@ -405,13 +405,15 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertEqual(self.render("--write").returncode, 0)
         self.assertEqual(self.render("--check").returncode, 0)
 
-    def test_core_is_rejected_for_hosts_that_are_not_ready(self) -> None:
-        for host in ("codex", "agy", "grok", "opencode"):
+    def test_every_host_accepts_core_policy_text_in_validation(self) -> None:
+        # 所有 host 的 renderer 都能輸出 core；repo 內只有 claude 切過去（EXPECTED_POLICY_TEXT）。
+        for host in HOSTS[1:]:
             with self.subTest(host=host):
                 core = render.load_core(ROOT)
                 binding = render.load_toml(ROOT / "hosts" / host / "binding.toml")
-                binding["policy"]["policy_text"] = "core"
-                with self.assertRaisesRegex(render.RenderError, "尚未支援這個 host"):
+                binding.setdefault("policy", {})["policy_text"] = "core"
+                binding["policy"].setdefault("placeholders", {})
+                with self.assertRaisesRegex(render.RenderError, r"\[policy\.(documents|placeholders)\] 缺少"):
                     render.validate_catalog(core, binding)
 
     def test_policy_text_must_be_core_or_legacy(self) -> None:

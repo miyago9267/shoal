@@ -49,7 +49,7 @@ TIERS = ("fast", "standard", "strong", "frontier")
 ROLE_TEXT_MODES = ("core", "legacy")
 # policy 文字來源：core = core/policy 的條款加 host 的 policy-frames/policy-addenda；legacy = host src 內的原文。
 POLICY_TEXT_MODES = ("core", "legacy")
-POLICY_KEYS = {"policy_text", "omit", "placeholders", "documents"}
+POLICY_KEYS = {"policy_text", "omit", "placeholders", "documents", "mirrors"}
 READ_ONLY_FORBIDDEN_TOOLS = {"Write", "Edit", "Bash", "NotebookEdit"}
 # frontmatter 之後緊接一行空白，再接 body。
 FRONTMATTER_KEYS = ("name", "description", "model", "effort")
@@ -285,7 +285,7 @@ def _safe_relative(path: object) -> bool:
             and ".." not in path.split("/") and not path.endswith("/"))
 
 
-def validate_policy(core: dict, binding: dict, *, core_supported: bool) -> None:
+def validate_policy(core: dict, binding: dict) -> None:
     """binding 的 [policy]：policy_text、omit（要有理由、不可含 required）、placeholders、documents。
 
     policy_text = "core" 時 documents 必須涵蓋每份 core 文件、placeholders 必須恰好是詞彙；
@@ -302,8 +302,6 @@ def validate_policy(core: dict, binding: dict, *, core_supported: bool) -> None:
     mode = policy.get("policy_text")
     if mode not in POLICY_TEXT_MODES:
         raise RenderError(f"[policy].policy_text 必須是 {list(POLICY_TEXT_MODES)}")
-    if mode == "core" and not core_supported:
-        raise RenderError('[policy].policy_text = "core" 尚未支援這個 host（core-policy P2、P3 逐 host 開放）')
     docs, vocab = core["policy"]["docs"], core["policy"]["placeholders"]
     ids = {c.id: c for clauses in docs.values() for c in clauses}
     omit = policy.get("omit", [])
@@ -340,6 +338,14 @@ def validate_policy(core: dict, binding: dict, *, core_supported: bool) -> None:
             raise RenderError(f"[policy.documents].{doc}: 必須是不含 .. 的相對路徑")
     if len(set(documents.values())) != len(documents):
         raise RenderError("[policy.documents]: 兩份文件不可輸出到同一個路徑")
+    mirrors = policy.get("mirrors", {})
+    if not isinstance(mirrors, dict):
+        raise RenderError("[policy.mirrors] 必須是 table")
+    for rel, target in mirrors.items():
+        if rel not in documents.values():
+            raise RenderError(f"[policy.mirrors]: {rel} 不是 [policy.documents] 的輸出路徑")
+        if not _safe_relative(target):
+            raise RenderError(f"[policy.mirrors].{rel}: 必須是不含 .. 的相對路徑")
     if mode == "core":
         require_policy_complete(core, binding)
 
@@ -386,11 +392,20 @@ def policy_files(core: dict, binding: dict, host_dir: Path) -> dict[str, bytes]:
     return out
 
 
+def merge_core_policy(out: dict[str, bytes], core: dict, binding: dict, host_dir: Path) -> None:
+    """policy_text = "core" 時把 core 組出的文件併入 out：取代同路徑的原文，整份被 omit 的文件從輸出移除；legacy 不動。"""
+    if policy_text_mode(binding) != "core":
+        return
+    for path in binding["policy"]["documents"].values():
+        out.pop(path, None)
+    out.update(policy_files(core, binding, host_dir))
+
+
 def explain_policy(root: Path, host: str) -> str:
     """每份 policy 文件的輸出路徑、外框、每個 core 條款的狀態（core / omitted / replaced）與 addenda。"""
     core, binding = load_core(root), load_toml(root / "hosts" / host / "binding.toml")
     host_dir = root / "hosts" / host
-    validate_policy(core, binding, core_supported=True)
+    validate_policy(core, binding)
     require_policy_complete(core, binding)
     omitted = policy_omits(binding)
     out = [f"host: {host}", f"policy_text: {policy_text_mode(binding)}", ""]
@@ -460,10 +475,9 @@ def _legacy_body(src: Path, folder: str, name: str) -> bytes:
     return (src / folder / f"{name}.md").read_bytes()
 
 
-def validate_catalog(core: dict, binding: dict, *, core_policy: bool = False) -> None:
+def validate_catalog(core: dict, binding: dict) -> None:
     """host 共通規則：catalog 合法、catalog 的每個 role 在 binding 有對應或列入 omitted_roles、選模規則可解、[policy] 合法。
 
-    core_policy 表示這個 host 的 renderer 已能輸出 core policy；其他 host 設 policy_text = "core" 會失敗。
     """
     try:
         resolve.validate_core(core)
@@ -489,7 +503,7 @@ def validate_catalog(core: dict, binding: dict, *, core_policy: bool = False) ->
     for name, spec in binding.get("extra_roles", {}).items():
         if "role_text" in spec:
             raise RenderError(f"{name}: host 專屬 role 沒有 core 條款，不可設 role_text")
-    validate_policy(core, binding, core_supported=core_policy)
+    validate_policy(core, binding)
     omitted = binding.get("omitted_roles", [])
     for name in omitted:
         if name not in catalog:
@@ -515,7 +529,7 @@ def _claude_tools(name: str, perm: Permission) -> tuple[str, list[str]]:
 
 
 def validate_claude(core: dict, binding: dict) -> dict[str, Permission]:
-    validate_catalog(core, binding, core_policy=True)
+    validate_catalog(core, binding)
     perms = derive_permissions("claude", core, binding)
     for name, perm in perms.items():
         kind, tools = _claude_tools(name, perm)
@@ -554,11 +568,7 @@ def render_claude(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         rel = path.relative_to(src)
         if path.is_file() and rel.parts[0] != "agents":
             out[rel.as_posix()] = path.read_bytes()
-    if policy_text_mode(binding) == "core":
-        # core 的文件取代 src 內同路徑的原文；整份被 omit 的文件從輸出移除。
-        for path in binding["policy"]["documents"].values():
-            out.pop(path, None)
-        out.update(policy_files(core, binding, src.parent))
+    merge_core_policy(out, core, binding, src.parent)
     return out
 
 
@@ -641,6 +651,7 @@ def render_codex(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
                 raise RenderError("config.snippet.toml 有未替換的 placeholder")
             data = text.encode("utf-8")
         out[rel.as_posix()] = data
+    merge_core_policy(out, core, binding, src.parent)
     return out
 
 
@@ -732,6 +743,7 @@ def render_agy(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         out[f"agents/{name}/agent.md"] = _agy_frontmatter(name, binding["roles"][name], perms[name], model).encode("utf-8") + body
     _passthrough(src, out, {"agents", "rules"})
     out[AGY_RULES_PATH] = _versioned_rules(src, AGY_RULES_PATH, "shoal-agy")
+    merge_core_policy(out, core, binding, src.parent)
     return out
 
 
@@ -795,6 +807,7 @@ def render_grok(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     _passthrough(src, out, {"agents", "rules"})
     out[GROK_RULES_PATH] = _grok_rules(src)
     out[GROK_GUARD_PATH] = _guard_script(src.parents[2])
+    merge_core_policy(out, core, binding, src.parent)
     return out
 
 
@@ -858,6 +871,7 @@ def render_opencode(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     }
     out["catalog.json"] = _json_bytes({"agents": agents, "providers": providers})
     out["routing.json"] = _json_bytes({"version": binding["routing"]["version"], "roles": routes})
+    merge_core_policy(out, core, binding, src.parent)
     return out
 
 
@@ -1180,15 +1194,30 @@ def diff_dist(dist: Path, files: dict[str, bytes]) -> list[str]:
     return sorted(problems)
 
 
+def mirror_map(root: Path, host: str) -> dict[str, str]:
+    """MIRRORS 加上 binding [policy.mirrors]（只在 policy_text = "core" 時生效，來源必須是 policy 文件的輸出路徑）。"""
+    mirrors = dict(MIRRORS.get(host, {}))
+    path = root / "hosts" / host / "binding.toml"
+    if path.is_file():
+        binding = load_toml(path)
+        if policy_text_mode(binding) == "core":
+            mirrors.update(binding.get("policy", {}).get("mirrors", {}))
+    return mirrors
+
+
 def write_mirrors(root: Path, host: str, files: dict[str, bytes]) -> None:
-    for rel, target in MIRRORS.get(host, {}).items():
+    for rel, target in mirror_map(root, host).items():
+        if rel not in files:  # 文件被整份 omit 時沒有內容可鏡射
+            continue
         (root / target).parent.mkdir(parents=True, exist_ok=True)
         (root / target).write_bytes(files[rel])
 
 
 def diff_mirrors(root: Path, host: str, files: dict[str, bytes]) -> list[str]:
     problems = []
-    for rel, target in MIRRORS.get(host, {}).items():
+    for rel, target in mirror_map(root, host).items():
+        if rel not in files:
+            continue
         path = root / target
         if not path.is_file():
             problems.append(f"缺少: {target}")
@@ -1355,7 +1384,7 @@ def explain(root: Path, host: str) -> str:
     """印出每個 role 的 tier、候選模型（含被排除的原因）、結果（resolver 選的或手動 pin 的）與權限推導。"""
     core, binding = load_core(root), load_toml(root / "hosts" / host / "binding.toml")
     if host in RENDERERS:
-        validate_catalog(core, binding, core_policy=host == "claude")
+        validate_catalog(core, binding)
         perms = derive_permissions(host, core, binding)
     else:
         perms = validate_generic(host, core, binding)
@@ -1413,7 +1442,7 @@ def policy_main(args: argparse.Namespace) -> int:
             return 0
         host_dir = args.root / "hosts" / args.host
         core, binding = load_core(args.root), load_toml(host_dir / "binding.toml")
-        validate_policy(core, binding, core_supported=True)
+        validate_policy(core, binding)
         files = policy_files(core, binding, host_dir)
         target = args.policy_preview.resolve()
         protected = (args.root / dist_dir(args.host)).resolve()
