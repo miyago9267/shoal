@@ -42,7 +42,7 @@ export type Env = Record<string, string | undefined>;
 
 export type GuardEvent = {
   host: string;
-  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start" | "stop";
+  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start" | "stop" | "session_start";
   session_id: string | null;
   turn_id: string | null;
   cwd: string | null;
@@ -60,6 +60,12 @@ export type GuardEvent = {
   stop_hook_active?: unknown;
   /** codex: the subagent's id on its events and on `subagent_start` (its own turn_id differs from main's). */
   agent_id?: string | null;
+  /** agy: the conversation's workspace paths, joined; every listed subagent's role name on `invoke_subagent`; the host's raw `fullyIdle`. */
+  workspace?: string | null;
+  dispatched_roles?: string[] | null;
+  fully_idle?: unknown;
+  /** agy, set by the guard: the access class of the subagent conversation the event belongs to. */
+  conv_class?: string | null;
 };
 
 export type GuardResult = {
@@ -97,16 +103,14 @@ type StateFile = {
 };
 type LogRecord = Record<string, unknown>;
 
-// Default mode per host.  E6: opencode is enforce (shadow evidence met); codex and grok are enforce, agy is forced shadow.
+// Default mode per host.  E6: opencode is enforce (shadow evidence met); codex, grok and agy are enforce.
 const HOST_DEFAULT_MODE: Record<string, string> = {
   claude: "enforce",
   codex: "enforce",
   grok: "enforce",
-  agy: "shadow",
+  agy: "enforce",
   opencode: "enforce",
 };
-// Hosts that cannot tell main from subagent: enforce is never allowed (spec R5).
-const FORCED_SHADOW_HOSTS = new Set(["agy"]);
 // Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
 const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
 // Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
@@ -114,8 +118,19 @@ const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
 // have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches
 // the check off on these hosts and has no effect elsewhere.  Grok has the payload but its block output is not yet
 // exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
-const STOP_HOSTS = new Set(["claude", "codex", "grok"]);
-const STOP_SHADOW_DEFAULT_HOSTS = new Set(["grok"]);
+const STOP_HOSTS = new Set(["claude", "codex", "grok", "agy"]);
+const STOP_SHADOW_DEFAULT_HOSTS = new Set(["grok", "agy"]);
+// agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its
+// OWN conversation (announced by a `SessionStart`).  The guard infers main vs subagent from the order of events and keeps
+// it in `state/agy.conversations.json`.  Not exact: two sessions dispatching at once in one workspace can be confused.
+const CONVERSATION_HOSTS = new Set(["agy"]);
+const AGY_RECORD_FILE = "agy.conversations";
+const AGY_RECORD_MAX = 64;
+const AGY_PENDING_TTL_MS = 600_000;
+// Hosts whose prompt event carries the user's text, so that `#direct` exists.  agy's PreInvocation carries none.
+const PROMPT_DIRECT_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
+type AgyConversation = { id: string; kind: "main" | "sub"; role: string; cls: string; dispatcher: string };
+type AgyPending = { dispatcher: string; role: string; workspace: string; ts: number };
 // agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 const COMPOSED_TURN_HOSTS = new Set(["agy"]);
 // Hosts whose tool hooks carry no turn id: the turn recorded at the prompt boundary is used
@@ -135,12 +150,12 @@ const DENY_MAIN_HOSTS = new Set(["claude"]);
 // (claude's and, since 3.2.1, codex's `Bash`; the OpenCode adapter's `bash`); every other host keeps the v3.1.0
 // rule (`classified`).  `strict` (3.3.0) needs the same events and is selectable on the same hosts, where it is
 // the default.
-const DECLARE_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
+const DECLARE_HOSTS = new Set(["claude", "codex", "opencode", "grok", "agy"]);
 // Hosts where "a write-level role was dispatched" unlocks only once the role has started (M11): the dispatch
 // call records a pending write dispatch and the SubagentStart event of the same session releases it.  Every
 // other host unlocks at the dispatch call itself (no start event is recorded for it).  The registration and
 // the guard script ship together; see hooks/shoal_guard.py.
-const START_UNLOCK_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
+const START_UNLOCK_HOSTS = new Set(["claude", "codex", "opencode", "grok", "agy"]);
 // Codex: the first tool call of a write-level role's agent is start evidence as well (the SubagentStart hook may not be
 // approved yet); each agent_id releases at most one pending dispatch (`started_agents`).  See hooks/shoal_guard.py.
 
@@ -239,6 +254,15 @@ const MESSAGES: Record<string, Record<string, string>> = {
     STRICT:
       "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
       "write-capable role (executor or applier), or ask the user to add #direct to the prompt.",
+    STRICT_ND:
+      "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
+      "write-capable role (executor or applier) and wait until it has started, add the role to " +
+      "SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1 (this host has no prompt marker for it).",
+    DECLARE_ND:
+      "Shoal dispatch guard: the main session delegates edits by default. Dispatch a " +
+      "write-capable role (executor or applier), or declare direct work first by running " +
+      'exactly : shoal-direct "<reason>" as its own shell command, or set SHOAL_GUARD_DIRECT=1 ' +
+      "(this host has no prompt marker for it).",
     E1:
       "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. " +
       "Dispatch a shoal write-capable role (executor or applier), add this agent type to " +
@@ -273,6 +297,13 @@ const MESSAGES: Record<string, Record<string, string>> = {
     STRICT:
       "Shoal dispatch guard：main session 不自己改檔。" +
       "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。",
+    STRICT_ND:
+      "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier）並等它啟動、" +
+      "把 role 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1（這個 host 沒有 prompt 標記可用）。",
+    DECLARE_ND:
+      "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
+      "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
+      ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或設定 SHOAL_GUARD_DIRECT=1（這個 host 沒有 prompt 標記可用）。',
     E1:
       "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。" +
       "請派出 shoal 可寫的 role（executor 或 applier）、把這個 agent type 加進 " +
@@ -517,7 +548,6 @@ export function resolveMode(host: string, env: Env): string {
   let mode: string;
   if (!raw) mode = HOST_DEFAULT_MODE[host] ?? "shadow";
   else mode = raw === "enforce" || raw === "shadow" || raw === "off" ? raw : "shadow";
-  if (mode === "enforce" && FORCED_SHADOW_HOSTS.has(host)) mode = "shadow";
   return mode;
 }
 
@@ -526,7 +556,7 @@ export function resolveMode(host: string, env: Env): string {
  * subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it, so the
  * user's `#direct` can release a subagent.
  */
-const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
+const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude", "codex", "opencode", "grok", "agy"]);
 // opencode: the adapter reports a subagent under its main session id and the main turn that was current when the
 // child session was created (hosts/opencode/plugin/src/guard/opencode.ts).
 const SUBAGENT_DIRECT_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
@@ -699,8 +729,39 @@ function text(env: Env, key: string, fmt: Record<string, unknown> = {}): string 
   return MESSAGES[lang][key].replace(/\{(\w+)\}/g, (_m, name: string) => String(fmt[name]));
 }
 
+/** STRICT / DECLARE, or their variant without the `#direct` exit on a host whose prompt event carries no text. */
+function exitText(env: Env, host: string, key: "STRICT" | "DECLARE"): string {
+  return text(env, PROMPT_DIRECT_HOSTS.has(host) ? key : key + "_ND");
+}
+
 function none(mode: string): GuardResult {
   return { decision: "none", rule: null, skip_reason: null, reason: null, mode };
+}
+
+/** The valid content of the agy conversation record, each list the last AGY_RECORD_MAX. */
+function agyRecord(raw: Record<string, unknown>): { conversations: AgyConversation[]; pending: AgyPending[] } {
+  const convs = Array.isArray(raw.conversations) ? raw.conversations : [];
+  const pend = Array.isArray(raw.pending) ? raw.pending : [];
+  const conversations = convs.filter(
+    (c): c is AgyConversation =>
+      c !== null &&
+      typeof c === "object" &&
+      validId((c as AgyConversation).id) &&
+      ((c as AgyConversation).kind === "main" || (c as AgyConversation).kind === "sub") &&
+      typeof (c as AgyConversation).role === "string" &&
+      ["write", "nonwrite", "unknown", ""].includes((c as AgyConversation).cls) &&
+      ((c as AgyConversation).dispatcher === "" || validId((c as AgyConversation).dispatcher)),
+  );
+  const pending = pend.filter(
+    (e): e is AgyPending =>
+      e !== null &&
+      typeof e === "object" &&
+      validId((e as AgyPending).dispatcher) &&
+      typeof (e as AgyPending).role === "string" &&
+      typeof (e as AgyPending).workspace === "string" &&
+      typeof (e as AgyPending).ts === "number",
+  );
+  return { conversations: conversations.slice(-AGY_RECORD_MAX), pending: pending.slice(-AGY_RECORD_MAX) };
 }
 
 class Guard {
@@ -765,7 +826,8 @@ class Guard {
     if (rule === null && subagentWriteEnabled(this.host, this.env)) rule = this.subagentWriteRule(role, toolKind);
     if (rule === null) return none(this.mode);
     let file: string | undefined = this.event.paths?.[0];
-    if (rule === "E1" && toolKind === "shell") file = this.shellWriteTarget() ?? undefined;
+    if ((rule === "E1" || rule === "E1_UNKNOWN") && toolKind === "shell") file = this.shellWriteTarget() ?? undefined;
+    if (rule === "E1_UNKNOWN") return this.result("skip", { rule: "E1", skip: "would_deny_unknown_class", file }); // role not established: only logged
     return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
       rule,
       reason: text(this.env, rule === "E1" && SUBAGENT_DIRECT_HOSTS.has(this.host) ? "E1D" : rule),
@@ -775,7 +837,8 @@ class Guard {
 
   /** E1: "E1" when this subagent call writes a non-exempt file and nothing releases it, else null. */
   private subagentWriteRule(role: string | null | undefined, toolKind: string | null | undefined): string | null {
-    if (roleAccess(role) === "write") return null;
+    const convClass = CONVERSATION_HOSTS.has(this.host) ? this.event.conv_class : undefined;
+    if (convClass === "write" || ((convClass === undefined || convClass === null) && roleAccess(role) === "write")) return null;
     let writes: boolean;
     if (toolKind === "edit") {
       const cwd = this.event.cwd || process.cwd();
@@ -788,7 +851,7 @@ class Guard {
     if (!writes) return null;
     if (writeAgentAllowed(role, this.env) || this.env.SHOAL_GUARD_DIRECT === "1") return null;
     if (this.subagentDirectReleased()) return null;
-    return "E1";
+    return convClass === "unknown" ? "E1_UNKNOWN" : "E1";
   }
 
   /**
@@ -874,6 +937,134 @@ class Guard {
     }
   }
 
+  // -- agy: main vs subagent by conversation order ---------------------------
+  private agyPaths(): { record: string; lock: string } | null {
+    const dir = this.guardDirectory;
+    if (dir === null) return null;
+    return { record: join(dir, "state", AGY_RECORD_FILE + ".json"), lock: join(dir, "state", AGY_RECORD_FILE + ".tslock") };
+  }
+
+  /** The recorded conversation `cid`, or null (no record, bad id, no state dir: all mean "main").  Read-only. */
+  agyConversation(cid: unknown): AgyConversation | null {
+    try {
+      const paths = this.agyPaths();
+      if (paths === null || !validId(cid)) return null;
+      const { conversations } = agyRecord(readJson(paths.record));
+      for (let i = conversations.length - 1; i >= 0; i--) if (conversations[i].id === cid) return conversations[i];
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  /** PreToolUse of invoke_subagent: one pending entry per listed subagent.  Silent, best effort. */
+  private agyPushPending(): void {
+    try {
+      const cid = this.event.session_id;
+      const paths = this.agyPaths();
+      if (paths === null || !validId(cid)) return;
+      const roles = this.event.dispatched_roles && this.event.dispatched_roles.length > 0 ? this.event.dispatched_roles : [""];
+      withStateLock(
+        paths.lock,
+        () => {
+          const record = agyRecord(readJson(paths.record));
+          const now = Date.now();
+          const pending = record.pending.filter((e) => now - e.ts <= AGY_PENDING_TTL_MS);
+          for (const role of roles) {
+            pending.push({ dispatcher: cid as string, role: typeof role === "string" ? role : "", workspace: this.event.workspace || "", ts: now });
+          }
+          writeJson(paths.record, { conversations: record.conversations, pending: pending.slice(-AGY_RECORD_MAX) });
+          return none(this.mode);
+        },
+        () => none(this.mode),
+      );
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /** write for a shoal write role or an allowlisted type, unknown for no role name, else nonwrite. */
+  private agyClass(role: string): string {
+    if (!role) return "unknown";
+    return roleAccess(role) === "write" || writeAgentAllowed(role, this.env) ? "write" : "nonwrite";
+  }
+
+  /**
+   * SessionStart of an unseen conversation: a subagent when a dispatch is pending (oldest first, preferring the same
+   * workspace), else a main conversation.  The role is known only when every candidate names the same one; otherwise the
+   * class is recorded when all candidates share it, else "unknown".  A write class releases the dispatcher's pending
+   * write dispatch; a verify role counts as a check.
+   */
+  private agySessionStart(): GuardResult {
+    const cid = this.event.session_id;
+    const paths = this.agyPaths();
+    if (!validId(cid)) return this.result("skip", { skip: "invalid_id" });
+    if (paths === null) return this.result("skip", { skip: "state_unavailable" });
+    let entry: AgyConversation | null = null;
+    let known = false;
+    const outcome = withStateLock(
+      paths.lock,
+      () => {
+        const record = agyRecord(readJson(paths.record));
+        if (record.conversations.some((c) => c.id === cid)) {
+          known = true;
+          return none(this.mode);
+        }
+        const now = Date.now();
+        const pending = record.pending.filter((e) => now - e.ts <= AGY_PENDING_TTL_MS);
+        const ws = this.event.workspace || "";
+        const sameWs = pending.filter((e) => ws !== "" && e.workspace === ws);
+        const cands = sameWs.length > 0 ? sameWs : pending;
+        if (cands.length > 0) {
+          const roles = cands.map((e) => e.role);
+          const role = new Set(roles).size === 1 ? roles[0] : "";
+          const classes = new Set(roles.map((r) => this.agyClass(r)));
+          const cls = classes.size === 1 ? [...classes][0] : "unknown";
+          const taken = cands[0];
+          pending.splice(pending.indexOf(taken), 1);
+          entry = { id: cid as string, kind: "sub", role, cls, dispatcher: taken.dispatcher };
+        } else {
+          entry = { id: cid as string, kind: "main", role: "", cls: "", dispatcher: "" };
+        }
+        const ok = writeJson(paths.record, { conversations: [...record.conversations, entry].slice(-AGY_RECORD_MAX), pending });
+        return ok ? none(this.mode) : this.result("skip", { skip: "state_write_failed" });
+      },
+      (reason) => this.result("skip", { skip: reason }),
+    );
+    if (known) return none(this.mode);
+    if (entry === null || outcome.decision === "skip") return outcome;
+    const made = entry as AgyConversation;
+    if (made.kind === "main") return this.result("state", { rule: "conversation_main" });
+    if (made.cls === "write") {
+      this.event = { ...this.event, session_id: made.dispatcher };
+      return this.releasePending(made.dispatcher, null, null);
+    }
+    if (roleAccess(made.role) === "verify") {
+      this.event = { ...this.event, session_id: made.dispatcher };
+      this.noteVerifyStarted();
+    }
+    return this.result("state", { rule: "conversation_sub", note: "class_" + made.cls });
+  }
+
+  /**
+   * agy: the result for SessionStart and for a subagent conversation's events; null = judge as main (a conversation
+   * without a record is main).  The adapter's own `is_subagent` is never used on this host.
+   */
+  agyRoute(): GuardResult | null {
+    const { kind, tool_kind: toolKind } = this.event;
+    if (kind === "session_start") return this.agySessionStart();
+    if (kind === "tool" && toolKind === "dispatch") this.agyPushPending();
+    const rec = this.agyConversation(this.event.session_id);
+    if (rec === null || rec.kind !== "sub") {
+      this.event = { ...this.event, is_subagent: false };
+      return null;
+    }
+    if (kind !== "tool") return none(this.mode); // a subagent's invocation boundary or stop is not main's
+    if (toolKind === "dispatch") return this.result("skip", { rule: "LEAF", skip: "leaf_dispatch_not_enforced" });
+    this.event = { ...this.event, is_subagent: true, role: rec.role || null, conv_class: rec.cls };
+    return this.subagent();
+  }
+
   // -- completion check (B2, B3) --------------------------------------------
   /** State and lock file of this event's session for a silent state update, or null. */
   private checkPaths(wantedTurn: string | null): { statePath: string; lockPath: string } | null {
@@ -940,16 +1131,18 @@ class Guard {
     if (!stopEnabled(this.host, this.env)) return none(this.mode);
     const flag = event.stop_hook_active;
     if (flag === true) return none(this.mode); // the host says this stop is the retry after a block
+    const conv = CONVERSATION_HOSTS.has(this.host);
+    if (conv && event.fully_idle !== true) return none(this.mode); // agy: only the stop that leaves the whole session idle ends main's turn
     const sid = event.session_id;
     const tid = event.turn_id;
-    if (sid == null || tid == null) return this.result("skip", { skip: "missing_id" });
-    if (!validId(sid) || !validId(tid)) return this.result("skip", { skip: "invalid_id" });
+    if (sid == null || (tid == null && !conv)) return this.result("skip", { skip: "missing_id" }); // agy's Stop carries no turn: the state's turn is used
+    if (!validId(sid) || (tid != null && !validId(tid))) return this.result("skip", { skip: "invalid_id" });
     if (flag !== false) return this.result("skip", { skip: "bad_payload" });
     const dir = this.guardDirectory;
     if (dir === null) return this.result("skip", { skip: "state_unavailable" });
     const statePath = join(dir, "state", sid + ".json");
     const due = (state: Record<string, unknown>): boolean =>
-      state.turn_id === tid && state.changed === true && state.checked !== true && state.stop_blocked !== true;
+      (tid == null || state.turn_id === tid) && (!conv || typeof state.turn_id === "string") && state.changed === true && state.checked !== true && state.stop_blocked !== true;
     if (!due(readJson(statePath))) return none(this.mode); // other turn, no change, checked or already blocked
     return withStateLock(
       join(dir, "state", sid + ".tslock"),
@@ -1095,10 +1288,18 @@ class Guard {
     carryAgents(state, priorState); // codex: agents released by #direct / already counted as started
 
     if (event.tool_kind === "dispatch") {
-      const access = roleAccess(event.dispatched_role);
+      const listed = CONVERSATION_HOSTS.has(this.host) ? event.dispatched_roles : null;
+      let writes = 1;
+      let access: string | null;
+      if (listed != null) { // agy: one pending start per listed write role
+        writes = listed.filter((r) => roleAccess(r) === "write").length;
+        access = writes > 0 ? "write" : listed.some((r) => roleAccess(r) === "verify") ? "verify" : null;
+      } else {
+        access = roleAccess(event.dispatched_role);
+      }
       if (access === "write") {
         if (START_UNLOCK_HOSTS.has(this.host)) {
-          state.pending += 1; // released by the role's SubagentStart; the call itself is allowed
+          state.pending += writes; // released by the role's SubagentStart; the call itself is allowed
           writeJson(statePath, state);
           return this.result("allow", { rule: "dispatch_pending" });
         }
@@ -1286,13 +1487,13 @@ class Guard {
       this.shellWrote(state, statePath, file);
       return this.result("allow", { rule: "dispatched", file });
     }
-    if (this.r1 === "strict") return this.shellR1(state, statePath, file, text(this.env, "STRICT"));
+    if (this.r1 === "strict") return this.shellR1(state, statePath, file, exitText(this.env, this.host, "STRICT"));
     if (this.r1 === "declare") {
       if (this.declared(state, dir)) {
         this.shellWrote(state, statePath, file);
         return this.result("allow", { rule: "declared", file });
       }
-      return this.shellR1(state, statePath, file, text(this.env, "DECLARE"));
+      return this.shellR1(state, statePath, file, exitText(this.env, this.host, "DECLARE"));
     }
     if (this.classified(state, dir) === null) {
       this.shellWrote(state, statePath, file);
@@ -1381,7 +1582,7 @@ class Guard {
     }
     if (firstRule === "exempt") return this.result("allow", { rule: firstRule, file: rawPaths[0] });
     if (denyR1 && this.mode === "enforce") {
-      return this.result("deny", { rule: "R1", reason: text(this.env, strict ? "STRICT" : declare ? "DECLARE" : "R1"), file: rawPaths[0] });
+      return this.result("deny", { rule: "R1", reason: strict || declare ? exitText(this.env, this.host, strict ? "STRICT" : "DECLARE") : text(this.env, "R1"), file: rawPaths[0] });
     }
     state.edited = edited;
     markChanged(state); // B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
@@ -1407,7 +1608,11 @@ class Guard {
 export function evaluate(event: GuardEvent, env: Env, home: string): GuardResult {
   const guard = new Guard(event, env, home);
   if (guard.mode === "off") return none("off");
-  if (MAPPED_HOSTS.has(guard.host) && event.kind === "tool") {
+  if (CONVERSATION_HOSTS.has(guard.host)) {
+    const routed = guard.agyRoute();
+    if (routed !== null) return routed;
+    event = guard.event;
+  } else if (MAPPED_HOSTS.has(guard.host) && event.kind === "tool") {
     guard.resolveMappedAgent();
     event = guard.event;
   }

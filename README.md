@@ -106,9 +106,10 @@ Claude Code、Gemini/agy 的 role 檔案安裝步驟仍依賴 dotfile 的腳本�
 dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex 由
 `install/install.py` 一併註冊（需在 Codex 內用 `/hooks` 核准一次），Grok 隨
 `install_grok.py` 安裝，Claude Code 與 agy 由 `tools/install_hooks.py` 安裝，OpenCode
-的 guard 在 plugin 內。Claude、Codex 與 Grok 預設 enforce、agy 預設 shadow，
+的 guard 在 plugin 內。Claude、Codex、Grok 與 agy 預設 enforce（agy 以 conversation 的事件順序
+推斷 main 與 subagent，是推斷不是事實，細節見 INSTALL.md；agy 沒有 `#direct`），
 `SHOAL_GUARD=off` 關閉。
-main session 的直接編輯在 Claude、Codex 與 Grok 以外只會被提醒：R1、R2 不擋（其餘 host 只記 log，
+main session 的直接編輯在 Claude、Codex、Grok 與 agy 以外只會被提醒：R1、R2 不擋（其餘 host 只記 log，
 `SHOAL_GUARD_DIRECT=1` 或 prompt 內的 `#direct` 關閉提醒），只有 subagent 的 LEAF、VERIFY_EDIT
 會擋。Claude、Codex 與 Grok 上（預設 `strict`）main 沒派 write role、使用者也沒有 `#direct` 就改檔
 （R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）會被擋，不需要任何分類來源；
@@ -131,7 +132,8 @@ hook 註冊必須一起更新；其他 host 仍在派工呼叫時放行（見 IN
 卻沒有任何檢查，`Stop` 會擋一次，要求補做驗證，或在回報中明寫未驗證；同一回合只擋一次，
 讀不到資料或 payload 不合預期時一律放行。`SHOAL_GUARD_STOP=off` 關閉（預設 `on`，只對 Claude 與
 Codex 有效）；Grok 的 `stop` 事件（`reason == end_turn`）已掛上，但它的 block 輸出還沒有 live 驗證，預設只記
-`would_block`，`SHOAL_GUARD_STOP=enforce` 才真的擋；agy、OpenCode 沒有已記錄的結束事件，不啟用。
+`would_block`，`SHOAL_GUARD_STOP=enforce` 才真的擋，agy 的 `Stop` 同樣預設只記
+`would_block`；OpenCode 沒有已記錄的結束事件，不啟用。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
 每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [INSTALL.md](./INSTALL.md#每日同步)。
@@ -175,7 +177,7 @@ v1.0.0 之前的 pinned ref 仍在
 - Codex、grok 與 OpenCode 有 shoal 自己的 installer；Claude Code、agy 的 role 檔案安裝
   仍在 dotfile，只有 dispatch guard 由 `tools/install_hooks.py` 安裝。
 - dispatch guard 不防同 uid 的 model 經 shell 竄改 state、設定或環境變數，也不擋 shell
-  寫檔；無法分辨 main 與 subagent 的 host（agy）固定 shadow。完整列表見
+  寫檔；agy 的 main 與 subagent 是由 conversation 順序推斷（混合派工時類別 unknown，不擋）。完整列表見
   [docs/specs/dispatch-enforcement](./docs/specs/dispatch-enforcement/SPEC.md)。
 
 Codex host 的完整說明與歷史紀錄在 [hosts/codex/README.md](./hosts/codex/README.md)

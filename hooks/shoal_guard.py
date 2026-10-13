@@ -96,15 +96,14 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 LOCK_WAIT_SECONDS = 2.0
 
 # Default mode per host.  E6: claude/codex/grok enforce (grok: tests/fixtures/grok_guard_event_shapes.json shows deny is
-# honoured for main and subagent writes); agy stays shadow (forced).
+# honoured for main and subagent writes); agy enforces too (tests/fixtures/agy_guard_event_shapes.json: deny is honoured
+# for main and subagent writes, and a subagent runs in its own conversation, which the guard records, see CONVERSATION_HOSTS).
 HOST_DEFAULT_MODE = {
     "claude": "enforce",
     "codex": "enforce",
     "grok": "enforce",
-    "agy": "shadow",
+    "agy": "enforce",
 }
-# Hosts that cannot tell main from subagent: enforce is never allowed (spec R5).
-FORCED_SHADOW_HOSTS = frozenset({"agy"})
 # Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
 ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
@@ -112,8 +111,19 @@ ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches the
 # check off on these hosts and has no effect elsewhere.  Grok has the payload (tests/fixtures/grok_guard_event_shapes.json)
 # but its block output is not yet exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
-STOP_HOSTS = frozenset({"claude", "codex", "grok"})
-STOP_SHADOW_DEFAULT_HOSTS = frozenset({"grok"})
+STOP_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
+STOP_SHADOW_DEFAULT_HOSTS = frozenset({"grok", "agy"})
+# agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its OWN
+# conversation (new conversationId, announced by a `SessionStart`).  The guard infers main vs subagent from the order of
+# events and keeps it in `state/agy.conversations.json`; see _Guard.agy_route.  Nothing here is exact: two sessions
+# dispatching at the same moment in one workspace can be confused, and a mixed dispatch leaves the class unknown.
+CONVERSATION_HOSTS = frozenset({"agy"})
+AGY_RECORD_FILE = "agy.conversations"  # state/<this>.json; not a valid id (dot), so it never collides with a session
+AGY_RECORD_MAX = 64
+AGY_PENDING_TTL = 600.0  # seconds a dispatch waits for its subagent's SessionStart
+AGY_EVENTS = frozenset({"SessionStart", "PreInvocation", "PreToolUse", "Stop"})
+# Hosts whose prompt event carries the user's text, so that `#direct` exists.  agy's PreInvocation carries none.
+PROMPT_DIRECT_HOSTS = frozenset({"claude", "codex", "grok", "opencode"})
 # agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 COMPOSED_TURN_HOSTS = frozenset({"agy"})
 # Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId; claude
@@ -133,7 +143,7 @@ DENY_MAIN_HOSTS = frozenset({"claude"})
 # (run by the TypeScript port; listed here so both implementations replay the same vectors).  Any other value falls back to
 # the host default; every other host keeps the v3.1.0 behaviour (`classified`).  `strict` (3.3.0) needs the
 # same events (edit tools plus main's shell calls), so it is selectable on the same hosts and is their default.
-DECLARE_HOSTS = frozenset({"claude", "codex", "opencode", "grok"})
+DECLARE_HOSTS = frozenset({"claude", "codex", "opencode", "grok", "agy"})
 # Hosts where "a write-level role was dispatched" unlocks only once the role has actually started (M11):
 # the PreToolUse of the dispatch call records a pending write dispatch and the SubagentStart event of the
 # same session releases it.  Claude's SubagentStart payload (session_id equal to main's, agent_id, agent_type,
@@ -141,7 +151,7 @@ DECLARE_HOSTS = frozenset({"claude", "codex", "opencode", "grok"})
 # dispatch call itself, as before: no start event is recorded for it, and without one a pending dispatch
 # would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
 # together; a Claude install whose registration lacks SubagentStart has no start event and would stay locked.
-START_UNLOCK_HOSTS = frozenset({"claude", "codex", "grok"})
+START_UNLOCK_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
 # Codex (docs/specs/guard-every-gate E3; tests/fixtures/codex_subagent_tool_shapes.json): SubagentStart carries the new
 # agent's agent_id and agent_type with the main session's session_id, and fires only when the role really started (a
 # spawn of an unknown agent_type fires none).  The registration is a separate hook group that the user approves in
@@ -151,7 +161,7 @@ START_UNLOCK_HOSTS = frozenset({"claude", "codex", "grok"})
 # E1 (docs/specs/guard-every-gate): hosts where SHOAL_GUARD_SUBAGENT_WRITE defaults to `on`, and hosts whose
 # subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it
 # (claude: tests/fixtures/claude_subagent_tool_shapes.json), so the user's `#direct` can release a subagent.
-SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude", "codex", "grok"})
+SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
 SUBAGENT_DIRECT_HOSTS = frozenset({"claude", "codex", "grok"})
 # Grok (tests/fixtures/grok_guard_event_shapes.json): a subagent's tool events carry its OWN session id (= the subagentId
 # of the `subagent_start` event, which is sent under main's session id).  `subagent_start` records the mapping.
@@ -262,6 +272,17 @@ MESSAGES = {
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
             "write-capable role (executor or applier), or ask the user to add #direct to the prompt."
         ),
+        "STRICT_ND": (
+            "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
+            "write-capable role (executor or applier) and wait until it has started, add the role to "
+            "SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1 (this host has no prompt marker for it)."
+        ),
+        "DECLARE_ND": (
+            "Shoal dispatch guard: the main session delegates edits by default. Dispatch a "
+            "write-capable role (executor or applier), or declare direct work first by running "
+            'exactly : shoal-direct "<reason>" as its own shell command, or set SHOAL_GUARD_DIRECT=1 '
+            "(this host has no prompt marker for it)."
+        ),
         "E1": (
             "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. "
             "Dispatch a shoal write-capable role (executor or applier), add this agent type to "
@@ -303,6 +324,15 @@ MESSAGES = {
         "STRICT": (
             "Shoal dispatch guard：main session 不自己改檔。"
             "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"
+        ),
+        "STRICT_ND": (
+            "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier）並等它啟動、"
+            "把 role 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1（這個 host 沒有 prompt 標記可用）。"
+        ),
+        "DECLARE_ND": (
+            "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
+            "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
+            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或設定 SHOAL_GUARD_DIRECT=1（這個 host 沒有 prompt 標記可用）。'
         ),
         "E1": (
             "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。"
@@ -519,8 +549,6 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
         mode = HOST_DEFAULT_MODE.get(host, "shadow")
     else:
         mode = raw if raw in ("enforce", "shadow", "off") else "shadow"
-    if mode == "enforce" and host in FORCED_SHADOW_HOSTS:
-        mode = "shadow"
     return mode
 
 
@@ -590,11 +618,33 @@ def _agent_entries(raw: Any) -> List[Dict[str, Any]]:
     return kept[-GROK_AGENTS_MAX:]
 
 
+def _agy_record(raw: Any) -> Dict[str, List[Dict[str, Any]]]:
+    """The valid content of the agy conversation record: {"conversations": [...], "pending": [...]}, each the last
+    AGY_RECORD_MAX.  conversations: {id, kind main|sub, role, cls write|nonwrite|unknown|"", dispatcher}.
+    pending (one per Subagents[] item of an invoke_subagent call): {dispatcher, role, workspace, ts}."""
+    data = raw if isinstance(raw, dict) else {}
+    convs = data.get("conversations")
+    pend = data.get("pending")
+    keep_c = [
+        c for c in (convs if isinstance(convs, list) else [])
+        if isinstance(c, dict) and valid_id(c.get("id")) and c.get("kind") in ("main", "sub")
+        and isinstance(c.get("role"), str) and c.get("cls") in ("write", "nonwrite", "unknown", "")
+        and (c.get("dispatcher") == "" or valid_id(c.get("dispatcher")))
+    ]
+    keep_p = [
+        e for e in (pend if isinstance(pend, list) else [])
+        if isinstance(e, dict) and valid_id(e.get("dispatcher")) and isinstance(e.get("role"), str)
+        and isinstance(e.get("workspace"), str) and isinstance(e.get("ts"), (int, float))
+        and not isinstance(e.get("ts"), bool)
+    ]
+    return {"conversations": keep_c[-AGY_RECORD_MAX:], "pending": keep_p[-AGY_RECORD_MAX:]}
+
+
 def resolve_r1(host: str, env: Dict[str, str]) -> str:
     """SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
 
     Unset, unrecognized, or `strict` / `declare` on a host that cannot gate -> the host default
-    (`strict` on claude, codex, grok and opencode, `classified` elsewhere)."""
+    (`strict` on claude, codex, grok, agy and opencode, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw
@@ -1008,6 +1058,11 @@ def _text(env: Dict[str, str], key: str, **fmt: Any) -> str:
     return MESSAGES[lang][key].format(**fmt)
 
 
+def _exit_text(env: Dict[str, str], host: str, key: str) -> str:
+    """STRICT / DECLARE, or their variant without the `#direct` exit on a host whose prompt event carries no text."""
+    return _text(env, key if host in PROMPT_DIRECT_HOSTS else key + "_ND")
+
+
 class _Guard:
     """One evaluation: holds env, home, host, mode and the lazily verified state dir."""
 
@@ -1084,14 +1139,18 @@ class _Guard:
         paths = self.event.get("paths") or []
         decision = "deny" if self.mode == "enforce" else "would_deny"
         file = paths[0] if paths else None
-        if rule == "E1" and tool_kind == "shell":
+        if rule in ("E1", "E1_UNKNOWN") and tool_kind == "shell":
             file = self.shell_write_target()
+        if rule == "E1_UNKNOWN":  # the role cannot be established: never denied, only logged
+            return self.result("skip", "E1", skip="would_deny_unknown_class", file=file)
         key = "E1D" if rule == "E1" and self.host in SUBAGENT_DIRECT_HOSTS else rule
         return self.result(decision, rule, reason=_text(self.env, key), file=file)
 
     def _subagent_write_rule(self, role: Any, tool_kind: Any) -> Optional[str]:
-        """E1: "E1" when this subagent call writes a non-exempt file and nothing releases it, else None."""
-        if role_access(role) == "write":
+        """E1: "E1" when this subagent call writes a non-exempt file and nothing releases it, else None.
+        agy: the conversation's class decides (write: free; unknown: "E1_UNKNOWN", which is only logged)."""
+        conv_class = self.event.get("conv_class") if self.host in CONVERSATION_HOSTS else None
+        if conv_class == "write" or (conv_class is None and role_access(role) == "write"):
             return None
         if tool_kind == "edit":
             cwd = self.event.get("cwd") or os.getcwd()
@@ -1109,7 +1168,7 @@ class _Guard:
             return None
         if self.subagent_direct_released():
             return None
-        return "E1"
+        return "E1_UNKNOWN" if conv_class == "unknown" else "E1"
 
     def subagent_direct_released(self) -> bool:
         """The user's `#direct` releases a subagent when the turn named by the subagent event's (session_id,
@@ -1184,6 +1243,118 @@ class _Guard:
     def _none(self) -> Dict[str, Any]:
         return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
 
+    # -- agy: main vs subagent by conversation order --------------------------
+    def _agy_paths(self) -> Optional[Tuple[Path, Path]]:
+        guard = self.guard_dir
+        if guard is None:
+            return None
+        return guard / "state" / (AGY_RECORD_FILE + ".json"), guard / "state" / (AGY_RECORD_FILE + ".lock")
+
+    def agy_conversation(self, cid: Any) -> Optional[Dict[str, Any]]:
+        """The recorded conversation `cid`, or None (no record, bad id, no state dir: all mean "main").  Read-only."""
+        try:
+            paths = self._agy_paths()
+            if paths is None or not valid_id(cid):
+                return None
+            for entry in reversed(_agy_record(_read_json(paths[0]))["conversations"]):
+                if entry["id"] == cid:
+                    return entry
+        except Exception:
+            return None
+        return None
+
+    def agy_push_pending(self) -> None:
+        """PreToolUse of invoke_subagent: one pending entry per listed subagent.  Silent, best effort."""
+        try:
+            cid = self.event.get("session_id")
+            paths = self._agy_paths()
+            if paths is None or not valid_id(cid):
+                return
+            roles = self.event.get("dispatched_roles") or [""]
+            with _state_lock(paths[1]) as lock_skip:
+                if lock_skip is not None:
+                    return
+                record = _agy_record(_read_json(paths[0]))
+                now = time.time()
+                pending = [e for e in record["pending"] if now - e["ts"] <= AGY_PENDING_TTL]
+                for role in roles:
+                    pending.append({"dispatcher": cid, "role": role if isinstance(role, str) else "",
+                                    "workspace": self.event.get("workspace") or "", "ts": now})
+                record["pending"] = pending[-AGY_RECORD_MAX:]
+                _write_json(paths[0], record)
+        except Exception:
+            return
+
+    def _agy_class(self, role: str) -> str:
+        """write for a shoal write role or an allowlisted type, unknown for no role name, else nonwrite."""
+        if not role:
+            return "unknown"
+        return "write" if role_access(role) == "write" or write_agent_allowed(role, self.env) else "nonwrite"
+
+    def agy_session_start(self) -> Dict[str, Any]:
+        """SessionStart of an unseen conversation: a subagent when a dispatch is pending (oldest first, preferring the
+        same workspace), else a main conversation.  The role is known only when every candidate dispatch names the same
+        one; otherwise the access class is recorded when all candidates share it, else "unknown".  A write class
+        releases the dispatcher's pending write dispatch (the "started" evidence of M11); a verify role counts as a check."""
+        cid = self.event.get("session_id")
+        paths = self._agy_paths()
+        if not valid_id(cid):
+            return self.result("skip", skip="invalid_id")
+        if paths is None:
+            return self.result("skip", skip="state_unavailable")
+        with _state_lock(paths[1]) as lock_skip:
+            if lock_skip is not None:
+                return self.result("skip", skip=lock_skip)
+            record = _agy_record(_read_json(paths[0]))
+            if any(c["id"] == cid for c in record["conversations"]):
+                return self._none()
+            now = time.time()
+            pending = [e for e in record["pending"] if now - e["ts"] <= AGY_PENDING_TTL]
+            ws = self.event.get("workspace") or ""
+            cands = [e for e in pending if ws and e["workspace"] == ws] or pending
+            if cands:
+                roles = [e["role"] for e in cands]
+                role = roles[0] if len(set(roles)) == 1 else ""
+                classes = {self._agy_class(r) for r in roles}
+                cls = classes.pop() if len(classes) == 1 else "unknown"
+                taken = cands[0]
+                pending.remove(taken)
+                entry = {"id": cid, "kind": "sub", "role": role, "cls": cls, "dispatcher": taken["dispatcher"]}
+            else:
+                entry = {"id": cid, "kind": "main", "role": "", "cls": "", "dispatcher": ""}
+            record["conversations"] = (record["conversations"] + [entry])[-AGY_RECORD_MAX:]
+            record["pending"] = pending
+            if not _write_json(paths[0], record):
+                return self.result("skip", skip="state_write_failed")
+        if entry["kind"] == "main":
+            return self.result("state", "conversation_main")
+        if entry["cls"] == "write":
+            self.event = dict(self.event, session_id=entry["dispatcher"])
+            return self._release_pending(entry["dispatcher"], None, None)
+        if role_access(entry["role"]) == "verify":
+            self.event = dict(self.event, session_id=entry["dispatcher"])
+            self.note_verify_started()
+        return self.result("state", "conversation_sub", note="class_" + entry["cls"])
+
+    def agy_route(self) -> Optional[Dict[str, Any]]:
+        """agy: the result for SessionStart and for a subagent conversation's events; None = judge as main (a
+        conversation without a record is main).  The adapter's own `is_subagent` is never used on this host."""
+        kind, tool_kind = self.event.get("kind"), self.event.get("tool_kind")
+        if kind == "session_start":
+            return self.agy_session_start()
+        if kind == "tool" and tool_kind == "dispatch":
+            self.agy_push_pending()
+        rec = self.agy_conversation(self.event.get("session_id"))
+        if rec is None or rec["kind"] != "sub":
+            self.event = dict(self.event, is_subagent=False)
+            return None
+        if kind != "tool":
+            return self._none()  # a subagent's invocation boundary or stop is not main's
+        if tool_kind == "dispatch":  # a misclassified main must never be blocked from dispatching: log only
+            return self.result("skip", "LEAF", skip="leaf_dispatch_not_enforced")
+        self.event = dict(self.event, is_subagent=True, role=rec["role"] or None, conv_class=rec["cls"])
+        return self.subagent()
+
     # -- completion check (B2, B3) -------------------------------------------
     def _check_state_path(self, wanted_turn: Optional[str]) -> Optional[Tuple[Path, Path]]:
         """(state file, lock file) of this event's session for a silent state update, or None.  `wanted_turn`
@@ -1254,10 +1425,13 @@ class _Guard:
         flag = event.get("stop_hook_active")
         if flag is True:
             return self._none()  # the host says this stop is the retry after a block
+        conv = self.host in CONVERSATION_HOSTS
+        if conv and event.get("fully_idle") is not True:
+            return self._none()  # agy: only the stop that leaves the whole session idle ends main's turn
         sid, tid = event.get("session_id"), event.get("turn_id")
-        if sid is None or tid is None:
+        if sid is None or (tid is None and not conv):  # agy's Stop carries no turn: the state's turn is used
             return self.result("skip", skip="missing_id")
-        if not valid_id(sid) or not valid_id(tid):
+        if not valid_id(sid) or (tid is not None and not valid_id(tid)):
             return self.result("skip", skip="invalid_id")
         if flag is not False:
             return self.result("skip", skip="bad_payload")
@@ -1268,7 +1442,8 @@ class _Guard:
 
         def due(state: Dict[str, Any]) -> bool:
             return (
-                state.get("turn_id") == tid
+                (tid is None or state.get("turn_id") == tid)
+                and (not conv or isinstance(state.get("turn_id"), str))
                 and state.get("changed") is True
                 and state.get("checked") is not True
                 and state.get("stop_blocked") is not True
@@ -1408,10 +1583,16 @@ class _Guard:
         _carry_agents(state, prior_state)  # codex: agents released by #direct / already counted as started
 
         if event.get("tool_kind") == "dispatch":
-            access = role_access(event.get("dispatched_role"))
+            listed = event.get("dispatched_roles") if self.host in CONVERSATION_HOSTS else None
+            if listed is not None:  # agy: one pending start per listed write role
+                writes = sum(1 for r in listed if role_access(r) == "write")
+                access = "write" if writes else "verify" if any(role_access(r) == "verify" for r in listed) else None
+            else:
+                writes = 1
+                access = role_access(event.get("dispatched_role"))
             if access == "write":
                 if self.host in START_UNLOCK_HOSTS:
-                    state["pending"] += 1  # released by the role's SubagentStart; the call itself is allowed
+                    state["pending"] += writes  # released by the role's start; the call itself is allowed
                     _write_json(state_path, state)
                     return self.result("allow", "dispatch_pending")
                 state["dispatched"] = True
@@ -1579,12 +1760,12 @@ class _Guard:
             self._shell_wrote(state, state_path, target)
             return self.result("allow", "dispatched", file=target)
         if self.r1 == "strict":
-            return self._shell_r1(state, state_path, target, _text(self.env, "STRICT"))
+            return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "STRICT"))
         if self.r1 == "declare":
             if self._declared(state, guard):
                 self._shell_wrote(state, state_path, target)
                 return self.result("allow", "declared", file=target)
-            return self._shell_r1(state, state_path, target, _text(self.env, "DECLARE"))
+            return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "DECLARE"))
         if self._classified(state, guard) is None:
             self._shell_wrote(state, state_path, target)
             return self.result("allow", "uncounted", file=target)
@@ -1676,7 +1857,9 @@ class _Guard:
             return self.result("allow", first_rule, file=raw_paths[0])
         if deny_r1 and self.mode == "enforce":
             return self.result(
-                "deny", "R1", reason=_text(self.env, "STRICT" if strict else "DECLARE" if declare else "R1"),
+                "deny", "R1",
+                reason=(_exit_text(self.env, self.host, "STRICT" if strict else "DECLARE") if strict or declare
+                        else _text(self.env, "R1")),
                 file=raw_paths[0],
             )
         state["edited"] = edited
@@ -1718,7 +1901,12 @@ def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str
             "reason": None,
             "mode": "off",
         }
-    if guard.host in MAPPED_HOSTS and event.get("kind") == "tool":
+    if guard.host in CONVERSATION_HOSTS:
+        routed = guard.agy_route()
+        if routed is not None:
+            return routed
+        event = guard.event
+    elif guard.host in MAPPED_HOSTS and event.get("kind") == "tool":
         guard.resolve_mapped_agent()
         event = guard.event
     if event.get("is_subagent"):
@@ -1767,6 +1955,9 @@ def _event(
     command: Any = None,
     stop_hook_active: Any = None,
     agent_id: Any = None,
+    workspace: Any = None,
+    dispatched_roles: Optional[List[str]] = None,
+    fully_idle: Any = None,
 ) -> Dict[str, Any]:
     return {
         "host": host,
@@ -1784,6 +1975,9 @@ def _event(
         "direct": direct,
         "command": command if isinstance(command, str) else None,
         "stop_hook_active": stop_hook_active,  # `stop` events only: the host's raw value, judged by the guard
+        "workspace": _str(workspace),  # agy only: the conversation's workspace paths, joined
+        "dispatched_roles": dispatched_roles,  # agy only: every listed subagent's role name ("" when unnamed)
+        "fully_idle": fully_idle,  # agy `stop` only: the host's raw value
     }
 
 
@@ -1980,25 +2174,59 @@ def _agy_dispatched_role(args: Dict[str, Any]) -> Optional[str]:
     return roles[0]
 
 
-def adapt_agy(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _agy_workspace(payload: Dict[str, Any]) -> Optional[str]:
+    paths = payload.get("workspacePaths")
+    items = [p for p in paths if isinstance(p, str) and p] if isinstance(paths, list) else []
+    return "\n".join(items) or None
+
+
+def _agy_dispatched_roles(args: Dict[str, Any]) -> List[str]:
+    listed = args.get("Subagents")
+    if not isinstance(listed, list):
+        return []
+    return [_str(_dict(i).get("TypeName")) or _str(_dict(i).get("Role")) or "" for i in listed]
+
+
+def adapt_agy(payload: Dict[str, Any], event_name: Any = None) -> Optional[Dict[str, Any]]:
+    """The payload names no event (tests/fixtures/agy_guard_event_shapes.json): `event_name` is what the registration
+    passed (`--event` / SHOAL_GUARD_EVENT).  Without it (a registration from before 3.5) the shape decides, as before:
+    a toolCall is a tool event, an invocationNum a turn boundary, everything else is ignored."""
     cid = payload.get("conversationId")
     call = payload.get("toolCall")
-    if not isinstance(call, dict):
+    workspace = _agy_workspace(payload)
+    cwd = _str(payload.get("cwd")) or (workspace or "").split("\n")[0] or None
+    if isinstance(event_name, str) and event_name and event_name not in AGY_EVENTS:
+        return None  # a registration for an event the guard does not use
+    name = event_name or None
+    if name == "SessionStart":
+        return _event("agy", "session_start", cid, None, cwd, False, None, workspace=workspace)
+    if name == "Stop":
+        # No turn id, no re-entry flag: the state's turn is used, and a block cannot loop (stop_blocked).
+        return _event("agy", "stop", cid, None, cwd, False, None, stop_hook_active=False,
+                      fully_idle=payload.get("fullyIdle"))
+    if name == "PreInvocation" or (name is None and not isinstance(call, dict)):
         # PreInvocation fires on every model call; only invocationNum 0 starts a turn.
         if payload.get("invocationNum") != 0 or not _is_int(payload.get("invocationNum")):
             return None
         steps = payload.get("initialNumSteps")
         turn = "%s:%d" % (cid, steps) if isinstance(cid, str) and _is_int(steps) else None
-        return _event("agy", "turn_boundary", cid, turn, payload.get("cwd"), False, None)
+        return _event("agy", "turn_boundary", cid, turn, cwd, False, None)
+    if not isinstance(call, dict):
+        return None
     tool, args = call.get("name"), _dict(call.get("args"))
-    base = (cid, None, payload.get("cwd"), False, None)  # tool payloads carry no turn id
+    base = (cid, None, cwd, False, None)  # tool payloads carry no turn id
     if isinstance(tool, str) and (tool == "write_to_file" or "replace_file_content" in tool):
         path = _str(args.get("TargetFile"))
-        return _event("agy", "tool", *base, tool=tool, tool_kind="edit", paths=[path] if path else [])
+        return _event("agy", "tool", *base, tool=tool, tool_kind="edit", paths=[path] if path else [],
+                      workspace=workspace)
     if tool == "invoke_subagent":
         return _event("agy", "tool", *base, tool=tool, tool_kind="dispatch",
-                      dispatched_role=_agy_dispatched_role(args))
-    return _event("agy", "tool", *base, tool=tool, tool_kind="other")
+                      dispatched_role=_agy_dispatched_role(args), workspace=workspace,
+                      dispatched_roles=_agy_dispatched_roles(args))
+    if tool == "run_command" and isinstance(args.get("CommandLine"), str):
+        return _event("agy", "tool", cid, None, _str(args.get("Cwd")) or cwd, False, None, tool=tool,
+                      tool_kind="shell", command=args["CommandLine"], workspace=workspace)
+    return _event("agy", "tool", *base, tool=tool, tool_kind="other", workspace=workspace)
 
 
 ADAPTERS = {
@@ -2201,7 +2429,7 @@ def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
         if not isinstance(payload, dict):
             _skip_log(host, env, home, "bad_payload")
             return None
-        event = ADAPTERS[host](payload)
+        event = (adapt_agy(payload, env.get("SHOAL_GUARD_EVENT")) if host == "agy" else ADAPTERS[host](payload))
         if event is None:
             return None
         result = evaluate(event, env, home)
@@ -2230,6 +2458,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
         env = dict(os.environ)
+        if "--event" in args and args.index("--event") + 1 < len(args):
+            env["SHOAL_GUARD_EVENT"] = args[args.index("--event") + 1]  # agy: the payload names no event
         if "--plugin" in args and defer_to_global(host, raw, env):
             return 0
         out = run(host, raw, env)

@@ -32,7 +32,8 @@
   "3.3.1 (M11): on claude \"a write role was dispatched\" unlocks when the role has started: the dispatch call decides allow/dispatch_pending (state pending+1) and a step with event kind subagent_start (role = SubagentStart agent_type, turn_id = its prompt_id, same session) decides state/dispatch_started (pending-1, dispatched) for a write role with a pending dispatch, skip/start_without_pending without one, skip_reason prompt_id_mismatch when its turn_id differs from the guard turn (it still releases), and none for any non-write role. Other hosts unlock at the dispatch call and ignore start events.",
  "3.4.0 (shared-rules B2-B4): a step with event kind stop (turn_id = the Stop payload's prompt_id / turn_id, stop_hook_active = its raw value) decides block / rule STOP when the turn is changed (a non-exempt main edit or shell write was allowed; claude: a write role started, other hosts: a write role dispatched), unchecked (after the latest change a verify-level role was dispatched or started, or main ran a plain foreground shell call that writes nothing and is not a declaration), stop_hook_active is exactly false, the mode is enforce, SHOAL_GUARD_STOP is not off and this turn has not been blocked yet; would_block (nothing persisted) in shadow; none in every other case, skip for missing/invalid ids and a non-boolean stop_hook_active. Only claude and codex ever block; grok, agy and opencode decide none. The block message is MESSAGES.STOP (en / zh-TW).",
   "3.x (guard-every-gate S2, codex): codex joins START_UNLOCK_HOSTS and the E1 default-on hosts. A subagent_start step carries agent_id (the new agent) and turn_id null (its own turn is not main's); a write role releases one pending dispatch once per agent_id (skip_reason agent_already_started on a repeat, missing_id without an agent_id), and a tool step with is_subagent, a write-level role and an agent_id releases one pending dispatch when no start event came (the hook is not approved yet). #direct: a subagent_start while main's turn carried #direct records the agent_id (state direct_agents, last 32) and E1 for that agent_id decides none; unreadable state, another session or another agent decides E1.",
-  "3.x (guard-every-gate S4, grok): grok joins the enforce-default, DECLARE_HOSTS (strict by default), START_UNLOCK_HOSTS and E1 default-on hosts. A subagent_start step carries agent_id (the subagent id) and records subagent id -> {session, role, direct} in state/grok.agents.json (the last 64) whatever its role; a tool step whose session_id is a recorded id is a subagent call of the recorded role (is_subagent is filled in, a missing role comes from the record), and its E1 `#direct` release is the recorded flag (main's turn carried #direct at the start). A subagent step with no record keeps the role rules and is never released by #direct; an unreadable record means no record. The stop step on grok logs would_block (rule STOP) and never blocks unless SHOAL_GUARD_STOP is enforce (then block once per turn); off silences it."
+  "3.x (guard-every-gate S4, grok): grok joins the enforce-default, DECLARE_HOSTS (strict by default), START_UNLOCK_HOSTS and E1 default-on hosts. A subagent_start step carries agent_id (the subagent id) and records subagent id -> {session, role, direct} in state/grok.agents.json (the last 64) whatever its role; a tool step whose session_id is a recorded id is a subagent call of the recorded role (is_subagent is filled in, a missing role comes from the record), and its E1 `#direct` release is the recorded flag (main's turn carried #direct at the start). A subagent step with no record keeps the role rules and is never released by #direct; an unreadable record means no record. The stop step on grok logs would_block (rule STOP) and never blocks unless SHOAL_GUARD_STOP is enforce (then block once per turn); off silences it.",
+  "agy (docs/specs/guard-every-gate S5): extra event keys `workspace` (session_start, dispatch), `dispatched_roles` (dispatch), `fully_idle` (stop). Main vs subagent is not in the event: it is inferred from session_start / dispatch order, so those vectors drive it with those events and a distinct session_id per conversation."
  ],
  "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason"],
  "env_defaults": {"SHOAL_GUARD_R1": "classified"},
@@ -648,7 +649,7 @@
    ]
   },
   {
-   "name": "agy_forced_shadow_even_when_enforce",
+   "name": "agy_enforce_under_classified_still_only_advises_r2",
    "host": "agy",
    "env": {"SHOAL_GUARD": "enforce"},
    "steps": [
@@ -659,7 +660,7 @@
    ]
   },
   {
-   "name": "agy_default_shadow",
+   "name": "agy_default_under_classified_only_advises_r2",
    "host": "agy",
    "steps": [
     {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
@@ -694,10 +695,12 @@
   {
    "name": "agy_dispatch_executor_unlocks",
    "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
    "steps": [
-    {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "c1:1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+    {"event": {"kind": "turn_boundary", "session_id": "c1", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "c1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["executor"], "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
    ]
   },
   {
@@ -715,8 +718,8 @@
    "env": {"SHOAL_GUARD": "enforce"},
    "steps": [
     {"event": {"kind": "turn_boundary", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "c1:1", "dispatched_role": "executor", "is_subagent": true}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "none"}}
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "c1:1", "dispatched_role": "executor", "is_subagent": true}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "c1:1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "allow", "rule": "count"}}
    ]
   },
   {
@@ -2180,45 +2183,42 @@
   {"name": "grok_r1_bogus_falls_back_to_strict", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "bogus"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}]},
   {"name": "grok_classified_judgment_still_advises", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "classified"}, "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "advise", "rule": "R1"}}]},
   {
-   "name": "agy_r1_unset_keeps_v3_1_0_behaviour",
+   "name": "agy_r1_classified_keeps_v3_1_0_behaviour",
    "host": "agy",
-   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "classified"},
    "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+    {"event": {"kind": "turn_boundary", "session_id": "c1", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "c1", "turn_id": null, "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
    ]
   },
   {
-   "name": "agy_r1_declare_keeps_v3_1_0_behaviour",
+   "name": "agy_r1_declare_denies_and_declares",
    "host": "agy",
    "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
    "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+    {"event": {"kind": "turn_boundary", "session_id": "c1", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "c1", "turn_id": null, "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "c1", "turn_id": null, "command": ": shoal-direct \"tiny fix\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
    ]
   },
   {
-   "name": "agy_r1_bogus_keeps_v3_1_0_behaviour",
+   "name": "agy_r1_bogus_falls_back_to_strict",
    "host": "agy",
    "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "bogus"},
    "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "none"}}
+    {"event": {"kind": "turn_boundary", "session_id": "c1", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
    ]
   },
   {
    "name": "agy_classified_judgment_still_advises",
    "host": "agy",
-   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"},
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "classified"},
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
@@ -2905,14 +2905,12 @@
   },
   {"name": "grok_r1_strict_denies", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "strict"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}]},
   {
-   "name": "agy_r1_strict_keeps_v3_1_0_behaviour",
+   "name": "agy_r1_strict_denies",
    "host": "agy",
    "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "strict"},
    "steps": [
-    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "advise", "rule": "R2"}}
+    {"event": {"kind": "turn_boundary", "session_id": "c1", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
    ]
   },
   {
@@ -3760,13 +3758,13 @@
   {"name": "grok_state_agents_file_unreadable_means_no_record", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "write", "turn_id": null, "paths": ["$WORK/src/a"], "session_id": "sub2", "is_subagent": true, "role": "general"}, "expect": {"decision": "deny", "rule": "E1"}}], "setup": {"dirs": ["$STATE/shoal/guard/state"], "write": {"$STATE/shoal/guard/state/grok.agents.json": "{not json"}}},
   {"name": "stop_grok_enforce_switch_blocks_once_per_turn", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null, "SHOAL_GUARD_STOP": "enforce"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_subagent", "turn_id": null, "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "block", "rule": "STOP"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "none"}}]},
   {
-   "name": "stop_agy_never_blocks",
+   "name": "stop_agy_main_edit_denied_so_nothing_to_block",
    "host": "agy",
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
-    {"event": {"kind": "turn_boundary", "turn_id": "c1:0"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "stop", "turn_id": "c1:0", "stop_hook_active": false}, "expect": {"decision": "none"}}
+    {"event": {"kind": "turn_boundary", "session_id": "c1", "turn_id": "c1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "stop", "session_id": "c1", "turn_id": null, "stop_hook_active": false, "fully_idle": true}, "expect": {"decision": "none"}}
    ]
   },
   {
@@ -6969,6 +6967,317 @@
   {"name": "e1_codex_state_direct_agents_wrong_types_not_released", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}}], "setup": {"state_file": {"session": "s1", "content": "{\"turn_id\":\"t1\",\"direct_agents\":[1,null,{\"a\":1},\"bad id\"]}"}}},
   {"name": "e1_codex_state_state_from_older_version_not_released", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}}], "setup": {"state_file": {"session": "s1", "content": "{\"turn_id\":\"t1\",\"direct\":true,\"pending\":0}"}}},
   {"name": "e1_codex_state_direct_agents_listed_is_released", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}], "setup": {"state_file": {"session": "s1", "content": "{\"turn_id\":\"t1\",\"direct_agents\":[\"w1\"]}"}}},
-  {"name": "e1_codex_stop_check_after_a_direct_released_agent_is_unchanged", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "none"}}]}
+  {"name": "e1_codex_stop_check_after_a_direct_released_agent_is_unchanged", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "none"}}]},
+  {
+   "name": "agy_main_edit_denied_by_default",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_main_shell_write_denied_by_default",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "m1", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "m1", "turn_id": null, "command": "ls -la"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_dispatch_alone_does_not_unlock",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["executor"], "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "m1", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_started_write_role_unlocks_the_same_turn",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["applier"], "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "m1", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ],
+   "files_exist": ["$STATE/shoal/guard/state/agy.conversations.json"]
+  },
+  {
+   "name": "agy_started_scout_does_not_unlock",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "state", "rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_next_turn_locks_again",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["executor"], "dispatched_role": "executor"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_start_in_a_later_turn_does_not_unlock",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["executor"], "dispatched_role": "executor"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_subagent_applier_edit_allowed",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["applier"], "dispatched_role": "applier"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "s2", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_subagent_scout_edit_and_shell_write_denied",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "s2", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "deny", "rule": "E1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "s2", "turn_id": null, "command": "ls -la"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_two_pending_same_role_assign_the_role",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout", "scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}},
+    {"event": {"kind": "session_start", "session_id": "s3", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s3", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}},
+    {"event": {"kind": "session_start", "session_id": "s4", "workspace": "$WORK"}, "expect": {"decision": "state", "rule": "conversation_main"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s4", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_mixed_pending_applier_scout_is_unknown_and_not_denied",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["applier", "scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "state", "rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "skip", "rule": "E1", "skip_reason": "would_deny_unknown_class"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "s2", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "skip", "rule": "E1", "skip_reason": "would_deny_unknown_class"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "session_start", "session_id": "s3", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s3", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}}
+   ]
+  },
+  {
+   "name": "agy_pending_applier_executor_is_write_class",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["applier", "executor"], "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
+   ]
+  },
+  {
+   "name": "agy_new_conversation_without_pending_is_main",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "session_start", "session_id": "c9", "workspace": "$WORK"}, "expect": {"decision": "state", "rule": "conversation_main"}},
+    {"event": {"kind": "turn_boundary", "session_id": "c9", "turn_id": "c9:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c9", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_conversation_without_record_is_main",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "c8", "turn_id": "c8:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "c8", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "agy_exempt_path_is_allowed_for_main_and_subagent",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$TMPDIR/x"]}, "expect": {"decision": "allow", "rule": "exempt"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$TMPDIR/x"]}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_allowlisted_agent_type_may_write",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_WRITE_AGENTS": "scout"},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_direct_env_releases_main_and_subagent",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "1"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "s2", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_leaf_dispatch_from_a_subagent_conversation_is_logged_not_denied",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["executor"], "dispatched_role": "executor"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "s2", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "skip", "rule": "LEAF", "skip_reason": "leaf_dispatch_not_enforced"}}
+   ]
+  },
+  {
+   "name": "agy_verify_role_cannot_edit",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["verifier"], "dispatched_role": "verifier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
+   ]
+  },
+  {
+   "name": "agy_workspace_match_is_preferred",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "/ws/a", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m2", "turn_id": null, "workspace": "/ws/b", "dispatched_roles": ["executor"], "dispatched_role": "executor"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "/ws/a"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}},
+    {"event": {"kind": "session_start", "session_id": "s3", "workspace": "/ws/b"}, "expect": {"rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s3", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_stop_shadow_would_block_for_main_when_idle",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "1"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "stop", "session_id": "m1", "turn_id": null, "stop_hook_active": false, "fully_idle": false}, "expect": {"decision": "none"}},
+    {"event": {"kind": "stop", "session_id": "m1", "turn_id": null, "stop_hook_active": false, "fully_idle": true}, "expect": {"decision": "would_block", "rule": "STOP"}},
+    {"event": {"kind": "stop", "session_id": "m1", "turn_id": null, "stop_hook_active": false, "fully_idle": true}, "expect": {"decision": "would_block", "rule": "STOP"}}
+   ]
+  },
+  {
+   "name": "agy_stop_enforce_switch_blocks_once",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "1", "SHOAL_GUARD_STOP": "enforce"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "stop", "session_id": "m1", "turn_id": null, "stop_hook_active": false, "fully_idle": true}, "expect": {"decision": "block", "rule": "STOP"}},
+    {"event": {"kind": "stop", "session_id": "m1", "turn_id": null, "stop_hook_active": false, "fully_idle": true}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_stop_of_a_subagent_conversation_is_ignored",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_STOP": "enforce"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "stop", "session_id": "s2", "turn_id": null, "stop_hook_active": false, "fully_idle": true}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_stop_off_switch",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "1", "SHOAL_GUARD_STOP": "off"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
+    {"event": {"kind": "stop", "session_id": "m1", "turn_id": null, "stop_hook_active": false, "fully_idle": true}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "agy_mode_shadow_override_denies_nothing",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "shadow"},
+   "steps": [
+    {"event": {"kind": "turn_boundary", "session_id": "m1", "turn_id": "m1:1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "session_id": "m1", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "would_deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "E1"}}
+   ]
+  },
+  {
+   "name": "agy_mode_off_records_nothing",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "off"},
+   "steps": [
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "m1", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
+   ],
+   "files_absent": ["$STATE/shoal/guard/state/agy.conversations.json"]
+  },
+  {
+   "name": "agy_subagent_write_off_switch_keeps_verify_rule",
+   "host": "agy",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_SUBAGENT_WRITE": "off"},
+   "steps": [
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "session_id": "m1", "turn_id": null, "workspace": "$WORK", "dispatched_roles": ["scout"], "dispatched_role": "scout"}, "expect": {"decision": "allow"}},
+    {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
+   ]
+  }
  ]
 }

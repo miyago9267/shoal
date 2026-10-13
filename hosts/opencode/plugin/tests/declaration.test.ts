@@ -47,7 +47,7 @@ describe("resolveR1", () => {
   });
 
   test("hosts that cannot declare keep the v3.1.0 rule", () => {
-    for (const host of ["agy"]) {
+    for (const host of ["unknown-host", ""]) {
       for (const value of ["", "declare", "strict", "bogus", "classified"]) {
         expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe("classified");
       }

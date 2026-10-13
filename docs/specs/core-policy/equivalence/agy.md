@@ -584,3 +584,12 @@ tool_info, subagent_info, text_delta, duration_seconds, usage}`；`state` 為
   常駐文件列出兩者）。
 - 新增：`test_policy_documents_are_core_and_cover_every_mapped_path`、`test_resident_frame_has_no_unavailable_escape_hatch`。
 - `hosts/agy/src/` 的 `rules`、`skills` 與 `agents` legacy 原文保留作對照，不再參與 render。
+
+### 2026-10-13 附註：guard 預設與事件（guard-every-gate S5）
+
+agy 1.3.4 的實測（`tests/fixtures/agy_guard_event_shapes.json`）推翻「agy 分不出 main 與
+subagent、強制 shadow」：
+deny 對 main 與 subagent 的 `write_to_file` 都被遵守，subagent 跑在自己的 conversation。
+guard 因此預設 enforce，
+以 `SessionStart` 與 `invoke_subagent` 的順序推斷 main／subagent 與 role（推斷，不是 payload 事實）。
+agy 沒有使用者 prompt 事件，所以沒有 `#direct`。本檔其餘的等價比較不變。

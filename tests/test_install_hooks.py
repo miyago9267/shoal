@@ -499,9 +499,10 @@ class AgyTests(Case):
         group = data["shoal-guard"]
         (tool,) = group["PreToolUse"]
         self.assertEqual(tool["matcher"], "*")
-        self.assertEqual(tool["hooks"][0]["command"], PORTABLE_AGY)
-        (invocation,) = group["PreInvocation"]
-        self.assertEqual(invocation["command"], PORTABLE_AGY)
+        self.assertEqual(tool["hooks"][0]["command"], PORTABLE_AGY + " --event PreToolUse")
+        for event in ("SessionStart", "PreInvocation", "Stop"):  # the payload names no event: each registration does
+            (flat,) = group[event]
+            self.assertEqual(flat["command"], PORTABLE_AGY + " --event " + event)
         self.assertEqual(stat.S_IMODE(self.script.stat().st_mode), 0o755)
         (backup,) = self.backups.iterdir()
         self.assertEqual((backup / "hooks.json").read_bytes(), original)
@@ -542,7 +543,7 @@ class AgyTests(Case):
         self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
         self.assertEqual(self.load(path), mixed)
 
-    def test_installed_command_logs_advise_in_shadow(self) -> None:
+    def test_installed_command_denies_a_main_edit_by_default(self) -> None:
         path = self.hooks_json({})
         self.assertEqual(self.cli("agy", "--apply")[0], 0)
         command = self.load(path)["shoal-guard"]["PreToolUse"][0]["hooks"][0]["command"]
@@ -555,10 +556,10 @@ class AgyTests(Case):
         done = subprocess.run(command, shell=True, input=json.dumps(payload).encode(), capture_output=True,
                               env=env, timeout=30)
         self.assertEqual(done.returncode, 0, done.stderr)
-        # agy is forced to shadow: nothing on stdout, an advise record in the guard log
-        self.assertEqual(done.stdout, b"")
+        # agy enforces by default: a main conversation's edit is denied and the guard log records it
+        self.assertEqual(json.loads(done.stdout)["decision"], "deny")
         log = Path(sandbox.home, "xdg-state", "shoal", "guard", "guard.jsonl").read_text(encoding="utf-8")
-        self.assertIn('"decision":"advise"', log)
+        self.assertIn('"decision":"deny"', log)
 
 
 GATE = {

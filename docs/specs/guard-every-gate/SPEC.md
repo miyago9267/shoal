@@ -27,7 +27,8 @@ Miyago 2026-10-13 兩句話：「只要有對應的 hook 可以當成事件閘�
 - main 解鎖：只有 Claude 等 `SubagentStart`（`START_UNLOCK_HOSTS`，`:121`）；
   其他 host 在派工呼叫當下解鎖（`:1171-1180`）。
 - host 預設模式（`:80-85`）：claude、codex enforce；grok、agy shadow。agy 強制
-  shadow（`:87`），因為 tool payload 分不出 main 與 subagent。
+  shadow（`:87`），因為 tool payload 分不出 main 與 subagent。（S5 後：agy 預設 enforce，見 E8
+  agy 表。）
 - deny 輸出：claude、codex 用 `hookSpecificOutput` 的 `permissionDecision`；其他
   host 走通用的 `{"decision": "deny"}`（`:1699-1711`），沒有證據顯示 grok 會遵守。
 - Stop 完成檢查只在 claude、codex（`STOP_HOSTS`，`:94`）。
@@ -166,3 +167,21 @@ Miyago 2026-10-13 兩句話：「只要有對應的 hook 可以當成事件閘�
 Grok 3、agy 2。
 
 條件式：E0 若顯示 Workflow 子 agent 不能以 shoal role 執行，S1b 前回報 Miyago。
+
+### E8 檢查表：agy（S5，agy 1.3.4，2026-10-13；payload 見 `tests/fixtures/agy_guard_event_shapes.json`）
+
+agy 的 payload 沒有事件名稱、role、parent id，所以 **main 與 subagent、以及 subagent 的 role 都是從
+conversation 順序推斷的**：`invoke_subagent` 的 PreToolUse 記下 `Subagents[].TypeName`，之後出現的新
+`conversationId` 的 `SessionStart` 認領最舊的一筆（優先同 workspace）。role 不一致時只知道存取類別，類別也不一致就是
+unknown：unknown 不擋，只記 `would_deny_unknown_class`。同一 workspace 內兩個 agy session 同時派工可能被混淆。
+`PreInvocation` 沒有使用者 prompt，所以 agy 沒有 `#direct`，出口只有派 write role 並等它啟動、`SHOAL_GUARD_WRITE_AGENTS`、`SHOAL_GUARD_DIRECT=1`。
+
+| 事件 | 掛上？ | 規則 | 原因／證據 |
+|---|---|---|---|
+| `PreToolUse`（`write_to_file`、`replace_file_content`、`multi_replace_file_content`） | 是 | R1（strict）、E1、VERIFY_EDIT（role 已知時） | deny 已實測被遵守（main 與 subagent 的 `write_to_file`） |
+| `PreToolUse`（`run_command`） | 是（S5 起以 `--event` 區分） | G5（strict 的 shell 寫檔）、E1 的 shell 寫檔、B2 | 欄位 `CommandLine`、`Cwd` |
+| `PreToolUse`（`invoke_subagent`） | 是 | 記 pending；subagent conversation 呼叫則只記 log（不執行 LEAF） | 分不出 main 與 subagent 時，不擋 main 派工 |
+| `SessionStart` | 是（S5 新增） | 認領 pending，判定 main／subagent；write 類別即「已啟動」解鎖 main（E3） | 新 conversation 的 SessionStart 即 subagent 啟動；`invoke_subagent` 的 PostToolUse 早於 subagent 啟動，不可當證據 |
+| `PreInvocation` | 是 | 回合邊界（`invocationNum == 0`） | 每次 model call 都觸發 |
+| `Stop` | 是，預設 shadow（S5 新增） | B2/B3 完成檢查，僅 main、`fullyIdle: true` | 擋的輸出未實測，`SHOAL_GUARD_STOP=enforce` 才擋 |
+| `PostInvocation`、`PostToolUse` | 否 | 無 | 無規則需要 |

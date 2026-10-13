@@ -13,7 +13,8 @@
           UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse，
           以及 SubagentStart（3.3.1 起）與 Stop（3.4.0 起，完成檢查）；舊設定重跑 --apply 會原地補上，其他 entry 不動
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
-          PreToolUse（matcher "*"）與 PreInvocation
+          PreToolUse（matcher "*"）、SessionStart、PreInvocation 與 Stop；每個 command 結尾帶
+          --event <名稱>（agy 的 payload 不含事件名稱），舊設定重跑 --apply 會原地補上
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
           shoal-guard-v4 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
           ^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$ 的 PreToolUse，含 commandWindows；
@@ -271,6 +272,11 @@ def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str,
     return out
 
 
+# agy 的 hook payload 不帶事件名稱，所以每個註冊的事件都在 command 後面加 --event <名稱> 告訴 guard
+# （tests/fixtures/agy_guard_event_shapes.json）。這三個事件是 handler 平鋪的陣列；PreToolUse 是 matcher group。
+AGY_FLAT_EVENTS = ("SessionStart", "PreInvocation", "Stop")
+
+
 def apply_agy(config: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
     out = copy.deepcopy(config)
     group = out.get(AGY_GROUP)
@@ -278,21 +284,24 @@ def apply_agy(config: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
         group = {}
     if not isinstance(group, dict):
         raise InstallError(f'hooks.json 的 "{AGY_GROUP}" 不是物件，不處理')
-    # PreInvocation 是 handler 平鋪的陣列；PreToolUse 是 matcher group 的陣列。
-    flat = group.get("PreInvocation")
-    if flat is None:
-        flat = []
-    if not isinstance(flat, list):
-        raise InstallError(f'"{AGY_GROUP}".PreInvocation 不是陣列，不處理')
-    flat_kept = [h for h in flat if not is_owned(h)]
-    if command is not None:
-        flat_kept.append(_handler(command))
+    updates: list[tuple[str, list[Any]]] = []
+    for event in AGY_FLAT_EVENTS:
+        flat = group.get(event)
+        if flat is None:
+            flat = []
+        if not isinstance(flat, list):
+            raise InstallError(f'"{AGY_GROUP}".{event} 不是陣列，不處理')
+        kept = [h for h in flat if not is_owned(h)]
+        if command is not None:
+            kept.append(_handler(f"{command} --event {event}"))
+        updates.append((event, kept))
     tool_groups = set_groups(
         group.get("PreToolUse"),
-        None if command is None else {"matcher": "*", "hooks": [_handler(command)]},
+        None if command is None else {"matcher": "*", "hooks": [_handler(f"{command} --event PreToolUse")]},
         f'"{AGY_GROUP}".PreToolUse',
     )
-    for event, value in (("PreInvocation", flat_kept), ("PreToolUse", tool_groups)):
+    updates.append(("PreToolUse", tool_groups))
+    for event, value in updates:
         if value:
             group[event] = value
         elif event in group:

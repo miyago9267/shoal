@@ -349,8 +349,10 @@ reports `stop_hook_active` (the retry after a block), for a `Stop` of another
 turn, for unreadable state or an unexpected payload, in `SHOAL_GUARD=shadow`
 (the log gets `would_block`), with `SHOAL_GUARD=off`, and with
 `SHOAL_GUARD_STOP=off`. The switch defaults to `on`, exists on Claude, Codex and
-Grok, and has no effect elsewhere: agy and OpenCode never block because no
-end-of-turn payload of theirs is recorded. On Grok the check is attached to its
+Grok and agy (both default to logging `would_block` only until
+SHOAL_GUARD_STOP=enforce), and has no effect elsewhere: OpenCode never blocks
+because no end-of-turn payload of its is recorded. On Grok the check is
+attached to its
 `stop` event (only `reason == end_turn`; a second `stop` fires at session end)
 but its `{"decision":"block"}` answer has not been exercised on a real Grok yet,
 so by default it only logs `would_block`; set `SHOAL_GUARD_STOP=enforce` (with
@@ -593,8 +595,20 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   `settings.json` 若是 symlink（dotfile 管理）
   就寫進它指向的檔案，權限不變。Claude 預設 enforce。
 - `--host agy` 改 `~/.gemini/config/hooks.json`（`--home` 指 `~/.gemini`）：新增具名
-  群組 `shoal-guard`，含 `PreToolUse`（matcher `*`）與 `PreInvocation`。agy 無法分辨
-  main 與 subagent，guard 固定 shadow。
+  群組 `shoal-guard`，含 `SessionStart`、`PreInvocation`、`PreToolUse`（matcher `*`）與 `Stop`；
+  每個 command 結尾帶 `--event <名稱>`，因為 agy 的 payload 不含事件名稱（舊安裝重跑 `--apply`
+  會原地補上；沒有 `--event` 的舊註冊照舊用 payload 形狀推斷）。agy 預設 enforce
+  （`tests/fixtures/agy_guard_event_shapes.json`，agy 1.3.4，2026-10-13：deny 對
+  main 與 subagent 的
+  `write_to_file` 都被遵守）。subagent 跑在自己的 conversation，payload 不帶 role 或 parent，
+  guard 靠事件順序推斷並記在 `state/agy.conversations.json`（最後 64 筆）：這是推斷，不是事實。
+  `invoke_subagent` 的 PreToolUse 為 `Subagents[]` 每一項記一筆待啟動；新 conversation 的
+  `SessionStart` 認領最舊的一筆（優先同 workspace）：role 一致才知道 role，只有存取類別一致就用類別，
+  混合派工（例如 applier 加 scout）類別為 unknown，此時 E1 不擋，只記 `would_deny_unknown_class`。
+  同一 workspace 內兩個 agy session 同時派工可能被混淆。agy 的 `PreInvocation` 不帶使用者的 prompt，
+  所以沒有 `#direct`；出口只有：派 write role 並等它啟動、`SHOAL_GUARD_WRITE_AGENTS`、`SHOAL_GUARD_DIRECT=1`。
+  agy 不檢查 leaf 不得再派工（只記 log）；完成檢查接在 `Stop`，預設 shadow（只記 `would_block`），
+  `SHOAL_GUARD_STOP=enforce` 才擋，擋的輸出格式尚未 live 驗證。
 - 只有 command 含 `shoal_guard.py --host` 的 handler 算 shoal 的；其他 hook、其他 key、
   key 順序與 2 空格縮排都原樣保留。重複執行不會改變結果，也不會產生新備份。
 - 寫入前把原檔備份到 `${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/`
@@ -607,7 +621,7 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 ### Claude 上 guard 的行為（3.0.0 起）
 
 [`docs/specs/delegation-default`](./docs/specs/delegation-default/SPEC.md)
-讓 Claude 上的 main session 規則回到 deny；Grok、agy、OpenCode 的行為不變（R1、R2 只提醒）。
+讓 Claude 上的 main session 規則回到 deny；OpenCode 的行為不變（R1、R2 只提醒）；Grok、agy 見各自的段落。
 3.2.1 起 Codex 的 R1 與 G5 和 Claude 一樣（見下）。
 3.2.0 起 R1 與 G5 不再等分類來源（宣告）；3.3.0 起預設改成 `strict`：main 沒派 write role、
 使用者也沒有 `#direct` 就不能改檔，宣告不再是出口
@@ -617,9 +631,9 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 
 | 值 | 預設於 | R1（改檔工具）與 G5（寫檔的 `Bash`） |
 | --- | --- | --- |
-| `strict` | Claude、Codex（3.3.0 起） | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
+| `strict` | Claude、Codex（3.3.0 起）、Grok、agy | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
 | `declare` | 無（3.2.x 的預設，可選） | enforce 時 deny，除非本輪有：已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告（下一節），或分類檔的 `role` 是 `parent_local`。沒有分類檔、或其他 `role`，都不影響結果。shadow 記 `would_deny` |
-| `classified` | 其他 host（Grok、agy、OpenCode） | 3.1.0 的規則：只有分類檔把本輪標成 `judgment` 或 `mechanical` 時才擋（Claude：deny；其他 host 只提醒） |
+| `classified` | 其他 host（OpenCode） | 3.1.0 的規則：只有分類檔把本輪標成 `judgment` 或 `mechanical` 時才擋（Claude：deny；其他 host 只提醒） |
 | `off` | 無 | 關掉 R1 與 G5。硬規則（LEAF、VERIFY_EDIT）、G4、R2 不受影響 |
 
 未設定、空字串、無法辨識的值，或在不能閘控的 host 上設 `strict`／`declare`，都用該 host 的預設
@@ -701,7 +715,7 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
 
 #### 規則總表
 
-| 規則 | 條件 | Claude／Codex（enforce） | Claude／Codex（shadow） | Grok、agy、OpenCode（OpenCode 見下一節） |
+| 規則 | 條件 | Claude／Codex（enforce） | Claude／Codex（shadow） | Grok、agy、OpenCode（OpenCode 見下一節；Grok、agy 預設 enforce 時與 Claude 相同） |
 | --- | --- | --- | --- | --- |
 | R1 | `strict`：本輪沒有派工或 `#direct`；`declare`：本輪沒有派工、`#direct`、宣告或 `parent_local`；`classified`：分類檔把本輪標成 `judgment` 或 `mechanical` 且沒派工。路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | 只提醒（`advise`） |
 | R2 | 本輪 main 直接改到第 3 個不同的檔案 | 只提醒 | 只提醒 | 只提醒 |
@@ -800,7 +814,8 @@ OpenCode 事件與 guard 的對照（`docs/DESIGN-INVARIANTS.md` 第 3 條要求
     `stop_hook_active` 不是 `false`、subagent 的 `Stop`、shadow（log 記 `would_block`）、
     `SHOAL_GUARD=off`。
   - 開關：`SHOAL_GUARD_STOP=on|off`（預設 `on`；其他值視為 `on`），只對 Claude 與 Codex
-    有效。其他 host（Grok、agy、OpenCode）沒有已記錄的結束事件 payload，不啟用，永遠不擋。
+    有效。agy 的 `Stop` 已掛上（只看讓整個 session 閒置的那一次，`fullyIdle: true`），預設 shadow，與
+    Grok 相同；OpenCode 沒有已記錄的結束事件 payload，不啟用，永遠不擋。
   - 註冊：plugin 的 `hooks.json` 與全域 `install_hooks.py --host claude` 都加了沒有
     matcher 的 `Stop`；
     plugin 與全域並存時，`--plugin` 的讓出判斷對 `Stop` 同樣看全域 settings 有沒有註冊。guard 腳本與

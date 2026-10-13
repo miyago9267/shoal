@@ -39,7 +39,7 @@ class VectorTests(unittest.TestCase):
         names = " ".join(v["name"] for v in helper.load_vectors()["vectors"])
         for needle in ("dotdot", "symlink", "dispatch_scout", "dispatch_executor", "skip_missing", "log_whitelist",
                        "xdg_unset", "xdg_relative", "symlinked", "foreign_owner", "r1_", "direct_env", "exempt",
-                       "leaf", "verify_edit", "mode_shadow", "agy_forced_shadow"):
+                       "leaf", "verify_edit", "mode_shadow", "agy_mode_shadow_override"):
             self.assertIn(needle, names)
 
     def test_log_whitelist_constant_matches_vectors(self) -> None:
@@ -95,14 +95,14 @@ class DeclarationParserTests(unittest.TestCase):
         self.assertEqual(guard.log_reason("\u6539" * 250), "\u6539" * 200)
 
     def test_resolve_r1(self) -> None:
-        for host in ("claude", "codex", "opencode", "grok"):
+        for host in ("claude", "codex", "opencode", "grok", "agy"):
             for env, want in (({}, "strict"), ({"SHOAL_GUARD_R1": ""}, "strict"), ({"SHOAL_GUARD_R1": "bogus"}, "strict"),
                               ({"SHOAL_GUARD_R1": "STRICT"}, "strict"), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
                               ({"SHOAL_GUARD_R1": "declare"}, "declare"),
                               ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
                 self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
-        # hosts that cannot declare keep v3.1.0, whatever is asked
-        for host in ("agy",):
+        # a host that cannot gate keeps v3.1.0, whatever is asked
+        for host in ("",):
             for value in ("", "declare", "strict", "bogus", "classified"):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")
@@ -164,7 +164,7 @@ class SyntaxTests(unittest.TestCase):
         ast.parse(GUARD.read_text(encoding="utf-8"), feature_version=(3, 9))
 
     def test_default_mode_table(self) -> None:
-        self.assertEqual(guard.HOST_DEFAULT_MODE, {"claude": "enforce", "codex": "enforce", "grok": "enforce", "agy": "shadow"})
+        self.assertEqual(guard.HOST_DEFAULT_MODE, {"claude": "enforce", "codex": "enforce", "grok": "enforce", "agy": "enforce"})
 
     def test_valid_id(self) -> None:
         self.assertTrue(guard.valid_id("ses_ab-1"))
@@ -194,9 +194,10 @@ class CliCase(unittest.TestCase):
         env.update(extra)
         return env
 
-    def run_guard(self, host: str, payload, **env_extra: str) -> str:
+    def run_guard(self, host: str, payload, event: str = "", **env_extra: str) -> str:
         raw = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
-        proc = subprocess.run([sys.executable, str(GUARD), "--host", host], input=raw, capture_output=True,
+        argv = [sys.executable, str(GUARD), "--host", host] + (["--event", event] if event else [])
+        proc = subprocess.run(argv, input=raw, capture_output=True,
                               env=self.env(**env_extra), timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc.stdout.decode()
@@ -900,14 +901,17 @@ class StopCheckCliTests(CliCase):
             for value, want in ((None, True), ("on", True), ("maybe", True), ("", True), ("off", False)):
                 env = {} if value is None else {"SHOAL_GUARD_STOP": value}
                 self.assertIs(guard.stop_enabled(host, env), want, (host, value))
-        for value, want in ((None, True), ("on", True), ("enforce", True), ("off", False)):
-            env = {} if value is None else {"SHOAL_GUARD_STOP": value}
-            self.assertIs(guard.stop_enabled("grok", env), want, value)
-        for host in ("agy", "opencode", ""):
+        for host in ("grok", "agy"):
+            for value, want in ((None, True), ("on", True), ("enforce", True), ("off", False)):
+                env = {} if value is None else {"SHOAL_GUARD_STOP": value}
+                self.assertIs(guard.stop_enabled(host, env), want, (host, value))
+        for host in ("opencode", ""):
             self.assertIs(guard.stop_enabled(host, {}), False, host)
             self.assertIs(guard.stop_enabled(host, {"SHOAL_GUARD_STOP": "on"}), False, host)
-        self.assertEqual(guard.STOP_HOSTS, frozenset({"claude", "codex", "grok"}))
-        # grok's block output is unexercised: it blocks only when asked, the other hosts block unless switched off
+        self.assertEqual(guard.STOP_HOSTS, frozenset({"claude", "codex", "grok", "agy"}))
+        # grok's and agy's block output is unexercised: they block only when asked, the other hosts block unless switched off
+        self.assertIs(guard.stop_blocks("agy", {}), False)
+        self.assertIs(guard.stop_blocks("agy", {"SHOAL_GUARD_STOP": "enforce"}), True)
         self.assertIs(guard.stop_blocks("grok", {}), False)
         self.assertIs(guard.stop_blocks("grok", {"SHOAL_GUARD_STOP": "on"}), False)
         self.assertIs(guard.stop_blocks("grok", {"SHOAL_GUARD_STOP": "enforce"}), True)
@@ -1318,6 +1322,9 @@ class GrokGuardTests(CliCase):
 
 
 class AgyAdapterTests(CliCase):
+    def env(self, **extra: str) -> dict:
+        return super().env(**{"SHOAL_GUARD_R1": "", **extra})  # the host default (strict)
+
     @staticmethod
     def pre_invocation(n=0, steps=0, **kw):
         return {"conversationId": "conv-1", "invocationNum": n, "initialNumSteps": steps, **kw}
@@ -1352,14 +1359,67 @@ class AgyAdapterTests(CliCase):
         self.assertFalse(guard.adapt_agy(self.tool("write_to_file", {"TargetFile": "/r/a"}))["is_subagent"])
         self.assertIsNone(guard.adapt_agy({"conversationId": "c"}))
 
-    def test_always_shadow_even_with_enforce(self) -> None:
-        env = {"SHOAL_GUARD": "enforce"}
-        self.run_guard("agy", self.pre_invocation(0, cwd=self.work), **env)
-        self.write_turn("conv-1", "conv-1:0", "judgment")
-        out = self.run_guard("agy", self.tool("write_to_file", {"TargetFile": self.path("a.py")}), **env)
-        self.assertEqual(out, "")
+    def test_default_enforce_denies_a_main_edit_and_shadow_only_logs(self) -> None:
+        self.run_guard("agy", self.pre_invocation(0, cwd=self.work), event="PreInvocation")
+        edit = self.tool("write_to_file", {"TargetFile": self.path("a.py")}, workspacePaths=[self.work])
+        out = json.loads(self.run_guard("agy", edit, event="PreToolUse"))
+        self.assertEqual(out["decision"], "deny")
+        self.assertNotIn("#direct", out["reason"])  # agy's PreInvocation carries no prompt text
+        self.assertIn("SHOAL_GUARD_DIRECT=1", out["reason"])
         record = self.log_records()[-1]
-        self.assertEqual((record["decision"], record["rule"], record["mode"], record["host"]), ("advise", "R1", "shadow", "agy"))
+        self.assertEqual((record["decision"], record["rule"], record["mode"], record["host"]), ("deny", "R1", "enforce", "agy"))
+        self.assertEqual(self.run_guard("agy", edit, event="PreToolUse", SHOAL_GUARD="shadow"), "")
+        self.assertEqual(self.log_records()[-1]["decision"], "would_deny")
+
+    def test_event_name_comes_from_the_registration(self) -> None:
+        self.assertEqual(guard.adapt_agy({"conversationId": "c", "workspacePaths": ["/w"]}, "SessionStart")["kind"], "session_start")
+        self.assertEqual(guard.adapt_agy({"conversationId": "c", "workspacePaths": ["/w"]}, "SessionStart")["workspace"], "/w")
+        stop = guard.adapt_agy({"conversationId": "c", "fullyIdle": True, "executionNum": 1}, "Stop")
+        self.assertEqual((stop["kind"], stop["fully_idle"], stop["stop_hook_active"]), ("stop", True, False))
+        self.assertIsNone(guard.adapt_agy({"conversationId": "c", "invocationNum": 1, "initialNumSteps": 0}, "PreInvocation"))
+        self.assertIsNone(guard.adapt_agy({"conversationId": "c"}, "PreToolUse"))  # named PreToolUse, but no toolCall
+        self.assertIsNone(guard.adapt_agy(self.tool("write_to_file", {"TargetFile": "/r/a"}), "PostToolUse"))  # not an agy event we use
+        self.assertEqual(guard.adapt_agy(self.tool("write_to_file", {"TargetFile": "/r/a"}), "PreToolUse")["tool_kind"], "edit")
+        self.assertIsNone(guard.adapt_agy({"conversationId": "c"}))  # an old registration: no name, no shape
+        shell = guard.adapt_agy(self.tool("run_command", {"CommandLine": "echo x > a", "Cwd": "/w"}), "PreToolUse")
+        self.assertEqual((shell["tool_kind"], shell["command"], shell["cwd"]), ("shell", "echo x > a", "/w"))
+        listed = guard.adapt_agy(self.tool("invoke_subagent", self.subagents("applier", "scout")), "PreToolUse")
+        self.assertEqual(listed["dispatched_roles"], ["applier", "scout"])
+
+    def test_old_registration_without_event_name_still_evaluated(self) -> None:
+        self.run_guard("agy", self.pre_invocation(0, cwd=self.work))  # no --event
+        edit = self.tool("write_to_file", {"TargetFile": self.path("a.py")}, cwd=self.work)
+        self.assertEqual(json.loads(self.run_guard("agy", edit))["decision"], "deny")
+
+    def test_env_event_name_is_accepted_too(self) -> None:
+        self.run_guard("agy", {"conversationId": "conv-1", "workspacePaths": [self.work]}, SHOAL_GUARD_EVENT="SessionStart")
+        self.assertEqual(self.log_records()[-1]["rule"], "conversation_main")
+
+    def test_subagent_conversation_is_inferred_from_order_and_judged_by_role(self) -> None:
+        wp = [self.work]
+        self.run_guard("agy", {"conversationId": "m", "workspacePaths": wp}, event="SessionStart")
+        self.run_guard("agy", self.pre_invocation(0, conversationId="m", workspacePaths=wp), event="PreInvocation")
+        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("scout"), conversationId="m", workspacePaths=wp),
+                       event="PreToolUse")
+        self.run_guard("agy", {"conversationId": "s", "workspacePaths": wp}, event="SessionStart")
+        edit = self.tool("write_to_file", {"TargetFile": self.path("a.py")}, conversationId="s", workspacePaths=wp)
+        out = json.loads(self.run_guard("agy", edit, event="PreToolUse"))
+        self.assertEqual(out["decision"], "deny")
+        self.assertEqual(self.log_records()[-1]["rule"], "E1")
+        record = json.loads(Path(self.guard_dir, "state", "agy.conversations.json").read_text(encoding="utf-8"))
+        self.assertEqual([(c["id"], c["kind"], c["role"]) for c in record["conversations"]], [("m", "main", ""), ("s", "sub", "scout")])
+        self.assertEqual(record["pending"], [])
+
+    def test_dispatch_alone_does_not_unlock_but_a_started_write_role_does(self) -> None:
+        wp = [self.work]
+        self.run_guard("agy", self.pre_invocation(0, conversationId="m"), event="PreInvocation")
+        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("executor"), conversationId="m", workspacePaths=wp),
+                       event="PreToolUse")
+        edit = self.tool("write_to_file", {"TargetFile": self.path("a.py")}, conversationId="m", cwd=self.work)
+        self.assertEqual(json.loads(self.run_guard("agy", edit, event="PreToolUse"))["decision"], "deny")
+        self.run_guard("agy", {"conversationId": "s", "workspacePaths": wp}, event="SessionStart")
+        self.assertEqual(self.run_guard("agy", edit, event="PreToolUse"), "")
+        self.assertEqual(self.log_records()[-1]["rule"], "dispatched")
 
     def test_deny_output_shape(self) -> None:
         self.assertEqual(json.loads(guard.deny_output("agy", "why")), {"decision": "deny", "reason": "why"})
@@ -1368,18 +1428,39 @@ class AgyAdapterTests(CliCase):
         self.assertEqual(claude, {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "why"})
         self.assertEqual(json.loads(guard.deny_output("codex", "why")), json.loads(guard.deny_output("claude", "why")))
 
-    def test_dispatch_unlocks_within_invocation(self) -> None:
-        self.run_guard("agy", self.pre_invocation(0))
-        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("executor", "applier")))
-        self.run_guard("agy", self.pre_invocation(1))  # next model call in the turn: state kept
-        self.run_guard("agy", self.tool("write_to_file", {"TargetFile": self.path("a")}, cwd=self.work))
+    def test_unlock_survives_later_model_calls_of_the_turn(self) -> None:
+        self.run_guard("agy", self.pre_invocation(0, conversationId="m"), event="PreInvocation")
+        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("executor", "applier"), conversationId="m"),
+                       event="PreToolUse")
+        self.run_guard("agy", {"conversationId": "s1"}, event="SessionStart")
+        self.run_guard("agy", self.pre_invocation(1, conversationId="m"), event="PreInvocation")  # state kept
+        self.run_guard("agy", self.tool("write_to_file", {"TargetFile": self.path("a")}, conversationId="m", cwd=self.work),
+                       event="PreToolUse")
         self.assertEqual(self.log_records()[-1]["rule"], "dispatched")
+        self.run_guard("agy", self.pre_invocation(0, steps=9, conversationId="m"), event="PreInvocation")  # next turn
+        out = self.run_guard("agy", self.tool("write_to_file", {"TargetFile": self.path("b")}, conversationId="m", cwd=self.work),
+                             event="PreToolUse")
+        self.assertEqual(json.loads(out)["decision"], "deny")
 
-    def test_mixed_subagents_do_not_unlock(self) -> None:
-        self.run_guard("agy", self.pre_invocation(0))
-        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("executor", "scout")))
-        self.run_guard("agy", self.tool("write_to_file", {"TargetFile": self.path("a")}, cwd=self.work))
-        self.assertEqual(self.log_records()[-1]["rule"], "count")
+    def test_mixed_dispatch_leaves_the_class_unknown_and_is_not_denied(self) -> None:
+        self.run_guard("agy", self.pre_invocation(0, conversationId="m"), event="PreInvocation")
+        self.run_guard("agy", self.tool("invoke_subagent", self.subagents("applier", "scout"), conversationId="m"),
+                       event="PreToolUse")
+        self.run_guard("agy", {"conversationId": "s1"}, event="SessionStart")
+        edit = self.tool("write_to_file", {"TargetFile": self.path("a")}, conversationId="s1", cwd=self.work)
+        self.assertEqual(self.run_guard("agy", edit, event="PreToolUse"), "")
+        self.assertEqual(self.log_records()[-1]["skip_reason"], "would_deny_unknown_class")
+
+    def test_stop_logs_would_block_for_main_when_fully_idle_and_blocks_only_on_request(self) -> None:
+        self.run_guard("agy", self.pre_invocation(0, conversationId="m"), event="PreInvocation")
+        self.run_guard("agy", self.tool("write_to_file", {"TargetFile": self.path("a")}, conversationId="m", cwd=self.work),
+                       event="PreToolUse", SHOAL_GUARD_DIRECT="1")
+        stop = {"conversationId": "m", "executionNum": 1, "terminationReason": "NO_TOOL_CALL", "fullyIdle": True}
+        self.assertEqual(self.run_guard("agy", dict(stop, fullyIdle=False), event="Stop"), "")
+        self.assertEqual(self.run_guard("agy", stop, event="Stop"), "")
+        self.assertEqual(self.log_records()[-1]["decision"], "would_block")
+        out = json.loads(self.run_guard("agy", stop, event="Stop", SHOAL_GUARD_STOP="enforce"))
+        self.assertEqual(out["decision"], "block")
 
 
 class RobustnessTests(CliCase):
@@ -1431,7 +1512,9 @@ class RobustnessTests(CliCase):
         self.assertEqual(guard.resolve_mode("codex", {}), "enforce")
         self.assertEqual(guard.resolve_mode("codex", {"SHOAL_GUARD": "shadow"}), "shadow")
         self.assertEqual(guard.resolve_mode("codex", {"SHOAL_GUARD": "off"}), "off")
-        self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "enforce"}), "shadow")
+        self.assertEqual(guard.resolve_mode("agy", {}), "enforce")
+        self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "enforce"}), "enforce")
+        self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "shadow"}), "shadow")
         self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "off"}), "off")
         self.assertEqual(guard.resolve_mode("claude", {"SHOAL_GUARD": "shadow"}), "shadow")
 
