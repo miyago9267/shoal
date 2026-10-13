@@ -41,7 +41,7 @@
   workflow-extensions 172／9457，上限 180／9600；Codex verifier 90／5702，
   上限 95／6000）。commit 不需要 `Lock-Renewal: approved`。
 
-## S3（實作完成；live 驗收待 main 執行）
+## S3（實作完成；live 驗收已完成）
 
 - `hooks/shoal_guard.py` 與 `hosts/opencode/plugin/src/guard/core.ts`：state
   新增 `changed`、`checked`、`stop_blocked`；`Stop` adapter（Claude：
@@ -57,11 +57,26 @@
   （`shoal-guard-v3`；v1、v2 原地升級）。Codex 升級後要用 `/hooks` 核准一次。
 - Payload 證據：`tests/fixtures/stop_payload_shapes.json`（2026-10-13 的兩次
   真實執行，只記 key 與型別）。
-- **未驗證：Claude 對 `{"decision":"block","reason":...}` 的處理。** repo 內
-  沒有實測紀錄；格式不被接受時 Claude 照常結束（失敗開放）。Codex 的格式
-  與 `shoal_autoroute_gate.py` 相同。
-- **Live 驗收尚未執行**（改檔後直接結束被擋一次、有檢查時不擋；Claude 與
-  Codex 各一次），由 main 執行。已做的是以暫存 HOME 與 XDG_STATE_HOME 對
-  真實形狀的 payload 手動餵給腳本。
+- Claude 對 `{"decision":"block","reason":...}` 的處理已實測確認（見下方
+  「S3 的 live 驗收」）。Codex 的格式與 `shoal_autoroute_gate.py` 相同。
+- Live 驗收已執行（改檔後直接結束被擋一次、有檢查時不擋；Claude 與 Codex
+  各一次），結果見下方「S3 的 live 驗收」。另外也以暫存 HOME 與
+  XDG_STATE_HOME 對真實形狀的 payload 手動餵給腳本。
 - 未驗證：Claude 的 `Stop` 的 `prompt_id` 是否等於同一回合
   `UserPromptSubmit` 的 `prompt_id`（假設相等，不相等時完全不擋）。
+
+## S3 的 live 驗收（2026-10-13，v3.4.0，`941c90b`）
+
+紀錄在 `docs/benchmarks/shared-rules-gate/`。Claude 2 次（USD 0.97）、Codex 2 次，四題都符合預期。
+
+- **改完沒檢查就結束**：Claude 與 Codex 各 1 次，prompt 含 `#direct`。guard 放行改檔後，在結束時
+  擋下一次（真實的 guard log 各有一筆 `STOP`／`block`）；兩邊的 session 都繼續了一輪，並在回報中
+  寫明變更未驗證。同一回合第二次結束沒有再被擋。
+- **有檢查就不擋**：Claude 與 Codex 各 1 次。main 派出可寫的 role，之後自己跑了測試指令，沒有任何
+  `STOP` 紀錄。
+- **輸出格式**：Claude 接受 `{"decision":"block","reason":...}`，stream 裡看得到「Stop hook
+  feedback」與完整訊息。Codex 的 `exec --json` 不會印出 hook 的回饋，依據是 session 在被擋後繼續，
+  而且後續回覆引用了訊息內容。
+- 限制：每題 1 次；Codex 以 `--dangerously-bypass-hook-trust` 執行（變更後的 hook 尚未由使用者
+  核准）；Codex 那次同時還有另一個 Stop hook（model 升級的 gate）也回了訊息，所以「繼續」不能只歸因
+  於這條規則；沒有測到只改文件、以 `verifier` 或 `watcher` 當檢查、以及被擋後仍直接結束的情況。
