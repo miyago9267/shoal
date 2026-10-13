@@ -177,6 +177,8 @@ trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 install_files="$target/.opencode/agents/scout.md
 $target/.opencode/agents/executor.md
 $target/.opencode/agents/verifier.md
+$target/.opencode/agents/applier.md
+$target/.opencode/agents/plan-critic.md
 $target/.opencode/agents/security-reviewer.md
 $target/.opencode/agents/security-executor.md
 $target/.opencode/agents/watcher.md

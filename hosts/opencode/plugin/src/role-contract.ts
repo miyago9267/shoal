@@ -142,6 +142,22 @@ export const DEFAULT_ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     output: ["changed paths", "security behavior", "verification", "residual risk"],
   },
   {
+    id: "applier",
+    responsibility: "Mechanical implementation from a complete specification.",
+    scope: ["apply the specified change to the assigned files", "run the routine checks the specification names"],
+    nonGoals: ["make design decisions", "expand the specification", "delegate work"],
+    input: ["complete specification", "assigned files", "done criteria"],
+    output: ["changed paths", "checks run", "boundary reached, if any"],
+  },
+  {
+    id: "plan-critic",
+    responsibility: "Read-only fresh-context review of one stable Plan envelope or execution slice.",
+    scope: ["read the Plan and the paths it names", "return READY or a structured REVISE"],
+    nonGoals: ["edit files", "execute or fix anything", "delegate work"],
+    input: ["Plan envelope or execution slice", "relevant paths"],
+    output: ["READY or REVISE", "findings that block the Plan"],
+  },
+  {
     id: "watcher",
     responsibility: "Run a long command or follow a CI run to a terminal state and report the outcome.",
     scope: ["run the assigned command or follow the assigned CI run", "poll its log until the exit status appears"],

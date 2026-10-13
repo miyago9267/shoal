@@ -19,6 +19,21 @@
         "streaming"
       ]
     },
+    "applier": {
+      "agent": "applier",
+      "candidates": [
+        {
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash"
+        }
+      ],
+      "fallback": "none",
+      "requiredCapabilities": [
+        "tools",
+        "streaming",
+        "reasoning"
+      ]
+    },
     "executor": {
       "agent": "executor",
       "candidates": [
@@ -36,6 +51,20 @@
         "tools",
         "streaming",
         "reasoning"
+      ]
+    },
+    "plan-critic": {
+      "agent": "plan-critic",
+      "candidates": [
+        {
+          "provider": "openai",
+          "model": "gpt-5.6-sol"
+        }
+      ],
+      "fallback": "none",
+      "requiredCapabilities": [
+        "tools",
+        "streaming"
       ]
     },
     "verifier": {

@@ -8,12 +8,28 @@
         "model": "deepseek-v4-flash"
       }
     },
+    "applier": {
+      "mode": "subagent",
+      "available": true,
+      "model": {
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      }
+    },
     "executor": {
       "mode": "subagent",
       "available": true,
       "model": {
         "provider": "openai",
         "model": "gpt-5.6-luna"
+      }
+    },
+    "plan-critic": {
+      "mode": "subagent",
+      "available": true,
+      "model": {
+        "provider": "openai",
+        "model": "gpt-5.6-sol"
       }
     },
     "verifier": {

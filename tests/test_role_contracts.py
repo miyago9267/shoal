@@ -58,8 +58,8 @@ EXPECTED_CORE_HOSTS: dict[str, tuple[str, ...]] = {
     "agy": CORE_ROLES + NEW_ROLES,
     "grok": CORE_ROLES + NEW_ROLES,
     "claude": CORE_ROLES + NEW_ROLES,
-    # OpenCode 沒有 applier、plan-critic（Decision 9），這兩個在 omitted_roles。
-    "opencode": tuple(r for r in CORE_ROLES if r not in ("applier", "plan-critic")) + NEW_ROLES,
+    # OpenCode 與其他 host 同一組 role（applier、plan-critic 已不在 omitted_roles）。
+    "opencode": CORE_ROLES + NEW_ROLES,
 }
 
 # host 專屬內容（工具限制、capability 說明、foreground 用語、brief 用語對照等）只能放在這些 addenda；
@@ -148,6 +148,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
             "parent-session-owns",
             "parent-session-wording",
         ],
+        "plan-critic": ["brief-unit-kinds"],
     },
 }
 
@@ -544,11 +545,17 @@ class OmittedRoleTests(TempHost):
         self.edit(
             self.binding("opencode"), 'role_text = "legacy"', 'role_text = "core"'
         )
+        # OpenCode 目前不省略任何 role；用 applier 驗證 omitted_roles 在 core 模式的行為。
+        self.edit(self.binding("opencode"), "omitted_roles = []", 'omitted_roles = ["applier"]')
+        self.edit(
+            self.binding("opencode"),
+            '[roles.applier]\nfallback = "none"\nfallback_candidates = []\n\n',
+            "",
+        )
+        (self.root / "hosts" / "opencode" / "src" / "roles" / "applier.md").unlink()
         files = self.render("opencode")
         omitted = render.load_toml(self.binding("opencode"))["omitted_roles"]
-        self.assertEqual(
-            sorted(omitted), ["applier", "plan-critic"]
-        )
+        self.assertEqual(omitted, ["applier"])
         for role in omitted:
             self.assertNotIn(f"roles/{role}.md", files)
         self.assertEqual(files["roles/scout.md"], b"scout one. scout two.\n")

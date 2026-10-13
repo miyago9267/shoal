@@ -7,7 +7,7 @@ import {
 
 describe("role contract", () => {
   test("contains responsibility boundaries without runtime bindings", () => {
-    expect(DEFAULT_ROLE_DEFINITIONS.length).toBe(7);
+    expect(DEFAULT_ROLE_DEFINITIONS.length).toBe(9);
 
     for (const role of DEFAULT_ROLE_DEFINITIONS) {
       expect(role.id).toMatch(/^[a-z][a-z0-9-]*$/);

@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SH = ROOT / "hosts" / "opencode" / "plugin" / "install" / "install.sh"
 sys.path.insert(0, str(ROOT / "tests"))
 import legacy_fixtures  # noqa: E402
-ROLES = ("scout", "executor", "verifier", "security-reviewer", "security-executor", "watcher", "researcher")
+ROLES = ("scout", "applier", "executor", "plan-critic", "verifier", "security-reviewer", "security-executor", "watcher", "researcher")
 FAKE_PLUGIN = "// fake plugin bundle\n"
 
 # 假 bun：install 什麼都不做；build 只把固定內容寫到 --outfile。

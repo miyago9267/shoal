@@ -441,7 +441,7 @@ class ExplainTests(unittest.TestCase):
         self.assertIn(
             '結果：{"provider": "deepseek", "model": "deepseek-v4-flash"}', out
         )
-        self.assertNotIn("applier", out)  # omitted_roles 不輸出
+        self.assertIn("applier", out)  # omitted_roles 為空，所有 role 都輸出
 
     def test_explain_does_not_touch_dist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
