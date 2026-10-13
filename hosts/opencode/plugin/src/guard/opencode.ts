@@ -217,8 +217,6 @@ export function createOpenCodeGuard(
         const info = await lookup(sessionID);
         const turnID = null; // tool hooks carry no message id; the prompt boundary state is used
         const args = record(output?.args);
-        // R1 for main: strict (unset); the user may still choose classified or off
-        const evalEnv: Env = env.SHOAL_GUARD_R1 ? env : { ...env, SHOAL_GUARD_R1: "strict" };
         let guardEvent: GuardEvent;
         if (isEdit) {
           guardEvent = event("tool", sessionID, turnID, info, {
@@ -240,7 +238,7 @@ export function createOpenCodeGuard(
             dispatched_role: str(args.subagent_type),
           });
         }
-        const result = evaluate(guardEvent, evalEnv, homeOf(env));
+        const result = evaluate(guardEvent, env, homeOf(env));
         if (result.decision === "deny") reason = result.reason;
       } catch {
         logSkip(HOST, env, homeOf(env), "exception");

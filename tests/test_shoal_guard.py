@@ -95,14 +95,14 @@ class DeclarationParserTests(unittest.TestCase):
         self.assertEqual(guard.log_reason("\u6539" * 250), "\u6539" * 200)
 
     def test_resolve_r1(self) -> None:
-        for host in ("claude", "codex"):
+        for host in ("claude", "codex", "opencode"):
             for env, want in (({}, "strict"), ({"SHOAL_GUARD_R1": ""}, "strict"), ({"SHOAL_GUARD_R1": "bogus"}, "strict"),
                               ({"SHOAL_GUARD_R1": "STRICT"}, "strict"), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
                               ({"SHOAL_GUARD_R1": "declare"}, "declare"),
                               ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
                 self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
         # hosts that cannot declare keep v3.1.0, whatever is asked
-        for host in ("grok", "agy", "opencode"):
+        for host in ("grok", "agy"):
             for value in ("", "declare", "strict", "bogus", "classified"):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")

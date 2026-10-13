@@ -130,10 +130,10 @@ const PROMPT_KEEP_HOSTS = new Set(["claude"]);
 const DENY_MAIN_HOSTS = new Set(["claude"]);
 // SHOAL_GUARD_R1 (main-session edit rule; docs/specs/guard-declared-direct).  `declare` needs a way to
 // declare, so it is selectable only on hosts whose adapter delivers main's shell calls to the guard
-// (claude's and, since 3.2.1, codex's `Bash`); every other host keeps the v3.1.0 rule (`classified`).
-// The OpenCode adapter never produces main-session shell events.  `strict` (3.3.0) needs the same events
-// and is selectable on the same hosts, where it is the default.
-const DECLARE_HOSTS = new Set(["claude", "codex"]);
+// (claude's and, since 3.2.1, codex's `Bash`; the OpenCode adapter's `bash`); every other host keeps the v3.1.0
+// rule (`classified`).  `strict` (3.3.0) needs the same events and is selectable on the same hosts, where it is
+// the default.
+const DECLARE_HOSTS = new Set(["claude", "codex", "opencode"]);
 // Hosts where "a write-level role was dispatched" unlocks only once the role has started (M11): the dispatch
 // call records a pending write dispatch and the SubagentStart event of the same session releases it.  Every
 // other host unlocks at the dispatch call itself (no start event is recorded for it).  The registration and
@@ -589,9 +589,6 @@ export function stopEnabled(host: string, env: Env): boolean {
 export function resolveR1(host: string, env: Env): string {
   const raw = env.SHOAL_GUARD_R1 || "";
   if (raw === "classified" || raw === "off") return raw;
-  // opencode: `strict` is selectable (the adapter delivers shell and apply_patch events and sets it when unset);
-  // its core default stays `classified`, which the shared stop_opencode_never_blocks vector replays.
-  if (host === "opencode" && raw === "strict") return "strict";
   if (!DECLARE_HOSTS.has(host)) return "classified";
   return raw === "declare" ? "declare" : "strict";
 }

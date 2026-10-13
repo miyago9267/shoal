@@ -119,11 +119,12 @@ PROMPT_KEEP_HOSTS = frozenset({"claude"})
 # shell command that writes a file is judged by R1 (G5).
 DENY_MAIN_HOSTS = frozenset({"claude"})
 # SHOAL_GUARD_R1 (main-session edit rule).  `declare` needs a way to declare, so it is selectable only on
-# hosts whose adapter delivers main's shell calls to the guard: claude's `Bash` and, since 3.2.1, codex's
-# `Bash` (recorded payload, docs/specs/guard-declared-direct/PROGRESS.md).  Any other value falls back to
+# hosts whose adapter delivers main's shell calls to the guard: claude's `Bash`, since 3.2.1 codex's
+# `Bash` (recorded payload, docs/specs/guard-declared-direct/PROGRESS.md) and the OpenCode adapter's `bash`
+# (run by the TypeScript port; listed here so both implementations replay the same vectors).  Any other value falls back to
 # the host default; every other host keeps the v3.1.0 behaviour (`classified`).  `strict` (3.3.0) needs the
 # same events (edit tools plus main's shell calls), so it is selectable on the same hosts and is their default.
-DECLARE_HOSTS = frozenset({"claude", "codex"})
+DECLARE_HOSTS = frozenset({"claude", "codex", "opencode"})
 # Hosts where "a write-level role was dispatched" unlocks only once the role has actually started (M11):
 # the PreToolUse of the dispatch call records a pending write dispatch and the SubagentStart event of the
 # same session releases it.  Claude's SubagentStart payload (session_id equal to main's, agent_id, agent_type,
@@ -561,7 +562,7 @@ def resolve_r1(host: str, env: Dict[str, str]) -> str:
     """SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
 
     Unset, unrecognized, or `strict` / `declare` on a host that cannot gate -> the host default
-    (`strict` on claude and codex, `classified` elsewhere)."""
+    (`strict` on claude, codex and opencode, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw

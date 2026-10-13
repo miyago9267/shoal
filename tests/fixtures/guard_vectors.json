@@ -3827,10 +3827,20 @@
   {
    "name": "stop_opencode_never_blocks",
    "host": "opencode",
-   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "enforce"},
+   "env": {"SHOAL_GUARD_R1": "classified", "SHOAL_GUARD": "enforce"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "r1_opencode_default_strict_denies_main_edit",
+   "host": "opencode",
+   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "enforce"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}},
     {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "none"}}
    ]
   },
