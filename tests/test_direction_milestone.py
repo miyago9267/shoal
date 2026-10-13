@@ -9,19 +9,17 @@ CLAUSES = ROOT / "docs" / "specs" / "milestone-direction-check" / "CLAUSES.md"
 SURFACES = (
     ROOT / "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md",
     ROOT / "claude-plugin/skills/shoal-orchestration/references/workflow-extensions.md",
-    ROOT / "templates/agents-md.orchestration.md",
-    ROOT / "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
+    ROOT / "templates/agents-md.extensions.md",
 )
 
 
-# shared-rules B5: the core clause (Claude's rendered surfaces) adds this sentence after "review intent."; the Codex
-# templates are still legacy text and keep CLAUSES.md's original wording until Codex is switched to core.
+# shared-rules B5: the core clause (rendered on Claude and Codex surfaces) adds this sentence after "review intent.".
+# Codex carries it in the on-demand extensions document (templates/agents-md.extensions.md), not the always-on policy.
 WRAPUP = (
     "At the wrap-up of multi-slice work, main also sends its draft final report to that checkpoint and "
     "corrects the report before sending it to the user."
 )
-CORE_SURFACES = SURFACES[:2]
-LEGACY_SURFACES = SURFACES[2:]
+CORE_SURFACES = SURFACES
 
 
 def squash(text: str) -> str:
@@ -44,18 +42,14 @@ class MilestoneDirectionTests(unittest.TestCase):
         self.assertNotEqual(with_wrapup, squash(block))
         for path in SURFACES:
             text = path.read_text(encoding="utf-8")
-            if path in CORE_SURFACES:
-                self.assertIn(with_wrapup, squash(text), path.name)
-            else:
-                self.assertIn(block, text, path.name)
-                self.assertNotIn(WRAPUP, text, path.name)
+            self.assertIn(with_wrapup, squash(text), path.name)
             self.assertNotIn("may send the `verifier`", text, path.name)
             self.assertNotIn("may receive the", text, path.name)
 
     def test_m2b_block_verbatim_with_one_stop_list(self) -> None:
         block = m2b_block()
         for path in SURFACES:
-            self.assertIn(block, path.read_text(encoding="utf-8"), path.name)
+            self.assertIn(squash(block), squash(path.read_text(encoding="utf-8")), path.name)
         self.assertNotIn("commit, push", block)
         self.assertNotIn("commit/push", block)
         self.assertIn("material change", block)

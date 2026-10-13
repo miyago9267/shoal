@@ -96,13 +96,14 @@ class OtherHostsRoleTests(unittest.TestCase):
         "agy": {"watcher": "agents/watcher/agent.md", "researcher": "agents/researcher/agent.md"},
         "opencode": {"watcher": "roles/watcher.md", "researcher": "roles/researcher.md"},
     }
-    # codex、grok 的 main-session policy 文字（render 輸出的路徑）在 fa90087（v3.0.3）的 sha256；
-    # agy 已切到 core（core-policy P3），它的 pin 是 core 條款加 agy addenda 的現況，不再等於 v3.0.3。
+    # grok 的 main-session policy 文字（render 輸出的路徑）在 fa90087（v3.0.3）的 sha256；
+    # agy、codex 已切到 core（core-policy P3、4a1f272），它們的 pin 是 core 條款加各自 addenda 的現況，
+    # 不再等於 v3.0.3（Codex 的變更清單見 docs/specs/core-policy/equivalence/codex.md）。
     # 版本 marker 先換成 vX。之後有意改 policy 時連同這張表一起改。
     POLICY_SHA256 = {
         "codex": {
-            "agents-md.bootstrap.md": "2ce83cc4800352763f17dc883f38e19a0f03dabff372dae6efbc6d39d563b020",
-            "agents-md.orchestration.md": "0f39ca010ccb29fec762cf7bd0de26977a6e44cdc4d6c6d0bc33b960244563be",
+            "agents-md.bootstrap.md": "05506fc776f399ac88365375e9f3cf9a2dda285929a737cd1949bdc80eb67943",
+            "agents-md.orchestration.md": "9853da0b4d72ccd113bb5d04b521dc3388c44966e61bba867c8e9350c6e6b191",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
@@ -116,7 +117,7 @@ class OtherHostsRoleTests(unittest.TestCase):
         "opencode": {},
     }
     MARKER = re.compile(rb"<!-- shoal-(codex|grok|agy) v\S+ -->")
-    # Codex 的 policy 有一張 role 表（test_policy 要求列出每個安裝的 role）；這是唯一允許的差異。
+    # Codex 的 policy 有一張 role 表（test_policy 要求列出每個安裝的 role）。
     ROLE_ROW = re.compile(rb"^\| `(watcher|researcher)` \|.*\n", re.MULTILINE)
 
     @classmethod
@@ -207,10 +208,9 @@ class OtherHostsRoleTests(unittest.TestCase):
         for host, expected in self.POLICY_SHA256.items():
             for rel, digest in expected.items():
                 data = self.MARKER.sub(rb"<!-- shoal-\1 vX -->", self.files[host][rel])
-                data = self.ROLE_ROW.sub(b"", data) if host == "codex" else data
                 with self.subTest(host=host, path=rel):
                     self.assertEqual(hashlib.sha256(data).hexdigest(), digest)
-        # grok 的 policy 不新增 watcher / researcher 的條款或路由（Codex 只多 role 表兩列）。
+        # grok 的 policy 不新增 watcher / researcher 的條款或路由。
         # agy 已用 core 條款，`watcher-long-commands` 等條款本來就會提到 watcher，所以改為要求 agy 的
         # 常駐文件列出兩個 role（bootstrap-named-roles），而不是禁止。
         for rel in self.POLICY_SHA256["grok"]:
@@ -218,10 +218,12 @@ class OtherHostsRoleTests(unittest.TestCase):
                 self.assertNotIn(f"`{role}`".encode(), self.files["grok"][rel])
         for role in NEW_ROLES:
             self.assertIn(f"`{role}`".encode(), self.files["agy"]["rules/shoal-agy.md"])
+        # codex 同 agy：core 的 watcher-long-commands、research-fanout 等條款使兩個 role 在常駐 bootstrap
+        # 出現（intended change，equivalence/codex.md 1.4），role 表仍在 orchestration。
+        for role in NEW_ROLES:
+            self.assertIn(f"`{role}`".encode(), self.files["codex"]["agents-md.bootstrap.md"])
         codex = self.files["codex"]["agents-md.orchestration.md"]
         self.assertEqual(len(self.ROLE_ROW.findall(codex)), 2)
-        self.assertEqual(codex.count(b"`watcher`"), 1)
-        self.assertEqual(codex.count(b"`researcher`"), 1)
 
     def test_codex_renders_every_core_role_plus_sol_executor(self) -> None:
         files = render.RENDERERS["codex"](ROOT)

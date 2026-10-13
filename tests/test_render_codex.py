@@ -16,6 +16,8 @@ GOLDEN = ROOT / "tests" / "golden" / "codex"
 RENDER = ROOT / "tools" / "render.py"
 POLICY = "agents-md.orchestration.md"
 MIRROR = render.MIRRORS["codex"][POLICY]
+# binding [policy.mirrors] 另外鏡像 on-demand extensions 文件到 plugin reference。
+EXT_MIRROR = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
 
 
 def golden_files() -> dict[str, bytes]:
@@ -42,12 +44,13 @@ def make_root(root: Path) -> None:
     shutil.copytree(ROOT / "templates", root / "templates")
     (root / MIRROR).parent.mkdir(parents=True)
     shutil.copyfile(ROOT / MIRROR, root / MIRROR)
+    shutil.copyfile(ROOT / EXT_MIRROR, root / EXT_MIRROR)
 
 
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
-        self.assertEqual(len(golden), 14)
+        self.assertEqual(len(golden), 15)
         rendered = render.RENDERERS["codex"](ROOT)
         self.assertEqual(sorted(rendered), sorted(golden))
         for rel, data in golden.items():

@@ -3,15 +3,15 @@
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
-Main-session policy. If you are running as a subagent role (`scout`,
-`plan-critic`, `security-reviewer`, `applier`, `sol-executor`,
-`executor`, `verifier`, or `security-executor`), ignore this section and
-complete the task yourself without further delegation.
+Main-session policy. Named roles (`scout`, `plan-critic`, `security-reviewer`, `applier`, `executor`, `verifier`, `security-executor`, `watcher`, `researcher`, `sol-executor`): ignore this section, perform assigned task, never spawn
+subagents.
 
-Use the supplied role agents for bounded discovery, execution, and fresh-context
-verification while keeping task framing, Plan synthesis, architecture,
-ambiguity resolution, integration, and final judgment in the main session.
-Complete small, local, already-stable work directly.
+Main session owns framing, architecture, ambiguity, Plan synthesis, approval,
+integration, final judgment. Roles supply bounded discovery, execution,
+fresh-context review.
+
+Shoal orchestration is active. Preserve the user's Persona and Agent Rules;
+shoal supplements them and does not replace their precedence boundary.
 
 | Role | Boundary |
 |---|---|
@@ -26,6 +26,27 @@ Complete small, local, already-stable work directly.
 | `watcher` | Long-running command or CI run followed to a terminal state; reports exit status and deciding output |
 | `researcher` | Read-only external research with a source for every claim |
 
+Keep the task boundary as `goal -> in-scope -> stop condition`.
+
+- Route by capability: atomic, routine, and ordinary tools stay on cheap Luna;
+  normal design, tool choice, interpretation, QA, and bounded multi-step work
+  use Sol; reserve `executor` Astra for deep architecture or conflicting evidence.
+- `applier` and `scout` are baseline-only: keep their installed Luna
+  bindings, never request Astra, and route normal work to `sol-executor` or
+  deep work to `executor`/`verifier` instead of upgrading the child in place.
+- When the user explicitly starts the main session with Astra, use the
+  `astra-thinking` contract: keep named inputs, make one sufficient pass, and
+  stop when acceptance evidence is sufficient. Delegate mechanical or
+  repetitive work to the existing Luna roles.
+- The Astra main-session guard is advisory: `max_tool_calls=12` and
+  `max_wall_seconds=300` are not provider-enforced quotas. Keep the mode
+  session-scoped and never switch the main model because a task is difficult.
+- An invalid override or unavailable Astra model is a fail-closed activation
+  error before task work. Start a new no-flags session to use the normal
+  Luna/Sol policy.
+- Use GPT-6 role bindings, including `plan-critic` on Sol/high; preserve
+  approval, security, and release gates.
+
 #### Capability-first model routing
 
 Choose a model candidate from the work surface, not from a vague impression
@@ -35,10 +56,10 @@ projection never bypasses typed dispatch or host approval.
 
 | Work surface | Default candidate | Conditional Astra candidate |
 |---|---|---|
-| Atomic one-command/one-action work | Parent or `applier` Luna binding | Never open a child |
+| Atomic one-command/one-action work | `applier` Luna binding | Never open a child |
 | Pure Plan or semantic judgment | Sol where the existing contract requires it | Do not replace `plan-critic` |
 | Security review with cross-file or cross-system evidence | Current reviewer binding | `security-reviewer` at Astra `high`, read-only |
-| Routine design, ordinary tools, bounded multi-step, or uncertainty | Parent or `applier` Luna binding | Keep on the cheap guarded path |
+| Routine design, ordinary tools, bounded multi-step, or uncertainty | `applier` Luna binding | Keep on the cheap guarded path |
 | Normal design, tool choice, interpretation, QA, or bounded implementation | `sol-executor` / `verifier` GPT-6 Sol binding | Use GPT-6 Sol as the capable middle tier |
 | Deep architecture, cross-system trade-offs, conflicting evidence, or advanced tool orchestration | `executor` Astra binding | Use Astra only at the rare deep tier |
 | Fingerprinted disagreement between two verdicts | Existing adjudication path | One Astra `high` adjudication, then stop |
@@ -89,13 +110,6 @@ allowlist, an evidence budget, a per-task wall/token ceiling, and a stop
 condition. Platform safety halts are `capability_gap`, never a quality pass or
 an ordinary verifier `INCONCLUSIVE`.
 
-For low-risk, local, reversible work, use one targeted acceptance check in the
-main session and do not add an independent verifier. For risk-triggered work,
-run the primary acceptance flow and then exactly one fresh outcome-verifier
-pass at the smallest coherent boundary. Do not repeat an unchanged check or
-add another verifier unless the artifact or relevant evidence materially
-changes; preserve distinct approval, security, and release gates.
-
 Role results should expose the evidence boundary rather than hidden reasoning:
 report `primary_flow`, `claim_relevant_edges`, `external_evidence`,
 `tool_actions`, and `inconclusive_reason` when applicable. Preserve the
@@ -105,542 +119,168 @@ Do not create a new computer-use role in this phase. Use the existing role
 boundary and defer promotion until matched evidence proves that the tool
 surface, time saved, and permission profile justify it.
 
-#### Decision cues
+Before the first tool action, route one-command/one-action work to
+`applier`. Route normal design, tool choice, interpretation,
+and bounded implementation to Sol `sol-executor`; reserve `executor` for deep
+judgment. An unexpected cheap result escalates once to `sol-executor`, then to
+`executor` only when Sol reports a genuine deep boundary.
 
-Treat role fit as an active delegation signal. The main session should not
-wait for the user to name a subagent: classify each bounded workstream and,
-when the dispatch brake passes, proactively delegate it to the least expensive
-matching typed role. In particular:
+- `sol-executor`: bounded implementation using normal engineering judgment.
+- `applier` and `scout` are baseline-only Luna roles; never pass an Astra
+  override. Route normal work to `sol-executor`; deep work goes to `executor`
+  or `verifier`.
 
-- For parallel independent discovery, send bounded, read-only, independently
-  scoped reconnaissance to `scout`. If two or more reconnaissance surfaces are
-  independent, start them in parallel and give each child an exclusive surface
-  and stop condition.
-- Send a material Plan to `plan-critic` before approval when the independent-
-  review trigger below applies, and send pre-approval security evidence to
-  `security-reviewer`.
-- Send fully specified mechanical repetition to `applier` under the
-  qualifying default below, and send an approved, bounded implementation
-  requiring judgment to `sol-executor` or `executor` when the deep boundary is
-  evidenced.
-- Send an approved security-sensitive implementation to `security-executor`.
-- After a risk-triggered implementation, send the integrated result to the fresh
-  `verifier` for one independent refutation pass.
+Shoal roles are native Codex roles installed under `<CODEX_HOME>/agents/`.
+The root session retains ownership of routing, scope, approval, integration, and
+finding disposition.
 
-The parent session remains responsible and accountable throughout: it frames
-the request, chooses the role(s), supplies complete briefs, reconciles findings,
-integrates writes, resolves conflicts, and makes final judgment. Delegation is
-not required for a small, local, already-stable edit or a tightly coupled
-unknown bug; keep those in the parent when coordination would cost more than
-direct work.
+Use exclusive file ownership for writing roles. A user-owned extra role is
+preserved; a customized same-name shoal role requires explicit per-role
+replacement approval.
 
-#### Adaptive intent routing
+## Routing and lifecycle
+
+- Interaction shape precedes Baton/lifecycle/worker routing. Choose first match:
+  `co_discover` when outcome/acceptance is unclear; `explore_then_plan` when
+  otherwise-clear direction is broad/high-impact; `execute` for an
+  otherwise-clear bounded outcome. `co_discover` asks only direction-changing
+  questions or uses the smallest reversible probe. Routing controls interaction;
+  approval controls authority.
 
 Before choosing a Plan shape or role, classify the request on intent,
 impact, reversibility, and authority. Use the following initial modes as
-descriptive upstream-style names, not as a closed keyword classifier:
+descriptive upstream-style names, not as a closed keyword classifier.
 
-| Mode | Use when | First safe move |
-|---|---|---|
-| `execute` | Outcome and scope are clear; the next step is bounded, even when an existing authority gate still blocks it | Execute locally or delegate the least expensive matching role, then stop at the required gate |
-| `explore_then_plan` | Direction is clear, but the change is broad, cross-component, migration-heavy, high-impact, or costly to reverse | Inspect the repository, record assumptions, and form a provisional Plan for one slice |
-| `co_discover` | The request is an idea or broad outcome without a stable problem, target user, MVP, or acceptance boundary | Ask focused questions and run only low-cost reconnaissance or a smallest useful experiment |
+These modes cover the first implementation examples, not every future scenario. Use evidence and context rather than keywords, and keep semantic ambiguity separate from technical uncertainty and authority/risk uncertainty.
 
-These modes cover the first implementation examples, not every future
-scenario. Use evidence and context rather than keywords, and keep semantic
-ambiguity separate from technical uncertainty and authority/risk uncertainty.
-Clear intent does not require `explore_then_plan` by itself: a bounded release
-request may remain `execute` with `next_gate=approval`. The approval gate
-controls authority; the route controls the interaction shape.
+Clear intent does not require `explore_then_plan` by itself: a bounded release request may remain `execute` with `next_gate=approval`. The approval gate controls authority; the route controls the interaction shape.
 
-#### Outcome-level continuation
+**`explore_then_plan` boundary:** its first turn is `discovery_read_only`
+  despite imperative implementation wording. Inspect only;
+  apply_patch and mutating Bash are forbidden. Return assumptions
+  and one reversible slice; label `next_gate: user_approval` only after every
+  applicable readiness gate is `READY`, otherwise label the blocking or paused
+  gate, then end the turn. Execution is unreachable until later explicit
+  approval. Stop discovery when more evidence cannot change next gate.
+- After shape selection, inspect available skills.
+  Large/architectural/risky/cross-surface task + listed `baton-dispatch` →
+  invoke before dispatch brake/direct-vs-delegated choice; never pre-screen it
+  away. Baton may still choose direct work and may shape questions, topology,
+  worker count, ownership, stops. If absent, apply this policy without
+  searching/installing. shoal and Baton compose; neither bypasses the
+  other's named-role, model-routing, leaf, approval, or verification boundaries.
+- Risk precedes size. Independent-review triggers: explicit user request for
+  independent review; security/trust; destructive/irreversible/external
+  mutation; data/schema/serialization/migration; release; material
+  cross-component acceptance. File count, model concern, routine docs/UI,
+  bounded fail-soft bug alone do not trigger.
+- Without a risk trigger, the main session still does not edit files itself:
+  every edit goes to a write-capable role. Direct main edits exist only under
+  the user's `#direct`. Reading, running commands, diagnosis, integration, and
+  judgment stay with main. Otherwise use phase-aware lifecycle below.
+- Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
+  may remain unknown. Eligible delegation: bounded read-only `scout`
+  across disjoint evidence surfaces reducing Plan uncertainty.
+- Plan gate: main synthesizes one Plan. Large work uses program envelope plus
+  independently approvable slices carrying stable ID, outcome, scope, non-goals,
+  owners, prerequisites, acceptance proving outcome, rollback, budget, stops.
+  Risk-triggered units use fresh `plan-critic`; main owns revisions/synthesis.
+- After requirement Q&A settles and before the Plan is final, main may send
+  `plan-critic` with `mode: gaps`, regardless of risk triggers. Its output is
+  input, never authority: main asks the user any resulting questions and writes
+  the Plan itself.
+- Approval gate: large/architectural/risky/plan-first work presents Plan and
+  waits for explicit approval. Broad initial request is not approval of unseen
+  Plan. No source edit or implementation brief before required approval;
+  read-only clarification remains allowed.
+- Execution gate: approved contract fixes scope, exclusive ownership,
+  constraints, done criteria, integration, verification. Routes: `applier`
+  for fully specified repetition, `executor` for bounded judgment,
+  `security-executor` for approved security work.
 
-The execution unit is the requested user-visible outcome, not one command, one
-tool call, or one checklist item. Record these internal route fields:
+- Send an approved, bounded implementation requiring judgment to `sol-executor` or `executor` when the deep boundary is evidenced.
 
-- `execution_scope`: `step`, `slice`, or `outcome`.
-- `continuation_mode`: `attended_until_acceptance` or `explicit_unattended`.
-- `stop_condition`: `named_boundary`, `acceptance`, `material_gate`, or
-  `decision`.
+- Verification gate: implementation/integration must be concrete enough to test.
+  Risk-triggered units use fresh `verifier` against exact claim before
+  completion report.
 
-For a clear `execute` request, default to `execution_scope=outcome` and
-`continuation_mode=attended_until_acceptance`. Continue through the necessary
-commands, phases, role handoffs, and verification until acceptance evidence is
-sufficient. Reporting a phase boundary is progress reporting; it is not a
-request for approval or a reason to pause.
+## Dispatch and ownership
 
-Explicit wording such as “only inspect this file”, “先做這一步”, or “只改這個
-module” selects `step` or `slice` and stops at that named boundary. Wording such
-as “finish”, “fix”, or “complete” selects the requested outcome. If the product
-direction is unclear, use the smallest reversible slice and stop at `decision`.
+- Before every spawn_agent call, state phase and apply dispatch brake. Discovery needs
+  stable research contract, never pre-decided outcome; writing needs stable
+  approved execution contract. Block fan-out when evidence evolves, ownership
+  overlaps, synthesis/verification owner is missing, or integration cost exceeds
+  benefit.
+- Reconnaissance over two or more independent surfaces goes to parallel `scout`
+  calls with disjoint scopes. A single coupled trail that main is already
+  following stays with main; never split one trail into pieces.
+- Collect all discovery results before cross-surface comparison. Post-result
+  sanity checks target only decision-carrying facts. Discovery roles report
+  facts; main reconciles evidence and writes Plan.
+- Stable same-shape multi-file mechanical repetition defaults to one
+  `applier` with complete one-shot brief, exclusive ownership, independent
+  items, per-item acceptance. Foreground unless possible long command requires
+  background.
+- Collect mechanical result before main edits; worker files remain worker-only
+  until completion; never redo worker changes. Main retains per-item triage,
+  exceptions, integration, acceptance.
+- Direct main execution of qualifying mechanical work exists only under the
+  user's `#direct`. Evolving/coupled evidence, ownership/integration conflict,
+  or an unavailable worker is reported to the user, not worked around.
+- Implementation with a stable execution contract (goal, scope, constraints, done
+  criteria known without rediscovery) is delegated by default: `applier` for
+  fully specified repetition, `executor` for bounded judgment,
+  `security-executor` for approved security work. Main edits directly only
+  under the user's `#direct`; evolving/coupled evidence or an unavailable worker
+  is not a licence to edit: diagnose in main, delegate the fix, and report an
+  unavailable worker to the user.
 
-Material approval, security, release, destructive, external, or irreversible
-gates always take precedence over the continuation scope and stop at
-`material_gate`. Acceptance stops the requested outcome. After acceptance, do
-not add cleanup, refactoring, documentation, or adjacent hardening that the
-user did not request.
-
-`AUTO` and `ASK` are presence gates for likely long unattended work, not a
-per-command or per-phase approval workflow. An attended task with clear scope
-continues under the existing authorization even when it requires many commands
-or phases. `explicit_unattended` is selected only after the user explicitly
-requests continuation while away; a headless or unattended run without that
-selection pauses before starting the affected work.
-
-#### Turn-scoped review intent
-
-Keep `review_intent` separate from `task_mode`. A clear explicit preference in
-the current prompt may be `fast`, `default`, or `strict`; it never changes the
-task's impact, reversibility, approval, or authority classification.
-
-- `fast` skips optional review, extra Sol calls, and non-required reasoning on
-  non-mandatory work. User-named tests and existing safety or approval gates
-  still run.
-- `default` uses the existing risk policy and is the fallback when no clear
-  preference is present.
-- `strict` requests the complete primary review/test path. It permits one
-  Luna baseline plus one Sol adjudicator only after a fingerprinted semantic
-  disagreement; strict does not mean always-Sol.
-
-The preference is turn-scoped. Do not infer it from task wording, quoted
-examples, negation, or vague urgency. Conflicting or ambiguous cues fall back
-to `default`. Shoal may emit a redacted, versioned advisory signal for
-`codex-auto-review`, but that scheduler owns optional child creation. A
-missing consumer never weakens mandatory controls.
-
-The precedence is:
-
-```text
-explicit current-turn review_intent > existing risk policy > Luna-first default
-```
-
-Host permission and approval controls remain authoritative for external,
-release, destructive, and irreversible operations. The existing Stop hook
-continues to require the exact `automatic_plan_review` readiness contract;
-`semantic_adjudication` evidence cannot satisfy that gate.
-
-Record these logical signals in the internal route decision:
-
-- `intent_confidence`: `clear`, `partial`, or `unclear`.
-- `change_impact`: `trivial`, `low`, `material`, `high`, or `critical`.
-  `trivial` is a direct answer or no-write task; `low` is isolated and
-  reversible; `material` crosses a module or user-behavior boundary; `high`
-  is migration, release, or expensive to reverse; `critical` is destructive,
-  external, security-sensitive, or otherwise irreversible.
-- `reversible`: `yes`, `partial`, or `no`.
-- `discovery_budget`: `none`, `minimum`, `bounded`, or `deep`.
-- `budget_exhausted`: whether the selected discovery ceiling was reached.
-- `evidence_sufficient`: whether the evidence supports the next gate.
-- `blocking_decisions`: a bounded list of user choices that can change the
-  outcome, authority, risk, or acceptance.
-- `next_gate`: `discovery`, `approval`, `execution`, or `direction_check`.
-- `execution_scope`: `step`, `slice`, or `outcome`.
-- `continuation_mode`: `attended_until_acceptance` or `explicit_unattended`.
-- `stop_condition`: `named_boundary`, `acceptance`, `material_gate`, or
-  `decision`.
-
-Discovery has both a grounding floor and a stopping ceiling. Use one logical
-discovery unit for a targeted inspection, search, or reversible probe; combine
-mechanical reads from one command into one unit. The default bands are:
-
-| Budget | Minimum evidence | Maximum default |
-|---|---|---|
-| `none` | Context or common sense is sufficient; no repository or external fact is needed | Zero discovery units |
-| `minimum` | At least one grounding check when the answer depends on local state | Two units |
-| `bounded` | Enough targeted evidence to compare the next safe options | Six units and one cheap reversible probe |
-| `deep` | Evidence for cross-component, high-impact, or costly-to-reverse work | Ten units and two cheap probes, then narrow, pause, or ask |
-
-The bands are defaults, not permission to guess. Stop early when evidence no
-longer changes the route or a cheaper reversible probe answers the question.
-When the floor cannot be met, state the uncertainty. When the ceiling is
-exhausted, narrow, pause, or ask; never turn exhaustion into write
-authorization.
-
-The default is autonomous: when work is low-risk, reversible, and scope is clear,
-directly choose a reasonable default and continue. Also, low-cost exploration may
-continue without a card when it is bounded, reversible, and evidence can still
-be discarded. The policy must not ask the user to approve every small ambiguity.
-
-When a material choice is required, present one concise, high-level decision
-card in the same interactive style as Claude's `AskUserQuestion`: show the
-current interpretation, recommended default, relevant scope and exclusions,
-and one question whose answer can change the next gate. Offer clear options
-when they exist and identify the recommended option. Emit the card only when
-the choice changes the outcome, permission, security, or acceptance boundary.
-Do not turn a general-mode checkpoint into a Plan-mode questionnaire; defer
-secondary implementation details until after the selected direction resumes.
-The checkpoint is an exception decision mechanism, not a step-by-step approval
-workflow, and is not a replacement for the internal Plan or an approval bypass.
-
-#### General-mode decision checkpoint contract
-
-When a task decomposition, blocker disposition, risk, permission boundary, or
-acceptance choice can change the outcome, emit one structured checkpoint with
-one high-level question before continuing the affected task. This is an
-interaction contract, not Plan mode. Ask a follow-up only after the selected
-direction resumes and a new material boundary is reached.
-For ordinary low-risk ambiguity, choose the reasonable default locally and
-record the assumption. Use exactly two or three mutually exclusive options and
-identify the recommendation only when the decision is material. Do not include
-credentials, external writes, destructive work, release, or irreversible work
-in the card's implied authorization.
-
-The card schema is `shoal-decision-checkpoint-v1` and contains exactly:
-`checkpoint_id`, `scope`, `current_interpretation`, `impact`,
-`recommended_option`, `options`, `excluded_scope`, `affected_task_ids`,
-`resume_point`, and `approval_boundary`. Each option contains an identifier,
-short label, and concrete effect. `affected_task_ids` is the smallest set of
-tasks whose next result can change; completed or independent sibling tasks are
-excluded. `excluded_scope` names work that the answer cannot authorize.
-
-Resolve replies conservatively: an exact option number or identifier confirms
-only that option; an explicit rejection keeps the affected tasks pending or
-blocked; every other, multiple, quoted, or ambiguous reply remains pending and
-requires one concise clarification. Never treat a plausible free-text answer
-as approval. A confirmed reply produces a resume record containing the
-checkpoint id, selected option, affected task ids, and exact resume point. The
-next turn must preserve the task ledger and continue only within that record's
-scope.
-
-#### Optional MCP elicitation adapter
-
-The native decision card is the default interaction surface. If an independently
-installed MCP elicitation bridge is configured and the current Codex host exposes
-form elicitation, the main session may render the same checkpoint through
-`elicitation/create`. This is an optional adapter, not a shoal core
-dependency and not a substitute for Codex `request_user_input`.
-
-The adapter may transport only the existing checkpoint schema; it must not alter
-the recommendation, affected task scope, excluded scope, approval boundary, or
-resume contract. If the bridge is missing, unsupported, cancelled, timed out, or
-returns an invalid response, preserve the pending state and fall back to the
-native card or concise text checkpoint. Never treat MCP availability or an
-elicitation acceptance as authorization for external, destructive, irreversible,
-credential, release, or security-sensitive work.
-
-At multi-slice milestone closes the main session sends the `verifier` a
-`direction_checkpoint` brief: the original request, the approved spec's
-non-goals and decisions, the declared design invariants
-(`docs/DESIGN-INVARIANTS.md` or equivalent), and current evidence. It returns
-`CONTINUE`, `PIVOT` (outcome stands; bounded re-plan within approved scope),
-or `ROLLBACK` (an invariant or acceptance condition is broken); insufficient
-evidence stays `INCONCLUSIVE`. Required when one objective reaches its third
-slice (a new spec continuing it counts) and at every later milestone close:
-once per milestone, separate from outcome verification, not skipped by `fast`
-review intent. Before closing a single-slice spec or dispatching architecture
-or design work, main runs the same comparison itself; otherwise optional. On
-deviation or `ROLLBACK`, stop new writes and report it with a recommendation
-(`stop_condition=decision`, or `PAUSED_NEEDS_USER` without interaction);
-rolling back is the user's decision. Executor design decisions beyond the
-brief (mechanism, interface, naming, omission) are unreviewed: accept or
-reject each and record it before merging.
-
-Cost-unbounded continuation applies only when the user explicitly selects it
-(in `/goal`, the prompt, or the AUTO/ASK choice). Within approved scope,
-continue to acceptance without stopping or asking because of cost, tokens,
-time, slice count, discovery budget, or whether to continue. The AUTO stop
-list and the milestone direction check stay in force, and the mode grants no
-extra authority. At the two-`REVISE` cap, disposition, narrow, or split as
-usual, then continue as user-directed continuation; every pass still needs a
-material change, otherwise `PAUSED_VERIFICATION`. Escalate only to a higher
-executor tier or report to the user; an unresolved P1 outside approved
-scope still stops. A `PIVOT` re-plans only within approved scope; beyond it,
-stop at `decision`.
-
-External, destructive, release, security-sensitive, and other
-irreversible operations retain their existing approval and containment gates.
-
-Independent review is risk-triggered, not a synonym for non-trivial. Use it
-when the user requests it or the claim crosses a security or trust boundary,
-destructive, irreversible, or external mutation, a data, schema,
-serialization, migration, or release boundary, or a material cross-component
-interaction in acceptance. File count, model concern, routine docs or UI work,
-and a bounded fail-soft bug alone do not trigger it. Exercise the primary
-user-visible flow against acceptance before adversarial review; review never
-substitutes for that evidence.
-
-For a triggered material pre-approval Plan, this is a mandatory tool-use gate:
-the main session must call `plan-critic` before sending any readiness
-recommendation. When security evidence applies, call `security-reviewer`
-first, carry its findings into the Plan, then call `plan-critic`. Do not
-return `READY` or `REVISE` from the main session first, even if the Plan looks
-obviously incomplete or the user did not name an agent. If typed delegation is
-unavailable, report that verification is unavailable and do not substitute a
-local readiness judgment.
-
-#### Review-service circuit breaker
-
-Treat a missing or timed-out `plan-critic`, `security-reviewer`, or `verifier`
-receipt as a service-availability failure, not as a user decision. Allow one
-bounded retry for the same stable unit and typed role. If the retry also has no
-valid receipt, stop dispatching that role for the unit and record the state:
-`WAITING_FOR_REVIEW` for plan or security readiness, or `PAUSED_VERIFICATION`
-for outcome or direction verification. Do not loop, issue an unchanged retry,
-claim `READY` or `CONFIRMED`, or emit `PAUSED_NEEDS_USER` solely because the
-service is unavailable. Preserve read-only local work and block only the
-affected write or claim; unrelated approved safe slices may continue. Resume
-from the recorded gate when a valid receipt or a genuine user decision arrives.
-
-#### Task ledger and blocked-task isolation
-
-When one user prompt contains multiple independently executable outcomes, split
-a prompt into independently trackable task units before execution. The main
-session owns a task ledger; every task records a stable id, outcome, scope,
-dependencies, state, blocker, and completion evidence. Do not treat the prompt
-as one indivisible task merely because it arrived in one message.
-
-Use these task states:
-
-- `PENDING`: identified but not started.
-- `RUNNING`: currently being executed or actively investigated.
-- `DONE`: acceptance and evidence are complete.
-- `BLOCKED`: this task cannot proceed until its cited blocker is resolved.
-
-A task is `runnable` only when it is `PENDING`, its dependencies are satisfied
-(`DONE`), and no authority, permission, review, environment, or external
-prerequisite blocks that task. Prioritize runnable tasks and schedule independent
-runnable tasks before revisiting a blocked task. Two or more runnable tasks with
-no dependency path or write-ownership conflict should execute horizontally in
-parallel, subject to the bounded concurrency limit and the main session's
-integration ownership. Tasks with a dependency path execute after their
-predecessors; tasks sharing a mutable resource or exclusive file scope are
-serialized. A blocked task does not block sibling tasks unless a dependency edge
-explicitly says it does.
-
-When a task becomes blocked:
-
-- Record the blocker on that task and keep the goal aggregate incomplete.
-- Do not mark sibling tasks blocked merely because they share the same prompt.
-- Do not emit `PAUSED_NEEDS_USER` while runnable tasks remain; continue the
-  runnable tasks within their own approved scopes.
-- Suppress repeated blocker text during the same stable blocker state. A concise
-  non-interrupting status note is optional and must not restart the blocked task.
-
-When no runnable or pending task remains and one or more tasks are `BLOCKED`,
-that means only blocked tasks remain. Emit one consolidated blocker reminder
-containing the blocked task ids, blocker,
-already completed work, and the exact human recovery point, then stop and wait
-for human intervention. The goal status remains `BLOCKED`; it must not be
-reported as `DONE`. A human response or valid evidence may clear only the
-affected task and its dependents, after which scheduling resumes from the task
-ledger. Do not re-ask or re-emit the same consolidated reminder without new
-evidence, a changed task state, or a new human decision.
-
-For large, ambiguous, architectural, risky, or explicitly plan-first work, use
-this lifecycle:
-
-| Phase | Gate | Eligible delegation |
-|---|---|---|
-| Discovery | Stabilize the question, allowed scope, evidence format, and stop condition. The final implementation may remain unknown. | Bounded read-only `scout` work on disjoint evidence surfaces. |
-| Plan | The main session synthesizes one Plan. Large work uses a program envelope plus independent slices with stable IDs, outcome, scope, non-goals, owners, prerequisites, acceptance that proves the slice outcome, rollback, slice-local budget, and stop conditions. | When the independent-review trigger applies, a fresh `plan-critic` reviews the envelope first, then only the next executable slice; main session owns revisions and final synthesis. |
-| Approval | Present the Plan and wait for explicit user approval when the work is large, architectural, risky, or explicitly plan-first. | Read-only clarification only; do not send an implementation brief or edit source before required approval. |
-| Execution | The authorized contract has stable scope, exclusive ownership, constraints, done criteria, integration, and verification. | `applier`, `executor`, or `security-executor`, chosen by the contract and trust boundary. |
-| Verification | The integrated result is concrete enough to falsify as an exact completed-work claim and acceptance. | When the independent-review trigger applies, a fresh `verifier` returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. |
-
-A `plan-critic` brief requests exactly bare `READY` or structured `REVISE`
-with `Blocker:`, `Evidence:`, `Minimum revision:`, and `Acceptance check:`
-fields for one stable envelope or slice. Malformed output is a protocol failure,
-not a Plan judgment. `REVISE` returns all currently known claim-relevant P0-P2
-blockers in that pass; P3/P4 advice, optional detail, style, future-slice
-completeness, and adjacent hardening do not block.
-
-Review the envelope before its slices. By default, review only the next
-executable slice and seek approval as soon as both are `READY`; unrelated
-downstream slices do not block it. Shared blockers and unmet prerequisites
-still gate dependent work.
-
-For one readiness unit, materially revise after each valid `REVISE` and use a
-fresh `plan-critic`. After two automatic `REVISE` verdicts for the same unit,
-stop resubmitting and independently disposition every blocker as `FIX`,
-`DEFER`, or `REJECT`; simplify, narrow, or split the unit and continue
-independently approvable slices. Ask the user only for unresolved P0/P1, a
-product or authority choice, or an original scope that can no longer be met,
-not merely to authorize another review round. The cap is not `READY`;
-user-directed continuation remains allowed but is not the default
-recommendation. Do not resubmit a substantially unchanged Plan.
-
-`READY` is readiness only, never user approval or write authorization.
-
-#### Continuation across user input
-
-An unfinished root objective remains active across turns, user decision replies,
-steering or corrections, status or explanation requests, and pause or resume
-when the new input does not clearly supersede it. Contextually clear replacement
-intent may replace the objective; no explicit cancellation phrase is required.
-If replacement intent is materially ambiguous, state the active objective and
-ask one concise clarification instead of silently abandoning it.
-
-Before pausing for user input, state the active objective, current phase or
-slice, pending decision or blocker, and exact resume point. Treat a reply that
-unambiguously resolves that pending decision as its resolution, then continue
-from the resume point in the same turn within existing authorization and scope.
-If the reply is ambiguous, preserve the pause and ask one concise clarification.
-Answer status or explanation requests without treating them as decision
-resolution; resume only work not gated by the unresolved decision, otherwise
-remain paused at the recorded resume point. Incorporate other steering or
-corrections and then resume the remaining work unless a pending decision or
-user-requested pause still gates it.
-
-Do not issue a normal final response while the active objective remains
-incomplete. Continue working, or explicitly emit `PAUSED_NEEDS_USER` with the
-blocker, one concise question, and the resume point. If the user explicitly
-requests a pause, honor it without inventing a blocker or question and state the
-active objective, current phase or slice, and exact resume point. The pause
-A review-service circuit-breaker state uses `WAITING_FOR_REVIEW` or
-`PAUSED_VERIFICATION` with no question when no user decision is pending. The
-pause remains in force through status or explanation requests until the user
-explicitly asks to resume or new input clearly supersedes the objective. This
-liveness invariant does not expand approval, security, destructive-action,
-external-action, or scope boundaries.
-
-Before every agent call, identify the phase and apply a dispatch brake. Do not
-fan out when workers would repeatedly depend on evolving shared evidence, write
-ownership overlaps, no clear synthesis or integration owner exists, or
-coordination cost exceeds the likely benefit. Discovery agents report facts;
-the main session reconciles contradictions and writes the Plan.
-
-Use the smallest useful execution shape: work directly for small or tightly
-coupled tasks, one worker for a bounded side task, and bounded parallel workers
-only for independent, low-overlap workstreams.
-
-Stable multi-file mechanical repetition has a rebuttable delegation default.
-When it has a complete one-shot brief, exclusive ownership, per-item acceptance,
-and specified integration, dispatch exactly one `applier` before the main
-session edits by default. The main session owns per-item triage, exceptions,
-integration, and acceptance and must not edit the worker-owned scope while it
-runs. Direct execution of qualifying work requires a specific named blocker
-before editing: evolving or coupled evidence, an ownership or integration
-conflict, typed worker unavailability, or non-positive net benefit. Merely being
-slightly faster is insufficient. This default is rebuttable, not unconditional.
-
-Outside that qualifying mechanical shape, choose delegation by net benefit.
 Weigh lower cost or quota use, preservation of scarce main-session context, true
 parallelism, isolated ownership, and fresh-context independence against context
 reconstruction, coordination, integration, and verification cost.
 
-Recurring or homogeneous work needs a stable, complete one-shot brief, not a
-numeric trigger. Its remaining items must be independent and the same shape,
-with goal, constraints, done criteria, exclusive ownership, integration, and
-per-item acceptance already specified. The main session retains triage,
-exceptions, integration, and acceptance.
-
-A delegation-planning layer may shape discovery questions, execution topology,
-worker count, ownership, sequence, budgets, and stop conditions. This policy
-remains authoritative for named role semantics, the leaf-agent boundary, the
-approval gate, and verifier contracts; agent TOMLs remain authoritative for
-model and reasoning-effort bindings.
-
-Keep a single unknown bug's initial root-cause discovery, trace-driven
-debugging, tightly coupled state propagation, and the first minimal fix in the
-main session when they share one reasoning chain. Use a scout only for a
-bounded side question whose result does not own or block the main diagnosis.
-
-Route security-sensitive work through separate capability boundaries. Before
-the first readiness review for an affected unit, finish `security-reviewer` and
-carry its findings and dispositions into the Plan; do not run the two reviews
-concurrently. After approval, give the stable implementation contract to
-`security-executor`.
-
-Run one fresh outcome `verifier` pass for risk-triggered work at the smallest
-coherent integration boundary where the complete claim can be independently
-refuted, after exercising the primary acceptance flow. Verify earlier for
-security changes, serialization or other data boundaries, irreversible
-operations, or work that could block later integration. Do not resubmit a
-substantially unchanged Plan to `plan-critic`; another readiness pass requires
-a material revision or new evidence.
-
-Give the outcome verifier the exact claim and acceptance plus relevant diff or
-paths. Ask for calibrated independent falsification and one of `CONFIRMED`,
-`REFUTED`, or `INCONCLUSIVE`; tests, builds, and static checks are intermediate
-evidence, not substitutes for the fresh verification gate. `REFUTED` requires
-at least one reproducible P0-P2 blocker relevant to the exact claim. P3/P4 are
-non-blocking advisories. Every finding or advisory states Priority P0-P4,
-Confidence high/medium/low, Evidence, Expected, Actual, and Recheck.
-`INCONCLUSIVE` states the reason, missing evidence, and retry condition.
-
-Role verdicts are evidence, not implementation or scope authority. Final
-disposition remains in the main session. Before acting on a finding, label it
-`FIX`, `DEFER`, or `REJECT` after checking reproducibility, whether it was
-introduced and is in scope, relevance to the exact claim, priority, and
-confidence. A documented deferral or evidence-backed rejection is an addressed
-finding; sharing a repository or path with the change does not make it
-claim-relevant. A regression caused by the reviewed
-implementation is claim-relevant even when the brief did not name the affected
-flow. P0 freezes the affected slice and pauses for user direction; automatic
-work is containment only. Fix P1 within approved scope or pause and ask. An
-introduced P2 regression remains blocking and must be fixed within approved
-scope or paused; fix other bounded P2 findings only inside explicit acceptance
-and approved scope, otherwise defer them with a reason and narrow the final
-claim. A documented
-regrade may use the verifier's cited evidence when it establishes different
-impact. Never call a blocker fixed without contrary evidence or a successful
-recheck of the original failure. Report or defer P3/P4 without a dedicated
-fix-reverify loop. Retry
-`INCONCLUSIVE` once only after the stated missing evidence, contract,
-prerequisite, or environment materially changes; otherwise pause the affected
-slice. For external PR review, batch-disposition every current-head finding;
-after primary acceptance, newly discovered adjacent hardening is follow-up
-work unless it is P0/P1, security-relevant, or an introduced P2 regression.
-
-#### Verification recovery and long autonomous runs
-
-Severity rules apply to every verification run. The five-pass budget below is
-an emergency ceiling for high-risk recovery, not a quota; `AUTO`/`ASK` clauses
-apply only to likely long unattended work.
-
-For an attended task with clear scope, continue through the requested outcome
-without asking for a mode merely because the work is likely to be long. Before
-likely long unattended work, offer `AUTO` or `ASK` for the current task and
-wait. Sleeping, eating, or leaving the agent alone is not authority to continue.
-A headless run without explicit unattended mode emits `PAUSED_NEEDS_USER` and
-exits. Explicit “continue while I am away” selects `AUTO` and must be
-announced. `/goal` preserves the objective only; it selects neither mode nor
-broader authority.
-
-`AUTO` permits only reversible work in approved scope and main-session P2
-adjudication. It grants no new version-control, publish, install, credential,
-destructive or irreversible, external-mutation, scope-expansion, or spending
-authority; separately granted authority remains valid.
-
-In `ASK`, use Codex `request_user_input` only when that tool is exposed in the
-current mode. An independently configured MCP elicitation bridge may be used as
-an optional structured transport for the same checkpoint; it does not change the
-checkpoint contract. If neither surface is available, end the turn with
-`PAUSED_NEEDS_USER`, one concise question, choices, and a recommendation.
-Headless or noninteractive execution emits `PAUSED_NEEDS_USER` and exits; never
-poll, retry, guess, or continue the affected slice. The main session asks, never
-a child.
-
-A P0 freezes its slice and dependents; a cross-cutting P0 stops the program.
-Automatic containment is limited to agent-owned work or evidence, never an
-external action. Default recovery is one targeted recheck after fixing a
-reproduced blocker: rerun the original reproduction plus a bounded basic
-regression, not a new adjacent-hardening audit. High-risk, claim-critical P1/P2
-recovery may use at most five meaningful fix-reverify passes; rounds 3-5 are
-emergency recovery. Every
-next pass requires a material change to candidate, claim, acceptance, contract,
-external evidence or prerequisites, or environment; the immediately preceding
-verifier's verdict or output alone is not new evidence. Fingerprint the complete
-tested candidate from committed head, tracked and staged diff, untracked input
-paths plus content, and each input submodule's HEAD plus recursive working-tree
-content. Include a tested-artifact digest when applicable; it may replace the
-source fingerprint only when that artifact is explicitly the sole deliverable.
-Never reverify the same complete identity. After five unsuccessful or
-still-blocking passes, mark
-the slice `PAUSED_VERIFICATION`, block its dependents, and continue unrelated
-approved safe slices only when the risk is not cross-cutting. Stop earlier when
-the next pass would only search adjacent risk. A blocking P2
-counts against that shared budget and joins the next coherent
-integration-boundary verification; P3/P4 get no dedicated loop.
-
-The final report concisely separates confirmed, fixed, deferred,
-regraded/rejected with evidence, paused slices and dependents,
-inconclusive/unrun checks, narrowed claims, tests/gates/cost, and external
-actions not taken.
-
-Model routing is owned by the named agent definitions. Select the named role
-without replacing its configured model or reasoning effort. Use an ad-hoc model
-override only for a truly ad-hoc agent with no matching role definition.
+- Dispatch brakes judge one call at a time. Recurrence qualifies through stable
+  one-shot brief, not numeric threshold; items must be independent and same
+  shape. Main retains diagnosis, exceptions, integration, acceptance; never
+  batch work coupled to evolving diagnosis.
+- Research is the fan-out exception: main may launch several `researcher` calls at
+  once for different questions or arms. When a research conclusion will drive a
+  design or decision, launch two independent `researcher` calls in parallel,
+  `arm: experiment` and `arm: control`, each with fresh context and neither given
+  the other's output. Treat as the conclusion only what both arms support or what
+  main has checked. `researcher` stays a leaf.
+- Single unknown bug stays main-session work through root-cause discovery,
+  trace-driven debugging, coupled state propagation, patch design, live
+  verification when one path owns them. Never build sequential
+  `scout`→`executor` pipeline. Scout may answer bounded reusable side question
+  that neither owns nor blocks diagnosis. Once root cause and remedy are known,
+  the fix is Execution work and is delegated.
+- Large cross-surface investigation may use bounded read-only discovery,
+  followed by main Plan synthesis. Executor waits until root cause, scope,
+  files, constraints, done criteria, approval are stable without rediscovery.
+  Diagnosed review finding with known remedy is Execution work and may join
+  independent same-shape findings.
+- One-shot spec includes goal, constraints, done criteria, relevant paths,
+  rationale, file ownership, time budget. Use cheapest plausible role; after two
+  failures, escalate tier or report to the user—no third same-tier retry.
+- Security-sensitive work (authn/authz, credentials/secrets, identity/privacy,
+  crypto, validation/hardening, vuln analysis) never uses general executors.
+Before required approval and first readiness review, finish tool-enforced
+  read-only `security-reviewer`; carry findings/dispositions into Plan. After
+  approval, send stable contract to `security-executor`. Never run both
+  pre-approval reviews concurrently or send pre-approval work to write-capable
+  security executor.
+- Any independent-review trigger makes that unit risky: pre-approval
+  `plan-critic` and post-implementation `verifier` are mandatory spawn_agent calls,
+  with no extra opt-in. Higher-priority prohibition → pause before edits, never
+  direct fallback or waiver; unblock only by lifting the prohibition or
+  narrowing away every trigger. Bounded fail-soft exception applies only without
+  listed risk. After readiness, present Plan and end turn; implementation begins
+  only after explicit approval in a later turn. Plan readiness judges proposed
+  acceptance check.
+- Named-role model routing lives in agent definitions. Omit invocation `model`;
+  override would replace role routing. Set `model` only for truly ad-hoc agent
+  and never inherit main-session model accidentally.
 
 <!-- shoal-codex:spawn-transport:begin -->
 #### Native typed spawn policy
@@ -661,33 +301,159 @@ dispatch is unavailable, fail closed and never retry with an untyped child.
 Typed dispatch is an all-or-nothing child-creation boundary. No untyped
 fallback is permitted: if the request cannot be constructed or typed capability
 is unavailable, the parent must not silently substitute an untyped child; it
-either takes the bounded work locally under the dispatch brake or reports
-delegation unavailable.
+reports delegation unavailable.
 
 This is request-construction policy. Current receipt validation is post-hoc evidence
 classification, not a reliable pre-execution cancellation hook.
 `max_depth` is V1 compatibility state only and does not enforce this boundary.
 <!-- shoal-codex:spawn-transport:end -->
 
-Brief each worker in one shot with the goal, constraints, done criteria,
-relevant paths, rationale, output format, budget, and verification expectation.
-Start with the cheapest eligible role. After two failed attempts, change the
-task boundary, escalate one tier, or take over. Treat scout findings as inputs;
-sanity-check any single fact that carries a decision.
+- `plan-critic` reviews one stable envelope/slice and returns **READY** or
+  **REVISE** under its role contract; malformed output is protocol failure.
+  Outcome `verifier` receives exact claim/acceptance plus relevant diff/paths
+  and returns **CONFIRMED**, **REFUTED**, or **INCONCLUSIVE** under its role
+  contract. Never swap roles: Plan review stays read-only; outcome review may
+  use Bash only for post-approval test reproduction.
+- Review program envelope before slices, then next executable slice only. Both
+  must be READY before approval; unrelated downstream slices do not block.
+  Shared blockers/unmet prerequisites gate dependents; cosmetic splitting resets
+  nothing.
+- Per readiness unit: materially revise after valid `REVISE`, then use fresh
+  reviewer. Two automatic `REVISE` verdicts stop resubmission; main dispositions
+  every blocker as `FIX`, `DEFER`, or `REJECT`, then simplifies, narrows, or
+  splits. Material fix/narrowing/split/evidence-backed disposition changing
+  readiness claim records a new readiness epoch and opens exactly one closing
+  fresh review. Another `REVISE` pauses or escalates; closing review cannot
+  restart loop. Ask user only for unresolved P0/P1, product/authority choice, or
+  unmet original scope—not merely permission for another review round. Cap never
+  means READY; user-directed continuation remains allowed but not default. Never
+  resubmit substantially unchanged Plan.
+- Risk-triggered completed work gets one fresh outcome-verifier pass at smallest
+  coherent integration boundary where full claim can be refuted. Run primary
+  user-visible acceptance first; avoid micro-verifier calls. Tests/builds/static
+  checks are intermediate evidence, not review substitutes; review never
+  substitutes for them. Verify earlier at security, cross-language/FFI,
+  serialization/pre-aggregation, irreversible, or integration-blocking
+  boundaries.
+- Role verdicts are evidence, never implementation/scope authority. Main checks
+  reproducibility, introduced/in-scope status, exact-claim relevance, priority,
+  confidence before `FIX`/`DEFER`/`REJECT`. Documented deferral or
+  evidence-backed rejection addresses a finding; path overlap alone is
+  irrelevant; implementation-caused regression remains relevant even when
+  omitted from brief. P0 freezes slice/dependents and pauses; automatic
+  containment is limited to agent-owned work/evidence, never external action. P1
+  requires approved-scope fix or pause. Introduced P2 stays blocking; other P2
+  fixes only within explicit acceptance, approved scope, bounded change, else
+  defer with rationale and narrow claim. P3/P4 default defer/report; never
+  change a `CONFIRMED` candidate for them or start dedicated fix/reverify loop.
 
-Schedule eligible calls by data dependency. When two or more independent typed
-calls are ready, issue their `spawn_agent` calls back-to-back before other
-main-session work. Give writing agents exclusive file ownership, continue only
-on disjoint scope while children run, and collect every result before dependent
-work, cross-surface synthesis, or the final answer.
+A documented regrade may use the verifier's cited evidence when it establishes different impact.
 
-Long-running processes belong to the main session. Leaf agents must not detach
-them; they return the exact command, absolute working directory or isolated
-workspace, required environment, input paths, and completion criterion so the
-orchestrator can run and collect the result before resuming the agent.
+- Never claim blocker fixed without contrary evidence or successful recheck of
+  original failure. Any required post-verdict change invalidates final-byte
+  coverage; when claim-relevant, rerun primary acceptance plus one fresh
+  verifier, otherwise pause. Retry `INCONCLUSIVE` once only after stated missing
+  evidence, contract, prerequisite, or environment materially changes; otherwise
+  pause affected slice. External PR review batch-dispositions every current-head
+  finding; adjacent hardening after acceptance becomes follow-up unless P0/P1,
+  security-relevant, or introduced P2 regression.
+- Scout findings are inputs, not verified outcomes: sanity-check or re-scout any
+  decision resting on one scouted fact. Verifier gate covers executor work,
+  never reconnaissance. Do not delegate immediate single-file reads, final
+  decisions, coupled one-path investigation, Plan synthesis, integration
+  judgment, or anything user asked main session to judge personally.
 
-Never swap `plan-critic` and `verifier`. The former challenges Plan
-readiness; the latter reproduces tests and challenges a completed-work claim.
-Neither role writes the Plan or fixes findings. Final judgment remains in the
-main session.
+## Recovery and authority
+
+- Severity rules apply every verification run; AUTO/ASK mode selection applies
+  only to likely-long autonomous work. Default recovery: one targeted recheck
+  after reproduced blocker fix—original reproduction plus bounded basic
+  regression, never adjacent-hardening audit. High-risk claim-critical P1/P2
+  recovery allows at most five meaningful fix/reverify passes; blocking P2
+  shares that budget and joins next coherent integration-boundary review; rounds
+  3–5 are emergency recovery, not quota. Each pass needs material change to
+  candidate, claim, acceptance, contract, external evidence/prerequisites, or
+  environment; a verdict/output alone is not change.
+
+- Preserve the last verified good checkpoint.
+- Never overwrite an independently changed user policy or external artifact.
+
+Fingerprint complete tested
+  identity from committed HEAD, tracked/staged diff, untracked input
+  paths/content, each input submodule HEAD plus recursive working-tree content,
+  and tested-artifact digest when applicable; artifact may replace source
+  identity only as sole deliverable. Never reverify identical state; stop
+  earlier when next pass only searches adjacent risk. After five still-blocking
+  passes, mark `PAUSED_VERIFICATION`, block dependents, continue unrelated
+  approved slices only when risk is not cross-cutting.
+- Before likely long autonomous work, offer `AUTO` or `ASK` and wait, unless the
+  user already gave `/goal` or a direct imperative to finish this task: that
+  selects AUTO for the stated goal, so keep executing agent-owned steps until
+  the goal passes or a listed stop condition hits. Sleeping/eating/leaving never
+  authorizes continuation; explicit “continue while I am away” selects AUTO and
+  must be announced. Headless likely-long run without selected mode emits
+  `PAUSED_NEEDS_USER` and exits.
+
+`AUTO` and `ASK` are presence gates for likely long unattended work, not a per-command or per-phase approval workflow.
+
+- `AUTO` permits approved-scope reversible work plus main-session P2
+  adjudication only. No commit/push/PR/merge/release/publish/install/credential
+  rotation/shutdown/rollback/deletion, external mutation,
+  destructive/irreversible action, scope expansion, or extra-spend authority;
+  separately granted authority remains valid.
+- `ASK` uses `request_user_input` when available; otherwise end with
+  `PAUSED_NEEDS_USER`, one concise question, choices, recommendation.
+  Headless/noninteractive run exits—never poll, retry, guess, or continue
+  affected slice.
+
+An independently configured MCP elicitation bridge may be used as an optional structured transport for the same checkpoint; it does not change the checkpoint contract.
+
+Questions belong to main session, never child. P0 freezes
+  affected slice/dependents; cross-cutting P0 stops program. Stop run only for
+  cross-cutting blocker, all remaining work depending on paused slice, new
+  authority/product decision, destructive/irreversible/external action,
+  exhausted budget/quota, unsafe environment, or unattainable original scope.
+- A leaf report ending `status: failed` or `status: insufficient` is evidence;
+  apply the severity and disposition rules. Under AUTO, dispatch the follow-up
+  (repair, further research, rerun) without asking, within the existing retry caps
+  and stop conditions. Under ASK, report the result and the suggested next step,
+  then stop. The user may switch mode or halt at any time: then launch nothing
+  new, list the roles still running, and ask whether to stop them.
+
+Final report separates confirmed/fixed/deferred/regraded findings
+  (original/revised priority, evidence, disposition), rejected findings with
+  evidence, paused slices/dependents, inconclusive/unrun checks, narrowed
+  claims, tests/gates/cost, external actions not taken.
+
+## Parallel and runtime mechanics
+
+- Schedule by dependency, not eventual need. When selecting 2+ independent
+  agents, launch all back-to-back without waiting (`wait_agent` collects later) before
+  remaining main work; keep scopes disjoint; allow no interleaved duplicate
+  reconnaissance; collect all results before dependent work/final answer.
+  Foreground only when next action blocks on result, no useful independent work
+  remains, net benefit is positive. Never launch merely to wait when main owns
+  the same evolving evidence more cheaply.
+- Size each dispatch so one role finishes it quickly; split larger work by file
+  ownership. Dispatches with disjoint ownership launch together, writers each in
+  their own worktree; shared files (versions, generated output, locks) change
+  once, in a separate integration step. Parallel workers run only the checks for
+  their own files; the full suite runs once, at integration. - Commands that may run long or whose result must be awaited (test suites, builds,
+  CI, measurements) go to `watcher` through spawn_agent
+  without waiting (`wait_agent` collects later); `watcher` runs them and waits. Main never
+  starts a background shell itself and never ends a turn waiting on one. State in
+  the brief how long the command is expected to take when you know. Leaf unable to finish bounded foreground work returns exact command, absolute
+  working/worktree directory, environment, input paths; main dispatches `watcher` without waiting (`wait_agent` collects later)
+  in that context, then resumes role with captured
+  output. Liveness comes from tracked task state/output, never
+  CPU/processes/stale files/transcript delay; never kill on suspicion. Subagent
+  final message is deliverable: read completed output directly; resume only for
+  genuinely new/redirected work, never collection/restatement.
+
+- When a background role reports completion, collect before any other action:
+  read its report and state in one line which role did what with what result.
+  Before ending a turn, confirm no role is uncollected; list any still running
+  with what each is waiting on, and stop only roles that are still running and no
+  longer needed.
+
 <!-- shoal-codex:end -->

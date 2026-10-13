@@ -36,7 +36,7 @@ EXPECTED_POLICY_OMITS: dict[str, list[str]] = {host: [] for host in HOSTS}
 EXPECTED_POLICY_REPLACES: dict[str, dict[str, list[str]]] = {host: {} for host in HOSTS}
 # host 專屬的 policy addenda 目前沒有（Claude 是 canonical，其他 host 還沒切）。
 EXPECTED_POLICY_ADDENDA: dict[str, dict[str, list[str]]] = {host: {} for host in HOSTS}
-# Codex 的 binding 與 addenda 已提交（policy_text 仍是 legacy）；各 host 只改自己的 entry。
+# Codex 的 binding 與 addenda 已提交（policy_text 已切到 core）；各 host 只改自己的 entry。
 EXPECTED_POLICY_OMITS["codex"] = [
     "bootstrap-effort",
     "bootstrap-kind-label",
@@ -100,6 +100,7 @@ EXPECTED_POLICY_ADDENDA["codex"] = {
 
 # agy（core-policy P3）：切到 core；省略的條款與 addenda 的理由在 docs/specs/core-policy/equivalence/agy.md。
 EXPECTED_POLICY_TEXT["agy"] = "core"
+EXPECTED_POLICY_TEXT["codex"] = "core"
 EXPECTED_POLICY_OMITS["agy"] = [
     "auto-ask-selection", "bootstrap-effort", "effort-per-delegation", "parallel-writers",
 ]

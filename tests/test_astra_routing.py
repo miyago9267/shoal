@@ -194,22 +194,29 @@ class AstraMainSessionContractTests(unittest.TestCase):
         prompt = self._text(
             "plugin/plugins/shoal-codex/skills/shoal-orchestration/agents/openai.yaml"
         )
-        for source in (bootstrap, policy, packaged, prompt):
+        # core-policy cutover: the bootstrap is now core-rendered and keeps only
+        # the generic clauses; the Codex tuning (Astra/Luna/Sol, budgets,
+        # fail-closed) lives in the orchestration addendum (AO1).
+        tuning = (
+            "astra-thinking",
+            "named inputs",
+            "one sufficient pass",
+            "max_tool_calls=12",
+            "max_wall_seconds=300",
+            "advisory",
+            "mechanical",
+            "Luna",
+            "plan-critic",
+            "Sol",
+        )
+        for source in (policy, packaged, prompt):
             normalized = " ".join(source.split())
-            for phrase in (
-                "astra-thinking",
-                "named inputs",
-                "one sufficient pass",
-                "max_tool_calls=12",
-                "max_wall_seconds=300",
-                "advisory",
-                "mechanical",
-                "Luna",
-                "plan-critic",
-                "Sol",
-            ):
+            for phrase in tuning:
                 self.assertIn(phrase, normalized)
-        self.assertIn("fail-closed", bootstrap)
+        boot_norm = " ".join(bootstrap.split())
+        for phrase in ("plan-critic", "Astra mode", "sol-executor"):
+            self.assertIn(phrase, boot_norm)
+        self.assertIn("fail-closed", policy)
         self.assertIn("no-flags", policy)
 
     def test_packaged_policy_is_kept_in_sync_and_receipt_schema_is_unchanged(self) -> None:
@@ -322,7 +329,7 @@ class AstraRoleRoutingTests(unittest.TestCase):
             self.assertIn("applier", source)
             self.assertIn("Astra", source)
         self.assertIn("baseline-only", policy)
-        self.assertIn("baseline-only", bootstrap)
+        self.assertNotIn("baseline-only", bootstrap)  # moved to the orchestration addendum
         self.assertIn("never request Astra", role)
         self.assertIn("baseline-only Luna roles", skill)
 
@@ -484,7 +491,8 @@ class RoutingReceiptTests(unittest.TestCase):
         self.assertIn("Do not replace `plan-critic`", policy)
         self.assertIn("Do not create a new computer-use role", policy)
         bootstrap = (ROOT / "templates" / "agents-md.bootstrap.md").read_text(encoding="utf-8")
-        self.assertIn("Route by capability", bootstrap)
+        self.assertIn("Route by capability", policy)
+        self.assertNotIn("Route by capability", bootstrap)  # moved to the orchestration addendum
         self.assertIn("atomic one-command/one-action", benchmark.PARENT_PROMPT)
         self.assertIn("installed Astra executor", benchmark.PARENT_PROMPT)
         self.assertIn("max_tool_calls=20", benchmark.PARENT_PROMPT)

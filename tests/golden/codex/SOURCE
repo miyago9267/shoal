@@ -1,5 +1,5 @@
 repo: shoal
-ref: shoal@77883f7
-commit: 77883f73727f382db4eb55c2da723530826ea701
+ref: shoal@4a1f272
+commit: 4a1f272b052b971ed5b64515ff8f800030fc6b76
 path: templates
-dirty: true
+dirty: false
