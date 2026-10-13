@@ -4,5 +4,4 @@
 ### Shoal always-on bootstrap
 
 {{role_body}}
-
 <!-- shoal-codex:end -->
