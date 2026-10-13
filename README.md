@@ -117,8 +117,8 @@ main session 的直接編輯在 Claude 與 Codex 以外只會被提醒：R1、R2
 但仍可用 `SHOAL_GUARD_R1=declare` 選回。main 自己開背景 shell（G4，只有 Claude）同樣被擋；R2 仍只提醒。
 `SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：只在外部分類來源標出
 實作工作時擋）、`off`。
-`SHOAL_GUARD_SUBAGENT_WRITE=on`（預設 `off`）另外擋下不是 shoal 可寫 role 的
-subagent 改檔（E1，出口見 INSTALL.md）。分類檔是公開的選用介面，見
+`SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的 subagent 改檔
+（Claude 預設 `on`，其他 host 預設 `off`；Claude 上啟動該工作的 prompt 帶 `#direct` 可放行，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
 `shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組，升級後要在
 Codex 用 `/hooks` 再核准一次）。Claude 從 3.3.1 起在 role 真的啟動（`SubagentStart`）後才放行派工，

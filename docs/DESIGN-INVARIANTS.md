@@ -12,8 +12,11 @@
    `#direct` 授權 main 直接改；互不相干的偵察與長指令預設派工。讀檔、診斷、
    整合與判斷由 main 直接做。
 3. **hook 強制硬規則**：leaf 不再派 subagent、verifier 類 role 不改檔、main
-   以背景方式開 shell，以及 main 未派工就改檔（`#direct` 可放行）。
-   這些規則不依賴任何分類器。含數字門檻的規則只提醒。
+   以背景方式開 shell、main 未派工就改檔（`#direct` 可放行），以及非 shoal
+   可寫 role 的 subagent 改檔（`#direct`、`SHOAL_GUARD_WRITE_AGENTS` 可放行）。
+   這些規則不依賴任何分類器。含數字門檻的規則只提醒。有 harness 的 host，
+   每個能掛 gate 的事件都必須掛上；掛不上的事件要列出原因與證據，
+   新的 host 綁定沒有這張表不予接受。
 4. **規則與策略由 core 定義，所有 host 共用。** host 的 adapter 只放三類內容：
    工具與參數名稱、model 綁定、該 host 特有的調校參數。host 做不到的條款明列
    省略理由。

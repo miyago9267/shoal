@@ -42,12 +42,15 @@ file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-dec
 (M11): the dispatch call records a pending write dispatch and the SubagentStart event of the same session
 releases it.  On every other host the dispatch call itself unlocks.  See START_UNLOCK_HOSTS.
 
-Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` (default on every host)
-leaves the subagent rules exactly as they were; `on` makes a subagent that is not a shoal write-capable role (an edit
+Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` (default on every host
+but claude) leaves the subagent rules exactly as they were; `on` (default on claude) makes a subagent that is not a shoal write-capable role (an edit
 tool or a literal shell write, as in G5, outside the exempt paths) get E1: deny in enforce, `would_deny` in shadow.
 Exits: dispatch a shoal write role, put the agent type in SHOAL_GUARD_WRITE_AGENTS (comma-separated, exact match on the
-raw type or the type without a `shoal:` prefix), or SHOAL_GUARD_DIRECT=1.  A user's `#direct` does not release a
-subagent yet (subagent_direct_released, E1 waits for E0 payload evidence).  Verify-level roles keep VERIFY_EDIT.
+raw type or the type without a `shoal:` prefix), or SHOAL_GUARD_DIRECT=1.  On claude a user's `#direct`
+also releases it: the subagent event carries the main session's session_id and the prompt_id of the turn that started
+it, and the prompt event keeps the last DIRECT_TURNS_MAX turn ids that carried `#direct` in the state file
+(`direct_turns`), so a background Workflow child that edits after the main session moved on is still judged by the turn
+that launched it.  Other hosts have no such payload evidence: not released.  Verify-level roles keep VERIFY_EDIT.
 
 Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
 shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
@@ -126,6 +129,14 @@ DECLARE_HOSTS = frozenset({"claude", "codex"})
 # would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
 # together; a Claude install whose registration lacks SubagentStart has no start event and would stay locked.
 START_UNLOCK_HOSTS = frozenset({"claude"})
+# E1 (docs/specs/guard-every-gate): hosts where SHOAL_GUARD_SUBAGENT_WRITE defaults to `on`, and hosts whose
+# subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it
+# (claude: tests/fixtures/claude_subagent_tool_shapes.json), so the user's `#direct` can release a subagent.
+SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude"})
+SUBAGENT_DIRECT_HOSTS = frozenset({"claude"})
+# The state file remembers this many most recent turn ids that carried `#direct`.
+DIRECT_TURNS_MAX = 16
+
 # `#direct` as an instruction the user typed: a standalone token that follows the start of the text or
 # whitespace and is followed by the end, whitespace or sentence punctuation (ASCII or CJK).  Anything
 # else (`x#direct`, `(#direct)`, `#directly`, a URL fragment) is not.  Code the user quoted does not
@@ -227,6 +238,11 @@ MESSAGES = {
             "Dispatch a shoal write-capable role (executor or applier), add this agent type to "
             "SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
         ),
+        "E1D": (
+            "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. "
+            "Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that "
+            "started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+        ),
         "STOP": (
             "Shoal completion check: this turn changed files and no check ran afterwards. Run a "
             "verification now (tests, a verifier or watcher role), or say explicitly in your report "
@@ -263,6 +279,11 @@ MESSAGES = {
             "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。"
             "請派出 shoal 可寫的 role（executor 或 applier）、把這個 agent type 加進 "
             "SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"
+        ),
+        "E1D": (
+            "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。"
+            "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct、"
+            "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"
         ),
         "STOP": (
             "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。"
@@ -474,9 +495,21 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
     return mode
 
 
-def subagent_write_enabled(env: Dict[str, str]) -> bool:
-    """SHOAL_GUARD_SUBAGENT_WRITE: only the exact value `on` enables E1; unset or anything else is `off`."""
-    return env.get("SHOAL_GUARD_SUBAGENT_WRITE") == "on"
+def subagent_write_enabled(host: str, env: Dict[str, str]) -> bool:
+    """SHOAL_GUARD_SUBAGENT_WRITE: `on` enables E1, `off` disables it; unset (or any other value) follows the
+    host default: on for claude, off elsewhere."""
+    raw = env.get("SHOAL_GUARD_SUBAGENT_WRITE")
+    if raw in ("on", "off"):
+        return raw == "on"
+    return host in SUBAGENT_WRITE_DEFAULT_ON_HOSTS
+
+
+def _direct_turns(state: Dict[str, Any]) -> List[str]:
+    """The `direct_turns` list of a state file: strings only, the last DIRECT_TURNS_MAX."""
+    raw = state.get("direct_turns")
+    if not isinstance(raw, list):
+        return []
+    return [t for t in raw if isinstance(t, str)][-DIRECT_TURNS_MAX:]
 
 
 def write_agent_allowed(role: Any, env: Dict[str, str]) -> bool:
@@ -973,7 +1006,7 @@ class _Guard:
             rule = "LEAF"
         elif tool_kind == "edit" and role_access(role) == "verify":
             rule = "VERIFY_EDIT"
-        if rule is None and subagent_write_enabled(self.env):
+        if rule is None and subagent_write_enabled(self.host, self.env):
             rule = self._subagent_write_rule(role, tool_kind)
         if rule is None:
             return {
@@ -988,7 +1021,8 @@ class _Guard:
         file = paths[0] if paths else None
         if rule == "E1" and tool_kind == "shell":
             file = self.shell_write_target()
-        return self.result(decision, rule, reason=_text(self.env, rule), file=file)
+        key = "E1D" if rule == "E1" and self.host in SUBAGENT_DIRECT_HOSTS else rule
+        return self.result(decision, rule, reason=_text(self.env, key), file=file)
 
     def _subagent_write_rule(self, role: Any, tool_kind: Any) -> Optional[str]:
         """E1: "E1" when this subagent call writes a non-exempt file and nothing releases it, else None."""
@@ -1013,9 +1047,22 @@ class _Guard:
         return "E1"
 
     def subagent_direct_released(self) -> bool:
-        """Hook point for the user's `#direct` releasing a subagent (spec E1).  Not released yet: it needs E0
-        evidence that the subagent payload lets the guard find the current turn's main state."""
-        return False
+        """The user's `#direct` releases a subagent when the turn named by the subagent event's (session_id,
+        turn_id) is in the main session's `direct_turns`.  Read-only; any problem (host without the payload
+        evidence, bad ids, no state dir, unreadable or corrupt state) means "not released", never an exception."""
+        try:
+            if self.host not in SUBAGENT_DIRECT_HOSTS:
+                return False
+            sid, tid = self.event.get("session_id"), self.event.get("turn_id")
+            if not valid_id(sid) or not valid_id(tid):
+                return False
+            guard = self.guard_dir
+            if guard is None:
+                return False
+            state = _read_json(guard / "state" / (sid + ".json"))
+            return tid in _direct_turns(state)
+        except Exception:
+            return False
 
     def _none(self) -> Dict[str, Any]:
         return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
@@ -1194,21 +1241,32 @@ class _Guard:
                 prior = _read_json(state_path)
                 if not prior:
                     return self.result("skip", skip="missing_id")
+                prior_turns = _direct_turns(prior)
                 edited = prior.get("edited") if isinstance(prior.get("edited"), list) else []
                 prior_tid = prior.get("turn_id")
                 state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
                          "dispatched": False, "advised": False, "edited": edited,
                          "direct": event.get("direct") is True, "declared": False, "pending": 0,
                          "changed": False, "checked": False, "stop_blocked": False}
+                if event.get("direct") is True and isinstance(prior_tid, str):
+                    prior_turns = (prior_turns + [prior_tid])[-DIRECT_TURNS_MAX:]
+                if prior_turns:
+                    state["direct_turns"] = prior_turns
             else:
+                prior_turns = _direct_turns(_read_json(state_path))
+                if event.get("direct") is True and isinstance(tid, str):
+                    prior_turns = (prior_turns + [tid])[-DIRECT_TURNS_MAX:]
                 state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
                          "direct": event.get("direct") is True, "declared": False, "pending": 0,
                          "changed": False, "checked": False, "stop_blocked": False}
+                if prior_turns:
+                    state["direct_turns"] = prior_turns
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
             return self.result("state")
 
         state = _read_json(state_path)
+        kept_turns = _direct_turns(state)
         if tid is not None and state.get("turn_id") != tid:
             state = {}
         edited = state.get("edited") if isinstance(state.get("edited"), list) else []
@@ -1224,6 +1282,8 @@ class _Guard:
             "checked": state.get("checked") is True,  # B2: a check after the latest change
             "stop_blocked": state.get("stop_blocked") is True,  # B3: this turn's one block is spent
         }
+        if kept_turns:
+            state["direct_turns"] = kept_turns  # E1: turns that carried #direct, kept across turns
 
         if event.get("tool_kind") == "dispatch":
             access = role_access(event.get("dispatched_role"))

@@ -589,12 +589,21 @@ shadow 記 `would_deny`（規則 id `E1`）。verify 等級的 role 的編輯仍
 
 | 值 | 效果 |
 | --- | --- |
-| `off`（預設，所有 host） | 沒有 E1，行為與以前完全相同 |
-| `on` | 啟用 E1 |
+| `on`（Claude 的預設） | 啟用 E1 |
+| `off`（其他 host 的預設） | 沒有 E1，行為與以前完全相同 |
+
+未設定時 Claude 為 `on`，其他 host 為 `off`；明確設 `on` 或 `off` 在任何 host 都優先。
 
 出口：派 shoal 可寫的 role；把 agent type 加進 `SHOAL_GUARD_WRITE_AGENTS`（逗號分隔，去掉空白，
-比對原始 type 或去掉 `shoal:` 前綴的 type）；或設 `SHOAL_GUARD_DIRECT=1`。使用者的 `#direct`
-目前不放行 subagent。派出非 shoal 的 agent type 仍然允許，也不會解鎖 main 的改檔。
+比對原始 type 或去掉 `shoal:` 前綴的 type，例如 Workflow 預設的 `workflow-subagent`）；設
+`SHOAL_GUARD_DIRECT=1`；或在 Claude 上，啟動這項工作的那一回合 prompt 帶 `#direct`。
+最後一項靠 subagent 事件帶的 `session_id` 與 `prompt_id` 對到主 session 的 state 檔，其中
+`direct_turns` 保存最近 16 個帶 `#direct` 的回合 id，所以背景 Workflow 的子 agent 在主 session 已進入
+下一回合後才改檔，仍以啟動它的那一回合為準。state 檔讀不到或內容壞掉一律視為未放行。
+其他 host 的 subagent 事件沒有這組證據，`#direct` 不放行 subagent。
+派出非 shoal 的 agent type 仍然允許，也不會解鎖 main 的改檔。
+Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TMPDIR`（含 Claude 的 scratchpad）
+屬豁免路徑；導到 repo 內的路徑會被 E1 擋下。
 
 #### 宣告
 

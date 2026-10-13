@@ -86,6 +86,8 @@ type StateFile = {
   checked: boolean;
   /** B3: this turn's one completion block has been spent. */
   stop_blocked: boolean;
+  /** E1: the last DIRECT_TURNS_MAX turn ids whose prompt carried `#direct` (omitted when empty). */
+  direct_turns?: string[];
 };
 type LogRecord = Record<string, unknown>;
 
@@ -231,6 +233,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. " +
       "Dispatch a shoal write-capable role (executor or applier), add this agent type to " +
       "SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1.",
+    E1D:
+      "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. " +
+      "Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that " +
+      "started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1.",
     STOP:
       "Shoal completion check: this turn changed files and no check ran afterwards. Run a " +
       "verification now (tests, a verifier or watcher role), or say explicitly in your report " +
@@ -261,6 +267,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。" +
       "請派出 shoal 可寫的 role（executor 或 applier）、把這個 agent type 加進 " +
       "SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
+    E1D:
+      "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。" +
+      "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct、" +
+      "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
     STOP:
       "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。" +
       "請現在做一次驗證（測試、verifier 或 watcher role），或在回報中明確寫出這次修改尚未驗證。",
@@ -501,9 +511,27 @@ export function resolveMode(host: string, env: Env): string {
   return mode;
 }
 
-/** SHOAL_GUARD_SUBAGENT_WRITE: only the exact value `on` enables E1; unset or anything else is `off`. */
-export function subagentWriteEnabled(env: Env): boolean {
-  return env.SHOAL_GUARD_SUBAGENT_WRITE === "on";
+/**
+ * E1 (docs/specs/guard-every-gate): hosts where SHOAL_GUARD_SUBAGENT_WRITE defaults to `on`, and hosts whose
+ * subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it, so the
+ * user's `#direct` can release a subagent.
+ */
+const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude"]);
+const SUBAGENT_DIRECT_HOSTS = new Set(["claude"]);
+/** The state file remembers this many most recent turn ids that carried `#direct`. */
+const DIRECT_TURNS_MAX = 16;
+
+/** SHOAL_GUARD_SUBAGENT_WRITE: `on` enables E1, `off` disables it; unset (or any other value) follows the host default. */
+export function subagentWriteEnabled(host: string, env: Env): boolean {
+  const raw = env.SHOAL_GUARD_SUBAGENT_WRITE;
+  if (raw === "on" || raw === "off") return raw === "on";
+  return SUBAGENT_WRITE_DEFAULT_ON_HOSTS.has(host);
+}
+
+function directTurns(state: Record<string, unknown>): string[] {
+  const raw = state.direct_turns;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((t): t is string => typeof t === "string").slice(-DIRECT_TURNS_MAX);
 }
 
 /** SHOAL_GUARD_WRITE_AGENTS: the raw agent type, or the type without a `shoal:` prefix, is in the list. */
@@ -668,13 +696,13 @@ class Guard {
     let rule: string | null = null;
     if (toolKind === "dispatch") rule = "LEAF";
     else if (toolKind === "edit" && roleAccess(role) === "verify") rule = "VERIFY_EDIT";
-    if (rule === null && subagentWriteEnabled(this.env)) rule = this.subagentWriteRule(role, toolKind);
+    if (rule === null && subagentWriteEnabled(this.host, this.env)) rule = this.subagentWriteRule(role, toolKind);
     if (rule === null) return none(this.mode);
     let file: string | undefined = this.event.paths?.[0];
     if (rule === "E1" && toolKind === "shell") file = this.shellWriteTarget() ?? undefined;
     return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
       rule,
-      reason: text(this.env, rule),
+      reason: text(this.env, rule === "E1" && SUBAGENT_DIRECT_HOSTS.has(this.host) ? "E1D" : rule),
       file,
     });
   }
@@ -698,11 +726,22 @@ class Guard {
   }
 
   /**
-   * Hook point for the user's `#direct` releasing a subagent (spec E1).  Not released yet: it needs E0
-   * evidence that the subagent payload lets the guard find the current turn's main state.
+   * The user's `#direct` releases a subagent when the turn named by the subagent event's (session_id, turn_id) is
+   * in the main session's `direct_turns`.  Read-only; any problem (host without the payload evidence, bad ids, no
+   * state dir, unreadable or corrupt state) means "not released", never an exception.
    */
   subagentDirectReleased(): boolean {
-    return false;
+    try {
+      if (!SUBAGENT_DIRECT_HOSTS.has(this.host)) return false;
+      const sid = this.event.session_id;
+      const tid = this.event.turn_id;
+      if (!validId(sid) || !validId(tid)) return false;
+      const dir = this.guardDirectory;
+      if (dir === null) return false;
+      return directTurns(readJson(join(dir, "state", sid + ".json"))).includes(tid as string);
+    } catch {
+      return false;
+    }
   }
 
   // -- completion check (B2, B3) --------------------------------------------
@@ -862,6 +901,10 @@ class Guard {
         // M1: id-less prompt.  Clear the unlock, keep turn and edits; no state, nothing to do.
         const prior = readJson(statePath);
         if (Object.keys(prior).length === 0) return this.result("skip", { skip: "missing_id" });
+        let turns = directTurns(prior);
+        if (event.direct === true && typeof prior.turn_id === "string") {
+          turns = [...turns, prior.turn_id].slice(-DIRECT_TURNS_MAX);
+        }
         next = {
           turn_id: typeof prior.turn_id === "string" ? prior.turn_id : null,
           dispatched: false,
@@ -874,7 +917,10 @@ class Guard {
           checked: false,
           stop_blocked: false,
         };
+        if (turns.length > 0) next.direct_turns = turns;
       } else {
+        let turns = directTurns(readJson(statePath));
+        if (event.direct === true && typeof tid === "string") turns = [...turns, tid].slice(-DIRECT_TURNS_MAX);
         next = {
           turn_id: tid,
           dispatched: false,
@@ -887,12 +933,14 @@ class Guard {
           checked: false,
           stop_blocked: false,
         };
+        if (turns.length > 0) next.direct_turns = turns;
       }
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
       return this.result("state");
     }
 
     let prior = readJson(statePath);
+    const keptTurns = directTurns(prior);
     if (tid != null && prior.turn_id !== tid) prior = {};
     const edited = Array.isArray(prior.edited) ? (prior.edited as string[]) : [];
     const state: StateFile = {
@@ -907,6 +955,7 @@ class Guard {
       checked: prior.checked === true, // B2: a check after the latest change
       stop_blocked: prior.stop_blocked === true, // B3: this turn's one block is spent
     };
+    if (keptTurns.length > 0) state.direct_turns = keptTurns; // E1: turns that carried #direct
 
     if (event.tool_kind === "dispatch") {
       const access = roleAccess(event.dispatched_role);

@@ -1117,6 +1117,7 @@
   },
   {
    "name": "k3_shoal_namespace_subagent_roles",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "off"},
    "steps": [
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "shoal:verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
@@ -1128,6 +1129,7 @@
   },
   {
    "name": "k3_unlisted_subagent_namespace_is_not_verify",
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "off"},
    "steps": [
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "x:verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "shoal:shoal:verifier", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
@@ -1150,7 +1152,7 @@
   {
    "name": "verify_edit_denied_watcher_claude",
    "host": "claude",
-   "env": {"SHOAL_GUARD": "enforce"},
+   "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "off"},
    "steps": [
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "watcher"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "shoal:watcher"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}},
@@ -1729,6 +1731,7 @@
   },
   {
    "name": "g5_subagents_are_never_affected",
+   "env": {"SHOAL_GUARD_SUBAGENT_WRITE": "off"},
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
@@ -3980,31 +3983,6 @@
    ]
   },
   {
-   "name": "e1_claude_switch_unset_nonshoal_edit_allowed",
-   "host": "claude",
-   "env": {
-    "SHOAL_GUARD": "enforce",
-    "SHOAL_GUARD_SUBAGENT_WRITE": null
-   },
-   "steps": [
-    {
-     "event": {
-      "kind": "tool",
-      "tool_kind": "edit",
-      "turn_id": "t1",
-      "is_subagent": true,
-      "role": "general-purpose",
-      "paths": [
-       "$WORK/src/a"
-      ]
-     },
-     "expect": {
-      "decision": "none"
-     }
-    }
-   ]
-  },
-  {
    "name": "e1_claude_on_enforce_nonshoal_edit_denied",
    "host": "claude",
    "env": {
@@ -4132,7 +4110,7 @@
      "expect": {
       "decision": "deny",
       "rule": "E1",
-      "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+      "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
      }
     }
    ]
@@ -5844,6 +5822,1353 @@
      }
     }
    ]
+  },
+ {
+  "name": "e1_claude_default_unset_enforce_nonshoal_denied",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_default_unset_shoal_applier_allowed",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "shoal:applier",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "applier",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "shoal:applier",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_explicit_off_overrides_default",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": "off"
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_default_unset_allowlist_workflow_subagent_allowed",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null,
+   "SHOAL_GUARD_WRITE_AGENTS": "workflow-subagent"
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_codex_default_unset_stays_off_even_after_direct",
+  "host": "codex",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_codex_explicit_on_ignores_direct_turn",
+  "host": "codex",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": "on"
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_direct_turn_releases_subagent_edit_and_shell",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_next_turn_without_direct_denied_again",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t2",
+     "direct": false
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t2",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t2",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_workflow_child_of_earlier_direct_turn_allowed_after_newer_turn",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t2",
+     "direct": false
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t3",
+     "direct": false
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t3",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t2",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_direct_turn_memory_keeps_last_16",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d0",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d2",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d3",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d4",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d5",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d6",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d7",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d8",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d9",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d10",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d11",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d12",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d13",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d14",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d15",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d16",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "d17",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "d0",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "d1",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "d2",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "d17",
+     "is_subagent": true,
+     "role": "workflow-subagent",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_direct_turn_other_session_not_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ],
+     "session_id": "s2"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_direct_turn_wrong_turn_not_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t1",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t9",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_state_missing_not_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_state_corrupt_not_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ],
+  "setup": {
+   "state_file": {
+    "session": "s1",
+    "content": "{not json"
+   }
   }
+ },
+ {
+  "name": "e1_claude_state_direct_turns_not_a_list_not_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ],
+  "setup": {
+   "state_file": {
+    "session": "s1",
+    "content": "{\"turn_id\": \"t1\", \"direct\": true, \"direct_turns\": \"t1\"}"
+   }
+  }
+ },
+ {
+  "name": "e1_claude_state_direct_turns_wrong_types_not_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ],
+  "setup": {
+   "state_file": {
+    "session": "s1",
+    "content": "{\"turn_id\": \"t1\", \"direct_turns\": [1, null, {\"a\": 1}]}"
+   }
+  }
+ },
+ {
+  "name": "e1_claude_state_from_older_version_without_memory_not_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ],
+  "setup": {
+   "state_file": {
+    "session": "s1",
+    "content": "{\"turn_id\": \"t1\", \"direct\": true}"
+   }
+  }
+ },
+ {
+  "name": "e1_claude_direct_denial_message_names_direct",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1",
+     "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_direct_shadow_logs_would_deny_then_released",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "shadow",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "would_deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "prompt",
+     "turn_id": "t2",
+     "direct": true
+    },
+    "expect": {
+     "decision": "state"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t2",
+     "is_subagent": true,
+     "role": "general-purpose",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "none"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_verify_roles_shell_redirects_tmp_exempt_repo_denied",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test > /tmp/w.log 2>&1"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test > /private/tmp/w.log"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test > $TMPDIR/w.log"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test >> /private/tmp/claude-501/-Users-miyago/aaa/scratchpad/log.txt"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test 2>&1 | tee /tmp/w.log"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test > out/w.log"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "watcher",
+     "command": "npm test > $WORK/out/w.log"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test > /tmp/w.log 2>&1"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test > /private/tmp/w.log"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test > $TMPDIR/w.log"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test >> /private/tmp/claude-501/-Users-miyago/aaa/scratchpad/log.txt"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test 2>&1 | tee /tmp/w.log"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test"
+    },
+    "expect": {
+     "decision": "none"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test > out/w.log"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "verifier",
+     "command": "npm test > $WORK/out/w.log"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ },
+ {
+  "name": "e1_claude_readonly_and_explore_roles_shell_write_denied_no_write_tools",
+  "host": "claude",
+  "env": {
+   "SHOAL_GUARD": "enforce",
+   "SHOAL_GUARD_SUBAGENT_WRITE": null
+  },
+  "steps": [
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "Explore",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "shell",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "shoal:Explore",
+     "command": "echo hi > $WORK/src/a"
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   },
+   {
+    "event": {
+     "kind": "tool",
+     "tool_kind": "edit",
+     "turn_id": "t1",
+     "is_subagent": true,
+     "role": "scout",
+     "paths": [
+      "$WORK/src/a"
+     ]
+    },
+    "expect": {
+     "decision": "deny",
+     "rule": "E1"
+    }
+   }
+  ]
+ }
  ]
 }
