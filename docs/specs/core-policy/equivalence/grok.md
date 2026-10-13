@@ -654,3 +654,67 @@ hooks 會在 `grok -p` 下執行（`dispatch-enforcement/TASKS.md:67` 的 live �
 | U14 | 落點 B 的 skill 在 Grok 是否會被模型自動載入（description 比對）、在 headless 是否可行 | `08-skills.md` | 實測；repo 內沒有 Grok skill 的載入紀錄 |
 | U15 | Grok 常駐檔的大小上限（shared-rules A5）要用什麼數字 | LOCK（無 Grok surface）、測試（無）、docs（no character cap） | owner 決定。現況 16,015 bytes |
 | U16 | `enter_plan_mode`／`exit_plan_mode` 在 headless 的行為（`--permission-mode plan` 是否等同；工具是否需要使用者核准） | docs `19-plan-mode.md`（寫 `enter_plan_mode`「requires your approval」） | 一次 headless 執行。影響 G06 至 G08 的 Grok addendum 在無人值守下如何運作 |
+
+## 實測補充（2026-10-13）
+
+Grok 1.0.46。免費檢查 1 組、付費 headless 2 次，都在 `~` 底下的拋棄式 git 目錄
+執行，結束後已刪除；原始輸出只存在暫存目錄，不進 repo。額度與驗證都正常，沒有
+quota、billing、authentication 錯誤。
+
+### 執行的指令
+
+```text
+grok --help
+grok inspect                       # cwd 為 ~
+grok -p "<繁中 prompt：同一則訊息派兩個 scout，分別讀 a.txt、b.txt，再收結果>" \
+  --output-format streaming-json --max-turns 6 --always-approve --cwd <probe> < /dev/null
+grok -p "<繁中 prompt：依序 shell、grep、write、search_replace、ask_user_question、
+  載入 skill、spawn_subagent 帶 model／effort／isolation／capability_mode>" \
+  --output-format streaming-json --max-turns 16 --always-approve --cwd <probe> < /dev/null
+```
+
+兩次都 exit 0，`end` 事件 `stopReason: "end_turn"`（第 1 次 `num_turns` 3、
+`total_cost_usd` 約 0.063；第 2 次 `num_turns` 8、約 0.082）。
+
+### 事實與證據
+
+| 項目 | 結果 | 證據 |
+| --- | --- | --- |
+| headless 工具清單（主 session） | 29 個，含 `run_terminal_command`、`read_file`、`search_replace`、`write`、`list_dir`、`grep`、`spawn_subagent`、`get_command_or_subagent_output`、`ask_user_question`、`enter_plan_mode`、`exit_plan_mode`、`todo_write`、`search_tool`、`use_tool`、`workflow` | 串流第一個 `available_commands` 事件的 `tools` 欄位 |
+| shell 工具名稱 | `run_terminal_command`（沒有 `run_terminal_cmd`） | 工具清單；實際呼叫 `toolName: "run_terminal_command"`、`rawInput` 欄位 `command`、`description` |
+| 讀／搜尋／寫 | 讀 `read_file`（`target_file`、`limit`）；搜尋 `grep`（`pattern`、`path`）、`list_dir`；寫 `write`（`file_path`、`content`）；編輯 `search_replace`（`file_path`、`old_string`、`new_string`） | 實際呼叫的 `toolName` 與 `rawInput`；`write`、`search_replace` 都回 `diff` 內容並成功 |
+| 寫入工具完整集合 | 主 session 只有 `search_replace`、`write`；清單裡沒有 `write_file`、`edit`、`multi_edit`、`create_file` | 工具清單。子 agent 的寫入工具沒有取得（只看到 `scout` 的清單） |
+| 派工工具與參數 | `spawn_subagent`，實際出現的 `rawInput` 欄位：`description`、`prompt`、`subagent_type`、`background`、`isolation`、`cwd`、`resume_from` | 3 次呼叫。role 的欄位名稱是 `subagent_type`（值 `"scout"`、`"executor"`） |
+| 背景參數名稱 | `background`（布林），不是 `run_in_background` | 第 1 次兩個呼叫都是 `"background": true`；第 2 次 `"background": false` |
+| 背景參數預設值 | 未取得 | 兩次模型都明寫了 `background`；沒有做省略該欄位的呼叫。docs 的「預設 true」沒有被推翻也沒有被證實 |
+| `model`、`effort`、`capability_mode` 是否為 spawn 參數 | 未取得 | 第 2 次 prompt 要求帶這四個參數，模型自己只送了 `isolation`，沒有送其餘三個，也沒有被工具拒絕。不能由此推論不存在，只能說它們沒有出現在任何一次實際呼叫 |
+| `isolation` | 接受 `"worktree"`；與 `cwd` 互斥 | 失敗結果：`cwd and isolation="worktree" are mutually exclusive`。模型自己額外送了 `cwd`，所以工具在驗證階段就拒絕，沒有建立 worktree |
+| 背景派工是否立即回傳 | 是 | 結果文字 `Subagent started in background.` 與 `subagent_id`，並指示用 `get_command_or_subagent_output` 配 `task_ids` 與 `timeout_ms` 取結果 |
+| 前景派工（`background: false`）是否阻塞 | 未取得 | 唯一一次前景呼叫在驗證階段就失敗（上一列），沒有跑到子 agent |
+| 同一則訊息兩個派工是否並行 | 是 | 兩個 `tool_call` 的 `toolCallId` 尾碼為 `-0`、`-1`，出現在同一輪；兩個子 agent 的 `started` 都是 `2026-10-13T05:13:12Z`，各自 `duration_secs` 約 7.5 與 8.1，`wait_all` 的 `summary` 為 `2/2 tasks completed` |
+| 取結果的工具 | `get_command_or_subagent_output`：`task_ids`（陣列）、`timeout_ms` | 第 1 次的呼叫 `rawInput`；回傳 `MultiResult`、`mode: "wait_all"` |
+| `ask_user_question` | 在 headless 工具清單內，但呼叫後沒有人可回答 | 呼叫 `rawInput.questions[].options[]`（`label`、`description`）；結果文字 `No user is available to answer questions in this non-interactive session` |
+| shoal roles 在 headless 啟用 | 是 | `grok inspect` 的 Agents（24）列出 `scout`、`plan-critic`、`security-reviewer`、`security-executor`、`executor`、`verifier`、`watcher`、`researcher`、`applier` 為 `project` 來源，另有 `shoal:` 前綴的 plugin 副本；派工的 `command` 欄位為 `[subagent:scout]`；scout 的工具清單是唯讀的 `read_file`、`list_dir`、`grep`、`todo_write`、`web_*`、圖像／影片工具，沒有 shell 與寫入 |
+| shoal rules 檔在 headless 啟用 | `inspect` 確認被載入；行為層面只有間接證據 | `inspect`：`~/.grok/rules/shoal-grok.md (global, ~4003 tokens)`。串流沒有 rules 事件；第 1 次的 `thought` 出現 shoal 規則用語（`dispatch brake`），但那是模型文字，不當作證明 |
+| skill 在 headless 的載入方式 | 沒有 skill 專用工具；模型用 `read_file` 讀 `~/.grok/skills/orchestration/SKILL.md` | 第 2 次步驟 (6) 的呼叫。清單 `commands` 內有各 skill 名稱（slash 形式）。`~/.grok/skills/orchestration` 是 Orca 的，不是 shoal 的；`inspect` 顯示 `shoal-orchestration` 為 `plugin: shoal [claude] [disabled]`（claude harness 相容關閉） |
+| `inspect` 的 hooks | 61 個 hook，其中 `matcher=^spawn_subagent$`、`^(search_replace\|write\|write_file\|edit\|multi_edit\|create_file\|spawn_subagent)$`、`^verifier$`、`^plan-critic$`、`^security-reviewer$` 為 user 來源且啟用；`[claude]` 來源全部 `[disabled]` | `grok inspect` 的 Hooks 區 |
+| 其他 `grok --help` 子命令 | 只執行 `inspect`；`doctor`、`du`、`models`、`usage` 等與本任務無關，沒有再跑 | `grok --help` 的 Commands 區 |
+| Stop 類 hook 事件的 payload | 未取得 | 串流事件型別只有 `available_commands`、`thought`、`text`、`usage`、`tool_call`、`tool_call_update`、`end`；沒有任何 hook 事件，且不改設定就沒有其他觀察途徑（hook 輸出會落在 hook 腳本自己的位置，這次沒有去讀 `~/.grok`） |
+| `enter_plan_mode`、`exit_plan_mode` 在 headless | 工具存在於清單；實際行為未取得 | 工具清單。沒有呼叫，也沒有用 `--permission-mode plan` 測 |
+
+### U 項狀態
+
+- 已確定：U1（`background`，布林；預設值仍未取得，所以前景呼叫要寫 `background: false` 的結論不變）、
+  U2（`run_terminal_command`）、U5（主 session 只有 `search_replace` 與 `write`；
+  `write_file` 等 hook matcher 名稱在 headless 清單中不存在，保留在 matcher 裡無害）、
+  U6（`ask_user_question` 存在但無人可答，fallback `PAUSED_NEEDS_USER` 仍適用；
+  skill 沒有專用工具，靠 `read_file` 讀 SKILL.md）、
+  U13（同一則訊息可並行發出多個 `spawn_subagent`，實測並行執行）。
+- 部分確定：U4 與 U3（`model`、`effort`、`capability_mode` 沒有出現在任何實際呼叫，
+  但沒有被工具明確拒絕過，無法斷言不存在；`bootstrap-effort`、`effort-per-delegation`
+  是否省略仍要等一次「只送這幾個參數」的受控呼叫，或讀到 tool schema）。
+- 部分確定：U14（headless 下 skill 可被讀取；description 自動比對載入沒有測）。
+- 仍未決：U7（沒有測子目錄掃描）、U8（Stop payload 不可觀察）、U16（plan mode 工具
+  行為未測）、U9（額度這兩次夠用，剩餘額度仍未知）；U10、U11、U12、U15 與本次無關。
+- 新增的未決點：前景（`background: false`）派工是否阻塞，以及省略 `background` 時的預設值，
+  需要一次不帶 `cwd`、不帶 `isolation` 的前景呼叫。

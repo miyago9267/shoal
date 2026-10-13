@@ -454,3 +454,83 @@ addendum 改動時才受影響，見 §8 第 10 項。
 | 14 | `shoal-agy:begin/end` 區段標記（F02）的去留。 | 全 repo grep：沒有程式讀它；dotfile 的 `setup_gemini.sh` 只 `cat` | 標記是否有人工用途不明 |
 
 結束。
+
+## 實測補充（2026-10-13）
+
+兩次 headless 實測，cwd 是 `~` 下的拋棄式 git 目錄，內有 `a.txt`（第一行 `PROBE-LINE-ONE`）與
+`b.txt`（第一行 `ALPHA-FIRST`）。raw 輸出只存在暫存目錄，未進 repo。agy 版本 1.3.3。
+
+### 執行的指令
+
+1. `agy -p "<繁中 prompt：同一則訊息派兩個 scout 讀 a.txt／b.txt 第一行；列工具；問是否載入 skill 與常駐規則；
+   用提問工具問是非題>" --output-format stream-json --print-timeout 240s < /dev/null`，
+   完成（`result.status` 為 `SUCCESS`，115.7 秒）。
+2. `agy -p "<繁中 prompt：依序用 shell、搜尋、列檔、讀檔、寫檔、編輯、提問工具，再派兩個 scout 跑 sleep>"
+   --output-format stream-json --print-timeout 300s < /dev/null`，第一個工具就中止（見下方）。
+3. 另有一次帶 `--dangerously-skip-permissions` 的第一次嘗試被執行環境的權限分類器拒絕，agy 沒有啟動，不算一次實測。
+
+未帶 `--dangerously-skip-permissions`，所以第 2 次的 `run_command` 被 headless 自動拒絕：
+`step_update.tool_info.error.message` 為
+`permission check failed for unsandboxed "date +%s": user denied permission to
+run command`；stderr 是 `a tool required the "command" permission that headless
+mode cannot prompt for, so it was auto-denied`；`result.denied_actions` 為
+`[{"action":"command","display_name":"RunCommand"}]`，`result.response` 為空。
+回合在此結束，其餘步驟都沒有執行。
+
+### stream 的事件結構
+
+- `event: init`：欄位 `conversation_id`、`init.cwd`、`init.tools`、
+  `init.permission_mode`（值 `request-review`）。
+- `event: step_update`：欄位
+  `step_update.{conversation_id, step_index, state, step_type, tool_name,
+tool_info, subagent_info, text_delta, duration_seconds, usage}`；`state` 為
+`ACTIVE`／`DONE`／`ERROR`；`step_type` 出現過 `user_input`、`agent_response`、`tool`、
+`subagent`、`system_message`、`unknown`。
+- `event: result`：`result.{conversation_id, status, response, duration_seconds,
+  num_turns, usage, denied_actions}`。
+- `usage` 欄位只有 token 數：`input_tokens`、`output_tokens`、`thinking_tokens`、
+  `cache_read_tokens`、`total_tokens`。
+
+### 事實與證據
+
+| # | 事實 | 證據 | 判定 |
+|---|---|---|---|
+| 1 | 派工工具名是 `invoke_subagent` | run 1，`step_update.tool_name` 與 `tool_info.name` 都是 `invoke_subagent` | 已確認 |
+| 2 | 派工參數：頂層 `Subagents`（陣列）；每個 entry 的欄位為 `Model`、`Prompt`、`Role`、`TypeName`、`Workspace` | run 1，`tool_info.parameters.Subagents[]`，樣本 `{"Model":"inherit","Prompt":"…","Role":"Scout A","TypeName":"scout","Workspace":"inherit"}` | 已確認 |
+| 3 | `TypeName` 才是 role 名；`Role` 是每個 entry 的自由文字標籤 | run 1，`TypeName: "scout"`、`Role: "Scout A"`／`"Scout B"`；`subagent_info.subagents[].type_name` 為 `scout`、`role` 為 `Scout A` | 已確認（`Role` 可當 `label_param` 的候選，但它是顯示名，不是前綴規則） |
+| 4 | 派工沒有 effort 欄位，也沒有 background／wait 欄位 | run 1，entry 只有上列五個欄位 | 已確認（模型有可能省略了可選欄位；工具的完整 schema 在 stream 裡沒有，見 #17） |
+| 5 | `Workspace` 可取 `inherit`（run 1 兩個 entry 都用它）；`branch`、`share` 沒有出現 | run 1，`Workspace: "inherit"`；`subagent_info.subagents[].workspace_uris` 為 cwd | `inherit` 已確認；`branch`／`share` 未取得，因為沒有要求模型使用 |
+| 6 | `Model` 欄位模型自己填 `inherit`；省略 `Model` 的行為未取得 | run 1，兩個 entry 都帶 `"Model":"inherit"`（模型自行填入，prompt 沒有提到 model）；run 2 本來要測省略，但在第一個工具就中止 | 省略行為：未取得 |
+| 7 | 派工立即回傳，不等 subagent 完成 | run 1，`invoke_subagent` 的 `step_type: "subagent"` 事件 `state: "DONE"`、`duration_seconds: 1.451797`，內含兩個 `subagent_info.subagents[].conversation_id`；隨後主 session 的 `agent_response` 步驟 `duration_seconds: 73.96`，之後才出現含兩個 scout 第一行（`PROBE-LINE-ONE`、`ALPHA-FIRST`）的最終回覆 | 已確認（由時間差推論；stream 沒有明寫 `background` 欄位） |
+| 8 | 同一則訊息兩個 entry 是否同時執行 | 兩個 subagent 在同一次 1.45 秒的呼叫內都拿到 `conversation_id`，但 stream 沒有各自的開始與結束時間 | 未取得（要用 shell 計時，被 headless 權限擋下，見上） |
+| 9 | shoal role 在 print mode 可用 | run 1，`TypeName: "scout"` 被接受，`subagent_info.subagents[].type_name` 為 `scout`，兩個 scout 都回報了正確的第一行 | 已確認 `scout`；其餘八個 role 未測 |
+| 10 | 常駐規則在 print mode 是否載入 | stream 沒有 system prompt 或 rules 的事件。只有模型的敘述（`<user_rules>` 內有 `shoal-agy v3.3.1`），與 `~/.gemini/GEMINI.md` 的 marker 一致，但這是模型轉述 | stream 無法顯示；間接線索，非證據 |
+| 11 | `shoal-orchestration` skill 在 print mode 是否載入 | `init` 沒有 skills 欄位；run 1 沒有任何讀 `SKILL.md` 的工具事件；模型自述「存在於可用 skills 清單中，但尚未主動載入」 | stream 無法顯示是否在清單內；「沒有被讀取」已確認（沒有 `view_file` 事件） |
+| 12 | 提問工具是 `ask_question` | run 1 與 run 2 的 `init.tools` 都含 `ask_question`、`ask_permission`、`ask_custom_permission` | 工具存在已確認；呼叫參數未取得 |
+| 13 | print mode 的提問行為 | run 1 的步驟 4 是 `step_type: "unknown"`、`duration_seconds: 18.2`，沒有 `tool_name`；`result.denied_actions` 與 run 1 的 stderr 都沒有出現。模型自述「已跳出是非題對話框」 | 未取得：沒有 `ask_question` 的 tool 事件，不能確認它被呼叫、被拒或被自動回答 |
+| 14 | shell 工具是 `run_command`，參數 `CommandLine` | run 2，`tool_info.parameters.CommandLine` 為 `date +%s` | 已確認 |
+| 15 | headless 預設會自動拒絕 shell | run 2，見上；`init.permission_mode` 為 `request-review` | 已確認。含義：任何需要 shell 的 headless 驗證都要 allow-rule 或 `--dangerously-skip-permissions` |
+| 16 | 其他工具名（只來自 `init.tools`，沒有實際呼叫） | 讀檔 `view_file`；搜尋 `grep_search`、`find_by_name`、`list_dir`；寫檔 `write_to_file`；編輯 `replace_file_content`、`multi_replace_file_content`、`sed_file`；也有 `notebook_edit`、`run_workflow`、`schedule`、`manage_task`、`manage_subagents`、`define_subagent`、`send_message`、`wait`、`manage_inbox`、`finish` | 名稱已確認存在；參數名未取得（run 2 中止）。`write_tools` 現可補 `sed_file`、`notebook_edit` 兩個候選 |
+| 17 | 工具的 JSON schema | stream 的 `init` 只有工具名陣列，沒有 schema | 未取得；參數名只能從實際呼叫的 `tool_info.parameters` 取得 |
+| 18 | 主 session 與 subagent 用的 model | stream 沒有任何 model 欄位（`init`、`step_update`、`result` 都沒有）；subagent 的 `Model` 欄位只有 `inherit`。`agy models` 只列可用 model，不是實際使用的 model | 未取得 |
+| 19 | `/goal` 是否存在 | 沒有測 | 未取得 |
+
+### 第 8 節項目的狀態
+
+- 已解決
+  - 第 3 項的一部分：`invoke_subagent` 立即回傳（#7，由時間差推論）；`Role` 是自由文字標籤欄位（#3），可作為
+    `label_param` 的候選；沒有 background 或 wait 欄位（#4）。
+  - 第 2 項的一部分：提問工具名是 `ask_question`（#12，工具清單確認）。
+  - 第 11 項的一部分：print mode 載入 `scout`（#9）；shell 在 headless 預設被拒（#15）。
+  - 第 8 項的一部分：write 候選多了 `sed_file`、`notebook_edit`（#16），但仍不是完整清單。
+- 仍未決
+  - 第 2 項：`ask_question` 的呼叫參數與 print mode 行為（#13）。
+  - 第 3 項：兩個 entry 是否同時執行（#8）；`/goal`（#19）；`Role` 是否能承載 `dispatch-kind-label`
+    的前綴需要決定，不是實測問題。
+  - 第 4 項：省略 `Model` 的行為（#6）。
+  - 第 5 項：`branch`／`share` 與 Git 需求（#5）。
+  - 第 11 項：常駐規則與 skill 在 print mode 是否載入（#10、#11）。
+  - 第 8 項：write 工具完整清單與參數名（#16）。
+  - 第 1、6、7、9、10、12、13、14 項：不是 live 實測能解決的，沒有變動。
+- 下一次 live 實測需要 shell 權限（allow-rule 或 `--dangerously-skip-permissions`，
+  後者在本次的執行環境被拒），才能測 #8、#6、#16。

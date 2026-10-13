@@ -558,3 +558,84 @@ strict／G5：
 `opencode run --help`、`opencode debug --help`、`opencode agent --help`、
 `python3 tools/render.py --host opencode --explain-policy`（失敗，見 1.1）、
 臨時複本內的 `--explain`、`--write`、`--policy-preview`（repo 未被修改）。
+
+## 實測補充（2026-10-13）
+
+OpenCode 1.18.31。第 9 節的 1、2、3、4 取得直接證據；6、7 部分取得。
+
+### 執行過的指令
+
+1. 免費：`opencode-direct.test.ts` 的原樣測試只檢查 `shoal_route`，不記錄 request
+   body，也只開 `agent: "scout"` 的 session，看不到主 session 的 `task` 工具。
+   所以沒有直接跑它，改在暫存目錄寫了一份變體（repo 內沒有任何修改）：
+   `bun probe.ts`（變體；`HOME` 與 `XDG_*` 指到暫存目錄，同原測試）。步驟：
+   - 暫存專案放 `AGENTS.md`（含標記字串）與 `extra-policy.md`（含另一個標記字串），
+     `.opencode/opencode.json` 設 `instructions: ["extra-policy.md"]`，provider 指向
+     `127.0.0.1` 的假 `@ai-sdk/openai-compatible`；
+   - `sh hosts/opencode/plugin/install/install.sh --target <暫存專案> --enable`
+     （exit 0）；`opencode serve` 起在暫存專案；
+   - 兩個新 session：不帶 `agent`（預設 agent）與 `agent: "scout"`，各送一則 user
+     訊息；假 provider 記下每個 `/chat/completions` 的 request body。
+2. 付費一次：在 `~` 下的拋棄式目錄（`git init`、一個檔案、明確 `git add` 該檔）執行
+   `opencode run --format json "<請預設 agent 用 task 工具派 scout 讀檔並回報第一行，
+   再回答派工是否立即返回>" < /dev/null`；之後 `opencode export <sessionID>` 讀主
+   session 的 agent 與 model 欄位（不付費）。用的是使用者真實設定，沒有 `--auto`，
+   沒有改設定。結束後該目錄已刪除（`command rm -rf`，另一個 cwd）。
+
+### 事實與證據
+
+| 事實 | 證據 | 狀態 |
+|---|---|---|
+| 預設 agent（暫存 HOME，無自訂 agent）的主 session 有 12 個工具 | request `tools[].function.name`：`bash`、`edit`、`glob`、`grep`、`question`、`read`、`shoal_route`、`skill`、`task`、`todowrite`、`webfetch`、`write` | 已取得 |
+| `task` 參數 | `properties`：`description`、`prompt`、`subagent_type`、`task_id`、`command`；`required`：`description`、`prompt`、`subagent_type`。沒有 model、effort／variant、background、worktree、label 欄位 | 已取得 |
+| `task` 的 `subagent_type` 可用名稱 | 描述內清單：`executor`、`explore`、`general`、`researcher`、`scout`、`security-executor`、`security-reviewer`、`verifier`、`watcher`（`explore`、`general` 是 OpenCode 內建，其餘是 shoal 的 role） | 已取得 |
+| `task` 描述提到並行與背景 | 描述文字含「use a single message with multiple tool uses」「For background tasks, you will be notified automatically」「`watcher`: Background watcher」。參數 schema 沒有任何背景欄位，所以 model 無法在呼叫時要求背景 | 已取得（文字）；背景如何觸發未取得 |
+| 提問工具 | tool id `question`，參數 `questions`（required） | 已取得 |
+| shell 工具 | tool id `bash`，參數 `command`（required）、`timeout`、`workdir` | 已取得（tool 參數）；hook 的 `args` 欄位名稱未取得（9-7） |
+| read、search、edit 的 tool id | `read`（`filePath`、`offset`、`limit`）；`glob`（`pattern`、`path`）；`grep`（`pattern`、`path`、`include`）；`edit`（`filePath`、`oldString`、`newString`、`replaceAll`）；`write`（`filePath`、`content`）。此預設 agent 沒有 `multiedit`、`apply_patch` | 已取得 |
+| `skill` 工具 | tool id `skill`，參數 `name`（required）；預設與 `scout` 的 session 都有 | 已取得（工具在；能載入什麼未測） |
+| `todowrite` | 預設與 `scout` 都有，參數 `todos` | 已取得 |
+| `scout` role 的工具 | 6 個：`glob`、`grep`、`read`、`shoal_route`、`skill`、`todowrite` | 已取得 |
+| `instructions` 的檔案進 system | 預設與 `scout` 的 system 訊息都含 `extra-policy.md` 的標記字串，前綴為 `Instructions from: <絕對路徑>` | 已取得 |
+| `AGENTS.md` 自動進 system | 預設與 `scout` 的 system 訊息都含專案 `AGENTS.md` 的標記字串（該檔沒有列在 `instructions`），同樣有 `Instructions from:` 前綴 | 已取得 |
+| 兩者是否進 subagent | `scout` 的 session（system 1986 字元）含兩個標記字串 | 已取得（用 `agent: "scout"` 直開 session，不是經 `task` 派出的 session） |
+| 相對路徑 `instructions` 的基準 | 專案層 `opencode.json` 的 `extra-policy.md` 解析為專案根目錄的檔案 | 部分取得（只測專案層設定；全域設定檔的相對路徑未測） |
+| 常駐 | 每個 request 的 system 都有；title 之類沒有工具的內部呼叫（system 2275 字元）沒有 | 已取得 |
+| 真實設定下主 session 的 agent 與 model | `opencode export`：user 與 assistant 訊息 `agent: "monika"`、`modelID: "gpt-5.6-luna"`、`providerID: "openai"` | 已取得 |
+| 派工用的 `task` 呼叫實際參數 | `part.state.input` 的鍵：`description`、`prompt`、`subagent_type`（值 `scout`），沒有其他鍵 | 已取得 |
+| subagent 的 model | tool part `metadata.model`：`gpt-5.6-luna`／`openai`，與主 session 相同；`scout` 的 role 檔沒有 `model`。此為 role 沒有 model 欄位時繼承 main 的證據；有 `model` 欄位的 role 未測 | 已取得（繼承） |
+| `task` 是否阻塞 | 同一個 `tool_use` 事件裡 `state.status: "completed"`，`state.time` 的 start 到 end 約 4.3 秒，`state.output` 內含 `<task state="completed">` 與 `task_result`。主 session 在下一個 step 才回答。model 的回答自述「沒有需要額外等待」（這是 model 的說法，不是證據）。沒有測同一訊息內多個 `task` 是否並行 | 已取得（單一 `task` 阻塞到完成）；並行未取得 |
+| 權限提示是否擋住 run | 無 `--auto` 下 run exit 0，`monika` 派 `scout` 的 `task` 為 `completed`，stderr 空。所以對 `monika` → `scout` 沒有 ask 擋住；`ask` 在無人下對其他 role 的行為沒有測 | 部分取得（9-6） |
+
+### 第 9 節各項現況
+
+- 已解決：1（除全域設定檔的相對路徑，以及經 `task` 派出的 session）、2（除並行與背景
+  觸發）、3（全部）、4（沒有 `model` 欄位的 role 繼承 main）。
+- 部分：6（只有放行的情況）、7（tool 參數名稱有，hook `args` 沒有）。
+- 仍未決：5（內建 slash command）、8（`OPENCODE_CONFIG_DIR`）、9（`session.idle`）、
+  10、11、12、13（本次沒有碰；`opencode export` 是額外執行的唯讀指令，沒有改任何狀態）。
+
+對第 3.1 節 placeholder 的影響（事實，不選）：`question_tool` 有值 `question`；
+`shell_tool` 為 `bash`；`read_tools` 的 `read/glob/grep` 有證據，`bash` 是否算入由
+條款決定；`write_tools` 的 `write`、`edit` 有證據，`multiedit`、`apply_patch` 在預設
+agent 不存在；`background_option`、`worktree_option`、`model_param`、`effort_param`、
+`label_param` 在 `task` schema 都沒有對應欄位。
+
+### 第 2 節各掛載點：文字是否到達 model
+
+| 掛載點 | 證據 | 到達 model |
+|---|---|---|
+| A. `instructions` | 標記字串出現在預設與 `scout` 的 system 訊息 | 是（專案層設定；全域設定檔未測） |
+| B. `AGENTS.md` | 標記字串出現在預設與 `scout` 的 system 訊息，且該檔沒有列在 `instructions` | 是（專案根目錄的 `AGENTS.md`；使用者全域 `AGENTS.md` 的載入路徑未測，真實設定把它列在 `instructions`） |
+| C. plugin `system.transform` | 未測試：shoal plugin 沒有註冊它，本次沒有寫實驗 plugin | 未取得 |
+| D. agent 定義 | `scout` 的 system 訊息與工具集反映 role 檔（6 個工具，system 內有 role 文字）；真實設定的 `monika` 為作用中 agent（`agent: "monika"`） | 是 |
+| E. skill | `skill` 工具存在（參數 `name`）；載入內容與在使用者的 `"*": "deny"` 下能否載入未測 | 工具在；內容未取得 |
+
+### 未取得
+
+- 同一訊息內多個 `task` 是否並行；背景 `task` 如何觸發。
+- 經 `task` 派出的 subagent session 的 system 內容（只測了直開 `scout` session）。
+- 使用者全域 `instructions` 與全域 `AGENTS.md` 的實際載入結果（用的是暫存 HOME）。
+- 有 `model` 欄位的 role 的 `task` model 行為；`permission.task = "ask"` 在無人下的行為。
+- `/goal` 類內建指令、`OPENCODE_CONFIG_DIR`、`session.idle`、掛載點 C。
+- 付費 run 使用 1 次。
