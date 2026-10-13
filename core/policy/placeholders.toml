@@ -21,7 +21,7 @@ description = "會修改檔案的工具，以斜線連接（用於 read-only 回
 description = "讀取與搜尋用的工具，以斜線連接（用於 active-agent 範圍的衝突檢查）。"
 
 [placeholders.background_option]
-description = "把指令或 agent 放到背景執行的參數寫法（不含反引號）。"
+description = "把指令或 agent 放到背景執行的完整片語（含介詞與反引號，直接接在動詞或目標之後）；各 host 自行寫出它怎麼在背景執行。"
 
 [placeholders.worktree_option]
 description = "平行寫入時隔離 worktree 的參數寫法（不含反引號）。"

@@ -32,7 +32,7 @@ text = '''
   - reconnaissance over two or more independent surfaces -> one `scout` per
     surface, all launched in the same message;
   - a command that may run long or whose result must be awaited (tests,
-    build, CI, measurement) -> `watcher` with `{{background_option}}`; never
+    build, CI, measurement) -> `watcher` {{background_option}}; never
     start a background shell yourself;
   - research that will drive a decision -> two `researcher` calls launched in
     the same message, one `arm: experiment` and one `arm: control`.'''

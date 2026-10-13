@@ -9,6 +9,12 @@ written.
 
 ## Unreleased
 
+## v3.4.2
+
+- Version marker only; the Codex policy text is unchanged. The shared core
+  background-option placeholder now carries a whole phrase; Codex still uses
+  its own policy clauses.
+
 ## v3.4.1
 
 - Version marker only; the Codex policy text is unchanged. The shared core

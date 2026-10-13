@@ -266,12 +266,12 @@ Final report separates confirmed/fixed/deferred/regraded findings
   writer. Read-only roles may share checkout. Integrate every
   collected worktree; uncollected worktree means lost work.
 - Commands that may run long or whose result must be awaited (test suites, builds,
-  CI, measurements) go to `watcher` through Agent with
-  `run_in_background: true`; `watcher` runs them and waits. Main never
+  CI, measurements) go to `watcher` through Agent
+  with `run_in_background: true`; `watcher` runs them and waits. Main never
   starts a background shell itself and never ends a turn waiting on one. State in
   the brief how long the command is expected to take when you know. Leaf unable to finish bounded foreground work returns exact command, absolute
-  working/worktree directory, environment, input paths; main dispatches `watcher`
-  with `run_in_background: true` in that context, then resumes role with captured
+  working/worktree directory, environment, input paths; main dispatches `watcher` with `run_in_background: true`
+  in that context, then resumes role with captured
   output. Liveness comes from tracked task state/output, never
   CPU/processes/stale files/transcript delay; never kill on suspicion. Subagent
   final message is deliverable: read completed output directly; resume only for

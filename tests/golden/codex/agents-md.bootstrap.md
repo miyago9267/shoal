@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.4.1 -->
+<!-- shoal-codex v3.4.2 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Shoal always-on bootstrap
 

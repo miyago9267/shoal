@@ -579,7 +579,7 @@ kind = "mechanics"
 sep = "newline"
 text = '''
 - Schedule by dependency, not eventual need. When selecting 2+ independent
-  agents, launch all back-to-back with `{{background_option}}` before
+  agents, launch all back-to-back {{background_option}} before
   remaining main work; keep scopes disjoint; allow no interleaved duplicate
   reconnaissance; collect all results before dependent work/final answer.
   Foreground only when next action blocks on result, no useful independent work
@@ -612,8 +612,8 @@ kind = "mechanics"
 sep = "space"
 text = '''
 - Commands that may run long or whose result must be awaited (test suites, builds,
-  CI, measurements) go to `watcher` through {{dispatch_tool}} with
-  `{{background_option}}`; `watcher` runs them and waits. Main never
+  CI, measurements) go to `watcher` through {{dispatch_tool}}
+  {{background_option}}; `watcher` runs them and waits. Main never
   starts a background shell itself and never ends a turn waiting on one. State in
   the brief how long the command is expected to take when you know.'''
 
@@ -623,8 +623,8 @@ kind = "mechanics"
 sep = "space"
 text = '''
 Leaf unable to finish bounded foreground work returns exact command, absolute
-  working/worktree directory, environment, input paths; main dispatches `watcher`
-  with `{{background_option}}` in that context, then resumes role with captured
+  working/worktree directory, environment, input paths; main dispatches `watcher` {{background_option}}
+  in that context, then resumes role with captured
   output.'''
 
 [[clause]]

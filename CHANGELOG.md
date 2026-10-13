@@ -3,6 +3,13 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.4.2
+
+### Changes
+
+- `background_option` placeholder 改為完整片語，各 host 可以自己寫出 role 怎麼在背景執行；
+  Claude 的措辭不變，只有兩條條款的換行位置不同。
+
 ## v3.4.1
 
 前置調整（[`docs/specs/shared-rules`](./docs/specs/shared-rules/PROGRESS.md)
