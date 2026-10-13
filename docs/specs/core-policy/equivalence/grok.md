@@ -718,3 +718,16 @@ grok -p "<繁中 prompt：依序 shell、grep、write、search_replace、ask_use
   行為未測）、U9（額度這兩次夠用，剩餘額度仍未知）；U10、U11、U12、U15 與本次無關。
 - 新增的未決點：前景（`background: false`）派工是否阻塞，以及省略 `background` 時的預設值，
   需要一次不帶 `cwd`、不帶 `isolation` 的前景呼叫。
+
+## 補記（2026-10-13，guard-every-gate S4）
+
+上文「6.1 目前 Grok 上有效的 shared guard 規則」「6.3」與「未決事項」寫的是當時的現況；其中
+「deny 是否被遵守沒有量測」「沒有 `Stop`、`SubagentStart`、shell matcher」「Stop payload 不可觀察」
+已被後來的實測推翻或補上：`tests/fixtures/grok_guard_event_shapes.json`
+（Grok CLI 1.0.46，2026-10-13）記錄了各事件的欄位、main 與 subagent 的區分
+（subagent 的事件帶 `subagentType` 並使用自己的 `sessionId`），
+並觀察到 `{"decision":"deny"}` 擋下 main 與 subagent 的 `write` 以及
+`spawn_subagent`。依此 S4 讓 Grok 預設 `enforce`、`strict`，並註冊
+`run_terminal_command`、`subagent_start`、`stop`（見 INSTALL.md 的 Grok 一節與
+`docs/specs/guard-every-gate/SPEC.md` 的 E8 表）。`Stop` 的 block 輸出仍未實測，預設只記 `would_block`。
+上文保留原樣，作為當時的紀錄。

@@ -35,6 +35,30 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "shoal-grok/shoal_guard.py",
+            "timeout": 10,
+            "env": { "SHOAL_GUARD_HOST": "grok" }
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "shoal-grok/shoal_guard.py",
+            "timeout": 10,
+            "env": { "SHOAL_GUARD_HOST": "grok" }
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
@@ -59,7 +83,7 @@
         ]
       },
       {
-        "matcher": "^(search_replace|write|write_file|edit|multi_edit|create_file|spawn_subagent)$",
+        "matcher": "^(search_replace|write|write_file|edit|multi_edit|create_file|run_terminal_command|spawn_subagent)$",
         "hooks": [
           {
             "type": "command",

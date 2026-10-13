@@ -102,6 +102,20 @@ Miyago 2026-10-13 兩句話：「只要有對應的 hook 可以當成事件閘�
   host 必須把每個能當 gate 的事件掛到 guard；掛不上的列出原因與證據。沒有這張表
   就不接受新的 host binding。`pi` 目前不是 shoal host，加入時以此為進入條件。
 
+### E8 檢查表：Grok（S4，Grok CLI 1.0.46，2026-10-13；payload 見 `tests/fixtures/grok_guard_event_shapes.json`）
+
+| 事件 | 掛上？ | 規則 | 沒掛的原因／證據 |
+|---|---|---|---|
+| `pre_tool_use`（`write`、`search_replace` 等 edit 工具） | 是 | R1（strict）、E1、VERIFY_EDIT | deny 已實測被遵守（main 與 subagent 的 `write`） |
+| `pre_tool_use`（`run_terminal_command`） | 是（S4 新增 matcher） | G5（strict 的 shell 寫檔）、E1 的 shell 寫檔、B2 的檢查記錄 | 欄位 `toolInput.command` 已取得；背景 shell 無對應旗標，G4 不適用 |
+| `pre_tool_use`（`spawn_subagent`） | 是 | 記 pending dispatch；subagent 呼叫則 LEAF | deny 對 dispatch 已實測有效 |
+| `subagent_start` | 是（S4 新增） | E3（以啟動為準）、記錄 subagent id -> 主 session／role／`#direct` | 在主 session id 下送出，帶 `subagentId`、`subagentType` |
+| `user_prompt_submit` | 是 | `#direct` 偵測、回合邊界 | 帶 `prompt`、`promptId` |
+| `stop`（`reason == end_turn`） | 是，預設 shadow（S4 新增） | B2/B3 完成檢查 | `{"decision":"block"}` 依文件可擋但**未實測**，待 live；session 結束時的第二次 `stop` 不帶 `end_turn`，忽略 |
+| `subagent_stop` | 是（既有的格式 gate，非 guard） | verifier／plan-critic／security-reviewer 的輸出格式 | 與 guard 無關 |
+| `post_tool_use`、`session_start`、`session_end` | 否 | 無 | 無規則需要它們；`post_tool_use` 的 `spawn_subagent` 結果只能事後確認，E3 已由 `subagent_start` 取代 |
+| 派出不存在的 role | 未知 | 無 | 實測不確定（一次觀察像是起了通用 subagent 而非報錯）；若起了通用 subagent，其 `subagent_start` 的型別不是 shoal 可寫 role，E1 照常擋它的寫入 |
+
 ## Decisions
 
 - **D1**：擋「寫」，不擋「派工的名稱」（E1/E2）。原因：其他 plugin 的唯讀 agent

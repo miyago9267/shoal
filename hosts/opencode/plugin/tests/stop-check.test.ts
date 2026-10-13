@@ -2,11 +2,11 @@
 // (guard-vectors.test.ts).  These cases pin the switch and the host table, which the vectors only exercise
 // through events.
 import { describe, expect, test } from "bun:test";
-import { stopEnabled } from "../src/guard/core.ts";
+import { stopBlocks, stopEnabled } from "../src/guard/core.ts";
 
 describe("SHOAL_GUARD_STOP", () => {
-  test("is on by default and off only for the exact value `off`, on claude and codex", () => {
-    for (const host of ["claude", "codex"]) {
+  test("is on by default and off only for the exact value `off`, on claude, codex and grok", () => {
+    for (const host of ["claude", "codex", "grok"]) {
       expect(stopEnabled(host, {})).toBe(true);
       expect(stopEnabled(host, { SHOAL_GUARD_STOP: "on" })).toBe(true);
       expect(stopEnabled(host, { SHOAL_GUARD_STOP: "maybe" })).toBe(true);
@@ -16,9 +16,16 @@ describe("SHOAL_GUARD_STOP", () => {
   });
 
   test("has no effect on a host that never blocks", () => {
-    for (const host of ["grok", "agy", "opencode", ""]) {
+    for (const host of ["agy", "opencode", ""]) {
       expect(stopEnabled(host, {})).toBe(false);
       expect(stopEnabled(host, { SHOAL_GUARD_STOP: "on" })).toBe(false);
     }
+  });
+
+  test("grok blocks only when asked (its block output is not yet exercised on the real host)", () => {
+    expect(stopBlocks("grok", {})).toBe(false);
+    expect(stopBlocks("grok", { SHOAL_GUARD_STOP: "on" })).toBe(false);
+    expect(stopBlocks("grok", { SHOAL_GUARD_STOP: "enforce" })).toBe(true);
+    expect(stopBlocks("claude", {})).toBe(true);
   });
 });

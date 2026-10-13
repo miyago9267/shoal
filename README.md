@@ -106,11 +106,11 @@ Claude Code、Gemini/agy 的 role 檔案安裝步驟仍依賴 dotfile 的腳本�
 dispatch guard（`hooks/shoal_guard.py`）在四個 host 的安裝方式：Codex 由
 `install/install.py` 一併註冊（需在 Codex 內用 `/hooks` 核准一次），Grok 隨
 `install_grok.py` 安裝，Claude Code 與 agy 由 `tools/install_hooks.py` 安裝，OpenCode
-的 guard 在 plugin 內。Claude 與 Codex 預設 enforce、Grok 與 agy 預設 shadow，
+的 guard 在 plugin 內。Claude、Codex 與 Grok 預設 enforce、agy 預設 shadow，
 `SHOAL_GUARD=off` 關閉。
-main session 的直接編輯在 Claude 與 Codex 以外只會被提醒：R1、R2 不擋（其餘 host 只記 log，
+main session 的直接編輯在 Claude、Codex 與 Grok 以外只會被提醒：R1、R2 不擋（其餘 host 只記 log，
 `SHOAL_GUARD_DIRECT=1` 或 prompt 內的 `#direct` 關閉提醒），只有 subagent 的 LEAF、VERIFY_EDIT
-會擋。Claude 與 Codex 上（3.3.0 起，預設 `strict`）main 沒派 write role、使用者也沒有 `#direct` 就改檔
+會擋。Claude、Codex 與 Grok 上（預設 `strict`）main 沒派 write role、使用者也沒有 `#direct` 就改檔
 （R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）會被擋，不需要任何分類來源；
 出口只有兩個：派 `executor`／`applier`，或請使用者在 prompt 加 `#direct`。main 自己宣告的出口
 （`: shoal-direct "<理由>"`，3.2.x 的 `declare`）在 live gate 中被 Claude 每次拿來自己做，所以預設拿掉，
@@ -118,18 +118,20 @@ main session 的直接編輯在 Claude 與 Codex 以外只會被提醒：R1、R2
 `SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：只在外部分類來源標出
 實作工作時擋）、`off`。
 `SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的 subagent 改檔
-（Claude、Codex 預設 `on`，其他 host 預設 `off`；Claude、Codex 上啟動該工作的
+（Claude、Codex、Grok 預設 `on`，其他 host 預設 `off`；Claude、Codex、Grok 上啟動該工作的
 prompt 帶 `#direct` 可放行，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
 `shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組），之後升到
 `shoal-guard-v4`（加 `SubagentStart` 群組；每次新增群組都要在 Codex 用 `/hooks` 再核准一次）。Claude
-從 3.3.1 起、Codex 從 `shoal-guard-v4` 起，在 role 真的啟動（`SubagentStart`）後才放行派工，guard 腳本與
+從 3.3.1 起、Codex 從 `shoal-guard-v4` 起、Grok 從 S4 起，在 role 真的啟動
+（`SubagentStart`／`subagent_start`）後才放行派工，guard 腳本與
 hook 註冊必須一起更新；其他 host 仍在派工呼叫時放行（見 INSTALL.md）。
 3.4.0 起 Claude 與 Codex 多一道完成檢查：guard 逐回合記下 main 有沒有改檔、改檔之後有沒有跑過
 檢查（派出 `verifier`／`watcher`，或 main 執行任何不寫檔的前景 shell 指令），回合結束時若改過檔
 卻沒有任何檢查，`Stop` 會擋一次，要求補做驗證，或在回報中明寫未驗證；同一回合只擋一次，
 讀不到資料或 payload 不合預期時一律放行。`SHOAL_GUARD_STOP=off` 關閉（預設 `on`，只對 Claude 與
-Codex 有效）；Grok、agy、OpenCode 沒有已記錄的結束事件，不啟用。
+Codex 有效）；Grok 的 `stop` 事件（`reason == end_turn`）已掛上，但它的 block 輸出還沒有 live 驗證，預設只記
+`would_block`，`SHOAL_GUARD_STOP=enforce` 才真的擋；agy、OpenCode 沒有已記錄的結束事件，不啟用。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
 每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [INSTALL.md](./INSTALL.md#每日同步)。

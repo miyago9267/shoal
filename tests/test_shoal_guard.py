@@ -95,14 +95,14 @@ class DeclarationParserTests(unittest.TestCase):
         self.assertEqual(guard.log_reason("\u6539" * 250), "\u6539" * 200)
 
     def test_resolve_r1(self) -> None:
-        for host in ("claude", "codex", "opencode"):
+        for host in ("claude", "codex", "opencode", "grok"):
             for env, want in (({}, "strict"), ({"SHOAL_GUARD_R1": ""}, "strict"), ({"SHOAL_GUARD_R1": "bogus"}, "strict"),
                               ({"SHOAL_GUARD_R1": "STRICT"}, "strict"), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
                               ({"SHOAL_GUARD_R1": "declare"}, "declare"),
                               ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
                 self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
         # hosts that cannot declare keep v3.1.0, whatever is asked
-        for host in ("grok", "agy"):
+        for host in ("agy",):
             for value in ("", "declare", "strict", "bogus", "classified"):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")
@@ -164,7 +164,7 @@ class SyntaxTests(unittest.TestCase):
         ast.parse(GUARD.read_text(encoding="utf-8"), feature_version=(3, 9))
 
     def test_default_mode_table(self) -> None:
-        self.assertEqual(guard.HOST_DEFAULT_MODE, {"claude": "enforce", "codex": "enforce", "grok": "shadow", "agy": "shadow"})
+        self.assertEqual(guard.HOST_DEFAULT_MODE, {"claude": "enforce", "codex": "enforce", "grok": "enforce", "agy": "shadow"})
 
     def test_valid_id(self) -> None:
         self.assertTrue(guard.valid_id("ses_ab-1"))
@@ -383,13 +383,15 @@ class ClaudeAdapterTests(CliCase):
         self.assertNotIn("SECRET-DIRECT-PROMPT", blob)
         self.assertIn('"direct": true', blob)
 
-    def test_direct_marker_comes_from_claude_and_codex_prompts_only(self) -> None:
+    def test_direct_marker_comes_from_claude_codex_and_grok_prompts(self) -> None:
         codex = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "turn_id": "t"}
         self.assertTrue(guard.adapt_codex({**codex, "prompt": "do it #direct"})["direct"])
         self.assertFalse(guard.adapt_codex({**codex, "prompt": "do it `#direct`"})["direct"])
         self.assertFalse(guard.adapt_codex(codex)["direct"])
-        self.assertFalse(guard.adapt_grok({"hookEventName": "user_prompt_submit", "sessionId": "s", "promptId": "p",
-                                           "prompt": "#direct"})["direct"])
+        grok = {"hookEventName": "user_prompt_submit", "sessionId": "s", "promptId": "p"}
+        self.assertTrue(guard.adapt_grok({**grok, "prompt": "#direct"})["direct"])
+        self.assertFalse(guard.adapt_grok({**grok, "prompt": "do it `#direct`"})["direct"])
+        self.assertFalse(guard.adapt_grok(grok)["direct"])
 
     def test_direct_env_suppresses_advise(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_DIRECT="1")
@@ -859,10 +861,11 @@ class StopCheckCliTests(CliCase):
         grok_prompt = {"hookEventName": "user_prompt_submit", "sessionId": "sess-1", "promptId": "p-1", "cwd": self.work}
         grok_edit = {"hookEventName": "pre_tool_use", "sessionId": "sess-1", "promptId": "p-1", "cwd": self.work,
                      "toolName": "write", "toolInput": {"file_path": "a.py"}}
-        self.run_guard("grok", grok_prompt, SHOAL_GUARD="enforce")
-        self.run_guard("grok", grok_edit, SHOAL_GUARD="enforce")
+        self.run_guard("grok", grok_prompt, SHOAL_GUARD="enforce", SHOAL_GUARD_R1="")
+        self.run_guard("grok", grok_edit, SHOAL_GUARD="enforce", SHOAL_GUARD_R1="", SHOAL_GUARD_DIRECT="1")
         self.assertEqual(self.run_guard("grok", {"hookEventName": "stop", "sessionId": "sess-1", "promptId": "p-1",
-                                                  "stop_hook_active": False}, SHOAL_GUARD="enforce"), "")
+                                                  "reason": "end_turn", "stopHookActive": False},
+                                        SHOAL_GUARD="enforce", SHOAL_GUARD_R1=""), "")  # grok: shadow unless asked
         self.assertEqual(self.run_guard("agy", {"conversationId": "c", "invocationNum": 1}), "")
 
     def test_a_failed_state_write_does_not_block_and_does_not_spend_the_turn(self) -> None:
@@ -897,10 +900,18 @@ class StopCheckCliTests(CliCase):
             for value, want in ((None, True), ("on", True), ("maybe", True), ("", True), ("off", False)):
                 env = {} if value is None else {"SHOAL_GUARD_STOP": value}
                 self.assertIs(guard.stop_enabled(host, env), want, (host, value))
-        for host in ("grok", "agy", "opencode", ""):
+        for value, want in ((None, True), ("on", True), ("enforce", True), ("off", False)):
+            env = {} if value is None else {"SHOAL_GUARD_STOP": value}
+            self.assertIs(guard.stop_enabled("grok", env), want, value)
+        for host in ("agy", "opencode", ""):
             self.assertIs(guard.stop_enabled(host, {}), False, host)
             self.assertIs(guard.stop_enabled(host, {"SHOAL_GUARD_STOP": "on"}), False, host)
-        self.assertEqual(guard.STOP_HOSTS, frozenset({"claude", "codex"}))
+        self.assertEqual(guard.STOP_HOSTS, frozenset({"claude", "codex", "grok"}))
+        # grok's block output is unexercised: it blocks only when asked, the other hosts block unless switched off
+        self.assertIs(guard.stop_blocks("grok", {}), False)
+        self.assertIs(guard.stop_blocks("grok", {"SHOAL_GUARD_STOP": "on"}), False)
+        self.assertIs(guard.stop_blocks("grok", {"SHOAL_GUARD_STOP": "enforce"}), True)
+        self.assertIs(guard.stop_blocks("claude", {}), True)
 
     def test_the_switch_and_the_guard_mode_silence_the_check(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct"))
@@ -1142,7 +1153,7 @@ class GrokAdapterTests(CliCase):
         self.assertEqual(self.run_guard("grok", self.tool("spawn_subagent", {"subagent_type": "applier"}, cwd=self.work), **env), "")
         self.assertEqual(self.run_guard("grok", self.tool("search_replace", {"file_path": "a.py"}, cwd=self.work), **env), "")
 
-    def test_default_is_shadow(self) -> None:
+    def test_default_mode_is_enforce_and_classified_only_advises(self) -> None:
         self.run_guard("grok", self.prompt(cwd=self.work))
         self.write_turn("gs-1", "gp-1", "judgment")
         self.assertEqual(self.run_guard("grok", self.tool("search_replace", {"file_path": "a.py"}, cwd=self.work)), "")
@@ -1192,6 +1203,118 @@ class GrokAdapterTests(CliCase):
         proc = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(payload).encode(),
                               capture_output=True, timeout=30, env=self.env(SHOAL_GUARD="enforce"))
         self.assertEqual((proc.returncode, proc.stdout), (0, b""))
+
+
+class GrokGuardTests(CliCase):
+    """guard-every-gate S4: shapes from tests/fixtures/grok_guard_event_shapes.json, run through the real script."""
+
+    ENV = {"SHOAL_GUARD_R1": ""}  # the host default (strict); CliCase pins `classified`
+
+    def common(self, name, **kw):
+        return {"hookEventName": name, "sessionId": "gs-main", "cwd": self.work, "permissionMode": "default", **kw}
+
+    def prompt(self, text="hello", prompt_id="gp-1"):
+        return self.common("user_prompt_submit", promptId=prompt_id, prompt=text)
+
+    def tool(self, name, tool_input, sid="gs-main", **kw):
+        return self.common("pre_tool_use", toolName=name, toolInput=tool_input, toolUseId="u1", **{**kw, "sessionId": sid})
+
+    def start(self, role, agent="gs-sub1"):
+        return self.common("subagent_start", subagentId=agent, subagentType=role, description="d")
+
+    def grok(self, payload, **env):
+        return self.run_guard("grok", payload, **{**self.ENV, **env})
+
+    def denied(self, out):
+        return json.loads(out)["decision"] == "deny" if out else False
+
+    def test_recorded_shapes_are_accepted(self) -> None:
+        shell = guard.adapt_grok(self.tool("run_terminal_command", {"command": "echo x > a", "description": "d"}))
+        self.assertEqual((shell["tool_kind"], shell["command"], shell["is_subagent"]), ("shell", "echo x > a", False))
+        self.assertEqual(guard.adapt_grok(self.tool("run_terminal_command", {"description": "d"}))["tool_kind"], "other")
+        start = guard.adapt_grok(self.start("applier"))
+        self.assertEqual((start["kind"], start["session_id"], start["role"], start["agent_id"], start["is_subagent"], start["turn_id"]),
+                         ("subagent_start", "gs-main", "applier", "gs-sub1", False, None))
+        stop = guard.adapt_grok(self.common("stop", reason="end_turn", promptId="gp-1", stopHookActive=False))
+        self.assertEqual((stop["kind"], stop["turn_id"], stop["stop_hook_active"]), ("stop", "gp-1", False))
+        self.assertIsNone(guard.adapt_grok(self.common("stop", reason="shutdown", stopHookActive=False)))
+        self.assertIsNone(guard.adapt_grok(self.common("stop", stopHookActive=False)))
+        self.assertIsNone(guard.adapt_grok(self.common("stop", reason="end_turn", promptId="p", subagentType="applier")))
+        self.assertIsNone(guard.adapt_grok(self.common("subagent_stop", subagentId="x")))
+
+    def test_main_edit_and_shell_write_are_denied_by_default_and_a_started_write_role_unlocks(self) -> None:
+        self.grok(self.prompt())
+        write = self.tool("write", {"file_path": "src/a.py", "content": "x"})
+        shell = self.tool("run_terminal_command", {"command": "echo x > src/a.py", "description": "d"})
+        for payload in (write, self.tool("search_replace", {"file_path": "src/a.py"}), shell):
+            self.assertTrue(self.denied(self.grok(payload)), payload["toolName"])
+        self.assertEqual(self.grok(self.tool("run_terminal_command", {"command": "ls", "description": "d"})), "")
+        self.assertEqual(self.grok(self.tool("spawn_subagent", {"subagent_type": "applier", "prompt": "p"})), "")
+        self.assertTrue(self.denied(self.grok(write)))  # the dispatch call alone does not unlock
+        self.assertEqual(self.grok(self.start("applier")), "")
+        self.assertEqual(self.grok(write), "")
+        self.assertEqual(self.grok(shell), "")
+
+    def test_subagent_events_resolve_through_the_start_record(self) -> None:
+        self.grok(self.prompt())
+        self.grok(self.start("applier", "gs-sub1"))
+        self.grok(self.start("general", "gs-sub2"))
+        edit = {"file_path": "src/a.py", "content": "x"}
+        self.assertEqual(self.grok(self.tool("write", edit, sid="gs-sub1", subagentType="applier")), "")
+        self.assertTrue(self.denied(self.grok(self.tool("write", edit, sid="gs-sub2", subagentType="general"))))
+        self.assertTrue(self.denied(self.grok(self.tool(
+            "run_terminal_command", {"command": "echo x > src/a.py", "description": "d"}, sid="gs-sub2", subagentType="general"))))
+        # a generic subagent whose own events carry no subagentType is still found by its session id
+        self.assertTrue(self.denied(self.grok(self.tool("write", edit, sid="gs-sub2"))))
+        self.assertEqual(self.grok(self.tool("write", {"file_path": "/tmp/x"}, sid="gs-sub2", subagentType="general")), "")
+        self.assertEqual(self.grok(self.tool("write", edit, sid="gs-sub2", subagentType="general"), SHOAL_GUARD_WRITE_AGENTS="general"), "")
+        # no record (the start event was missed): the role rules still apply, nothing releases it
+        self.assertTrue(self.denied(self.grok(self.tool("write", edit, sid="gs-lost", subagentType="general"))))
+        self.assertEqual(self.grok(self.tool("write", edit, sid="gs-lost", subagentType="applier")), "")
+        self.assertTrue(self.denied(self.grok(self.tool("write", edit, sid="gs-lost", subagentType="verifier"))))
+        self.assertTrue(self.denied(self.grok(self.tool("spawn_subagent", {"subagent_type": "scout"}, sid="gs-sub1", subagentType="applier"))))
+
+    def test_direct_turn_releases_main_and_the_subagents_started_in_it(self) -> None:
+        edit = {"file_path": "src/a.py", "content": "x"}
+        self.grok(self.prompt("fix it #direct", "gp-1"))
+        self.assertEqual(self.grok(self.tool("write", edit)), "")
+        self.grok(self.start("general", "gs-sub1"))
+        self.grok(self.prompt("next", "gp-2"))
+        self.grok(self.start("general", "gs-sub2"))
+        self.assertTrue(self.denied(self.grok(self.tool("write", edit))))
+        self.assertEqual(self.grok(self.tool("write", edit, sid="gs-sub1", subagentType="general")), "")
+        self.assertTrue(self.denied(self.grok(self.tool("write", edit, sid="gs-sub2", subagentType="general"))))
+        self.assertTrue(self.denied(self.grok(self.tool("write", edit, sid="gs-sub3", subagentType="general"))))
+
+    def test_agent_record_keeps_the_last_64(self) -> None:
+        self.grok(self.prompt())
+        for n in range(70):
+            self.grok(self.start("general", "gs-a%d" % n))
+        record = json.loads(Path(self.guard_dir, "state", "grok.agents.json").read_text(encoding="utf-8"))["agents"]
+        self.assertEqual((len(record), record[0]["id"], record[-1]["id"]), (64, "gs-a6", "gs-a69"))
+        self.assertEqual(record[-1], {"id": "gs-a69", "session": "gs-main", "role": "general", "direct": False})
+        self.grok(self.start("applier", "gs-a69"))  # restarting an id replaces it
+        record = json.loads(Path(self.guard_dir, "state", "grok.agents.json").read_text(encoding="utf-8"))["agents"]
+        self.assertEqual((len(record), record[-1]["role"]), (64, "applier"))
+
+    def test_stop_logs_would_block_by_default_and_blocks_only_when_asked(self) -> None:
+        stop = self.common("stop", reason="end_turn", promptId="gp-1", stopHookActive=False)
+        self.grok(self.prompt())
+        self.grok(self.tool("spawn_subagent", {"subagent_type": "executor"}))
+        self.grok(self.start("executor"))
+        self.assertEqual(self.grok(stop), "")
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("would_block", "STOP"))
+        self.assertEqual(self.grok(self.common("stop", reason="shutdown", stopHookActive=False)), "")
+        out = json.loads(self.grok(stop, SHOAL_GUARD_STOP="enforce"))
+        self.assertEqual(out["decision"], "block")
+        self.assertEqual(self.grok(stop, SHOAL_GUARD_STOP="enforce"), "")  # one block per turn
+        self.assertEqual(self.grok(self.common("stop", reason="end_turn", promptId="gp-1", stopHookActive=True),
+                                   SHOAL_GUARD_STOP="enforce"), "")
+
+    def test_mode_override_to_shadow_denies_nothing(self) -> None:
+        self.grok(self.prompt(), SHOAL_GUARD="shadow")
+        self.assertEqual(self.grok(self.tool("write", {"file_path": "src/a.py"}), SHOAL_GUARD="shadow"), "")
+        self.assertEqual(self.log_records()[-1]["decision"], "would_deny")
 
 
 class AgyAdapterTests(CliCase):

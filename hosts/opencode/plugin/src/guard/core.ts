@@ -97,11 +97,11 @@ type StateFile = {
 };
 type LogRecord = Record<string, unknown>;
 
-// Default mode per host.  E6: opencode is enforce (shadow evidence met); codex is enforce, grok stays shadow, agy is forced shadow.
+// Default mode per host.  E6: opencode is enforce (shadow evidence met); codex and grok are enforce, agy is forced shadow.
 const HOST_DEFAULT_MODE: Record<string, string> = {
   claude: "enforce",
   codex: "enforce",
-  grok: "shadow",
+  grok: "enforce",
   agy: "shadow",
   opencode: "enforce",
 };
@@ -112,8 +112,10 @@ const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
 // Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
 // {"decision": "block", "reason": ...}: only they block an unverified completion (B4).  grok, agy and opencode
 // have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches
-// the check off on these two hosts and has no effect elsewhere.
-const STOP_HOSTS = new Set(["claude", "codex"]);
+// the check off on these hosts and has no effect elsewhere.  Grok has the payload but its block output is not yet
+// exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
+const STOP_HOSTS = new Set(["claude", "codex", "grok"]);
+const STOP_SHADOW_DEFAULT_HOSTS = new Set(["grok"]);
 // agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 const COMPOSED_TURN_HOSTS = new Set(["agy"]);
 // Hosts whose tool hooks carry no turn id: the turn recorded at the prompt boundary is used
@@ -133,12 +135,12 @@ const DENY_MAIN_HOSTS = new Set(["claude"]);
 // (claude's and, since 3.2.1, codex's `Bash`; the OpenCode adapter's `bash`); every other host keeps the v3.1.0
 // rule (`classified`).  `strict` (3.3.0) needs the same events and is selectable on the same hosts, where it is
 // the default.
-const DECLARE_HOSTS = new Set(["claude", "codex", "opencode"]);
+const DECLARE_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
 // Hosts where "a write-level role was dispatched" unlocks only once the role has started (M11): the dispatch
 // call records a pending write dispatch and the SubagentStart event of the same session releases it.  Every
 // other host unlocks at the dispatch call itself (no start event is recorded for it).  The registration and
 // the guard script ship together; see hooks/shoal_guard.py.
-const START_UNLOCK_HOSTS = new Set(["claude", "codex", "opencode"]);
+const START_UNLOCK_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
 // Codex: the first tool call of a write-level role's agent is start evidence as well (the SubagentStart hook may not be
 // approved yet); each agent_id releases at most one pending dispatch (`started_agents`).  See hooks/shoal_guard.py.
 
@@ -524,10 +526,35 @@ export function resolveMode(host: string, env: Env): string {
  * subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it, so the
  * user's `#direct` can release a subagent.
  */
-const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude", "codex", "opencode"]);
+const SUBAGENT_WRITE_DEFAULT_ON_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
 // opencode: the adapter reports a subagent under its main session id and the main turn that was current when the
 // child session was created (hosts/opencode/plugin/src/guard/opencode.ts).
-const SUBAGENT_DIRECT_HOSTS = new Set(["claude", "codex", "opencode"]);
+const SUBAGENT_DIRECT_HOSTS = new Set(["claude", "codex", "opencode", "grok"]);
+/**
+ * Grok: a subagent's tool events carry its OWN session id (= the subagentId of `subagent_start`, which is sent under
+ * main's session id).  `subagent_start` records subagent id -> {main session, role, direct flag} in
+ * `state/grok.agents.json` (the last GROK_AGENTS_MAX); a tool event under a recorded id is that subagent's call.
+ */
+const MAPPED_HOSTS = new Set(["grok"]);
+const GROK_AGENTS_MAX = 64;
+const GROK_AGENTS_FILE = "grok.agents";
+type AgentEntry = { id: string; session: string; role: string; direct: boolean };
+
+/** The valid entries of a grok agent-map file's content, the last GROK_AGENTS_MAX. */
+function agentEntries(raw: Record<string, unknown>): AgentEntry[] {
+  const items = raw.agents;
+  if (!Array.isArray(items)) return [];
+  const kept = items.filter(
+    (e): e is AgentEntry =>
+      e !== null &&
+      typeof e === "object" &&
+      validId((e as AgentEntry).id) &&
+      validId((e as AgentEntry).session) &&
+      typeof (e as AgentEntry).role === "string" &&
+      typeof (e as AgentEntry).direct === "boolean",
+  );
+  return kept.slice(-GROK_AGENTS_MAX);
+}
 /**
  * Codex: a subagent runs in its own turn, so `#direct` is looked up by agent_id: a SubagentStart while main's current
  * turn carried `#direct` records the id in `direct_agents`.
@@ -574,11 +601,16 @@ export function writeAgentAllowed(role: string | null | undefined, env: Env): bo
 }
 
 /**
- * SHOAL_GUARD_STOP: `off` disables the completion check on claude and codex; any other value (or none) keeps
- * it on.  No effect on a host outside STOP_HOSTS, which never blocks.
+ * SHOAL_GUARD_STOP: `off` disables the completion check on claude, codex and grok; any other value (or none) keeps
+ * it on (grok: logging only, see stopBlocks).  No effect on a host outside STOP_HOSTS.
  */
 export function stopEnabled(host: string, env: Env): boolean {
   return STOP_HOSTS.has(host) && env.SHOAL_GUARD_STOP !== "off";
+}
+
+/** False on a host whose block output is unverified (STOP_SHADOW_DEFAULT_HOSTS) unless SHOAL_GUARD_STOP=enforce. */
+export function stopBlocks(host: string, env: Env): boolean {
+  return !STOP_SHADOW_DEFAULT_HOSTS.has(host) || env.SHOAL_GUARD_STOP === "enforce";
 }
 
 /**
@@ -679,7 +711,7 @@ class Guard {
   private dirTried = false;
 
   constructor(
-    private readonly event: GuardEvent,
+    public event: GuardEvent,
     private readonly env: Env,
     private readonly home: string,
   ) {
@@ -767,6 +799,9 @@ class Guard {
   subagentDirectReleased(): boolean {
     try {
       if (!SUBAGENT_DIRECT_HOSTS.has(this.host)) return false;
+      if (MAPPED_HOSTS.has(this.host)) {
+        return this.agentEntry(this.event.session_id)?.direct === true;
+      }
       if (AGENT_KEYED_HOSTS.has(this.host)) {
         const agent = this.event.agent_id;
         const asid = this.event.session_id;
@@ -782,6 +817,60 @@ class Guard {
       return directTurns(readJson(join(dir, "state", sid + ".json"))).includes(tid as string);
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Grok: the recorded `subagent_start` of the subagent whose own session id is `agent`, or null.  Read-only; any
+   * problem (bad id, no state dir, unreadable file) means "no record".
+   */
+  agentEntry(agent: unknown): AgentEntry | null {
+    try {
+      const dir = this.guardDirectory;
+      if (dir === null || !validId(agent)) return null;
+      const entries = agentEntries(readJson(join(dir, "state", GROK_AGENTS_FILE + ".json")));
+      for (let i = entries.length - 1; i >= 0; i--) if (entries[i].id === agent) return entries[i];
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * Grok: a tool event under a recorded subagent's session id is that subagent's call, whatever its own payload says
+   * (a generic subagent may carry no `subagentType`).  Fills `is_subagent` and a missing role.
+   */
+  resolveMappedAgent(): void {
+    const entry = this.agentEntry(this.event.session_id);
+    if (entry === null) return;
+    this.event = { ...this.event, is_subagent: true };
+    if (!this.event.role) this.event.role = entry.role || null;
+  }
+
+  /**
+   * Grok `subagent_start`: record subagent id -> {main session, role, direct flag of main's current turn}.  Silent and
+   * best effort: without a record the subagent is judged by its own payload and `#direct` is not available.
+   */
+  private registerAgent(): void {
+    try {
+      const sid = this.event.session_id;
+      const agent = this.event.agent_id;
+      const dir = this.guardDirectory;
+      if (!validId(sid) || !validId(agent) || dir === null) return;
+      const direct = readJson(join(dir, "state", sid + ".json")).direct === true;
+      const path = join(dir, "state", GROK_AGENTS_FILE + ".json");
+      withStateLock(
+        join(dir, "state", GROK_AGENTS_FILE + ".tslock"),
+        () => {
+          const entries = agentEntries(readJson(path)).filter((e) => e.id !== agent);
+          entries.push({ id: agent as string, session: sid as string, role: this.event.role || "", direct });
+          writeJson(path, { agents: entries.slice(-GROK_AGENTS_MAX) });
+          return none(this.mode);
+        },
+        () => none(this.mode),
+      );
+    } catch {
+      /* best effort */
     }
   }
 
@@ -867,7 +956,9 @@ class Guard {
       () => {
         const state = readJson(statePath);
         if (!due(state)) return none(this.mode);
-        if (this.mode !== "enforce") return this.result("would_block", { rule: "STOP", note: "unverified_change" });
+        if (this.mode !== "enforce" || !stopBlocks(this.host, this.env)) {
+          return this.result("would_block", { rule: "STOP", note: "unverified_change" });
+        }
         state.stop_blocked = true;
         // without the flag a block could repeat: do not block
         if (!writeJson(statePath, state)) return this.result("skip", { skip: "state_write_failed" });
@@ -1038,6 +1129,7 @@ class Guard {
   private subagentStart(): GuardResult {
     const event = this.event;
     const access = roleAccess(event.role);
+    if (MAPPED_HOSTS.has(this.host)) this.registerAgent();
     if (AGENT_KEYED_HOSTS.has(this.host)) this.noteDirectAgent();
     if (!START_UNLOCK_HOSTS.has(this.host) || (access !== "write" && access !== "verify")) return none(this.mode);
     if (access === "verify") {
@@ -1315,6 +1407,10 @@ class Guard {
 export function evaluate(event: GuardEvent, env: Env, home: string): GuardResult {
   const guard = new Guard(event, env, home);
   if (guard.mode === "off") return none("off");
+  if (MAPPED_HOSTS.has(guard.host) && event.kind === "tool") {
+    guard.resolveMappedAgent();
+    event = guard.event;
+  }
   if (event.is_subagent) {
     if (ROLE_AWARE_HOSTS.has(guard.host) && event.kind === "tool") return guard.subagent();
     return none(guard.mode);

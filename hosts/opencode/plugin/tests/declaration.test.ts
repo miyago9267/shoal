@@ -36,8 +36,8 @@ describe("parseDeclaration", () => {
 });
 
 describe("resolveR1", () => {
-  test("claude, codex and opencode are strict by default; declare, classified and off are selectable", () => {
-    for (const host of ["claude", "codex", "opencode"]) {
+  test("claude, codex, opencode and grok are strict by default; declare, classified and off are selectable", () => {
+    for (const host of ["claude", "codex", "opencode", "grok"]) {
       expect(resolveR1(host, {})).toBe("strict");
       for (const value of ["", "bogus", "STRICT", "strict"]) expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe("strict");
       expect(resolveR1(host, { SHOAL_GUARD_R1: "declare" })).toBe("declare");
@@ -47,7 +47,7 @@ describe("resolveR1", () => {
   });
 
   test("hosts that cannot declare keep the v3.1.0 rule", () => {
-    for (const host of ["grok", "agy"]) {
+    for (const host of ["agy"]) {
       for (const value of ["", "declare", "strict", "bogus", "classified"]) {
         expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe("classified");
       }

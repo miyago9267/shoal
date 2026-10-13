@@ -97,10 +97,15 @@ class HookConfigTests(unittest.TestCase):
     def test_dispatch_guard_entries(self) -> None:  # dispatch-enforcement R7
         self.assertEqual(len(self.config["PreToolUse"]), 2)
         tool = self.config["PreToolUse"][1]
-        self.assertEqual(tool["matcher"], "^(search_replace|write|write_file|edit|multi_edit|create_file|spawn_subagent)$")
+        self.assertEqual(tool["matcher"], "^(search_replace|write|write_file|edit|multi_edit|create_file|run_terminal_command|spawn_subagent)$")
         (prompt,) = self.config["UserPromptSubmit"]
         self.assertNotIn("matcher", prompt)
-        for entry in (tool, prompt):
+        # guard-every-gate S4: shell calls are judged too; the start of a role confirms it ran; the end of a turn is checked
+        (start,) = self.config["SubagentStart"]
+        (stop,) = self.config["Stop"]
+        self.assertNotIn("matcher", start)
+        self.assertNotIn("matcher", stop)
+        for entry in (tool, prompt, start, stop):
             (handler,) = entry["hooks"]
             self.assertEqual(handler["command"], "shoal-grok/shoal_guard.py")
             self.assertEqual(handler["env"], {"SHOAL_GUARD_HOST": "grok"})

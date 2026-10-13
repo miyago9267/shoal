@@ -258,8 +258,9 @@ class ApplyTests(InstallGrokCase):
         self.assertEqual(
             config["PreToolUse"][0]["hooks"][0]["command"], "shoal-grok/plan_mode_guard.py"
         )
-        self.assertEqual(config["PreToolUse"][1]["matcher"], "^(search_replace|write|write_file|edit|multi_edit|create_file|spawn_subagent)$")
+        self.assertEqual(config["PreToolUse"][1]["matcher"], "^(search_replace|write|write_file|edit|multi_edit|create_file|run_terminal_command|spawn_subagent)$")
         self.assertEqual(len(config["UserPromptSubmit"]), 1)
+        self.assertEqual((len(config["SubagentStart"]), len(config["Stop"])), (1, 1))
         # tampering after install is caught by the same hash verification as any other file
         script.write_bytes(script.read_bytes() + b"# tampered\n")
         self.assertEqual(self.run_cli("--apply")[0], 0)  # re-install restores it

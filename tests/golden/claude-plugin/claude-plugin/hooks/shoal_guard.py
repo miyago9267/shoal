@@ -35,16 +35,16 @@ file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-dec
               is `parent_local`.  No classification file, or any other role, has no effect.
   classified  the v3.1.0 rule: deny (claude) or advise (other hosts) only when the turn is
               classified judgment/mechanical by the optional classification file.  Default on every
-              host that cannot gate (grok, agy, opencode).
+              host that cannot gate (agy).
   off         no R1/G5; the hard rules, G4 and R2 are untouched.
 
-"A write-level role was dispatched" (the unlock in every mode) means, on claude and codex, that the role has
-started (M11, E3): the dispatch call records a pending write dispatch and the SubagentStart event of the same
+"A write-level role was dispatched" (the unlock in every mode) means, on claude, codex and grok, that the role has
+started (M11, E3, E4): the dispatch call records a pending write dispatch and the SubagentStart event of the same
 session releases it (codex: once per agent_id; its subagent's first edit or shell call also counts, see
-START_UNLOCK_HOSTS).  On every other host the dispatch call itself unlocks.
+START_UNLOCK_HOSTS; grok: its `subagent_start`).  On every other host the dispatch call itself unlocks.
 
 Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` (default on every host
-but claude and codex) leaves the subagent rules exactly as they were; `on` (default on claude and codex) makes a subagent that is not a shoal write-capable role (an edit
+but claude, codex and grok) leaves the subagent rules exactly as they were; `on` (default on claude, codex and grok) makes a subagent that is not a shoal write-capable role (an edit
 tool or a literal shell write, as in G5, outside the exempt paths) get E1: deny in enforce, `would_deny` in shadow.
 Exits: dispatch a shoal write role, put the agent type in SHOAL_GUARD_WRITE_AGENTS (comma-separated, exact match on the
 raw type or the type without a `shoal:` prefix), or SHOAL_GUARD_DIRECT=1.  On claude a user's `#direct`
@@ -53,7 +53,11 @@ it, and the prompt event keeps the last DIRECT_TURNS_MAX turn ids that carried `
 (`direct_turns`), so a background Workflow child that edits after the main session moved on is still judged by the turn
 that launched it.  Codex: a subagent has its own turn id, so the SubagentStart event of an agent records its agent_id when main's
 current turn carried `#direct` (`direct_agents`, the last AGENTS_MAX) and that agent is released.  Other hosts have no
-such payload evidence: not released.  Verify-level roles keep VERIFY_EDIT.
+such payload evidence: not released.  Grok: a subagent's events carry its own session id, so `subagent_start` (sent
+under main's session id, with the subagent's id and type) records subagent id -> {main session, role, whether main's
+turn carried `#direct`} in `state/grok.agents.json` (the last GROK_AGENTS_MAX); a tool event whose session id is in that
+file is a subagent call of that role, and the recorded flag releases it.  A subagent event with a `subagentType` and no
+record is still judged by its role, never released by `#direct`.  Verify-level roles keep VERIFY_EDIT.
 
 Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
 shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
@@ -61,7 +65,9 @@ shell write was allowed and is not exempt, or a write-level role counts as dispa
 call that is neither a file write nor a declaration).  On claude and codex the `Stop` event is blocked once per
 turn when `changed` is set, `checked` is not, `stop_hook_active` is exactly false, the mode is enforce and
 SHOAL_GUARD_STOP is not `off`; everything else (other turn, bad payload, unreadable state, shadow, off) fails
-open.  Other hosts never block: their adapters receive no end-of-turn event that carries a verified payload.
+open.  Grok's `stop` event (only `reason == end_turn`) is attached, but its `{"decision": "block"}` output has not been
+exercised on the real host: it logs `would_block` and blocks only with SHOAL_GUARD_STOP=enforce (in enforce mode).
+Other hosts never block: their adapters receive no end-of-turn event that carries a verified payload.
 """
 
 from __future__ import annotations
@@ -89,11 +95,12 @@ MAX_STATE_BYTES = 64 * 1024
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 LOCK_WAIT_SECONDS = 2.0
 
-# Default mode per host.  E6: claude/codex enforce; grok/agy stay shadow (evidence pending / forced).
+# Default mode per host.  E6: claude/codex/grok enforce (grok: tests/fixtures/grok_guard_event_shapes.json shows deny is
+# honoured for main and subagent writes); agy stays shadow (forced).
 HOST_DEFAULT_MODE = {
     "claude": "enforce",
     "codex": "enforce",
-    "grok": "shadow",
+    "grok": "enforce",
     "agy": "shadow",
 }
 # Hosts that cannot tell main from subagent: enforce is never allowed (spec R5).
@@ -101,10 +108,12 @@ FORCED_SHADOW_HOSTS = frozenset({"agy"})
 # Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
 ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
-# `{"decision": "block", "reason": ...}`: only they block an unverified completion (B4).  grok, agy and opencode
+# `{"decision": "block", "reason": ...}`: only they block an unverified completion (B4).  agy and opencode
 # have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches the
-# check off on these two hosts and has no effect elsewhere.
-STOP_HOSTS = frozenset({"claude", "codex"})
+# check off on these hosts and has no effect elsewhere.  Grok has the payload (tests/fixtures/grok_guard_event_shapes.json)
+# but its block output is not yet exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
+STOP_HOSTS = frozenset({"claude", "codex", "grok"})
+STOP_SHADOW_DEFAULT_HOSTS = frozenset({"grok"})
 # agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
 COMPOSED_TURN_HOSTS = frozenset({"agy"})
 # Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId; claude
@@ -124,7 +133,7 @@ DENY_MAIN_HOSTS = frozenset({"claude"})
 # (run by the TypeScript port; listed here so both implementations replay the same vectors).  Any other value falls back to
 # the host default; every other host keeps the v3.1.0 behaviour (`classified`).  `strict` (3.3.0) needs the
 # same events (edit tools plus main's shell calls), so it is selectable on the same hosts and is their default.
-DECLARE_HOSTS = frozenset({"claude", "codex", "opencode"})
+DECLARE_HOSTS = frozenset({"claude", "codex", "opencode", "grok"})
 # Hosts where "a write-level role was dispatched" unlocks only once the role has actually started (M11):
 # the PreToolUse of the dispatch call records a pending write dispatch and the SubagentStart event of the
 # same session releases it.  Claude's SubagentStart payload (session_id equal to main's, agent_id, agent_type,
@@ -132,7 +141,7 @@ DECLARE_HOSTS = frozenset({"claude", "codex", "opencode"})
 # dispatch call itself, as before: no start event is recorded for it, and without one a pending dispatch
 # would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
 # together; a Claude install whose registration lacks SubagentStart has no start event and would stay locked.
-START_UNLOCK_HOSTS = frozenset({"claude", "codex"})
+START_UNLOCK_HOSTS = frozenset({"claude", "codex", "grok"})
 # Codex (docs/specs/guard-every-gate E3; tests/fixtures/codex_subagent_tool_shapes.json): SubagentStart carries the new
 # agent's agent_id and agent_type with the main session's session_id, and fires only when the role really started (a
 # spawn of an unknown agent_type fires none).  The registration is a separate hook group that the user approves in
@@ -142,8 +151,13 @@ START_UNLOCK_HOSTS = frozenset({"claude", "codex"})
 # E1 (docs/specs/guard-every-gate): hosts where SHOAL_GUARD_SUBAGENT_WRITE defaults to `on`, and hosts whose
 # subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it
 # (claude: tests/fixtures/claude_subagent_tool_shapes.json), so the user's `#direct` can release a subagent.
-SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude", "codex"})
-SUBAGENT_DIRECT_HOSTS = frozenset({"claude", "codex"})
+SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude", "codex", "grok"})
+SUBAGENT_DIRECT_HOSTS = frozenset({"claude", "codex", "grok"})
+# Grok (tests/fixtures/grok_guard_event_shapes.json): a subagent's tool events carry its OWN session id (= the subagentId
+# of the `subagent_start` event, which is sent under main's session id).  `subagent_start` records the mapping.
+MAPPED_HOSTS = frozenset({"grok"})
+GROK_AGENTS_MAX = 64
+GROK_AGENTS_FILE = "grok.agents"  # state/<this>.json; not a valid id (no dots), so it never collides with a session
 # Codex: a subagent runs in its own turn (turn_id differs from main's, constant for that agent), so `#direct` cannot be
 # looked up by turn.  SubagentStart records the agent_id as released when main's current turn carried `#direct`
 # (`direct_agents`); the subagent's later events are judged by their agent_id.
@@ -553,16 +567,34 @@ def write_agent_allowed(role: Any, env: Dict[str, str]) -> bool:
 
 
 def stop_enabled(host: str, env: Dict[str, str]) -> bool:
-    """SHOAL_GUARD_STOP: `off` disables the completion check on claude and codex; any other value (or none)
-    keeps it on.  No effect on a host outside STOP_HOSTS, which never blocks."""
+    """SHOAL_GUARD_STOP: `off` disables the completion check on claude, codex and grok; any other value (or none)
+    keeps it on (grok: logging only, see stop_blocks).  No effect on a host outside STOP_HOSTS."""
     return host in STOP_HOSTS and env.get("SHOAL_GUARD_STOP") != "off"
+
+
+def stop_blocks(host: str, env: Dict[str, str]) -> bool:
+    """False on a host whose block output is unverified (STOP_SHADOW_DEFAULT_HOSTS) unless SHOAL_GUARD_STOP=enforce."""
+    return host not in STOP_SHADOW_DEFAULT_HOSTS or env.get("SHOAL_GUARD_STOP") == "enforce"
+
+
+def _agent_entries(raw: Any) -> List[Dict[str, Any]]:
+    """The valid entries of a grok agent-map file's content, the last GROK_AGENTS_MAX."""
+    items = raw.get("agents") if isinstance(raw, dict) else None
+    if not isinstance(items, list):
+        return []
+    kept = [
+        e for e in items
+        if isinstance(e, dict) and valid_id(e.get("id")) and valid_id(e.get("session"))
+        and isinstance(e.get("role"), str) and isinstance(e.get("direct"), bool)
+    ]
+    return kept[-GROK_AGENTS_MAX:]
 
 
 def resolve_r1(host: str, env: Dict[str, str]) -> str:
     """SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
 
     Unset, unrecognized, or `strict` / `declare` on a host that cannot gate -> the host default
-    (`strict` on claude, codex and opencode, `classified` elsewhere)."""
+    (`strict` on claude, codex, grok and opencode, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw
@@ -1086,6 +1118,9 @@ class _Guard:
         try:
             if self.host not in SUBAGENT_DIRECT_HOSTS:
                 return False
+            if self.host in MAPPED_HOSTS:
+                entry = self.agent_entry(self.event.get("session_id"))
+                return entry is not None and entry["direct"] is True
             if self.host in AGENT_KEYED_HOSTS:
                 sid, agent = self.event.get("session_id"), self.event.get("agent_id")
                 guard = self.guard_dir
@@ -1102,6 +1137,49 @@ class _Guard:
             return tid in _direct_turns(state)
         except Exception:
             return False
+
+    def agent_entry(self, agent: Any) -> Optional[Dict[str, Any]]:
+        """Grok: the recorded `subagent_start` of the subagent whose own session id is `agent`, or None.  Read-only; any
+        problem (bad id, no state dir, unreadable file) means "no record"."""
+        try:
+            guard = self.guard_dir
+            if guard is None or not valid_id(agent):
+                return None
+            for entry in reversed(_agent_entries(_read_json(guard / "state" / (GROK_AGENTS_FILE + ".json")))):
+                if entry["id"] == agent:
+                    return entry
+        except Exception:
+            return None
+        return None
+
+    def resolve_mapped_agent(self) -> None:
+        """Grok: a tool event under a recorded subagent's session id is that subagent's call, whatever its own payload
+        says (a generic subagent may carry no `subagentType`).  Fills `is_subagent` and a missing role."""
+        entry = self.agent_entry(self.event.get("session_id"))
+        if entry is None:
+            return
+        self.event = dict(self.event, is_subagent=True)
+        if not self.event.get("role"):
+            self.event["role"] = entry["role"] or None
+
+    def register_agent(self) -> None:
+        """Grok `subagent_start`: record subagent id -> {main session, role, direct flag of main's current turn}.
+        Silent and best effort: without a record the subagent is judged by its own payload and `#direct` is not available."""
+        try:
+            sid, agent = self.event.get("session_id"), self.event.get("agent_id")
+            guard = self.guard_dir
+            if not valid_id(sid) or not valid_id(agent) or guard is None:
+                return
+            direct = _read_json(guard / "state" / (sid + ".json")).get("direct") is True
+            path = guard / "state" / (GROK_AGENTS_FILE + ".json")
+            with _state_lock(guard / "state" / (GROK_AGENTS_FILE + ".lock")) as lock_skip:
+                if lock_skip is not None:
+                    return
+                entries = [e for e in _agent_entries(_read_json(path)) if e["id"] != agent]
+                entries.append({"id": agent, "session": sid, "role": self.event.get("role") or "", "direct": direct})
+                _write_json(path, {"agents": entries[-GROK_AGENTS_MAX:]})
+        except Exception:
+            return
 
     def _none(self) -> Dict[str, Any]:
         return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
@@ -1204,7 +1282,7 @@ class _Guard:
             state = _read_json(state_path)
             if not due(state):
                 return self._none()
-            if self.mode != "enforce":
+            if self.mode != "enforce" or not stop_blocks(self.host, self.env):
                 return self.result("would_block", "STOP", note="unverified_change")
             state["stop_blocked"] = True
             if not _write_json(state_path, state):  # without the flag a block could repeat: do not block
@@ -1363,6 +1441,8 @@ class _Guard:
         write role counts once per agent_id (`started_agents`)."""
         event = self.event
         access = role_access(event.get("role"))
+        if self.host in MAPPED_HOSTS:
+            self.register_agent()
         if self.host in AGENT_KEYED_HOSTS:
             self.note_direct_agent()
         if self.host not in START_UNLOCK_HOSTS or access not in ("write", "verify"):
@@ -1638,6 +1718,9 @@ def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str
             "reason": None,
             "mode": "off",
         }
+    if guard.host in MAPPED_HOSTS and event.get("kind") == "tool":
+        guard.resolve_mapped_agent()
+        event = guard.event
     if event.get("is_subagent"):
         if guard.host in ROLE_AWARE_HOSTS and event.get("kind") == "tool":
             return guard.subagent()
@@ -1835,10 +1918,22 @@ def adapt_grok(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         sub_type,
     )
     if name == "user_prompt_submit":
-        return _event("grok", "prompt", *base)
+        return _event("grok", "prompt", *base, direct=has_direct_token(payload.get("prompt")))
+    if name == "subagent_start":
+        # tests/fixtures/grok_guard_event_shapes.json: sessionId is MAIN's; subagentId/subagentType name the NEW subagent,
+        # whose own events carry sessionId == subagentId.
+        return _event("grok", "subagent_start", payload.get("sessionId"), None, payload.get("cwd"), False,
+                      payload.get("subagentType"), agent_id=payload.get("subagentId"))
+    if name == "stop":
+        # Two stops fire per run; only `reason == end_turn` ends a turn.  A subagent's own stop is not main's.
+        if payload.get("reason") != "end_turn" or sub_type is not None:
+            return None
+        return _event("grok", "stop", *base, stop_hook_active=payload.get("stopHookActive"))
     if name != "pre_tool_use":
         return None
     tool, tin = payload.get("toolName"), _dict(payload.get("toolInput"))
+    if tool == "run_terminal_command" and isinstance(tin.get("command"), str):
+        return _event("grok", "tool", *base, tool=tool, tool_kind="shell", command=tin["command"])
     if tool in ("search_replace", "write", "write_file", "edit", "multi_edit", "create_file"):
         path = None
         for key in ("file_path", "path", "target_file", "filePath"):

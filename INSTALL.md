@@ -348,9 +348,14 @@ in the report that the change is unverified. The block is skipped when Codex
 reports `stop_hook_active` (the retry after a block), for a `Stop` of another
 turn, for unreadable state or an unexpected payload, in `SHOAL_GUARD=shadow`
 (the log gets `would_block`), with `SHOAL_GUARD=off`, and with
-`SHOAL_GUARD_STOP=off`. The switch defaults to `on`, exists on Claude and Codex
-only, and has no effect elsewhere: Grok, agy and OpenCode never block because
-no end-of-turn payload of theirs is recorded. The autoroute gate's `Stop`
+`SHOAL_GUARD_STOP=off`. The switch defaults to `on`, exists on Claude, Codex and
+Grok, and has no effect elsewhere: agy and OpenCode never block because no
+end-of-turn payload of theirs is recorded. On Grok the check is attached to its
+`stop` event (only `reason == end_turn`; a second `stop` fires at session end)
+but its `{"decision":"block"}` answer has not been exercised on a real Grok yet,
+so by default it only logs `would_block`; set `SHOAL_GUARD_STOP=enforce` (with
+the guard in `enforce`) to let it block once the live check shows Grok honours
+it. The autoroute gate's `Stop`
 group (Plan review and model escalation) is a separate script and is not
 changed.
 
@@ -522,9 +527,34 @@ installer; merge them by hand.
 The hooks add a `SubagentStop` format gate for `verifier`, `plan-critic` and
 `security-reviewer`, and a `PreToolUse` guard that denies write-capable
 `spawn_subagent` calls while Grok is in plan mode. They also install the shoal
-dispatch guard (`hooks/shoal-grok/shoal_guard.py`) with a `UserPromptSubmit`
-entry and a `PreToolUse` entry (matcher `^(search_replace|spawn_subagent)$`), shadow
-mode by default; the existing plan-mode guard entry is kept. The copy in
+dispatch guard (`hooks/shoal-grok/shoal_guard.py`) with `UserPromptSubmit`,
+`SubagentStart` and `Stop` entries and a `PreToolUse` entry (matcher
+`^(search_replace|write|write_file|edit|multi_edit|create_file|run_terminal_command|spawn_subagent)$`);
+the existing plan-mode guard entry is kept.
+
+Since the guard-every-gate S4 slice (docs/specs/guard-every-gate; payloads in
+`tests/fixtures/grok_guard_event_shapes.json`, Grok CLI 1.0.46) the Grok guard
+defaults to `enforce` (it was `shadow`; `SHOAL_GUARD=shadow` or `off` still
+works) because a `{"decision":"deny"}` answer was observed to stop the main
+session's `write`, a subagent's `write` and `spawn_subagent`. The main session's
+edit rule is `strict` like Claude and Codex: `write`, `search_replace` and a
+`run_terminal_command` that writes a file literally (`>`, `>>`, `tee`, `sed -i`)
+are denied unless a write-level role has started this turn, the prompt carries
+`#direct`, `SHOAL_GUARD_DIRECT=1` is set, or the path is exempt. A write role
+counts as started at its `subagent_start` event, not at the `spawn_subagent`
+call. A subagent's own events carry its own session id (equal to the
+`subagentId` of `subagent_start`, which is sent under the main session id), so
+`subagent_start` records `subagentId -> {main session, role, whether the main
+turn carried #direct}` in `state/grok.agents.json` (the last 64) and the
+subagent's calls are judged through it: a subagent that is not a shoal
+write-capable role (including a generic one) is denied file writes (E1), a
+`#direct` turn releases the subagents started in it, `SHOAL_GUARD_WRITE_AGENTS`
+and `SHOAL_GUARD_DIRECT=1` release as on the other hosts, and a subagent that
+calls `spawn_subagent` is denied (LEAF). A subagent event that names a
+`subagentType` but has no record is judged by that role and is never released by
+`#direct`. Reinstall (`install_grok.py --apply`) to get the new hook entries and
+start a new Grok session; the Stop answer is the only part not yet confirmed
+live (see above). The copy in
 `hosts/grok/dist` is generated from `hooks/shoal_guard.py` by
 `python3 tools/render.py --host grok --write`, and the installer aborts if the
 dist copy
