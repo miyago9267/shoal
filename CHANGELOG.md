@@ -3,6 +3,24 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.4.1
+
+前置調整（[`docs/specs/shared-rules`](./docs/specs/shared-rules/PROGRESS.md)
+的「前置：條款拆分與派工單位」）。只改共用條款文字，行為與 hook 不變。
+
+### Features
+
+- 條款拆分：bootstrap 的 `bootstrap-dispatch-brake` 拆成 `bootstrap-effort`、
+  `bootstrap-dispatch-brake`、`bootstrap-kind-label` 三條（皆非 required），
+  host 可以單獨省略 effort 或 label，不影響其他兩條。
+- 派工單位：brief 要寫時間預算，到預算的 role 回報手上已有的結果；one-shot
+  spec 加上 file ownership 與時間預算；新增 `small-parallel-units`，派工切小、
+  依 file ownership 分開，ownership 不重疊的派工一起啟動（writer 各用自己的
+  worktree），共用檔案（版本、產生的輸出、lock）只在獨立的整合步驟改一次；並行的
+  worker 只跑自己檔案的檢查，完整測試只在整合時跑一次。
+- 移除剩下的「main 接手」措辭：兩次失敗後與 cost-unbounded continuation 的
+  升級路徑改為「升 executor tier 或回報給使用者」。
+
 ## v3.4.0
 
 規則共用的第一步（[`docs/specs/shared-rules`](./docs/specs/shared-rules/SPEC.md) 的 S1 到 S3，Miyago

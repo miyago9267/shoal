@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.4.0 -->
+<!-- shoal-claude v3.4.1 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 

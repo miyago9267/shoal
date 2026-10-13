@@ -74,16 +74,29 @@ text = '''
 - Security work: `security-reviewer` -> approved Plan -> `security-executor`.'''
 
 [[clause]]
-id = "bootstrap-dispatch-brake"
+id = "bootstrap-effort"
 kind = "dispatch"
 sep = "newline"
 text = '''
 - Explicit instruction: on every named-role {{dispatch_tool}} call pass
   `{{effort_param}}` (role default; lower if trivial or fully specified, higher if
   ambiguous or high-stakes; a user-stated effort wins; never below `medium` for
-  `verifier` and `plan-critic`, `high` for `security-reviewer`). Omit
-  `{{model_param}}` for named roles, state scope and stop, and start the
-  `{{label_param}}` of every write-capable call with `fix:`, `feat:`,
+  `verifier` and `plan-critic`, `high` for `security-reviewer`).'''
+
+[[clause]]
+id = "bootstrap-dispatch-brake"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- Omit `{{model_param}}` for named roles. State scope, stop, and a time budget in
+  every brief; a role that reaches its budget returns what it has.'''
+
+[[clause]]
+id = "bootstrap-kind-label"
+kind = "dispatch"
+sep = "newline"
+text = '''
+- Start the `{{label_param}}` of every write-capable call with `fix:`, `feat:`,
   `refactor:`, `test:`, or `docs:`.'''
 
 [[clause]]

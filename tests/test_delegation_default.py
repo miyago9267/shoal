@@ -101,7 +101,7 @@ class OtherHostsRoleTests(unittest.TestCase):
     POLICY_SHA256 = {
         "codex": {
             "agents-md.bootstrap.md": "2ce83cc4800352763f17dc883f38e19a0f03dabff372dae6efbc6d39d563b020",
-            "agents-md.orchestration.md": "1751f78cad0882949f9477436ba495d74329f5257f5a455b2d7baaa10263ea7c",
+            "agents-md.orchestration.md": "0f39ca010ccb29fec762cf7bd0de26977a6e44cdc4d6c6d0bc33b960244563be",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
@@ -395,7 +395,43 @@ class PolicyClauseTests(unittest.TestCase):
             self.assertFalse(by_id[clause_id].required, clause_id)
         ids = list(by_id)
         self.assertEqual(ids[ids.index("bootstrap-ownership") + 1], "bootstrap-delegate-default")
-        self.assertEqual(ids[ids.index("bootstrap-dispatch-brake") + 1], "bootstrap-collect")
+        self.assertEqual(
+            ids[ids.index("bootstrap-security") + 1 : ids.index("bootstrap-collect")],
+            ["bootstrap-effort", "bootstrap-dispatch-brake", "bootstrap-kind-label"],
+        )
+        for clause_id in ("bootstrap-effort", "bootstrap-dispatch-brake", "bootstrap-kind-label"):
+            self.assertFalse(by_id[clause_id].required, clause_id)
+
+    def test_bootstrap_dispatch_bullets_are_separate_and_carry_a_time_budget(self) -> None:
+        lines = self.bootstrap.splitlines()
+        effort = [i for i, line in enumerate(lines) if line.startswith("- Explicit instruction:")]
+        brake = [i for i, line in enumerate(lines) if line.startswith("- Omit `model` for named roles.")]
+        label = [i for i, line in enumerate(lines) if line.startswith("- Start the `description` of every write-capable call")]
+        self.assertEqual((len(effort), len(brake), len(label)), (1, 1, 1))
+        self.assertTrue(effort[0] < brake[0] < label[0])
+        brake_text = " ".join(" ".join(lines[brake[0] : label[0]]).split())
+        self.assertIn("time budget", brake_text)
+        self.assertIn("a role that reaches its budget returns what it has", brake_text)
+        self.assertNotIn("`effort`", brake_text)
+
+    def test_small_parallel_units_follows_parallel_launch(self) -> None:
+        ids = [c.id for c in render.load_core(ROOT)["policy"]["docs"]["orchestration"]]
+        self.assertEqual(ids[ids.index("parallel-launch") + 1], "small-parallel-units")
+        flat = " ".join(self.policy.split())
+        self.assertIn("- Size each dispatch so one role finishes it quickly; split larger work by file ownership.", flat)
+        self.assertIn("shared files (versions, generated output, locks) change once, in a separate integration step", flat)
+        self.assertIn("rationale, file ownership, time budget.", flat)
+        self.assertIn("the full suite runs once, at integration", flat)
+        self.assertIn("escalate tier or report to the user", flat)
+
+    def test_no_rendered_claude_policy_says_take_over(self) -> None:
+        for rel, data in self.files.items():
+            if not rel.endswith(".md"):
+                continue
+            text = " ".join(data.decode("utf-8").split()).lower()
+            with self.subTest(file=rel):
+                self.assertNotIn("take over", text)
+                self.assertNotIn("takeover", text)
 
     def test_watcher_backgrounds_then_polls_unless_the_brief_says_the_command_is_short(self) -> None:
         text = " ".join(self.files["agents/watcher.md"].decode("utf-8").split())

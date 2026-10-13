@@ -80,3 +80,20 @@
 - 限制：每題 1 次；Codex 以 `--dangerously-bypass-hook-trust` 執行（變更後的 hook 尚未由使用者
   核准）；Codex 那次同時還有另一個 Stop hook（model 升級的 gate）也回了訊息，所以「繼續」不能只歸因
   於這條規則；沒有測到只改文件、以 `verifier` 或 `watcher` 當檢查、以及被擋後仍直接結束的情況。
+
+## 前置：條款拆分與派工單位（v3.4.1，2026-10-13）
+
+只改共用條款文字；Claude 的 legacy 對照來源（`hosts/claude/src/...`）同步，其他 host 只換 marker。
+
+- `core/policy/bootstrap.toml`：`bootstrap-dispatch-brake` 拆成 `bootstrap-effort`、
+  `bootstrap-dispatch-brake`、`bootstrap-kind-label`（皆非 required），host 可單獨省略。
+  brake 加「brief 寫時間預算；到預算的 role 回報手上已有的結果」。
+- `core/policy/orchestration.toml`：`one-shot-spec` 加 file ownership 與時間預算，兩次失敗後
+  改為「升 tier 或回報給使用者」；新增 `small-parallel-units`（排在 `parallel-launch` 之後，
+  `parallel-launch` 的 sep 改為 newline 讓它獨立成條）。
+  並行 worker 只跑自己檔案的檢查，完整測試整合時跑一次。
+- `core/policy/extensions.toml`：`cost-unbounded-continuation` 的「main-session takeover」改為
+  「report to the user」。
+- 測試：bootstrap 三條獨立、`small-parallel-units` 位置與渲染、Claude 渲染結果不含 take over／
+  takeover。
+- 其他 host 的 legacy 文字（Codex、agy、Grok）仍是合併的舊 bullet，待 S4 起改由 core 產生。

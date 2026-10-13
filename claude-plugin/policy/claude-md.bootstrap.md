@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.4.0 -->
+<!-- shoal-claude v3.4.1 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -33,9 +33,10 @@ section, do the assigned task, never spawn subagents.
 - Explicit instruction: on every named-role Agent call pass
   `effort` (role default; lower if trivial or fully specified, higher if
   ambiguous or high-stakes; a user-stated effort wins; never below `medium` for
-  `verifier` and `plan-critic`, `high` for `security-reviewer`). Omit
-  `model` for named roles, state scope and stop, and start the
-  `description` of every write-capable call with `fix:`, `feat:`,
+  `verifier` and `plan-critic`, `high` for `security-reviewer`).
+- Omit `model` for named roles. State scope, stop, and a time budget in
+  every brief; a role that reaches its budget returns what it has.
+- Start the `description` of every write-capable call with `fix:`, `feat:`,
   `refactor:`, `test:`, or `docs:`.
 - When a background role reports, collect first: one line saying which role did
   what with what result. Under AUTO dispatch the follow-up yourself; under ASK

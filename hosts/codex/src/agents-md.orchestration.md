@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.4.0 -->
+<!-- shoal-codex v3.4.1 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -343,7 +343,7 @@ list and the milestone direction check stay in force, and the mode grants no
 extra authority. At the two-`REVISE` cap, disposition, narrow, or split as
 usual, then continue as user-directed continuation; every pass still needs a
 material change, otherwise `PAUSED_VERIFICATION`. Escalate only to a higher
-executor tier or main-session takeover; an unresolved P1 outside approved
+executor tier or report to the user; an unresolved P1 outside approved
 scope still stops. A `PIVOT` re-plans only within approved scope; beyond it,
 stop at `decision`.
 

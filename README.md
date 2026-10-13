@@ -134,12 +134,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.4.0 |
-| codex host | 3.4.0（`hosts/codex/VERSION`） |
-| claude host | 3.4.0（`hosts/claude/VERSION`） |
-| agy host | 3.4.0（`hosts/agy/VERSION`） |
-| grok host | 3.4.0（`hosts/grok/VERSION`） |
-| opencode host | 3.4.0（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.4.1 |
+| codex host | 3.4.1（`hosts/codex/VERSION`） |
+| claude host | 3.4.1（`hosts/claude/VERSION`） |
+| agy host | 3.4.1（`hosts/agy/VERSION`） |
+| grok host | 3.4.1（`hosts/grok/VERSION`） |
+| opencode host | 3.4.1（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

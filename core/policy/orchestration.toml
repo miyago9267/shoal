@@ -283,8 +283,8 @@ kind = "dispatch"
 sep = "newline"
 text = '''
 - One-shot spec includes goal, constraints, done criteria, relevant paths,
-  rationale. Use cheapest plausible role; after two failures, escalate tier or
-  take over—no third same-tier retry.'''
+  rationale, file ownership, time budget. Use cheapest plausible role; after two
+  failures, escalate tier or report to the user—no third same-tier retry.'''
 
 [[clause]]
 id = "security-sensitive-routing"
@@ -576,7 +576,7 @@ text = '''
 [[clause]]
 id = "parallel-launch"
 kind = "mechanics"
-sep = "space"
+sep = "newline"
 text = '''
 - Schedule by dependency, not eventual need. When selecting 2+ independent
   agents, launch all back-to-back with `{{background_option}}` before
@@ -585,6 +585,17 @@ text = '''
   Foreground only when next action blocks on result, no useful independent work
   remains, net benefit is positive. Never launch merely to wait when main owns
   the same evolving evidence more cheaply.'''
+
+[[clause]]
+id = "small-parallel-units"
+kind = "mechanics"
+sep = "space"
+text = '''
+- Size each dispatch so one role finishes it quickly; split larger work by file
+  ownership. Dispatches with disjoint ownership launch together, writers each in
+  their own worktree; shared files (versions, generated output, locks) change
+  once, in a separate integration step. Parallel workers run only the checks for
+  their own files; the full suite runs once, at integration.'''
 
 [[clause]]
 id = "parallel-writers"

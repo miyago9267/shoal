@@ -117,8 +117,8 @@ fresh-context review.
   Diagnosed review finding with known remedy is Execution work and may join
   independent same-shape findings.
 - One-shot spec includes goal, constraints, done criteria, relevant paths,
-  rationale. Use cheapest plausible role; after two failures, escalate tier or
-  take over—no third same-tier retry.
+  rationale, file ownership, time budget. Use cheapest plausible role; after two
+  failures, escalate tier or report to the user—no third same-tier retry.
 - Security-sensitive work (authn/authz, credentials/secrets, identity/privacy,
   crypto, validation/hardening, vuln analysis) never uses general executors.
 Before required approval and first readiness review, finish tool-enforced
@@ -257,7 +257,12 @@ Final report separates confirmed/fixed/deferred/regraded findings
   reconnaissance; collect all results before dependent work/final answer.
   Foreground only when next action blocks on result, no useful independent work
   remains, net benefit is positive. Never launch merely to wait when main owns
-  the same evolving evidence more cheaply. Parallel writers use `isolation: "worktree"` (requires Git); without Git, never fan out—use one shared-checkout
+  the same evolving evidence more cheaply.
+- Size each dispatch so one role finishes it quickly; split larger work by file
+  ownership. Dispatches with disjoint ownership launch together, writers each in
+  their own worktree; shared files (versions, generated output, locks) change
+  once, in a separate integration step. Parallel workers run only the checks for
+  their own files; the full suite runs once, at integration. Parallel writers use `isolation: "worktree"` (requires Git); without Git, never fan out—use one shared-checkout
   writer. Read-only roles may share checkout. Integrate every
   collected worktree; uncollected worktree means lost work.
 - Commands that may run long or whose result must be awaited (test suites, builds,

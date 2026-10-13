@@ -9,6 +9,13 @@ written.
 
 ## Unreleased
 
+## v3.4.1
+
+- Version marker only; the Codex policy text is unchanged. The shared core
+  policy split the bootstrap dispatch clause into effort, brake and kind-label
+  clauses and gained time-budget and small-parallel-unit wording; Codex still
+  uses its own policy clauses and does not carry them yet.
+
 ## v3.4.0
 
 - The guard gains a completion check on Codex: it records per turn whether
