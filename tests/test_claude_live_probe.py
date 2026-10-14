@@ -1795,5 +1795,149 @@ class HardeningTests(ProbeCase):
         self.assertLess(len(out), probe.MAX_REPORT_BYTES)
 
 
+REAL_RUN = subprocess.run
+R1_TEXT = (
+    "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
+    "write-capable role (executor or applier), or ask the user to add #direct."
+)
+
+
+class PluginSplitTests(ProbeCase):
+    """``--case plugin-split`` with a stub in place of ``claude`` and no network."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = self.root / "scratch" / "claude-s4"
+        patcher = patch.object(probe, "_split_repo", lambda: self.repo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.calls: list[dict[str, Any]] = []
+
+    def stream(self, *, deny: bool = True, agents: Any = None) -> str:
+        agents = ["shoal:executor", "shoal:applier"] if agents is None else agents
+        events: list[dict[str, Any]] = [
+            {"type": "system", "subtype": "init", "agents": agents},
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "id": "t1", "name": "Edit", "input": {}}
+                    ]
+                },
+            },
+        ]
+        if deny:
+            events.append(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "t1",
+                                "is_error": True,
+                                "content": "PreToolUse hook: " + R1_TEXT + "\nmore",
+                            }
+                        ]
+                    },
+                }
+            )
+        events.append({"type": "result", "total_cost_usd": 0.05})
+        return _stream(events)
+
+    def host(self, stdout: str, *, enabled: bool = True, fail: str | None = None):
+        def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+            if argv[0] == "git":
+                return REAL_RUN(argv, **kwargs)
+            self.calls.append({"argv": list(argv), **kwargs})
+            if argv[1:3] == ["plugin", "list"]:
+                listing = [
+                    {"id": name, "version": "3.8.0", "enabled": enabled}
+                    for name in probe.SPLIT_PLUGINS
+                ]
+                return subprocess.CompletedProcess(argv, 0, json.dumps(listing), "")
+            if argv[1] == "plugin":
+                code = 1 if fail and fail in argv[-1] else 0
+                return subprocess.CompletedProcess(argv, code, "", "")
+            return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+        return run
+
+    def split(self, host: Any, *args: str) -> tuple[int, dict[str, Any], str]:
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            patch.object(probe.subprocess, "run", host),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
+            code = probe.main(
+                ["--claude-bin", "claude-stub", "--case", "plugin-split", *args]
+            )
+        return code, json.loads(out.getvalue() or "{}"), err.getvalue()
+
+    def test_pass_report_and_isolation(self) -> None:
+        code, report, _ = self.split(self.host(self.stream()))
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report["schema"], probe.SPLIT_SCHEMA)
+        turn = report["turn"]
+        self.assertTrue(turn["denied_by_guard"])
+        self.assertEqual(turn["rule"], "STRICT")
+        self.assertTrue(turn["message_first_line"].startswith("Shoal dispatch guard:"))
+        self.assertNotIn("\n", turn["message_first_line"])
+        self.assertTrue(turn["readme_unchanged"])
+        self.assertEqual(turn["agents_listed"], ["shoal:applier", "shoal:executor"])
+        self.assertEqual(report["cost_usd"], 0.05)
+        self.assertTrue(report["probe_root_removed"])
+        self.assertEqual([], [r for r in self.roots if r.exists()])
+        live = self.calls[-1]
+        self.assertEqual(live["env"][TOKEN_ENV], FAKE_TOKEN)
+        self.assertNotIn(FAKE_TOKEN, " ".join(live["argv"]) + live["input"])
+        self.assertEqual(Path(live["cwd"]), self.repo)
+        for call in self.calls[:-1]:  # plugin management never sees the token
+            self.assertNotIn(TOKEN_ENV, call["env"])
+        self.assertEqual(
+            [c["argv"][2:] for c in self.calls[:-1]],
+            [
+                ["marketplace", "add", str(probe.claude.ROOT)],
+                ["install", "shoal@shoal"],
+                ["install", "shoal-dispatch-guard@shoal"],
+                ["list", "--json"],
+            ],
+        )
+        self.assertNotIn(str(self.home), json.dumps(report))
+
+    def test_no_denial_fails(self) -> None:
+        code, report, _ = self.split(self.host(self.stream(deny=False)))
+        self.assertEqual(code, 1)
+        self.assertEqual(report["checks"]["r1_denied"]["status"], "fail")
+
+    def test_missing_write_role_fails(self) -> None:
+        code, report, _ = self.split(self.host(self.stream(agents=["shoal:scout"])))
+        self.assertEqual(code, 1)
+        self.assertEqual(report["checks"]["write_roles_listed"]["status"], "fail")
+
+    def test_disabled_plugin_fails(self) -> None:
+        code, report, _ = self.split(self.host(self.stream(), enabled=False))
+        self.assertEqual(code, 1)
+        self.assertEqual(report["checks"]["plugins_enabled"]["status"], "fail")
+
+    def test_install_failure_runs_nothing_live(self) -> None:
+        code, report, _ = self.split(self.host("", fail="guard"))
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["checks"]["run"]["reason"], "setup_install_guard")
+        self.assertTrue(all(c["argv"][1] == "plugin" for c in self.calls))
+
+    def test_token_required_and_stages_rejected(self) -> None:
+        with patch.dict(os.environ):
+            os.environ.pop(TOKEN_ENV)
+            code, report, err = self.split(self.host(self.stream()))
+        self.assertEqual((code, report), (2, {}))
+        self.assertEqual(self.calls, [])
+        with self.assertRaises(SystemExit) as raised:
+            self.split(self.host(self.stream()), "--stages", "auth,dispatch")
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(self.calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()

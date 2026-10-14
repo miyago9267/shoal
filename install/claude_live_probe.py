@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -46,6 +47,7 @@ from role_fitness_stage import (
 
 SCHEMA = "claude-live-probe-v1"
 STAGES = ("auth", "dispatch", "budget")
+CASES = ("stages", "plugin-split")
 SAMPLES = claude.ROOT / "tests" / "fixtures" / "claude_stream"
 # Synthetic sample each stage's real shape is compared with.
 BASELINES = {
@@ -1336,6 +1338,13 @@ def _parser() -> argparse.ArgumentParser:
         default="auth",
         help="comma-separated subset of auth,dispatch,budget (default: auth)",
     )
+    parser.add_argument(
+        "--case",
+        choices=CASES,
+        default="stages",
+        help="stages: the adapter stages above (default); plugin-split: one live "
+        "turn with the shoal and shoal-dispatch-guard plugins installed",
+    )
     parser.add_argument("--report", help="write the JSON report here (default: stdout)")
     parser.add_argument(
         "--model",
@@ -1482,6 +1491,288 @@ def run_probe(options: argparse.Namespace) -> tuple[dict[str, Any], Path]:
     return report, root
 
 
+# plugin-split (modular-install S4): the Claude plugin split into ``shoal`` and
+# ``shoal-dispatch-guard``.  One live turn in a scratch repo checks that the
+# guard plugin still denies the main session's direct edit (R1) and that the
+# base plugin's write roles are listed.  The scratch repo is outside any temp
+# directory because the guard exempts those.
+SPLIT_SCHEMA = "claude-live-probe-plugin-split-v1"
+SPLIT_PLUGINS = ("shoal@shoal", "shoal-dispatch-guard@shoal")
+SPLIT_AGENTS = ("shoal:executor", "shoal:applier")
+SPLIT_REPO = ("shoal-live-360", "claude-s4")
+SPLIT_BUDGET_USD = "0.50"
+SPLIT_PROMPT = (
+    "Edit README.md directly: append the line 'probe edit' to the end of the "
+    "file. Do not dispatch any agent."
+)
+PLUGIN_STEP_TIMEOUT = 90
+# Wording of the guard denials (hooks/shoal_guard.py), told apart by a phrase.
+# Rule R1 denies with the R1 text (classified) or the STRICT text (default).
+GUARD_PREFIX = "Shoal dispatch guard:"
+GUARD_RULES = (
+    ("R1", "classified as implementation work"),
+    ("STRICT", "does not edit files itself"),
+)
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+
+
+def _split_repo() -> Path:
+    return claude._account_home().joinpath(*SPLIT_REPO)
+
+
+def _reset_split_repo(repo: Path) -> None:
+    """A fresh git repo with one committed README.md at exactly the fixed path."""
+    if repo.is_symlink() or (repo.exists() and not repo.is_dir()):
+        raise StageSetupError("scratch repo path is not a plain directory")
+    if repo.exists():
+        shutil.rmtree(repo)
+    repo.mkdir(parents=True)
+    (repo / "README.md").write_text("# claude-s4\n", encoding="utf-8")
+    git = ["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
+    for step in (["init", "-q"], ["add", "README.md"], ["commit", "-q", "-m", "init"]):
+        done = subprocess.run(
+            [*git, *step], cwd=str(repo), capture_output=True, text=True, check=False
+        )
+        if done.returncode != 0:
+            raise StageSetupError("scratch repo could not be created")
+
+
+def _event_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            item.get("text", "") for item in content if isinstance(item, dict)
+        )
+    return ""
+
+
+def split_stream(stdout: str) -> dict[str, Any]:
+    """What the plugin-split turn showed: agents, edit attempts and their denials."""
+    agents: list[str] | None = None
+    edits: dict[str, str] = {}
+    denials: list[str] = []
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            listed = event.get("agents")
+            if isinstance(listed, list):
+                agents = [item for item in listed if isinstance(item, str)]
+        message = event.get("message")
+        blocks = message.get("content") if isinstance(message, dict) else None
+        for block in blocks if isinstance(blocks, list) else []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use" and block.get("name") in EDIT_TOOLS:
+                edits[str(block.get("id"))] = block["name"]
+            elif (
+                block.get("type") == "tool_result"
+                and block.get("tool_use_id") in edits
+                and block.get("is_error")
+            ):
+                denials.append(_event_text(block.get("content")))
+    first = ""
+    for text in denials:
+        # The host may wrap the hook's reason in its own prefix.
+        at = text.find(GUARD_PREFIX)
+        if at >= 0:
+            first = text[at:].splitlines()[0][:400]
+            break
+    rule = next((name for name, phrase in GUARD_RULES if phrase in first), None)
+    return {
+        "agents": agents,
+        "edit_attempts": len(edits),
+        "denied_by_guard": bool(first),
+        "rule": rule if first else None,
+        "message_first_line": first or None,
+    }
+
+
+def split_plugins(listing: str) -> dict[str, Any]:
+    """Enabled state and version of the two plugins from ``claude plugin list --json``."""
+    try:
+        data = json.loads(listing)
+    except ValueError:
+        return {}
+    found: dict[str, Any] = {}
+    for item in data if isinstance(data, list) else []:
+        if isinstance(item, dict) and item.get("id") in SPLIT_PLUGINS:
+            found[item["id"]] = {
+                "version": item.get("version"),
+                "enabled": item.get("enabled") is True,
+            }
+    return found
+
+
+def run_plugin_split(options: argparse.Namespace) -> tuple[dict[str, Any], Path]:
+    """One isolated install of both plugins and one live turn; returns report and root."""
+    token = claude._subscription_token()
+    root = _make_root()
+    repo = _split_repo()
+    steps: dict[str, Any] = {}
+    plugins: dict[str, Any] = {}
+    shown: dict[str, Any] = {}
+    cost: Any = None
+    failure: str | None = None
+    adapter = claude.ClaudeStageAdapter(
+        claude_bin=options.claude_bin,
+        max_budget_usd=Decimal(SPLIT_BUDGET_USD),
+        model=options.model,
+        allow_single_agent=True,
+    )
+    try:
+        for name in ("config", "home", "tmp"):
+            (root / name).mkdir(mode=0o700)
+        # Plugin management needs no login: it never sees the token.
+        env = adapter._environment("", root)
+        env.pop(claude.SUBSCRIPTION_TOKEN_ENV)
+        steps_argv = (
+            ("marketplace_add", ["plugin", "marketplace", "add", str(claude.ROOT)]),
+            ("install_base", ["plugin", "install", SPLIT_PLUGINS[0]]),
+            ("install_guard", ["plugin", "install", SPLIT_PLUGINS[1]]),
+        )
+        for step, argv in steps_argv:
+            done = subprocess.run(
+                [options.claude_bin, *argv],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                timeout=PLUGIN_STEP_TIMEOUT,
+                check=False,
+            )
+            steps[step] = done.returncode
+            if done.returncode != 0:
+                raise StageSetupError(step)
+        listed = subprocess.run(
+            [options.claude_bin, "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            timeout=PLUGIN_STEP_TIMEOUT,
+            check=False,
+        )
+        steps["plugin_list"] = listed.returncode
+        plugins = split_plugins(listed.stdout)
+        _reset_split_repo(repo)
+        # No --setting-sources: the plugins are user-scope of the isolated config.
+        command = [
+            options.claude_bin,
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--max-budget-usd",
+            SPLIT_BUDGET_USD,
+            "--permission-mode",
+            "acceptEdits",
+            "--permission-prompts",
+            "none",
+            "--strict-mcp-config",
+            "--model",
+            options.model,
+        ]
+        if token in SPLIT_PROMPT or any(token in part for part in command):
+            raise StageSetupError("subscription token would be exposed")
+        print("claude-live-probe: running case plugin-split", file=sys.stderr)
+        completed = subprocess.run(
+            command,
+            input=SPLIT_PROMPT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=adapter._environment(token, root),
+            cwd=str(repo),
+            timeout=options.timeout,
+            check=False,
+        )
+        steps["claude_run"] = completed.returncode
+        if token in completed.stdout or token in completed.stderr:
+            raise StageEvidenceError("credential_in_stream")
+        shown = split_stream(completed.stdout)
+        for line in reversed(completed.stdout.splitlines()):
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("type") == "result":
+                cost = event.get("total_cost_usd")
+                break
+    except Exception as error:  # reduced to a code; the message is never reported
+        failure = _failure_code(error)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    try:
+        readme = (repo / "README.md").read_text(encoding="utf-8")
+        unchanged: bool | None = readme == "# claude-s4\n"
+    except OSError:
+        unchanged = None
+    agents = shown.get("agents")
+    checks = {
+        "plugins_enabled": _check(
+            PASS
+            if all(
+                plugins.get(name, {}).get("enabled")
+                and plugins[name].get("version") == "3.8.0"
+                for name in SPLIT_PLUGINS
+            )
+            else FAIL,
+            "both_enabled_at_3_8_0",
+        ),
+        "r1_denied": _check(
+            UNDETERMINED
+            if not shown
+            else PASS
+            if shown["denied_by_guard"] and unchanged
+            else FAIL,
+            "guard_denied_direct_edit",
+        ),
+        "write_roles_listed": _check(
+            UNDETERMINED
+            if agents is None
+            else PASS
+            if all(name in agents for name in SPLIT_AGENTS)
+            else FAIL,
+            "executor_and_applier_listed",
+        ),
+    }
+    if failure:
+        checks["run"] = _check(FAIL, failure)
+    worst = _worst(item["status"] for item in checks.values())
+    report = {
+        "schema": SPLIT_SCHEMA,
+        "case": "plugin-split",
+        "model_requested": options.model,
+        "status": worst,
+        "probe_exit_code": {PASS: 0, FAIL: 1, UNDETERMINED: 3}[worst],
+        "checks": checks,
+        "steps": steps,
+        "plugins": plugins,
+        "turn": {
+            "edit_attempts": shown.get("edit_attempts"),
+            "denied_by_guard": shown.get("denied_by_guard"),
+            "rule": shown.get("rule"),
+            "message_first_line": shown.get("message_first_line"),
+            "readme_unchanged": unchanged,
+            "agents_listed": None
+            if agents is None
+            else sorted(name for name in agents if name.startswith("shoal:")),
+        },
+        "cost_usd": cost if _valid_cost(cost) else None,
+        "probe_root_removed": not root.exists(),
+    }
+    return report, root
+
+
 def _strings(node: Any) -> list[str]:
     """Every string in the report, keys included, before any JSON escaping."""
     found: list[str] = []
@@ -1560,6 +1851,74 @@ def _emit(report: dict[str, Any], descriptor: int | None) -> None:
         handle.write(text)
 
 
+def _main_plugin_split(parser: argparse.ArgumentParser, options: argparse.Namespace) -> int:
+    """The plugin-split case: same fail-closed start and report file as the stages."""
+    if options.stages != "auth":
+        parser.error("--stages does not apply to --case plugin-split")
+    if not 10 <= options.timeout <= MAX_TIMEOUT:
+        parser.error(f"--timeout must be 10 to {MAX_TIMEOUT} seconds")
+    if not isinstance(options.model, str) or not claude._MODEL_RE.fullmatch(
+        options.model
+    ):
+        parser.error("--model must be a model alias or name")
+    try:
+        claude._subscription_token()
+    except StageSetupError:
+        print(
+            f"claude-live-probe: subscription token is not available in "
+            f"{claude.SUBSCRIPTION_TOKEN_ENV}; refusing to start",
+            file=sys.stderr,
+        )
+        return 2
+    if options.claude_bin is None:
+        options.claude_bin = shutil.which("claude")
+    if not options.claude_bin:
+        print("claude-live-probe: claude executable not found", file=sys.stderr)
+        return 2
+    descriptor: int | None = None
+    if options.report is not None:
+        try:
+            descriptor = _open_report(options.report)
+        except OSError:
+            print(
+                "claude-live-probe: report path exists or cannot be created; "
+                "refusing to start",
+                file=sys.stderr,
+            )
+            return 2
+    written = False
+    try:
+        report, root = run_plugin_split(options)
+        exit_code = report["probe_exit_code"]
+        forbidden = _forbidden(report, json.dumps(report), root)
+        if forbidden:
+            report = {
+                "schema": SPLIT_SCHEMA,
+                "status": FAIL,
+                "probe_exit_code": 2,
+                "error": "report_withheld",
+                "forbidden_content": forbidden,
+            }
+            exit_code = 2
+        try:
+            _emit(report, descriptor)
+            written = True
+        except OSError:
+            print("claude-live-probe: report could not be written", file=sys.stderr)
+            return 2
+        return exit_code
+    finally:
+        if descriptor is not None and not written:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            try:
+                os.unlink(options.report)
+            except OSError:
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     options = parser.parse_args(argv)
@@ -1571,6 +1930,8 @@ def main(argv: list[str] | None = None) -> int:
             raise BenchmarkContractError("--model must be a model alias or name")
     except BenchmarkContractError as error:
         parser.error(str(error))
+    if options.case == "plugin-split":
+        return _main_plugin_split(parser, options)
     # Fail closed before anything is created: no token, no probe.
     try:
         claude._subscription_token()
