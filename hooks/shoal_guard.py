@@ -916,19 +916,52 @@ def _sed_in_place_files(args: List[str]) -> List[str]:
     return files or [UNKNOWN_TARGET]
 
 
+def _perl_in_place_files(args: List[str]) -> List[str]:
+    """File operands of a `perl -i` call (`-pi`, `-0pi`, `-i.bak`, `--in-place`); [] when it does not edit in place."""
+    in_place, have_script = False, False
+    positional: List[str] = []
+    k = 0
+    while k < len(args):
+        a = args[k]
+        if a == "--":
+            positional.extend(args[k + 1:])
+            break
+        if a.startswith("--"):
+            in_place = in_place or a == "--in-place" or a.startswith("--in-place=")
+        elif a.startswith("-") and len(a) > 1:
+            for index, letter in enumerate(a[1:]):
+                if letter == "i":
+                    in_place = True
+                    break
+                if letter in "eE":
+                    have_script = True
+                    if index == len(a) - 2:
+                        k += 1  # the script is the next argument
+                    break
+                if letter in "IMmFxdDVC":  # the rest of the word (or the next argument) is its value
+                    break
+        elif a:
+            positional.append(a)
+        k += 1
+    if not in_place:
+        return []
+    files = positional if have_script else positional[1:]
+    return files or [UNKNOWN_TARGET]
+
+
 def shell_write_targets(command: str) -> List[str]:
     """File targets that `command` writes by a literal reading of its text (G5).
 
-    Counts `>`, `>>`, `>|`, `&>` redirects to a word, `tee [-a] file...` and `sed -i` /
-    `--in-place`, each at command position (after `;`, `|`, `&&`, newline, `(`, `then`, `do`, or
+    Counts `>`, `>>`, `>|`, `&>` redirects to a word, `tee [-a] file...`, `sed -i` /
+    `--in-place` and `perl -i` (`-pi`, `-0pi`, `-i.bak`), each at command position (after `;`, `|`, `&&`, newline, `(`, `then`, `do`, or
     wrappers such as `sudo`, `env`, `xargs`, `find -exec`).  Never counts: `>&2` / `2>&1`
     duplications, `<` input, here-document bodies, quoted text, `[[ ]]`, `(( ))`, `$(( ))`,
     comments and `>(...)`.  Targets are returned as written (quotes removed); a target holding
-    `$` or a backtick has no known value and is the caller's call.  Writes through an
-    interpreter or another command (python, node, cp, mv, patch, git apply, dd, ...) are not
-    detected.  The TypeScript port (guard/shell-writes.ts) must return the same list.
+    `$` or a backtick has no known value and is the caller's call.  Writes through any other
+    interpreter or command (python, node, `perl -e` code that opens a file, cp, mv, patch,
+    git apply, dd, ...) are not detected.  The TypeScript port (guard/shell-writes.ts) must return the same list.
     """
-    if ">" not in command and "tee" not in command and "sed" not in command:
+    if ">" not in command and "tee" not in command and "sed" not in command and "perl" not in command:
         return []
     targets: List[str] = []
     n = len(command)
@@ -944,6 +977,8 @@ def shell_write_targets(command: str) -> List[str]:
             targets.extend(_tee_files(args))
         elif name == "sed":
             targets.extend(_sed_in_place_files(args))
+        elif name == "perl":
+            targets.extend(_perl_in_place_files(args))
         name, args, cmd_pos, wrapped = None, [], True, False
 
     while i < n:

@@ -284,7 +284,10 @@ in the prompt (or `SHOAL_GUARD_DIRECT=1`). A declaration is no exit in
 `strict`. The earlier `declare` rule (exit: a `Bash` call that is exactly `:
 shoal-direct "<reason>"`; see the Claude guard section below), the
 reminder-only `SHOAL_GUARD_R1=classified` and `SHOAL_GUARD_R1=off` stay
-selectable. R2 still only reminds. The background-shell rule G4 does not exist
+selectable. R2 still only reminds. Shell-write detection is a literal
+reading of the command text (redirects, `tee`, `sed -i`, `perl -i`): writes
+through an interpreter such as `python -c` or `node -e`, or through `cp`, `mv`,
+`patch` and `dd`, are not caught. The background-shell rule G4 does not exist
 on Codex (its shell calls carry no `run_in_background`). The rule is built on
 a recorded payload of Codex CLI 0.160.1: the shell tool is `Bash` with
 `tool_input.command`, the same `turn_id` is on the prompt and tool events, and
@@ -540,9 +543,10 @@ defaults to `enforce` (it was `shadow`; `SHOAL_GUARD=shadow` or `off` still
 works) because a `{"decision":"deny"}` answer was observed to stop the main
 session's `write`, a subagent's `write` and `spawn_subagent`. The main session's
 edit rule is `strict` like Claude and Codex: `write`, `search_replace` and a
-`run_terminal_command` that writes a file literally (`>`, `>>`, `tee`, `sed -i`)
-are denied unless a write-level role has started this turn, the prompt carries
-`#direct`, `SHOAL_GUARD_DIRECT=1` is set, or the path is exempt. A write role
+`run_terminal_command` that writes a file literally (`>`, `>>`, `tee`,
+`sed -i`, `perl -i`) are denied unless a write-level role has started this
+turn, the prompt carries `#direct`, `SHOAL_GUARD_DIRECT=1` is set, or the
+path is exempt. A write role
 counts as started at its `subagent_start` event, not at the `spawn_subagent`
 call. A subagent's own events carry its own session id (equal to the
 `subagentId` of `subagent_start`, which is sent under the main session id), so

@@ -3,11 +3,11 @@
  * hooks/shoal_guard.py; both replay tests/fixtures/shell_write_cases.json).
  *
  * A literal reading of a shell command string, not a shell parser.  Counts `>`, `>>`, `>|`, `&>`
- * redirects to a word, `tee [-a] file...` and `sed -i` / `--in-place`, each at command position
+ * redirects to a word, `tee [-a] file...`, `sed -i` / `--in-place` and `perl -i` (`-pi`, `-0pi`, `-i.bak`), each at command position
  * (after `;`, `|`, `&&`, newline, `(`, `then`, `do`, or wrappers such as `sudo`, `env`, `xargs`,
  * `find -exec`).  Never counts: `>&2` / `2>&1` duplications, `<` input, here-document bodies,
- * quoted text, `[[ ]]`, `(( ))`, `$(( ))`, comments and `>(...)`.  Writes through an interpreter or
- * another command (python, node, cp, mv, patch, git apply, dd, ...) are not detected.
+ * quoted text, `[[ ]]`, `(( ))`, `$(( ))`, comments and `>(...)`.  Writes through any other interpreter or
+ * command (python, node, `perl -e` code that opens a file, cp, mv, patch, git apply, dd, ...) are not detected.
  */
 
 /** Target reported when a write is certain but its file is not (see the Python module). */
@@ -156,9 +156,48 @@ function fdPrefix(text: string, start: number): boolean {
   return i < text.length && (text[i] === "<" || text[i] === ">");
 }
 
+/** File operands of a `perl -i` call (`-pi`, `-0pi`, `-i.bak`, `--in-place`); [] when it does not edit in place. */
+function perlInPlaceFiles(args: string[]): string[] {
+  let inPlace = false;
+  let haveScript = false;
+  const positional: string[] = [];
+  let k = 0;
+  while (k < args.length) {
+    const a = args[k];
+    if (a === "--") {
+      positional.push(...args.slice(k + 1));
+      break;
+    }
+    if (a.startsWith("--")) {
+      inPlace = inPlace || a === "--in-place" || a.startsWith("--in-place=");
+    } else if (a.startsWith("-") && a.length > 1) {
+      const cluster = a.slice(1);
+      for (let index = 0; index < cluster.length; index += 1) {
+        const letter = cluster[index];
+        if (letter === "i") {
+          inPlace = true;
+          break;
+        }
+        if (letter === "e" || letter === "E") {
+          haveScript = true;
+          if (index === cluster.length - 1) k += 1; // the script is the next argument
+          break;
+        }
+        if ("IMmFxdDVC".includes(letter)) break; // the rest of the word (or the next argument) is its value
+      }
+    } else if (a !== "") {
+      positional.push(a);
+    }
+    k += 1;
+  }
+  if (!inPlace) return [];
+  const files = haveScript ? positional : positional.slice(1);
+  return files.length > 0 ? files : [UNKNOWN_TARGET];
+}
+
 /** File targets that `command` writes by a literal reading of its text (G5). */
 export function shellWriteTargets(command: string): string[] {
-  if (!command.includes(">") && !command.includes("tee") && !command.includes("sed")) return [];
+  if (!command.includes(">") && !command.includes("tee") && !command.includes("sed") && !command.includes("perl")) return [];
   const targets: string[] = [];
   const n = command.length;
   let i = 0;
@@ -171,6 +210,7 @@ export function shellWriteTargets(command: string): string[] {
   const flush = (): void => {
     if (name === "tee") targets.push(...teeFiles(args));
     else if (name === "sed") targets.push(...sedInPlaceFiles(args));
+    else if (name === "perl") targets.push(...perlInPlaceFiles(args));
     name = null;
     args = [];
     cmdPos = true;
