@@ -28,14 +28,24 @@ CURRENT_PROJECTION_ID = "shoal-autoroute-v1"
 # v5 (docs/specs/guard-every-gate E8) adds a `PostToolUse` group for the shell tool, so the completion check counts a
 # shell call that really ran, not one that was only attempted (rejected or never run); v1-v4 stay allowlisted so a
 # machine that installed the earlier (unreleased) v4 is upgraded in place by appending the new group.
-GUARD_PROJECTION_ID = "shoal-guard-v5"
-GUARD_PROJECTION_ID_V4 = "shoal-guard-v4"
-GUARD_PROJECTION_ID_V1 = "shoal-guard-v1"
-GUARD_PROJECTION_ID_V2 = "shoal-guard-v2"
-GUARD_PROJECTION_ID_V3 = "shoal-guard-v3"
-GUARD_PROJECTION_IDS = (
-    GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID_V4, GUARD_PROJECTION_ID
+# 3.8.0 (docs/specs/modular-install S3) renames the guard registration; the old ids (legacy, `shoal-guard-v*`) migrate to
+# `shoal-dispatch-guard-v1` (a separate project owns the old name).  The new id has the byte-identical groups of
+# the legacy v5, so an old registration is migrated in place: hooks.json is untouched and only the install state is
+# re-recorded under the new id.  The legacy ids stay allowlisted below only so that such an old state still validates.
+GUARD_PROJECTION_ID = "shoal-dispatch-guard-v1"
+LEGACY_GUARD_PROJECTION_ID_V1 = "shoal-guard-v1"  # legacy id, migrated to shoal-dispatch-guard-v1
+LEGACY_GUARD_PROJECTION_ID_V2 = "shoal-guard-v2"  # legacy id, migrated
+LEGACY_GUARD_PROJECTION_ID_V3 = "shoal-guard-v3"  # legacy id, migrated
+LEGACY_GUARD_PROJECTION_ID_V4 = "shoal-guard-v4"  # legacy id, migrated
+LEGACY_GUARD_PROJECTION_ID_V5 = "shoal-guard-v5"  # legacy id, migrated (same groups as the current id)
+LEGACY_GUARD_PROJECTION_IDS = (
+    LEGACY_GUARD_PROJECTION_ID_V1,
+    LEGACY_GUARD_PROJECTION_ID_V2,
+    LEGACY_GUARD_PROJECTION_ID_V3,
+    LEGACY_GUARD_PROJECTION_ID_V4,
+    LEGACY_GUARD_PROJECTION_ID_V5,
 )
+GUARD_PROJECTION_IDS = (*LEGACY_GUARD_PROJECTION_IDS, GUARD_PROJECTION_ID)
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
@@ -95,6 +105,14 @@ _GUARD_TOOL_GROUP: dict[str, Any] = {
     "hooks": [copy.deepcopy(_GUARD_HANDLER)],
 }
 
+_GUARD_CURRENT_PROJECTION: dict[str, dict[str, Any]] = {
+    "UserPromptSubmit": _GUARD_PROMPT_GROUP,
+    "Stop": _GUARD_PROMPT_GROUP,
+    "PreToolUse": _GUARD_TOOL_GROUP,
+    "SubagentStart": _GUARD_PROMPT_GROUP,
+    "PostToolUse": _GUARD_POST_GROUP,
+}
+
 # Registry entries are immutable trust anchors.  Future releases add a new
 # current entry and retain old entries here for migration/collision detection.
 TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
@@ -102,32 +120,27 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
         "UserPromptSubmit": _CURRENT_GROUP,
         "Stop": _CURRENT_GROUP,
     },
-    GUARD_PROJECTION_ID_V1: {
+    LEGACY_GUARD_PROJECTION_ID_V1: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP_V1,
     },
-    GUARD_PROJECTION_ID_V2: {
+    LEGACY_GUARD_PROJECTION_ID_V2: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
     },
-    GUARD_PROJECTION_ID_V3: {
-        "UserPromptSubmit": _GUARD_PROMPT_GROUP,
-        "Stop": _GUARD_PROMPT_GROUP,
-        "PreToolUse": _GUARD_TOOL_GROUP,
-    },
-    GUARD_PROJECTION_ID_V4: {
+    LEGACY_GUARD_PROJECTION_ID_V3: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "Stop": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
-        "SubagentStart": _GUARD_PROMPT_GROUP,
     },
-    GUARD_PROJECTION_ID: {
+    LEGACY_GUARD_PROJECTION_ID_V4: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "Stop": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
         "SubagentStart": _GUARD_PROMPT_GROUP,
-        "PostToolUse": _GUARD_POST_GROUP,
     },
+    LEGACY_GUARD_PROJECTION_ID_V5: _GUARD_CURRENT_PROJECTION,
+    GUARD_PROJECTION_ID: _GUARD_CURRENT_PROJECTION,
 }
 
 # ---- LEGACY_: pre-2.0.0 names, kept only so a migration can recognize and remove them ----
@@ -530,30 +543,52 @@ def _upgrade_autoroute(
         merged["hooks"][event][index] = copy.deepcopy(desired[event])
 
 
+def strip_projection(document: dict[str, Any], projection_id: str) -> None:
+    """Remove the exact groups of an owned projection in place; an event left without groups is removed.
+
+    Callers validate_owned_projection first, so each group is present exactly once at its own event.
+    Every other group, key and event is kept where it is.
+    """
+    for event, group in TRUSTED_PROJECTIONS[projection_id].items():
+        groups = document["hooks"].get(event, [])
+        index = next(i for i, candidate in enumerate(groups) if _type_strict_equal(candidate, group))
+        del groups[index]
+        if not groups:
+            del document["hooks"][event]
+
+
 def merge_registration(
     current_payload: bytes | None,
     source_payload: bytes,
     *,
     owned_projection_id: str | None,
     owned_guard_projection_id: str | None = None,
-) -> tuple[bytes, str, str]:
+    with_autoroute: bool = True,
+    with_guard: bool = True,
+) -> tuple[bytes, str | None, str | None]:
     """Merge or upgrade only the exact event-bound shoal matcher groups.
 
     Returns (payload, autoroute projection id, guard projection id).  The guard
     groups are always added next to the autoroute groups; an already-installed home
     that predates the guard has owned_guard_projection_id=None and gains them here.
+
+    with_autoroute / with_guard False (modular-install S3) remove the exact groups of that module when it is owned
+    (or, for the guard, when the canonical groups are present) and add nothing; the matching returned id is None.
     """
     validate_source_registration(source_payload)
-    desired_id = CURRENT_PROJECTION_ID
-    desired_guard = GUARD_PROJECTION_ID
-    guard_groups = TRUSTED_PROJECTIONS[desired_guard]
+    desired_id = CURRENT_PROJECTION_ID if with_autoroute else None
+    desired_guard = GUARD_PROJECTION_ID if with_guard else None
+    guard_groups = TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]
 
     if current_payload is None:
         if owned_projection_id is not None or owned_guard_projection_id is not None:
             raise HookRegistrationError("owned hooks.json is missing")
         document = strict_json_loads(source_payload, source="source hooks.json")
-        for event, group in guard_groups.items():
-            document["hooks"].setdefault(event, []).append(copy.deepcopy(group))
+        if not with_autoroute:
+            document["hooks"] = {}
+        if with_guard:
+            for event, group in guard_groups.items():
+                document["hooks"].setdefault(event, []).append(copy.deepcopy(group))
         return (
             json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8")
             + b"\n",
@@ -563,9 +598,12 @@ def merge_registration(
 
     document = load_registration(current_payload, source="existing hooks.json")
     merged = copy.deepcopy(document)
-    if owned_projection_id is None:
-        if owned_guard_projection_id is not None:
-            raise HookRegistrationError("guard is owned but the autoroute gate is not")
+    if not with_autoroute:
+        if owned_projection_id is not None:
+            validate_owned_projection(merged, owned_projection_id)
+            strip_projection(merged, owned_projection_id)
+    elif owned_projection_id is None:
+        # a guard owned without the gate is legitimate since 3.8.0 (the gate module can be switched off and on)
         if _contains_any_trusted_group(document):
             raise HookRegistrationError(
                 "unowned hooks.json contains a canonical shoal group"
@@ -575,36 +613,48 @@ def merge_registration(
     else:
         _upgrade_autoroute(merged, owned_projection_id, desired_id)
 
-    older_registered = next(
-        (
-            guard_id
-            for guard_id in (GUARD_PROJECTION_ID_V4, GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V1)
-            if owned_guard_projection_id is None and _guard_already_registered(merged, guard_id)
-        ),
-        None,
-    )
-    if owned_guard_projection_id is None and _guard_already_registered(merged):
-        pass  # adopted: placed by tools/install_hooks.py --host codex
-    elif older_registered is not None:
-        _upgrade_guard(merged, older_registered, desired_guard)  # placed by an earlier v4, 3.4.0 (v3), 3.2.1 (v2) or 3.2.0 and earlier (v1)
-    elif owned_guard_projection_id is None:
-        if any(
-            _locations(document, group)
-            for guard_id in GUARD_PROJECTION_IDS
-            for group in TRUSTED_PROJECTIONS[guard_id].values()
-        ):
-            raise HookRegistrationError(
-                "unowned hooks.json contains a canonical guard group"
-            )
-        for event, group in guard_groups.items():
-            merged["hooks"].setdefault(event, []).append(copy.deepcopy(group))
-    elif owned_guard_projection_id not in GUARD_PROJECTION_IDS:
-        raise HookRegistrationError("guard projection identifier is not allowlisted")
+    if not with_guard:
+        removing = owned_guard_projection_id or next(
+            (g for g in reversed(GUARD_PROJECTION_IDS) if _guard_already_registered(merged, g)), None
+        )
+        if removing is not None:
+            if removing not in GUARD_PROJECTION_IDS:
+                raise HookRegistrationError("guard projection identifier is not allowlisted")
+            validate_owned_projection(merged, removing)
+            strip_projection(merged, removing)
     else:
-        _upgrade_guard(merged, owned_guard_projection_id, desired_guard)
+        older_registered = next(
+            (
+                guard_id
+                for guard_id in (LEGACY_GUARD_PROJECTION_ID_V4, LEGACY_GUARD_PROJECTION_ID_V3, LEGACY_GUARD_PROJECTION_ID_V2, LEGACY_GUARD_PROJECTION_ID_V1)
+                if owned_guard_projection_id is None and _guard_already_registered(merged, guard_id)
+            ),
+            None,
+        )
+        if owned_guard_projection_id is None and _guard_already_registered(merged):
+            pass  # adopted: placed by tools/install_hooks.py --host codex
+        elif older_registered is not None:
+            _upgrade_guard(merged, older_registered, desired_guard)  # placed by an earlier v4, 3.4.0 (v3), 3.2.1 (v2) or 3.2.0 and earlier (v1)
+        elif owned_guard_projection_id is None:
+            if any(
+                _locations(document, group)
+                for guard_id in GUARD_PROJECTION_IDS
+                for group in TRUSTED_PROJECTIONS[guard_id].values()
+            ):
+                raise HookRegistrationError(
+                    "unowned hooks.json contains a canonical guard group"
+                )
+            for event, group in guard_groups.items():
+                merged["hooks"].setdefault(event, []).append(copy.deepcopy(group))
+        elif owned_guard_projection_id not in GUARD_PROJECTION_IDS:
+            raise HookRegistrationError("guard projection identifier is not allowlisted")
+        else:
+            _upgrade_guard(merged, owned_guard_projection_id, desired_guard)
 
-    validate_owned_projection(merged, desired_id)
-    validate_owned_projection(merged, desired_guard)
+    if desired_id is not None:
+        validate_owned_projection(merged, desired_id)
+    if desired_guard is not None:
+        validate_owned_projection(merged, desired_guard)
     if merged == document:
         return current_payload, desired_id, desired_guard
     return (

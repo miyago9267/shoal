@@ -541,6 +541,46 @@ class RestoreTests(InstallGrokCase):
                 )
 
 
+class NoGuardTests(InstallGrokCase):
+    """modular-install S3: --no-guard installs no guard, and removes only shoal's own guard entries."""
+
+    def commands(self) -> list[str]:
+        doc = json.loads((self.home / "hooks" / "shoal-grok.json").read_text(encoding="utf-8"))
+        return [h["command"] for groups in doc["hooks"].values() for g in groups for h in g["hooks"]]
+
+    def test_fresh_install_has_no_guard_script_or_handler_and_keeps_other_hooks(self) -> None:
+        code, out, err = self.run_cli("--apply", "--no-guard")
+        self.assertEqual(code, 0, err)
+        self.assertFalse((self.home / "hooks" / "shoal-grok" / "shoal_guard.py").exists())
+        commands = self.commands()
+        self.assertFalse([c for c in commands if c.endswith("/shoal_guard.py")])
+        self.assertIn("shoal-grok/plan_mode_guard.py", commands)
+        self.assertIn("shoal-grok/subagent_stop_gate.py", commands)
+        doc = json.loads((self.home / "hooks" / "shoal-grok.json").read_text(encoding="utf-8"))
+        self.assertNotIn("Stop", doc["hooks"])  # that event only carried the guard
+        before = self.installed()
+        self.assertEqual(self.run_cli("--apply", "--no-guard")[0], 0)
+        self.assertEqual(self.installed(), before)
+
+    def test_rerun_without_guard_removes_it_and_a_later_plain_run_restores_it(self) -> None:
+        self.assertEqual(self.run_cli("--apply")[0], 0)
+        foreign = self.home / "hooks" / "mine.py"
+        foreign.write_text("# mine\n", encoding="utf-8")
+        self.assertEqual(self.run_cli("--apply", "--no-guard")[0], 0)
+        self.assertFalse((self.home / "hooks" / "shoal-grok" / "shoal_guard.py").exists())
+        self.assertTrue(foreign.is_file())
+        self.assertFalse([c for c in self.commands() if c.endswith("/shoal_guard.py")])
+        self.assertEqual(self.run_cli("--apply")[0], 0)
+        self.assertEqual(self.installed().get("hooks/shoal-grok/shoal_guard.py"), self.installable()["hooks/shoal-grok/shoal_guard.py"])
+
+    def test_an_edited_guard_script_is_not_removed(self) -> None:
+        self.assertEqual(self.run_cli("--apply")[0], 0)
+        script = self.home / "hooks" / "shoal-grok" / "shoal_guard.py"
+        script.write_text("# user edit\n", encoding="utf-8")
+        self.assertEqual(self.run_cli("--apply", "--no-guard")[0], 0)
+        self.assertEqual(script.read_text(encoding="utf-8"), "# user edit\n")
+
+
 class UninstallTests(InstallGrokCase):
     def test_uninstall_removes_only_shoal_files(self) -> None:  # AC-GW-036
         config = self.write_config()

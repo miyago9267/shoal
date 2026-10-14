@@ -117,7 +117,7 @@ ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # it never blocks.  SHOAL_GUARD_STOP switches the check off on these hosts and has no effect elsewhere.  Grok has the payload (tests/fixtures/grok_guard_event_shapes.json)
 # but its block output is not yet exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
 STOP_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
-# Hosts whose registration carries PostToolUse for the shell tool (claude plugin / settings.json, codex shoal-guard-v5).
+# Hosts whose registration carries PostToolUse for the shell tool (claude plugin / settings.json, codex shoal-dispatch-guard-v1).
 # There `checked` is set by a shell call that really ran (docs/specs/guard-every-gate E8); PreToolUse only counts as the
 # fallback until the first PostToolUse of the session arrives (state `post_seen`), because the guard cannot read whether
 # the user has approved the new hook (Codex) or restarted onto the new registration (Claude).
@@ -593,8 +593,13 @@ def role_access(role: Any) -> Optional[str]:
     return ROLE_ACCESS.get(normalize_role(role))
 
 
-def resolve_mode(host: str, env: Dict[str, str]) -> str:
-    """Unset -> host default; an unrecognized value -> shadow (as the legacy guard did)."""
+def resolve_mode(host: str, env: Dict[str, str], home: Optional[Path] = None) -> str:
+    """Unset -> host default; an unrecognized value -> shadow (as the legacy guard did).
+
+    With `home`, the installed module manifest can switch the guard off for this host (modular-install S3,
+    `--without dispatch-guard`): that is the persistent switch for hosts where the guard ships inside a plugin."""
+    if home is not None and not dispatch_guard_selected(host, env, home):
+        return "off"
     raw = env.get("SHOAL_GUARD") or ""
     if not raw:
         mode = HOST_DEFAULT_MODE.get(host, "shadow")
@@ -1161,7 +1166,7 @@ class _Guard:
         self.env = dict(env, SHOAL_GUARD_DIRECT="1") if self.fast else env
         self.home = home
         self.host = str(event.get("host") or "")
-        self.mode = resolve_mode(self.host, env)
+        self.mode = resolve_mode(self.host, env, home)
         self.r1 = resolve_r1(self.host, env)
         self.fast_state = False  # the session's fast flag as persisted by this prompt event
         self._dir: Optional[Path] = None
@@ -2098,6 +2103,23 @@ def chain_manifest_path(env: Dict[str, str], home: Path) -> Path:
     return _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share") / "shoal" / "modules.json"
 
 
+def dispatch_guard_selected(host: str, env: Dict[str, str], home: Path) -> bool:
+    """False only when the module manifest has a record for `host` whose modules lack `dispatch-guard`.
+
+    No manifest, an unreadable one, or no record for this host: True (the guard stays on, as before the manifest)."""
+    fd = _open_readable(chain_manifest_path(env, home))
+    if fd is None:
+        return True
+    try:
+        with os.fdopen(fd, "rb") as handle:
+            doc = json.loads(handle.read(MAX_SETTINGS_BYTES + 1)[:MAX_SETTINGS_BYTES])
+    except (OSError, ValueError):
+        return True
+    entry = doc.get(host) if isinstance(doc, dict) else None
+    modules = entry.get("modules") if isinstance(entry, dict) else None
+    return not (isinstance(modules, list) and "dispatch-guard" not in modules)
+
+
 def chain_timeout_ms(env: Dict[str, str]) -> int:
     try:
         value = int(env.get("SHOAL_GUARD_CHAIN_TIMEOUT_MS", ""))
@@ -2571,7 +2593,7 @@ def deny_output(host: str, reason: str) -> str:
 
 
 def _skip_log(host: str, env: Dict[str, str], home: Path, reason: str) -> None:
-    if resolve_mode(host, env) == "off":
+    if resolve_mode(host, env, home) == "off":
         return
     _append_log(
         _guard_dir(env, home),
@@ -2579,7 +2601,7 @@ def _skip_log(host: str, env: Dict[str, str], home: Path, reason: str) -> None:
             "host": host,
             "decision": "skip",
             "skip_reason": reason,
-            "mode": resolve_mode(host, env),
+            "mode": resolve_mode(host, env, home),
         },
     )
 

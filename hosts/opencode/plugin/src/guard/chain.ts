@@ -136,7 +136,7 @@ export async function applyChain(
     if (result.mode === "off" || result.decision === "deny" || result.decision === "block") return result;
     const host = event.host;
     const dir = guardDir(env, home);
-    const mode = resolveMode(host, env);
+    const mode = resolveMode(host, env, home);
     const log = (decision: string, member: string, ms?: number) =>
       appendLog(dir, {
         host,

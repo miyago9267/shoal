@@ -126,10 +126,40 @@ class DryRunTests(Base):
         _, out, _ = self.run_cli("--host", "codex", "--with", "jev-router")
         self.assertIn("plugin add shoal-jev-router@shoal-codex", out)
 
-    def test_without_guard_is_recorded_only_with_note(self) -> None:
-        _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard")
-        self.assertIn("S3", out)
+    def test_without_modules_pass_real_skip_flags_to_the_wrapped_installers(self) -> None:
+        _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard,codex-autoroute")
         self.assertNotIn("dispatch-guard,", out.splitlines()[0])
+        cmd = next(line for line in out.splitlines() if "install/install.py" in line)
+        self.assertIn("--no-guard", cmd)
+        self.assertIn("--no-autoroute", cmd)
+        _, out, _ = self.run_cli("--host", "codex")
+        self.assertNotIn("--no-guard", out)
+        self.assertNotIn("--no-autoroute", out)
+        _, out, _ = self.run_cli("--host", "grok", "--without", "dispatch-guard")
+        self.assertIn("install_grok.py", out)
+        self.assertIn("--no-guard", out)
+        _, out, _ = self.run_cli("--host", "agy", "--without", "dispatch-guard")
+        self.assertIn("--uninstall --apply", out)
+        _, out, _ = self.run_cli("--host", "agy")
+        self.assertNotIn("--uninstall", out)
+        for host in ("claude", "opencode"):  # the guard ships inside the plugin: persistent switch, files stay
+            _, out, _ = self.run_cli("--host", host, "--without", "dispatch-guard")
+            self.assertIn("off 模式", out)
+            self.assertNotIn("--no-guard", out)
+
+    def test_claude_explore_removal_only_when_identical_to_dist(self) -> None:
+        agents = Path(self.env["CLAUDE_CONFIG_DIR"]) / "agents"
+        agents.mkdir(parents=True)
+        explore = agents / "Explore.md"
+        explore.write_bytes((ROOT / shoal_install.EXPLORE_DIST).read_bytes())
+        _, out, _ = self.run_cli("--host", "claude", "--without", "claude-explore")
+        self.assertIn("would remove: " + str(explore), out)
+        self.assertTrue(explore.exists())  # dry-run removes nothing
+        self.assertEqual(self.run_cli("--host", "claude", "--without", "claude-explore", "--apply")[0], 0)
+        self.assertFalse(explore.exists())
+        explore.write_text("my own Explore\n")
+        self.assertEqual(self.run_cli("--host", "claude", "--without", "claude-explore", "--apply")[0], 0)
+        self.assertEqual(explore.read_text(), "my own Explore\n")  # not shoal's bytes: kept
 
     def test_only_keeps_core_and_host(self) -> None:
         _, out, _ = self.run_cli("--host", "claude", "--only", "core,host-claude")
@@ -179,6 +209,70 @@ class ApplyTests(Base):
         self.assertEqual(
             shoal_install.manifest_path(self.env), self.home / ".local/share/shoal/modules.json"
         )
+
+
+class ChainTests(Base):
+    CMD = '["python3","/opt/member.py","--flag"]'
+
+    def chain(self) -> list:
+        return json.loads(self.manifest.read_text())["chain"]
+
+    def test_add_is_dry_run_by_default_and_never_executes_the_member(self) -> None:
+        code, out, _ = self.run_cli("--chain-add", "ext", "--chain-command", self.CMD, "--chain-hosts", "claude,codex")
+        self.assertEqual(code, 0)
+        self.assertIn("dry-run", out)
+        self.assertFalse(self.manifest.exists())
+        marker = self.tmp / "ran"
+        argv = json.dumps([sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"])
+        self.assertEqual(self.run_cli("--chain-add", "ext", "--chain-command", argv, "--chain-hosts", "claude", "--apply")[0], 0)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.calls, [])
+
+    def test_add_apply_replace_order_and_remove(self) -> None:
+        self.assertEqual(self.run_cli("--chain-add", "a", "--chain-command", self.CMD, "--chain-hosts", "claude,codex", "--apply")[0], 0)
+        self.assertEqual(self.chain(), [{"name": "a", "command": ["python3", "/opt/member.py", "--flag"], "hosts": ["claude", "codex"], "order": 0}])
+        self.assertEqual(self.run_cli("--chain-add", "b", "--chain-command", '["b"]', "--chain-hosts", "opencode", "--chain-order", "5", "--apply")[0], 0)
+        self.assertEqual(self.run_cli("--chain-add", "c", "--chain-command", '["c"]', "--chain-hosts", "agy", "--apply")[0], 0)
+        self.assertEqual([(m["name"], m["order"]) for m in self.chain()], [("a", 0), ("b", 5), ("c", 6)])
+        self.assertEqual(self.run_cli("--chain-add", "a", "--chain-command", '["a2"]', "--chain-hosts", "claude", "--apply")[0], 0)
+        self.assertEqual([m["command"] for m in self.chain() if m["name"] == "a"], [["a2"]])
+        self.assertEqual(len(self.chain()), 3)
+        self.assertEqual(self.run_cli("--chain-remove", "b", "--apply")[0], 0)
+        self.assertEqual([m["name"] for m in self.chain()], ["a", "c"])
+        self.assertEqual(self.run_cli("--chain-remove", "nope", "--apply")[0], 0)  # idempotent
+        self.assertEqual([m["name"] for m in self.chain()], ["a", "c"])
+
+    def test_chain_keeps_host_records_and_list_shows_it(self) -> None:
+        self.assertEqual(self.run_cli("--host", "grok", "--apply")[0], 0)
+        self.assertEqual(self.run_cli("--chain-add", "ext", "--chain-command", '["x"]', "--chain-hosts", "grok", "--chain-order", "2", "--apply")[0], 0)
+        self.assertIn("grok", json.loads(self.manifest.read_text()))
+        _, out, _ = self.run_cli("--list")
+        self.assertIn("guard chain:", out)
+        self.assertIn("[2] ext  hosts=grok", out)
+        _, out, _ = self.run_cli("--list", "--host", "grok")
+        self.assertIn("[2] ext", out)
+        self.manifest.unlink()
+        self.assertIn("(none)", self.run_cli("--list")[1])
+
+    def test_validation_rejects_bad_input_without_writing(self) -> None:
+        bad = (
+            ("--chain-command", "not json"),
+            ("--chain-command", '"python3 member.py"'),
+            ("--chain-command", "[]"),
+            ("--chain-command", '["a", 1]'),
+            ("--chain-command", '["a", ""]'),
+            ("--chain-command", '{"a": 1}'),
+        )
+        for flag, value in bad:
+            code, _, err = self.run_cli("--chain-add", "x", flag, value, "--chain-hosts", "claude", "--apply")
+            self.assertEqual(code, 2, value)
+            self.assertIn("error:", err)
+        self.assertEqual(self.run_cli("--chain-add", "x", "--chain-hosts", "claude", "--apply")[0], 2)  # no command
+        self.assertEqual(self.run_cli("--chain-add", "x", "--chain-command", '["a"]', "--apply")[0], 2)  # no hosts
+        self.assertEqual(self.run_cli("--chain-add", "x", "--chain-command", '["a"]', "--chain-hosts", "vim", "--apply")[0], 2)
+        self.assertEqual(self.run_cli("--chain-add", " ", "--chain-command", '["a"]', "--chain-hosts", "claude", "--apply")[0], 2)
+        self.assertEqual(self.run_cli("--chain-add", "x", "--chain-command", '["a"]', "--chain-hosts", "claude", "--host", "claude")[0], 2)
+        self.assertFalse(self.manifest.exists())
 
 
 class InferenceTests(Base):

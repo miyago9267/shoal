@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""shoal 模組安裝入口（modular-install S1）：薄前端，只包既有 installer，不重寫安裝邏輯。
+"""shoal 模組安裝入口（modular-install）：薄前端，只包既有 installer，不重寫安裝邏輯。
 
 用法：
   python3 tools/shoal_install.py --list [--host H]
   python3 tools/shoal_install.py --host H [--with M,..] [--without M,..] [--only M,..]   dry-run（預設）
   python3 tools/shoal_install.py --host H [...] --apply
+  python3 tools/shoal_install.py --chain-add NAME --chain-command '["argv","..."]' --chain-hosts h1,h2 [--chain-order N] [--apply]
+  python3 tools/shoal_install.py --chain-remove NAME [--apply]
 
-S1 現在生效：--host、--list、dry-run（印出將執行的既有 installer 指令）、--apply（執行並寫
-installed manifest）、--with jev-router（codex）。--without / --only 會驗證並記錄進 manifest，
-但既有 installer 還不能略過 dispatch-guard、codex-autoroute、claude-explore，這三個要到 S3
-才會真的略過；sync_global.py 已會依 manifest 過濾。
+--without 現在對這三個模組真的生效（再跑一次不帶它們，只移除 shoal 自己的 entry）：
+  dispatch-guard   codex：install.py --no-guard；agy：install_hooks --uninstall；grok：install_grok --no-guard；
+                   claude、opencode：guard 在 plugin 內，檔案照裝，manifest 沒有 dispatch-guard 時 guard 讀同一份
+                   manifest 並以 off 模式執行（持久開關）
+  codex-autoroute  codex：install.py --no-autoroute
+  claude-explore   claude：移除 ~/.claude/agents/Explore.md（只在內容與 repo 的 dist 逐位元組相同時）
+預設不變：dispatch-guard 新裝與既有都是開；jev-router 新裝關、既有維持現狀。
 
 installed manifest：${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json
-  {"<host>": {"modules": [...], "version": "<VERSION>"}, "chain": [...]}
-沒有 manifest 時由實際檔案推導（等於今天的行為）；第一次 --apply 才寫入。chain 由 S2 讀取，
-S1 只保留不改。stdlib only。
+  {"<host>": {"modules": [...], "version": "<VERSION>"}, "chain": [{"name","command","hosts","order"}]}
+沒有 manifest 時由實際檔案推導（等於今天的行為）；第一次 --apply 才寫入。chain 成員只登記，註冊時不執行。
+stdlib only。
 """
 
 from __future__ import annotations
@@ -31,8 +36,7 @@ from typing import Callable, Mapping, Optional
 REPO = Path(__file__).resolve().parents[1]
 REGISTRY_PATH = REPO / "install" / "modules.json"
 JEV_PLUGIN = "shoal-jev-router@shoal-codex"
-# 既有 installer 還不能略過的選配模組：--without 只記錄，S3 才生效
-RECORD_ONLY = ("dispatch-guard", "codex-autoroute", "claude-explore")
+EXPLORE_DIST = "hosts/claude/dist/agents/Explore.md"
 
 Runner = Callable[[list[str], Mapping[str, str]], int]
 
@@ -68,10 +72,14 @@ def manifest_modules(env: Mapping[str, str], host: str) -> Optional[list[str]]:
 
 
 def write_manifest(env: Mapping[str, str], host: str, modules: list[str]) -> Path:
-    path = manifest_path(env)
     data = load_manifest(env) or {}
     version = (REPO / "VERSION").read_text().strip() if (REPO / "VERSION").is_file() else ""
     data[host] = {"modules": modules, "version": version}
+    return _save_manifest(env, data)
+
+
+def _save_manifest(env: Mapping[str, str], data: dict) -> Path:
+    path = manifest_path(env)
     if not isinstance(data.get("chain"), list):
         data["chain"] = []
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -241,19 +249,96 @@ def wrapped_commands(host: str, mods: list[str], env: Mapping[str, str]) -> list
     home = host_home(host, env)
     if host == "codex":
         cmds = [[py, str(REPO / "install/install.py"), "--codex-home", str(home)]]
+        if "dispatch-guard" not in mods:
+            cmds[0].append("--no-guard")
+        if "codex-autoroute" not in mods:
+            cmds[0].append("--no-autoroute")
         if "jev-router" in mods:
             cmds.append(["codex", "plugin", "add", JEV_PLUGIN])
         return cmds
     if host == "agy":
-        return [[py, str(REPO / "tools/install_hooks.py"), "--host", "agy", "--home", str(home), "--apply"]]
+        cmd = [py, str(REPO / "tools/install_hooks.py"), "--host", "agy", "--home", str(home)]
+        return [[*cmd, "--apply"] if "dispatch-guard" in mods else [*cmd, "--uninstall", "--apply"]]
     if host == "grok":
-        return [[py, str(REPO / "tools/install_grok.py"), "--grok-home", str(home), "--apply"]]
+        cmd = [py, str(REPO / "tools/install_grok.py"), "--grok-home", str(home), "--apply"]
+        return [cmd if "dispatch-guard" in mods else [*cmd, "--no-guard"]]
     if host == "opencode":
         cmd = ["sh", str(REPO / "hosts/opencode/plugin/install/install.sh"), "--global"]
         if env.get("OPENCODE_CONFIG_DIR"):
             cmd += ["--config-dir", str(home)]
         return [[*cmd, "--enable"]]
     return []
+
+
+def explore_removal(host: str, mods: list[str], env: Mapping[str, str]) -> list[Path]:
+    """claude-explore 關閉時要移除的檔案：只有 ~/.claude/agents/Explore.md 與 repo dist 逐位元組相同才算 shoal 的。"""
+    if host != "claude" or "claude-explore" in mods:
+        return []
+    target = host_home("claude", env) / "agents" / "Explore.md"
+    try:
+        same = target.is_file() and target.read_bytes() == (REPO / EXPLORE_DIST).read_bytes()
+    except OSError:
+        same = False
+    return [target] if same else []
+
+
+# ---- chain（只登記到 manifest；註冊時不執行成員）----
+def chain_members(env: Mapping[str, str]) -> list[dict]:
+    chain = (load_manifest(env) or {}).get("chain")
+    return sorted((m for m in chain if isinstance(m, dict)), key=lambda m: m.get("order", 0)) if isinstance(chain, list) else []
+
+
+def _num(text: str) -> float | int:
+    value = float(text)
+    return int(value) if value == int(value) else value
+
+
+def parse_chain_member(args: argparse.Namespace, reg: dict, env: Mapping[str, str]) -> dict:
+    name = (args.chain_add or "").strip()
+    if not name:
+        raise InstallError("--chain-add 需要非空的名稱")
+    if args.chain_command is None:
+        raise InstallError("--chain-add 需要 --chain-command（JSON 陣列）")
+    try:
+        command = json.loads(args.chain_command)
+    except ValueError as exc:
+        raise InstallError(f"--chain-command 不是合法 JSON：{exc}") from exc
+    if not (isinstance(command, list) and command and all(isinstance(a, str) and a for a in command)):
+        raise InstallError("--chain-command 必須是非空字串組成的 JSON 陣列（argv，不經 shell）")
+    hosts = _csv([args.chain_hosts or ""])
+    if not hosts:
+        raise InstallError("--chain-add 需要 --chain-hosts（逗號分隔）")
+    unknown = [h for h in hosts if h not in reg["hosts"]]
+    if unknown:
+        raise InstallError(f"未知 host：{', '.join(unknown)}")
+    order = args.chain_order
+    if order is None:  # 重新登記同名成員沿用原本的 order；新成員排在現有最後
+        current = {m.get("name"): m.get("order", 0) for m in chain_members(env)}
+        order = current[name] if name in current else (max(current.values()) + 1 if current else 0)
+    return {"name": name, "command": command, "hosts": hosts, "order": order}
+
+
+def do_chain(args: argparse.Namespace, reg: dict, env: Mapping[str, str]) -> int:
+    data = load_manifest(env) or {}
+    chain = [m for m in data.get("chain", []) if isinstance(m, dict)] if isinstance(data.get("chain"), list) else []
+    if args.chain_add is not None:
+        member = parse_chain_member(args, reg, env)
+        if any(m.get("name") == member["name"] for m in chain):
+            chain = [member if m.get("name") == member["name"] else m for m in chain]
+        else:
+            chain.append(member)
+        print(f"chain add: {member['name']}  hosts={','.join(member['hosts'])}  order={member['order']}  command={json.dumps(member['command'], ensure_ascii=False)}")
+    else:
+        if args.chain_remove not in [m.get("name") for m in chain]:
+            print(f"chain: {args.chain_remove} 不在 chain 內，沒有變更")
+            return 0
+        chain = [m for m in chain if m.get("name") != args.chain_remove]
+        print(f"chain remove: {args.chain_remove}")
+    if not args.apply:
+        print(f"dry-run：未寫入任何檔案；--apply 會寫 {manifest_path(env)}（成員只登記，不會被執行）")
+        return 0
+    print(f"manifest: {_save_manifest(env, {**data, 'chain': chain})}")
+    return 0
 
 
 CLAUDE_STEPS = (
@@ -286,6 +371,10 @@ def do_list(host: Optional[str], reg: dict, env: Mapping[str, str], repo: Path =
         if name == "external":
             st = "see chain" if state is not None else ""
         print(f"{name:<16}{m['kind']:<10}{('on' if m['default_new'] else 'off'):<9}{deps:<18}{','.join(m['hosts']):<34}{st}")
+    chain = chain_members(env)
+    print("guard chain: " + ("(none)" if not chain else ""))
+    for member in chain:
+        print(f"  [{member['order']}] {member['name']}  hosts={','.join(member['hosts'])}  command={json.dumps(member['command'], ensure_ascii=False)}")
     return 0
 
 
@@ -293,10 +382,8 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
     host = args.host
     mods, source = resolve(host, reg, env, _csv(args.with_), _csv(args.without), _csv(args.only))
     print(f"host: {host}  modules: {', '.join(mods)}  (base: {source})")
-    recorded = [m for m in RECORD_ONLY if m not in mods and m in reg["modules"] and host in reg["modules"][m]["hosts"]]
-    if recorded:
-        print(f"note: {', '.join(recorded)} 只記錄在 manifest；既有 installer 要到 S3 才能略過，S1 仍會照今天的內容安裝")
     cmds = wrapped_commands(host, mods, env)
+    removals = explore_removal(host, mods, env)
     for cmd in cmds:
         print("would run:" if not args.apply else "run:", " ".join(cmd))
     if host == "claude":
@@ -304,6 +391,13 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
             print(("would print: " if not args.apply else "run manually: ") + step)
         if "claude-explore" in mods:
             print("note: Explore.md 由 dotfile updater 裝進 ~/.claude/agents/")
+    if host in ("claude", "opencode") and "dispatch-guard" not in mods:
+        print(
+            "note: dispatch-guard 關閉：guard 隨 plugin 的檔案仍會安裝，manifest 沒有 dispatch-guard 時它讀同一份 manifest，"
+            "以 off 模式執行（同時不呼叫 chain 成員）；加回 --with dispatch-guard 即恢復"
+        )
+    for path in removals:
+        print(("would remove: " if not args.apply else "remove: ") + str(path))
     path = manifest_path(env)
     if not args.apply:
         print(f"dry-run：未寫入任何檔案；--apply 會寫 {path}")
@@ -313,6 +407,8 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
         if code != 0:
             print(f"failed: {' '.join(cmd)} exit {code}；manifest 未更新", file=sys.stderr)
             return 1
+    for path in removals:
+        path.unlink(missing_ok=True)
     print(f"manifest: {write_manifest(env, host, mods)}")
     return 0
 
@@ -323,8 +419,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", choices=reg["hosts"])
     p.add_argument("--list", action="store_true", help="列出模組、依賴與狀態（可加 --host）")
     p.add_argument("--with", dest="with_", action="append", default=[], metavar="MODULES", help="加選模組（逗號分隔）")
-    p.add_argument("--without", action="append", default=[], metavar="MODULES", help="不選模組（S1 只記錄，見說明）")
+    p.add_argument("--without", action="append", default=[], metavar="MODULES", help="不選模組（dispatch-guard、codex-autoroute、claude-explore 會真的略過／移除，見說明）")
     p.add_argument("--only", action="append", default=[], metavar="MODULES", help="只裝這些（core 與 host 模組一律包含）")
+    p.add_argument("--chain-add", metavar="NAME", help="登記 guard chain 成員（需要 --chain-command 與 --chain-hosts）")
+    p.add_argument("--chain-command", metavar="JSON", help='成員的 argv，JSON 字串陣列，例如 \'["python3","/path/member.py"]\'')
+    p.add_argument("--chain-hosts", metavar="HOSTS", help="成員適用的 host（逗號分隔）")
+    p.add_argument("--chain-order", type=_num, metavar="N", help="執行順序（升冪）；預設：同名成員沿用原值，新成員為現有最大值加 1")
+    p.add_argument("--chain-remove", metavar="NAME", help="從 chain 移除成員")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="預設；印出指令不寫入")
     mode.add_argument("--apply", action="store_true", help="執行既有 installer 並寫 manifest")
@@ -338,6 +439,14 @@ def main(argv: Optional[list[str]] = None, env: Optional[Mapping[str, str]] = No
     reg = load_registry()
     if args.list:
         return do_list(args.host, reg, env)
+    if args.chain_add is not None or args.chain_remove is not None:
+        if args.chain_add is not None and args.chain_remove is not None or args.host:
+            parser.error("--chain-add、--chain-remove 不能互相搭配，也不能和 --host 一起用")
+        try:
+            return do_chain(args, reg, env)
+        except InstallError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     if not args.host:
         parser.error("需要 --host 或 --list")
     try:

@@ -266,13 +266,16 @@ Since host 1.8.3 the installer also registers the dispatch guard
 (`hooks/shoal_guard.py --host codex`,
 [`docs/specs/dispatch-enforcement`](./docs/specs/dispatch-enforcement/SPEC.md))
 next to the autoroute gate. It is a separate script with its own projection ID
-(`shoal-guard-v5`) and its own state entry (`guard_registration`), so the gate
+(`shoal-dispatch-guard-v1`, called `shoal-guard-v5` before 3.8.0) and its own
+state entry (`guard_registration`), so the gate
 is unchanged. It adds a `UserPromptSubmit` group that records the turn and
 reads `#direct`, a `PreToolUse` group with matcher
 `^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$`, and, since 3.4.0,
-a `Stop` group for the completion check (below), since `shoal-guard-v4` a
+a `Stop` group for the completion check (below), since the legacy
+`shoal-guard-v4` a
 `SubagentStart` group without a matcher that tells the guard a dispatched role
-has really started (below), and since `shoal-guard-v5` a `PostToolUse` group
+has really started (below), and since the legacy `shoal-guard-v5` a
+`PostToolUse` group
 with matcher `^Bash$` that lets the completion check count a shell call that
 really ran (below). The guard is in
 enforce mode by default (`SHOAL_GUARD=shadow` logs `would_deny` and `advise`
@@ -349,7 +352,8 @@ guard allowed, or a dispatched write-level role (`executor`, `applier`,
 `security-executor`, `sol-executor`; on Codex the dispatch call counts). A check
 is a dispatched `verifier` or `watcher`, or a foreground `Bash` call that is
 neither a file write nor a `: shoal-direct` declaration, made after the latest
-change; a later change clears it. On Claude and Codex (3.6.0 and `shoal-guard-v5`)
+change; a later change clears it. On Claude and Codex (3.6.0 and the guard
+projection that was `shoal-guard-v5`)
 that shell call counts at its `PostToolUse`, i.e. when it actually ran: a call the
 user rejects or that never runs fires no `PostToolUse` and does not count; on
 Claude a call that fails (a test run exiting non-zero) fires `PostToolUseFailure`,
@@ -385,8 +389,9 @@ changed.
 When `install/install.py` cannot be reconciled with the Codex home (for
 example a locally modified `shoal_autoroute_gate.py` that the installer
 would replace), `tools/install_hooks.py --host codex` manages only the guard.
-It writes the same `shoal-guard-v5` groups (including `commandWindows`; a
-`shoal-guard-v1` to `v4` group is replaced in place) into
+It writes the same `shoal-dispatch-guard-v1` groups (including `commandWindows`;
+a
+legacy `shoal-guard-v1` to `v4` group is replaced in place) into
 `<codex-home>/hooks.json` and the committed-`HEAD` script to
 `<codex-home>/hooks/shoal_guard.py` (0600). The codex home is `--home`, then
 `CODEX_HOME`, then `~/.codex`. Dry-run is the default:
@@ -617,7 +622,8 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   `settings.json` 若是 symlink（dotfile 管理）
   就寫進它指向的檔案，權限不變。Claude 預設 enforce。
 - `--host agy` 改 `~/.gemini/config/hooks.json`（`--home` 指 `~/.gemini`）：新增具名
-  群組 `shoal-guard`，含 `SessionStart`、`PreInvocation`、`PreToolUse`（matcher `*`）與 `Stop`；
+  群組 `shoal-dispatch-guard`（3.8.0 之前叫 `shoal-guard`，重跑 `--apply` 會原地改名），含
+  `SessionStart`、`PreInvocation`、`PreToolUse`（matcher `*`）與 `Stop`；
   每個 command 結尾帶 `--event <名稱>`，因為 agy 的 payload 不含事件名稱（舊安裝重跑 `--apply`
   會原地補上；沒有 `--event` 的舊註冊照舊用 payload 形狀推斷）。agy 預設 enforce
   （`tests/fixtures/agy_guard_event_shapes.json`，agy 1.3.4，2026-10-13：deny 對
@@ -684,7 +690,7 @@ shadow 記 `would_deny`（規則 id `E1`）。verify 等級的 role 的編輯仍
 | `on`（所有 host 的預設） | 啟用 E1 |
 | `off` | 沒有 E1，行為與以前完全相同 |
 
-未設定時所有 host 都是 `on`（Codex 從 `shoal-guard-v4` 起）；
+未設定時所有 host 都是 `on`（Codex 從 legacy 的 `shoal-guard-v4` 起）；
 明確設 `on` 或 `off` 在任何 host 都優先。Codex 的內建 `worker`、`default`、
 `explorer` 與其他不是 shoal 可寫 role 的 agent type 都適用同一條規則。
 
@@ -1071,13 +1077,53 @@ python3 tools/shoal_install.py --host claude --only core,host-claude
 安裝結果記在 `${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`，`--apply` 才寫入。
 沒有 manifest 的既有機器由實際檔案推導，行為和今天一樣；`sync_global.py` 在 manifest
 有該 host 的紀錄時只同步選到的模組（codex 與 agy 沒選 `dispatch-guard` 就不跑 guard
-hooks，沒選 `jev-router` 就不補裝），沒有紀錄時完全照舊。Claude 沒有可由這裡執行的
+hooks，grok 帶 `--no-guard`，沒選 `jev-router` 就不補裝），沒有紀錄時完全照舊。Claude 沒有可由這裡執行的
 installer，`--apply` 只印出 `claude plugin` 指令並記錄模組。
 
-目前（S1）生效的旗標：`--host`、`--list`、dry-run、`--apply`、`--with jev-router`（Codex）。
-`--without` 與 `--only` 會驗證並記錄進 manifest，但既有 installer 還不能略過
-`dispatch-guard`、`codex-autoroute`、`claude-explore`，所以這三個仍照今天的內容安裝，
-dry-run 會明說；真正略過在 S3 才實作。
+預設不變：`dispatch-guard` 新裝與既有機器都是開，`jev-router` 新裝關、既有維持現狀。
+
+### 哪些旗標真的生效（3.8.0 起）
+
+`--without`、`--only` 對下面三個模組會真的略過，再跑一次不帶它們就只移除 shoal 自己的 entry，
+不碰別人的 hook：
+
+| 模組 | 關掉時 | 重跑時移除 |
+| --- | --- | --- |
+| `dispatch-guard` | Codex：`install.py --no-guard`；agy：`install_hooks --uninstall`；Grok：`install_grok.py --no-guard` | Codex：shoal 的 guard 群組與（有 state 證明是 shoal 裝的）`hooks/shoal_guard.py`，state 不再記 `guard_registration`；agy：`shoal-dispatch-guard` 群組裡的 shoal handler；Grok：`shoal_guard.py` 與 `shoal-grok.json` 裡指向它的 handler（`plan_mode_guard.py`、`subagent_stop_gate.py` 不動；內容被改過的腳本保留） |
+| `codex-autoroute` | Codex：`install.py --no-autoroute` | autoroute 的 `UserPromptSubmit`／`Stop` 群組與（state 證明的）`shoal_autoroute_gate.py`，state 不再記 `hook_registration`；guard 不受影響 |
+| `claude-explore` | Claude：不裝 Explore | `~/.claude/agents/Explore.md`，只在內容與 repo dist 逐位元組相同時才刪 |
+
+Claude 與 OpenCode 的 guard 在 plugin 裡，沒有可拆的 hook 註冊。`--without dispatch-guard`
+在這兩個 host
+是持久開關：plugin 的檔案**照樣裝著**，manifest 的 host 紀錄沒有 `dispatch-guard` 時，guard 讀同一份 manifest，
+以 `off` 模式執行（同時不呼叫 chain 成員）；`--with dispatch-guard` 再 `--apply` 即恢復。環境變數
+`SHOAL_GUARD` 不能蓋過這個開關。`--with jev-router` 維持原樣；關掉 `jev-router` 不會替你解除安裝 plugin。
+
+注意：dotfile 的 updater 若會自己把 `Explore.md` 裝回 `~/.claude/agents/`，要改成先讀 manifest。
+
+### 登記 guard chain 成員
+
+外部 guard 只經 chain 接入（見[前一節](#guard-chain外部-guard-以設定掛上)），用安裝入口登記，**登記時不會執行成員**：
+
+```bash
+python3 tools/shoal_install.py --chain-add my-guard \
+  --chain-command '["/usr/local/bin/my-guard","check"]' --chain-hosts claude,codex [--chain-order 10] [--apply]
+python3 tools/shoal_install.py --chain-remove my-guard [--apply]
+python3 tools/shoal_install.py --list          # 底部列出 chain
+```
+
+`--chain-command` 必須是非空字串組成的 JSON 陣列（argv，不經 shell），`--chain-hosts` 必須是已知 host；
+和其他動作一樣預設 dry-run，加 `--apply` 才寫 manifest。同名再登記會就地取代並沿用原本的 order；
+不給 `--chain-order` 時新成員排在現有最後。
+
+### 改名：`shoal-guard` 變成 `shoal-dispatch-guard`（3.8.0）
+
+另一個獨立專案叫 `shoal-guard`，只經 chain 接入。為了不混淆，shoal 內建 guard 的 hook 註冊名稱全部改為
+`shoal-dispatch-guard`：Codex projection `shoal-guard-v1`～`v5` 變成 `shoal-dispatch-guard-v1`（群組內容
+與舊 v5 逐位元組相同）；agy 的 hooks 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。腳本檔名
+`shoal_guard.py` 不變。舊安裝重跑 installer（或 `sync_global.py`）會原地遷移，重複執行結果不變。
+Codex 因為 hooks.json 的內容沒變，通常不需要重新核准；若 Codex 提示 hook 需要核准，請在互動 session 用
+`/hooks` 核准一次。
 
 ## 每日同步
 
@@ -1247,7 +1293,9 @@ subagent 改檔（五個 host 預設 `on`；Claude、Codex、Grok、OpenCode 上
 [本檔](#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
 `shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組），之後升到
 `shoal-guard-v4`（加 `SubagentStart` 群組），3.6.0 升到 `shoal-guard-v5`（加
-`PostToolUse` 群組，完成檢查改以指令真的執行為準；每次新增群組都要在 Codex 用 `/hooks` 再核准一次）。Claude 從
+`PostToolUse` 群組，完成檢查改以指令真的執行為準；每次新增群組都要在 Codex 用 `/hooks` 再核准一次）。3.8.0 起
+這組註冊改叫 `shoal-dispatch-guard-v1`，群組內容與 `shoal-guard-v5` 逐位元組相同，舊 id 重跑 installer
+會原地換成新 id。Claude 從
 3.3.1 起、Codex 從 `shoal-guard-v4` 起，Grok、agy、OpenCode 從 3.6.0 起，在 role
 真的啟動（`SubagentStart`／`subagent_start`／agy 的新 conversation
 `SessionStart`／OpenCode 的 `session.created`）後才放行派工，guard 腳本與 hook 註冊必須一起更新；沒有
@@ -1266,12 +1314,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.7.0 |
-| codex host | 3.7.0（`hosts/codex/VERSION`） |
-| claude host | 3.7.0（`hosts/claude/VERSION`） |
-| agy host | 3.7.0（`hosts/agy/VERSION`） |
-| grok host | 3.7.0（`hosts/grok/VERSION`） |
-| opencode host | 3.7.0（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.8.0 |
+| codex host | 3.8.0（`hosts/codex/VERSION`） |
+| claude host | 3.8.0（`hosts/claude/VERSION`） |
+| agy host | 3.8.0（`hosts/agy/VERSION`） |
+| grok host | 3.8.0（`hosts/grok/VERSION`） |
+| opencode host | 3.8.0（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

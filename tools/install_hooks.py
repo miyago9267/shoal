@@ -5,21 +5,21 @@
   python3 tools/install_hooks.py --host claude [--home DIR]               dry-run（預設），不寫入
   python3 tools/install_hooks.py --host agy --apply                       備份後安裝
   python3 tools/install_hooks.py --host claude --uninstall --apply        只移除 shoal 的 entry
-  python3 tools/install_hooks.py --host codex --apply                     只管 shoal-guard 的 entry
+  python3 tools/install_hooks.py --host codex --apply                     只管 shoal dispatch guard 的 entry
 
 來源是 repo committed HEAD 的 hooks/shoal_guard.py（git show，不是工作樹；HEAD 沒有就中止）。
 腳本裝到 ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py（0755），entry 寫進：
   claude  <home>/settings.json（--home，其次 CLAUDE_CONFIG_DIR，預設 ~/.claude）：
           UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse，
           SubagentStart（3.3.1 起）、Stop（3.4.0 起，完成檢查），以及 matcher 為 Bash 的 PostToolUse（3.6.0 起，確認指令真的執行）；舊設定重跑 --apply 會原地補上，其他 entry 不動
-  agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
+  agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-dispatch-guard"（3.8.0 之前的 legacy 舊名 "shoal-guard"，重跑 --apply 會 migrate 原地改名），
           PreToolUse（matcher "*"）、SessionStart、PreInvocation 與 Stop；每個 command 結尾帶
           --event <名稱>（agy 的 payload 不含事件名稱），舊設定重跑 --apply 會原地補上
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
-          shoal-guard-v5 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
+          shoal-dispatch-guard-v1 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
           ^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$ 的 PreToolUse，含 commandWindows；
           另有沒有 matcher 的 SubagentStart（確認 role 真的啟動，v4 起）與 matcher ^Bash$ 的 PostToolUse（v5 起）；
-          舊的 shoal-guard-v1（matcher 沒有 Bash）、v2（沒有 Stop）、v3（沒有 SubagentStart）與 v4（沒有 PostToolUse）重跑會原地換成 v5，
+          legacy 舊 id shoal-guard-v1（matcher 沒有 Bash）、v2（沒有 Stop）、v3（沒有 SubagentStart）、v4（沒有 PostToolUse）重跑會原地換成現行 projection（v5 與現行逐位元組相同，hooks.json 不變），
           需要在 Codex 用 /hooks 再核准一次），
           腳本裝到 <home>/hooks/shoal_guard.py（0600）。這是不能跑 install.py 時的窄路徑：
           不碰 shoal_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
@@ -67,7 +67,8 @@ from hook_registration import (  # noqa: E402
 from legacy_codex import legacy_state_path  # noqa: E402
 GUARD_SOURCE = "hooks/shoal_guard.py"
 CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
-AGY_GROUP = "shoal-guard"
+AGY_GROUP = "shoal-dispatch-guard"
+LEGACY_AGY_GROUP = "shoal-guard"  # old group name before 3.8.0; migrated in place to AGY_GROUP
 TIMEOUT = 10
 # 標記是 "shoal_guard.py --host"；路徑被引號包住時 "shoal_guard.py'" 後面才接空白與 --host。
 OWNED = re.compile(r"shoal_guard\.py[\"']?\s+--host\b")
@@ -252,7 +253,7 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
 
 
 def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
-    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v5 群組（舊的 v1 到 v4 shoal handler 被原地取代）（command 為 None 時移除）。
+    """Codex hooks.json：放回 install/hook_registration.py 的現行 guard 群組（舊 id v1 到 v4 的 shoal handler 被原地取代）（command 為 None 時移除）。
 
     command 只當安裝／移除的開關；寫入的是 canonical 群組本身，install.py 才認得它。
     """
@@ -281,8 +282,29 @@ def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str,
 AGY_FLAT_EVENTS = ("SessionStart", "PreInvocation", "Stop")
 
 
+def _migrate_legacy_agy_group(config: dict[str, Any]) -> dict[str, Any]:
+    """legacy 舊群組名 "shoal-guard"（3.8.0 之前），migrate：沒有新群組就原地改名（key 位置不變），兩個都在就把舊群組的 shoal handler 併入新群組。"""
+    if LEGACY_AGY_GROUP not in config:
+        return config
+    old = config[LEGACY_AGY_GROUP]
+    if not isinstance(old, dict):
+        raise InstallError(f'hooks.json 的 "{LEGACY_AGY_GROUP}" 不是物件，不處理')
+    if AGY_GROUP not in config:
+        return {(AGY_GROUP if key == LEGACY_AGY_GROUP else key): value for key, value in config.items()}
+    out = {key: value for key, value in config.items() if key != LEGACY_AGY_GROUP}
+    merged = out[AGY_GROUP]
+    if not isinstance(merged, dict):
+        raise InstallError(f'hooks.json 的 "{AGY_GROUP}" 不是物件，不處理')
+    for event, value in old.items():
+        if isinstance(value, list):
+            merged[event] = [*merged.get(event, []), *value] if isinstance(merged.get(event, []), list) else value
+        else:
+            merged.setdefault(event, value)
+    return out
+
+
 def apply_agy(config: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
-    out = copy.deepcopy(config)
+    out = _migrate_legacy_agy_group(copy.deepcopy(config))
     group = out.get(AGY_GROUP)
     if group is None:
         group = {}
@@ -379,12 +401,13 @@ def owned_entries(host: str, data: dict[str, Any]) -> int:
             for group in groups if isinstance(groups, list) else []:
                 count += sum(is_owned(h) for h in _group_handlers(group))
     else:
-        group = data.get(AGY_GROUP) or {}
-        for event, value in group.items():
-            for item in value if isinstance(value, list) else []:
-                count += is_owned(item) + sum(
-                    is_owned(h) for h in _group_handlers(item)
-                )
+        for name in (AGY_GROUP, LEGACY_AGY_GROUP):
+            group = data.get(name) or {}
+            for event, value in group.items():
+                for item in value if isinstance(value, list) else []:
+                    count += is_owned(item) + sum(
+                        is_owned(h) for h in _group_handlers(item)
+                    )
     return count
 
 

@@ -498,9 +498,9 @@ class AgyTests(Case):
         code, _, err = self.cli("agy", "--apply")
         self.assertEqual(code, 0, err)
         data = self.load(path)
-        self.assertEqual(list(data), ["orca-status", "herdr", "shoal-guard"])
+        self.assertEqual(list(data), ["orca-status", "herdr", "shoal-dispatch-guard"])
         self.assertEqual({k: data[k] for k in self.FOREIGN}, self.FOREIGN)
-        group = data["shoal-guard"]
+        group = data["shoal-dispatch-guard"]
         (tool,) = group["PreToolUse"]
         self.assertEqual(tool["matcher"], "*")
         self.assertEqual(tool["hooks"][0]["command"], PORTABLE_AGY + " --event PreToolUse")
@@ -523,6 +523,31 @@ class AgyTests(Case):
         self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
         self.assertEqual(self.load(path), self.FOREIGN)
 
+    def test_legacy_group_name_is_renamed_in_place_and_idempotent(self) -> None:
+        # before 3.8.0 the agy group was called "shoal-guard"; it moves to "shoal-dispatch-guard" at the same position
+        legacy_key = "shoal-guard"  # legacy group name
+        self.assertEqual(self.cli("agy", "--apply")[0], 0)
+        path = self.gemini / "config" / "hooks.json"
+        installed = self.load(path)
+        old = {"orca-status": self.FOREIGN["orca-status"], legacy_key: installed["shoal-dispatch-guard"], "herdr": self.FOREIGN["herdr"]}
+        path.write_text(json.dumps(old, indent=2) + "\n", encoding="utf-8")
+        self.assertEqual(self.cli("agy", "--apply")[0], 0)
+        migrated = self.load(path)
+        self.assertEqual(list(migrated), ["orca-status", "shoal-dispatch-guard", "herdr"])
+        self.assertEqual(migrated["shoal-dispatch-guard"], installed["shoal-dispatch-guard"])
+        after = path.read_bytes()
+        self.assertEqual(self.cli("agy", "--apply")[0], 0)
+        self.assertEqual(path.read_bytes(), after)
+
+    def test_uninstall_removes_a_legacy_named_group_too(self) -> None:
+        legacy_key = "shoal-guard"  # legacy group name
+        self.assertEqual(self.cli("agy", "--apply")[0], 0)
+        path = self.gemini / "config" / "hooks.json"
+        group = self.load(path)["shoal-dispatch-guard"]
+        path.write_text(json.dumps({**self.FOREIGN, legacy_key: group}, indent=2) + "\n", encoding="utf-8")
+        self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
+        self.assertEqual(self.load(path), self.FOREIGN)
+
     def test_symlinked_hooks_json_is_written_through(self) -> None:
         target = self.base / "dotfile-hooks.json"
         target.write_text(json.dumps(self.FOREIGN, indent=2) + "\n", encoding="utf-8")
@@ -531,17 +556,17 @@ class AgyTests(Case):
         os.symlink(target, link)
         self.assertEqual(self.cli("agy", "--apply")[0], 0)
         self.assertTrue(link.is_symlink())
-        self.assertIn("shoal-guard", self.load(target))
+        self.assertIn("shoal-dispatch-guard", self.load(target))
 
     def test_foreign_handler_inside_the_named_group_survives(self) -> None:
         mixed = {
-            "shoal-guard": {
+            "shoal-dispatch-guard": {
                 "PreInvocation": [{"type": "command", "command": "/mine.sh"}]
             }
         }
         path = self.hooks_json(mixed)
         self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        flat = self.load(path)["shoal-guard"]["PreInvocation"]
+        flat = self.load(path)["shoal-dispatch-guard"]["PreInvocation"]
         self.assertEqual(flat[0], {"type": "command", "command": "/mine.sh"})
         self.assertEqual(len(flat), 2)
         self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
@@ -550,7 +575,7 @@ class AgyTests(Case):
     def test_installed_command_denies_a_main_edit_by_default(self) -> None:
         path = self.hooks_json({})
         self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        command = self.load(path)["shoal-guard"]["PreToolUse"][0]["hooks"][0]["command"]
+        command = self.load(path)["shoal-dispatch-guard"]["PreToolUse"][0]["hooks"][0]["command"]
         sandbox = helper.Sandbox()  # a work dir that is not exempt as a temp path
         self.addCleanup(sandbox.close)
         payload = {"conversationId": "conv-1", "cwd": sandbox.work,
@@ -626,7 +651,7 @@ class CodexTests(Case):
 
     def test_v1_registration_is_upgraded_in_place_without_touching_foreign_entries(self) -> None:
         # 3.2.0 and earlier wrote shoal-guard-v1, whose matcher has no Bash (3.2.1 adds it, 3.4.0 adds Stop).
-        v1, v2 = TRUSTED_PROJECTIONS["shoal-guard-v1"], TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]
+        v1, v2 = TRUSTED_PROJECTIONS["shoal-guard-v1"], TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]  # v1 is a legacy id
         self.assertNotEqual(v1["PreToolUse"]["matcher"], v2["PreToolUse"]["matcher"])
         self.assertIn("Bash", v2["PreToolUse"]["matcher"])
         self.assertEqual(v1["UserPromptSubmit"], v2["UserPromptSubmit"])
@@ -648,7 +673,7 @@ class CodexTests(Case):
     def test_v2_registration_gains_the_stop_group_and_keeps_every_other_entry(self) -> None:
         # 3.2.1 to 3.3.1 wrote shoal-guard-v2 (no Stop group); 3.4.0 appends the guard's Stop group after the
         # user's own Stop hook and the autoroute gate's, and changes nothing else.
-        v2 = TRUSTED_PROJECTIONS["shoal-guard-v2"]
+        v2 = TRUSTED_PROJECTIONS["shoal-guard-v2"]  # legacy id
         v3 = TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]
         own_stop = {"hooks": [{"type": "command", "command": "/opt/stop.sh"}]}
         before = {"hooks": {"UserPromptSubmit": [GATE, v2["UserPromptSubmit"]],

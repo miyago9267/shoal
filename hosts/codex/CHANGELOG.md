@@ -9,6 +9,16 @@ written.
 
 ## Unreleased
 
+## v3.8.0
+
+- The guard registration is renamed from `shoal-guard-v1`..`v5` to
+  `shoal-dispatch-guard-v1` (same groups as the old v5, byte for byte); an old
+  registration or install state is migrated in place. If Codex asks for hook
+  approval, approve once with `/hooks`.
+- `install/install.py` gains `--no-guard` and `--no-autoroute`: the module is
+  not installed, and on a home that has it only shoal's own groups and
+  state-proven scripts are removed.
+
 ## v3.7.0
 
 - Session-wide fast mode: a standalone `#fast` in a prompt makes the rest of

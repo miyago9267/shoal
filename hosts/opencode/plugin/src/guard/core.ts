@@ -17,6 +17,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readFileSync,
   readSync,
   readlinkSync,
   statSync,
@@ -580,8 +581,29 @@ export function validId(value: unknown, composed = false): boolean {
   return ID_RE.test(composed ? value.replaceAll(":", "_") : value);
 }
 
+/**
+ * False only when the installed module manifest has a record for `host` whose modules lack `dispatch-guard`
+ * (modular-install S3, `--without dispatch-guard`).  No manifest, an unreadable one, or no record: true.
+ * Mirror of dispatch_guard_selected in hooks/shoal_guard.py; SHOAL_GUARD_CHAIN_FILE overrides the path.
+ */
+export function dispatchGuardSelected(host: string, env: Env, home: string): boolean {
+  try {
+    const override = env.SHOAL_GUARD_CHAIN_FILE ?? "";
+    const xdg = env.XDG_DATA_HOME ?? "";
+    const data = xdg && isAbsolute(xdg) ? xdg : join(home, ".local", "share");
+    const path = override && isAbsolute(override) ? override : join(data, "shoal", "modules.json");
+    const doc: unknown = JSON.parse(readFileSync(path).subarray(0, 1024 * 1024).toString("utf8"));
+    const entry = typeof doc === "object" && doc !== null ? (doc as Record<string, unknown>)[host] : undefined;
+    const modules = typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>).modules : undefined;
+    return !(Array.isArray(modules) && !modules.includes("dispatch-guard"));
+  } catch {
+    return true;
+  }
+}
+
 /** Unset -> host default; an unrecognized value -> shadow (as the legacy guard did). */
-export function resolveMode(host: string, env: Env): string {
+export function resolveMode(host: string, env: Env, home?: string): string {
+  if (home !== undefined && !dispatchGuardSelected(host, env, home)) return "off";
   const raw = env.SHOAL_GUARD || "";
   let mode: string;
   if (!raw) mode = HOST_DEFAULT_MODE[host] ?? "shadow";
@@ -822,7 +844,7 @@ class Guard {
     this.fast = env.SHOAL_GUARD_FAST === "1";
     this.env = this.fast ? { ...env, SHOAL_GUARD_DIRECT: "1" } : env;
     this.host = String(event.host || "");
-    this.mode = resolveMode(this.host, env);
+    this.mode = resolveMode(this.host, env, home);
     this.r1 = resolveR1(this.host, env);
   }
 
@@ -1718,7 +1740,7 @@ export function evaluate(event: GuardEvent, env: Env, home: string): GuardResult
 /** Log a content-free skip record (fail-open paths in adapters).  Never throws. */
 export function logSkip(host: string, env: Env, home: string, reason: string): void {
   try {
-    const mode = resolveMode(host, env);
+    const mode = resolveMode(host, env, home);
     if (mode === "off") return;
     appendLog(guardDir(env, home), { host, decision: "skip", skip_reason: reason, mode });
   } catch {

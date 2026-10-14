@@ -1064,7 +1064,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "3.7.1",
+                            "version": "3.8.1",
                             "enabled": True,
                         }
                     ]
@@ -1396,7 +1396,7 @@ class NativeInstallTests(unittest.TestCase):
             del document["hooks"]["PostToolUse"]  # and the v5 PostToolUse group
             _write_registration(hooks, document)
             state = json.loads(_state_path(home).read_text())
-            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v2")
+            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v2")  # legacy id
             _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
 
             self.assertEqual(self.run_install(home), 0)
@@ -1427,7 +1427,7 @@ class NativeInstallTests(unittest.TestCase):
             document["hooks"]["PostToolUse"] = [foreign]  # the user's own PostToolUse; v4 had no guard group there
             _write_registration(hooks, document)
             state = json.loads(_state_path(home).read_text())
-            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v4")
+            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v4")  # legacy id
             _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
 
             self.assertEqual(self.run_install(home), 0)
@@ -1455,7 +1455,7 @@ class NativeInstallTests(unittest.TestCase):
             document["hooks"]["SubagentStart"] = [foreign]
             _write_registration(hooks, document)
             state = json.loads(_state_path(home).read_text())
-            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v3")
+            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v3")  # legacy id
             _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
 
             self.assertEqual(self.run_install(home), 0)
@@ -2112,6 +2112,102 @@ class NativeInstallTests(unittest.TestCase):
             os.symlink(outside, home / "agents")
             with self.assertRaisesRegex(InstallAbort, "agents root"):
                 self.run_install(home)
+
+
+class ModuleSwitchTests(unittest.TestCase):
+    """modular-install S3: --no-guard / --no-autoroute install nothing and remove only shoal's own entries."""
+
+    def run_install(self, home: Path, **kwargs: object) -> int:
+        return install(source_root=ROOT, codex_home=home, dry_run=False, check_codex=False, **kwargs)
+
+    def state(self, home: Path) -> dict:
+        return json.loads(_state_path(home).read_text())
+
+    def test_fresh_install_without_guard_has_no_guard_registration_or_script(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home, with_guard=False), 0)
+            state = self.state(home)
+            self.assertNotIn("guard_registration", state)
+            self.assertNotIn(GUARD_SCRIPT, state["target_fingerprints"])
+            self.assertFalse((home / GUARD_SCRIPT).exists())
+            self.assertTrue((home / "hooks" / "shoal_autoroute_gate.py").is_file())
+            events = json.loads((home / "hooks.json").read_text())["hooks"]
+            self.assertNotIn("PostToolUse", events)  # that event only carries the guard
+            before = {p.relative_to(home): p.read_bytes() for p in home.rglob("*") if p.is_file()}
+            self.assertEqual(self.run_install(home, with_guard=False), 0)  # idempotent, state still validates
+            self.assertEqual(before, {p.relative_to(home): p.read_bytes() for p in home.rglob("*") if p.is_file()})
+
+    def test_rerun_without_guard_removes_only_shoal_guard_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            hooks = home / "hooks.json"
+            document = json.loads(hooks.read_text())
+            foreign = _foreign_group("/keep-me")
+            document["hooks"]["PreToolUse"].insert(0, foreign)
+            _write_registration(hooks, document)
+            self.assertEqual(self.run_install(home, with_guard=False), 0)
+            installed = json.loads(hooks.read_text())["hooks"]
+            self.assertEqual(installed["PreToolUse"], [foreign])
+            self.assertNotIn("SubagentStart", installed)
+            self.assertNotIn("PostToolUse", installed)
+            self.assertEqual(len(installed["Stop"]), 1)  # the autoroute gate's Stop group stays
+            self.assertIn("shoal_autoroute_gate.py", installed["Stop"][0]["hooks"][0]["command"])
+            self.assertFalse((home / GUARD_SCRIPT).exists())
+            self.assertNotIn("guard_registration", self.state(home))
+            # switching the guard back on restores it and the state
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual(self.state(home)["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
+            self.assertTrue((home / GUARD_SCRIPT).is_file())
+
+    def test_rerun_without_autoroute_removes_only_the_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual(self.run_install(home, with_autoroute=False), 0)
+            state = self.state(home)
+            self.assertNotIn("hook_registration", state)
+            self.assertNotIn("hooks/shoal_autoroute_gate.py", state["target_fingerprints"])
+            self.assertFalse((home / "hooks" / "shoal_autoroute_gate.py").exists())
+            self.assertTrue((home / GUARD_SCRIPT).is_file())
+            events = json.loads((home / "hooks.json").read_text())["hooks"]
+            self.assertEqual(
+                {event for event, groups in events.items() if any("autoroute" in json.dumps(g) for g in groups)}, set()
+            )
+            self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
+            before = {p.relative_to(home): p.read_bytes() for p in home.rglob("*") if p.is_file()}
+            self.assertEqual(self.run_install(home, with_autoroute=False), 0)
+            self.assertEqual(before, {p.relative_to(home): p.read_bytes() for p in home.rglob("*") if p.is_file()})
+            self.assertEqual(self.run_install(home), 0)  # back on
+            self.assertEqual(self.state(home)["hook_registration"]["projection_id"], CURRENT_PROJECTION_ID)
+
+    def test_both_off_leaves_a_valid_state_and_a_drifted_script_is_kept(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            (home / GUARD_SCRIPT).write_text("# user edited\n")  # no longer matches the recorded fingerprint
+            with self.assertRaises(InstallAbort):  # state validation notices the drift before anything is removed
+                self.run_install(home, with_guard=False, with_autoroute=False)
+            self.assertTrue((home / GUARD_SCRIPT).is_file())
+            (home / GUARD_SCRIPT).write_bytes((ROOT / "hooks" / "shoal_guard.py").read_bytes())
+            self.assertEqual(self.run_install(home, with_guard=False, with_autoroute=False), 0)
+            self.assertEqual(self.run_install(home, with_guard=False, with_autoroute=False), 0)
+
+    def test_legacy_v5_state_is_migrated_to_the_new_guard_id_without_touching_hooks_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            state = self.state(home)
+            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v5")  # legacy id
+            _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
+            hooks_before = (home / "hooks.json").read_bytes()
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual((home / "hooks.json").read_bytes(), hooks_before)
+            self.assertEqual(self.state(home)["guard_registration"]["projection_id"], "shoal-dispatch-guard-v1")
+            after = _state_path(home).read_bytes()
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual(_state_path(home).read_bytes(), after)
 
 
 if __name__ == "__main__":

@@ -121,10 +121,11 @@ class PolicyTargetIdentity:
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
 SHOAL_PLUGIN_NAME = "shoal-codex"
-SHOAL_PLUGIN_VERSION = "3.7.0"
+SHOAL_PLUGIN_VERSION = "3.8.0"
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
+AUTOROUTE_SCRIPT_RELATIVE = "hooks/shoal_autoroute_gate.py"
 # Backups of config.toml an installer made: (name infix, pristine marker suffix, marker text).
 # The pre-2.0.0 spelling stays recognized so an old pristine backup still proves ownership.
 LEGACY_BACKUP_NAMING = (".pilotfish-codex-", ".pilotfish-v1.2-pristine", "pilotfish-codex-v1.2-adapter-pristine\n")
@@ -841,7 +842,7 @@ def _validate_committed_state(
     policy_path: Path,
     config_snapshot: bytes | None,
     allow_policy_drift: bool = False,
-) -> tuple[frozenset[str], bool, str, bool, str | None, frozenset[str]]:
+) -> tuple[frozenset[str], bool, str | None, bool, str | None, frozenset[str]]:
     """Validate sidecar provenance, including event-bound hook ownership."""
     if not isinstance(state, dict) or state.get("status") != "committed":
         raise InstallAbort("install state is not a committed transaction")
@@ -851,6 +852,11 @@ def _validate_committed_state(
     if guard_present and "state_version" not in state:
         raise InstallAbort("install state has missing or unknown fields")
     state_keys = set(state) - {"guard_registration"}
+    # modular-install S3: a state written with --no-autoroute has no hook_registration and does not record the gate
+    # script (recorded if and only if the projection is, like the guard).  Only a v2+ state can be in that shape.
+    autoroute_present = "hook_registration" in state or "state_version" not in state
+    if not autoroute_present:
+        state_keys |= {"hook_registration"}
     legacy_allowed = {
         "status", "target_fingerprints", "original_targets", "owned_legacy",
         "policy_ownership",
@@ -987,14 +993,18 @@ def _validate_committed_state(
     # A guard script is recorded if and only if the guard projection is recorded.
     if (GUARD_SCRIPT_RELATIVE in recorded) != guard_present:
         raise InstallAbort("install state target manifest is stale or incomplete")
+    if (AUTOROUTE_SCRIPT_RELATIVE in recorded) != autoroute_present:
+        raise InstallAbort("install state target manifest is stale or incomplete")
     if (
         recorded - required
         or set(originals) != recorded
-        or not missing_targets <= newly_managed_role_targets | {GUARD_SCRIPT_RELATIVE}
+        or not missing_targets <= newly_managed_role_targets | {GUARD_SCRIPT_RELATIVE, AUTOROUTE_SCRIPT_RELATIVE}
     ):
         raise InstallAbort("install state target manifest is stale or incomplete")
     try:
-        if is_v2:
+        if is_v2 and not autoroute_present:
+            hook_projection_id = None
+        elif is_v2:
             hook_projection_id = validate_projection_state(state["hook_registration"])
         else:
             raw_fingerprint = targets.get("hooks.json")
@@ -1007,7 +1017,8 @@ def _validate_committed_state(
         registration = load_registration(
             hooks_path.read_bytes(), source="existing hooks.json"
         )
-        validate_owned_projection(registration, hook_projection_id)
+        if hook_projection_id is not None:
+            validate_owned_projection(registration, hook_projection_id)
         if guard_present:
             recorded_guard = validate_projection_state(state["guard_registration"])
             if recorded_guard not in GUARD_PROJECTION_IDS:
@@ -2012,6 +2023,8 @@ def install(
     policy_root: Path | None = None,
     reconcile_current: bool = False,
     allow_plugin_downgrade: bool = False,
+    with_guard: bool = True,
+    with_autoroute: bool = True,
 ) -> int:
     unknown_drift_roles = set(replace_drifted_role) - set(ROLES)
     if unknown_drift_roles:
@@ -2190,6 +2203,8 @@ def install(
                 source_registration,
                 owned_projection_id=owned_hook_projection,
                 owned_guard_projection_id=owned_guard_projection,
+                with_autoroute=with_autoroute,
+                with_guard=with_guard,
             )
         )
     except HookRegistrationError as exc:
@@ -2210,10 +2225,20 @@ def install(
                 current_registration,
             )
         )
+    # A module that is switched off installs nothing and removes only a script the install state proves is shoal's
+    # (fingerprint match); the removal happens after the transaction commits.
+    script_removals: list[Path] = []
     source_hook_script = source_root / "hooks" / "shoal_autoroute_gate.py"
     hook_script_payload = source_hook_script.read_bytes()
     current_hook_script = hook_script.read_bytes() if hook_script.is_file() else None
-    if current_hook_script is not None and current_hook_script != hook_script_payload:
+    if not with_autoroute:
+        if (
+            current_hook_script is not None
+            and proven_hook_script_fingerprint is not None
+            and _sha256_bytes(current_hook_script) == proven_hook_script_fingerprint
+        ):
+            script_removals.append(hook_script)
+    elif current_hook_script is not None and current_hook_script != hook_script_payload:
         if (
             proven_hook_script_fingerprint is None
             or _sha256_bytes(current_hook_script) != proven_hook_script_fingerprint
@@ -2228,7 +2253,14 @@ def install(
     guard_script = hooks_root / "shoal_guard.py"
     guard_script_payload = (source_root / "hooks" / "shoal_guard.py").read_bytes()
     current_guard_script = guard_script.read_bytes() if guard_script.is_file() else None
-    if current_guard_script is not None and current_guard_script != guard_script_payload:
+    if not with_guard:
+        if (
+            current_guard_script is not None
+            and proven_guard_script_fingerprint is not None
+            and _sha256_bytes(current_guard_script) == proven_guard_script_fingerprint
+        ):
+            script_removals.append(guard_script)
+    elif current_guard_script is not None and current_guard_script != guard_script_payload:
         if (
             proven_guard_script_fingerprint is None
             or _sha256_bytes(current_guard_script) != proven_guard_script_fingerprint
@@ -2243,6 +2275,8 @@ def install(
         notes.append(
             "dispatch guard installed; approve the new hook once with /hooks in Codex"
         )
+    for path in script_removals:
+        notes.append(f"module off: will remove state-proven {path.relative_to(codex_home).as_posix()}")
     if legacy_v2:
         allowed_migration = {
             "config.toml",
@@ -2265,8 +2299,8 @@ def install(
         policy_path,
         *(agents / f"{role}.toml" for role in sorted(ROLES)),
         hooks_registration,
-        hook_script,
-        guard_script,
+        *([hook_script] if with_autoroute else []),
+        *([guard_script] if with_guard else []),
     ]
     state_inventory = [path for path in inventory if path != hooks_registration]
     pre_targets: dict[str, dict[str, object]] = {}
@@ -2370,11 +2404,13 @@ def install(
             print(f"warning: {warning}")
         for note in notes:
             print(f"note: {note}")
-        if not writes and not state_needs_publication and not removals:
+        if not writes and not state_needs_publication and not removals and not script_removals:
             print("already up to date; nothing to change")
             return 0
         for path, _, _, _ in writes:
             print(f"would change primary: {path.relative_to(codex_home).as_posix()}")
+        for path in script_removals:
+            print(f"would remove primary: {path.relative_to(codex_home).as_posix()}")
         for path, _ in removals:
             print(f"would remove primary: {path.relative_to(codex_home).as_posix()}")
             backup = _role_backup_path(path, codex_home, "<timestamp>")
@@ -2617,9 +2653,11 @@ def install(
                 "runtime_status": runtime_status,
                 "rollback_backups": rollback_backups,
                 "owned_legacy": ownership,
-                "hook_registration": projection_state(desired_hook_projection),
-                "guard_registration": projection_state(desired_guard_projection),
             }
+            if desired_hook_projection is not None:
+                record["hook_registration"] = projection_state(desired_hook_projection)
+            if desired_guard_projection is not None:
+                record["guard_registration"] = projection_state(desired_guard_projection)
             if state_version == RECONCILIATION_STATE_VERSION:
                 record["reconciliation"] = {
                     "accepted_targets": sorted(accepted_targets),
@@ -2677,6 +2715,8 @@ def install(
     # Old-name roles sit outside the state inventory; they get their own per-file backup and
     # all-or-nothing removal after the main transaction has committed.
     _commit_role_removals(removals, agents_root=agents, codex_home=codex_home, stamp=_stamp())
+    for path in script_removals:
+        path.unlink(missing_ok=True)
     for warning in windows_warnings:
         print(f"warning: {warning}")
     for note in notes:
@@ -2730,6 +2770,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="explicitly permit replacing an installed newer shoal plugin",
     )
+    parser.add_argument(
+        "--no-guard",
+        action="store_true",
+        help="do not install the dispatch guard; on a home that has it, remove only shoal's own guard groups and state-proven script",
+    )
+    parser.add_argument(
+        "--no-autoroute",
+        action="store_true",
+        help="do not install the autoroute gate; on a home that has it, remove only shoal's own gate groups and state-proven script",
+    )
     args = parser.parse_args(argv)
     try:
         if args.roles_only and (
@@ -2759,6 +2809,8 @@ def main(argv: list[str] | None = None) -> int:
             policy_root=args.policy_root,
             reconcile_current=args.reconcile_current,
             allow_plugin_downgrade=args.allow_plugin_downgrade,
+            with_guard=not args.no_guard,
+            with_autoroute=not args.no_autoroute,
         )
     except InstallAbort as exc:
         print(f"aborted: {exc}", file=sys.stderr); return 2

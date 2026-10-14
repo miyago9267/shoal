@@ -1650,6 +1650,21 @@ class ChainCliTests(CliCase):
         self.assertEqual(decisions, ["chain_error", "chain_error", "chain_timeout"])
         self.assertTrue(all("ms" in r and r["member"].startswith("m") for r in self.log_records() if r.get("rule") == "chain"))
 
+    def test_manifest_record_without_dispatch_guard_switches_the_host_off(self) -> None:
+        # modular-install S3: `--without dispatch-guard` is a persistent switch read from the same manifest
+        self.configure(["deny", "stop right there"])
+        manifest = Path(self.chain_env["SHOAL_GUARD_CHAIN_FILE"])
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+        payload = claude_tool("Read", {"file_path": "x"}, cwd=self.work)
+        for modules, denied in ((["core", "host-claude", "dispatch-guard"], True), (["core", "host-claude"], False)):
+            manifest.write_text(json.dumps({**doc, "claude": {"modules": modules, "version": "3.8.0"}}), encoding="utf-8")
+            out = self.run_guard("claude", payload, **self.chain_env)
+            self.assertEqual(bool(out), denied, modules)
+        # a record for another host does not switch this host off
+        manifest.write_text(json.dumps({**doc, "opencode": {"modules": ["core", "host-opencode"], "version": "3.8.0"}}), encoding="utf-8")
+        self.assertTrue(self.run_guard("claude", payload, **self.chain_env))
+        self.assertFalse(guard.dispatch_guard_selected("opencode", {"SHOAL_GUARD_CHAIN_FILE": str(manifest)}, Path(self.home)))
+
     def test_no_manifest_changes_nothing(self) -> None:
         self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work)), "")
         self.assertEqual([r for r in self.log_records() if r.get("rule") == "chain"], [])

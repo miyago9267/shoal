@@ -39,8 +39,9 @@ shoal 2.0.0 把所有安裝出去的名稱都改了（docs/specs/shoal-rebrand�
 
 installed manifest（`${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`，tools/shoal_install.py 寫入）
 有該 host 的紀錄時，只同步選到的模組：codex 沒選 dispatch-guard 就不跑 guard hooks，沒選 jev-router 就不
-補裝；agy 沒選 dispatch-guard 就不跑 guard hooks。沒有 manifest（或沒有該 host 的紀錄）時行為與沒有
-這個機制時完全相同。grok、opencode 的 installer 沒有可分的模組，不受影響。
+補裝；agy 沒選 dispatch-guard 就不跑 guard hooks；grok 沒選 dispatch-guard 就帶 --no-guard（不把 guard 裝回去）。
+opencode 與 claude 的 guard 在 plugin 內，由 guard 自己讀同一份 manifest 切成 off。沒有 manifest（或沒有該 host 的
+紀錄）時行為與沒有這個機制時完全相同。
 
 stdlib only；重複執行不會改變結果，沒有差異時不寫檔、不建備份。
 """
@@ -264,7 +265,7 @@ def sync_codex_roles(
 
 # 遷移後由正常的 installer 安裝的新名（只用在 dry-run 的計畫文字）。
 CODEX_INSTALL_NEW = (
-    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-guard-v5 hook groups, "
+    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-dispatch-guard-v1 hook groups, "
     "shoal-codex AGENTS.md block, new install state"
 )
 
@@ -368,7 +369,8 @@ def sync_grok(ctx: Ctx) -> Result:
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
     plan: dict = {}
-    if installer_changes("install_grok.py", [], ctx, plan):
+    extra = [] if selected(ctx, "grok", "dispatch-guard") else ["--no-guard"]
+    if installer_changes("install_grok.py", extra, ctx, plan):
         legacy = plan.get("legacy") or []
         if legacy:
             installs = [c for c in plan["changes"] if c not in legacy]

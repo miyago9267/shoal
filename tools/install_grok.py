@@ -139,6 +139,33 @@ def check_guard_single_source(repo: Path, commit: str, files: dict[str, bytes]) 
         )
 
 
+HOOKS_JSON = "hooks/shoal-grok.json"
+
+
+def without_guard(files: dict[str, bytes]) -> tuple[dict[str, bytes], bytes | None]:
+    """--no-guard：從 dist 檔案集拿掉 dispatch guard（shoal_guard.py 與 hooks json 裡指向它的 handler）。
+
+    回傳 (新的檔案集, 被拿掉的 guard 腳本內容)。其他 hook（plan_mode_guard、subagent_stop_gate）不動。
+    """
+    out = dict(files)
+    blob = out.pop(GUARD_DIST, None)
+    raw = out.get(HOOKS_JSON)
+    if raw is not None:
+        doc = json.loads(raw.decode("utf-8"))
+        hooks = {}
+        for event, groups in doc.get("hooks", {}).items():
+            kept = []
+            for group in groups:
+                rest = [h for h in group.get("hooks", []) if not str(h.get("command", "")).endswith("/shoal_guard.py")]
+                if rest:
+                    kept.append({**group, "hooks": rest})
+            if kept:
+                hooks[event] = kept
+        doc["hooks"] = hooks
+        out[HOOKS_JSON] = (json.dumps(doc, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    return out, blob
+
+
 def shoal_roles(files: dict[str, bytes]) -> list[str]:
     return sorted(Path(rel).stem for rel in files if rel.startswith("roles/"))
 
@@ -291,6 +318,7 @@ class Plan:
         commit: str,
         fix_toggles: bool,
         repo: Path | None = None,
+        dropped_guard: bytes | None = None,
     ) -> None:
         self.home, self.files, self.version, self.commit = home, files, version, commit
         self.actions: dict[str, str] = {}  # rel -> add | replace | skip
@@ -304,6 +332,9 @@ class Plan:
                 self.actions[rel] = "add"
         self.check_rules_markers()
         self.legacy, self.legacy_foreign = find_legacy(home)
+        guard_path = home / GUARD_DIST
+        if dropped_guard is not None and guard_path.is_file() and guard_path.read_bytes() == dropped_guard:
+            self.legacy[GUARD_DIST] = dropped_guard  # --no-guard：只移除與 dist 逐位元組相同（確定是 shoal 裝的）的 guard 腳本
         if repo is not None:
             renamed, renamed_foreign = find_renamed_roles(home, repo, commit)
             self.legacy.update(renamed)
@@ -606,6 +637,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="安裝模式：在 plan 之後多印一行 JSON {\"changes\": [...]}，給 sync_global.py 判斷",
     )
+    parser.add_argument(
+        "--no-guard",
+        action="store_true",
+        help="不安裝 dispatch guard；已裝的話只移除 shoal 的 guard 腳本與 hooks json 裡指向它的 handler",
+    )
     parser.add_argument("--repo", type=Path, default=REPO, help="shoal repo（測試用）")
     parser.add_argument("--ref", default="HEAD", help="要安裝的 ref，預設 HEAD")
     args = parser.parse_args(argv)
@@ -629,8 +665,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.uninstall:
             return do_uninstall(home, files, commit, args.apply)
+        dropped = None
+        if args.no_guard:
+            files, dropped = without_guard(files)
         return do_install(
-            Plan(home, files, version, commit, args.fix_toggles, args.repo),
+            Plan(home, files, version, commit, args.fix_toggles, args.repo, dropped),
             args.apply,
             args.fix_toggles,
             args.json,

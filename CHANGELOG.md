@@ -3,6 +3,29 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.8.0
+
+模組可選、guard chain 註冊與內建 guard 改名
+（[`docs/specs/modular-install`](./docs/specs/modular-install/SPEC.md) S3）。
+
+### Changes
+
+- `tools/shoal_install.py --without` 對 `dispatch-guard`、`codex-autoroute`、
+  `claude-explore` 真的生效：`install/install.py` 新增 `--no-guard`、
+  `--no-autoroute`，`tools/install_grok.py` 新增 `--no-guard`，agy 用
+  `install_hooks.py --uninstall`；重跑時只移除 shoal 自己的 entry。
+  Claude 與 OpenCode 的 guard 在 plugin 內，`--without dispatch-guard` 是
+  持久開關（檔案仍安裝，guard 讀 manifest 後以 `off` 執行）。預設不變。
+- 新增 `--chain-add NAME --chain-command '<JSON argv>'
+  --chain-hosts h1,h2 [--chain-order N]`、`--chain-remove NAME`，
+  `--list` 顯示 chain；註冊時不執行成員。
+- 內建 guard 的 hook 註冊改名：Codex `shoal-guard-v1`～`v5` 變成
+  `shoal-dispatch-guard-v1`（群組內容與舊 v5 逐位元組相同，舊 id 原地遷移），
+  agy 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。Codex 若提示 hook 需要
+  核准，用 `/hooks` 核准一次。腳本檔名 `shoal_guard.py` 不變。
+- Codex install state 可以沒有 `hook_registration`（關掉 autoroute 時），
+  與 `guard_registration` 的處理一致。
+
 ## v3.7.0
 
 ### Changes

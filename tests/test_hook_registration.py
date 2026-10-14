@@ -14,8 +14,8 @@ sys.path.insert(0, str(ROOT / "install"))
 import hook_registration as hr  # noqa: E402
 
 SOURCE = (ROOT / "templates" / "hooks.json").read_bytes()
-V1, V2, V3, V4, V5 = (hr.TRUSTED_PROJECTIONS[hr.GUARD_PROJECTION_ID_V1], hr.TRUSTED_PROJECTIONS[hr.GUARD_PROJECTION_ID_V2],
-                      hr.TRUSTED_PROJECTIONS[hr.GUARD_PROJECTION_ID_V3], hr.TRUSTED_PROJECTIONS[hr.GUARD_PROJECTION_ID_V4],
+V1, V2, V3, V4, V5 = (hr.TRUSTED_PROJECTIONS[hr.LEGACY_GUARD_PROJECTION_ID_V1], hr.TRUSTED_PROJECTIONS[hr.LEGACY_GUARD_PROJECTION_ID_V2],
+                      hr.TRUSTED_PROJECTIONS[hr.LEGACY_GUARD_PROJECTION_ID_V3], hr.TRUSTED_PROJECTIONS[hr.LEGACY_GUARD_PROJECTION_ID_V4],
                       hr.TRUSTED_PROJECTIONS[hr.GUARD_PROJECTION_ID])
 AUTOROUTE = hr.TRUSTED_PROJECTIONS[hr.CURRENT_PROJECTION_ID]
 USER_BASH = {"matcher": "Bash", "hooks": [{"type": "command", "command": "/opt/audit.sh", "timeout": 5}]}
@@ -57,11 +57,13 @@ class GuardProjectionTests(unittest.TestCase):
             self.assertEqual(V4[event], V3[event])  # the three groups already approved keep their bytes
 
     def test_v5_adds_a_post_tool_use_group_for_the_shell_tool_only(self) -> None:
-        self.assertEqual(hr.GUARD_PROJECTION_ID, "shoal-guard-v5")
+        self.assertEqual(hr.GUARD_PROJECTION_ID, "shoal-dispatch-guard-v1")
         self.assertEqual(
             hr.GUARD_PROJECTION_IDS,
-            ("shoal-guard-v1", "shoal-guard-v2", "shoal-guard-v3", "shoal-guard-v4", "shoal-guard-v5"),
+            ("shoal-guard-v1", "shoal-guard-v2", "shoal-guard-v3", "shoal-guard-v4", "shoal-guard-v5",
+             "shoal-dispatch-guard-v1"),  # the first five are legacy ids, kept so an old state validates
         )
+        self.assertEqual(hr.TRUSTED_PROJECTIONS["shoal-guard-v5"], V5)  # legacy v5 and the new id are byte-identical
         self.assertEqual(sorted(V5), ["PostToolUse", "PreToolUse", "Stop", "SubagentStart", "UserPromptSubmit"])
         self.assertEqual(V5["PostToolUse"]["matcher"], "^Bash$")  # the shell tool, anchored: no other tool's result
         (handler,) = V5["PostToolUse"]["hooks"]
@@ -85,11 +87,11 @@ class GuardProjectionTests(unittest.TestCase):
         for projection_id in hr.GUARD_PROJECTION_IDS:
             self.assertEqual(hr.validate_projection_state(hr.projection_state(projection_id)), projection_id)
         digests = {hr.projection_digest(projection_id) for projection_id in hr.GUARD_PROJECTION_IDS}
-        self.assertEqual(len(digests), len(hr.GUARD_PROJECTION_IDS))
+        self.assertEqual(len(digests), len(hr.GUARD_PROJECTION_IDS) - 1)  # legacy v5 and the current id share their groups
 
     def test_state_with_a_forged_digest_is_rejected(self) -> None:
         state = hr.projection_state(hr.GUARD_PROJECTION_ID)
-        state["projection_sha256"] = hr.projection_digest(hr.GUARD_PROJECTION_ID_V1)
+        state["projection_sha256"] = hr.projection_digest(hr.LEGACY_GUARD_PROJECTION_ID_V1)
         with self.assertRaises(hr.HookRegistrationError):
             hr.validate_projection_state(state)
 
@@ -115,14 +117,14 @@ class MergeTests(unittest.TestCase):
         return document
 
     def test_owned_v1_is_replaced_in_place_and_foreign_entries_are_untouched(self) -> None:
-        payload, hook_id, guard_id = self.merge(registration(V1), hr.GUARD_PROJECTION_ID_V1)
+        payload, hook_id, guard_id = self.merge(registration(V1), hr.LEGACY_GUARD_PROJECTION_ID_V1)
         self.assert_upgraded(payload, hook_id, guard_id)
         again, _, _ = self.merge(payload, hr.GUARD_PROJECTION_ID)  # idempotent once upgraded
         self.assertEqual(again, payload)
 
     def test_owned_v2_gains_the_stop_group_and_nothing_else_moves(self) -> None:
         before = json.loads(registration(V2))
-        payload, hook_id, guard_id = self.merge(registration(V2), hr.GUARD_PROJECTION_ID_V2)
+        payload, hook_id, guard_id = self.merge(registration(V2), hr.LEGACY_GUARD_PROJECTION_ID_V2)
         after = self.assert_upgraded(payload, hook_id, guard_id)
         self.assertEqual(after["hooks"]["PreToolUse"], before["hooks"]["PreToolUse"])
         self.assertEqual(after["hooks"]["UserPromptSubmit"], before["hooks"]["UserPromptSubmit"])
@@ -139,7 +141,7 @@ class MergeTests(unittest.TestCase):
 
     def test_owned_v3_gains_the_subagent_start_group_and_nothing_else_moves(self) -> None:
         before = json.loads(registration(V3))
-        payload, hook_id, guard_id = self.merge(registration(V3), hr.GUARD_PROJECTION_ID_V3)
+        payload, hook_id, guard_id = self.merge(registration(V3), hr.LEGACY_GUARD_PROJECTION_ID_V3)
         after = self.assert_upgraded(payload, hook_id, guard_id)
         for event in ("PreToolUse", "UserPromptSubmit", "Stop"):
             self.assertEqual(after["hooks"][event], before["hooks"][event])
@@ -154,12 +156,12 @@ class MergeTests(unittest.TestCase):
         document = json.loads(registration(V3))
         document["hooks"]["SubagentStart"] = [copy.deepcopy(V5["SubagentStart"])]  # a canonical group we did not place
         with self.assertRaises(hr.HookRegistrationError):
-            self.merge(json.dumps(document).encode(), hr.GUARD_PROJECTION_ID_V3)
+            self.merge(json.dumps(document).encode(), hr.LEGACY_GUARD_PROJECTION_ID_V3)
 
     def test_owned_v4_gains_the_post_tool_use_group_and_nothing_else_moves(self) -> None:
         # a machine that installed the earlier (unreleased) v4 is upgraded in place, not rejected
         before = json.loads(registration(V4))
-        payload, hook_id, guard_id = self.merge(registration(V4), hr.GUARD_PROJECTION_ID_V4)
+        payload, hook_id, guard_id = self.merge(registration(V4), hr.LEGACY_GUARD_PROJECTION_ID_V4)
         after = self.assert_upgraded(payload, hook_id, guard_id)
         for event in ("PreToolUse", "UserPromptSubmit", "Stop", "SubagentStart"):
             self.assertEqual(after["hooks"][event], before["hooks"][event])
@@ -175,7 +177,7 @@ class MergeTests(unittest.TestCase):
         document = json.loads(registration(V4))
         document["hooks"]["PostToolUse"] = [copy.deepcopy(V5["PostToolUse"])]  # a canonical group we did not place
         with self.assertRaises(hr.HookRegistrationError):
-            self.merge(json.dumps(document).encode(), hr.GUARD_PROJECTION_ID_V4)
+            self.merge(json.dumps(document).encode(), hr.LEGACY_GUARD_PROJECTION_ID_V4)
 
     def test_unowned_v5_is_adopted_unchanged(self) -> None:
         current = registration(V5)
@@ -195,13 +197,13 @@ class MergeTests(unittest.TestCase):
         document = json.loads(registration(V2))
         document["hooks"]["Stop"].append(copy.deepcopy(V5["Stop"]))  # a canonical group we did not place
         with self.assertRaises(hr.HookRegistrationError):
-            self.merge(json.dumps(document).encode(), hr.GUARD_PROJECTION_ID_V2)
+            self.merge(json.dumps(document).encode(), hr.LEGACY_GUARD_PROJECTION_ID_V2)
 
     def test_a_foreign_group_equal_to_the_v2_group_blocks_the_upgrade(self) -> None:
         document = json.loads(registration(V1))
         document["hooks"]["PreToolUse"].append(copy.deepcopy(V5["PreToolUse"]))
         with self.assertRaises(hr.HookRegistrationError):
-            self.merge(json.dumps(document).encode(), hr.GUARD_PROJECTION_ID_V1)
+            self.merge(json.dumps(document).encode(), hr.LEGACY_GUARD_PROJECTION_ID_V1)
 
     def test_a_partial_v1_without_state_is_not_adopted(self) -> None:
         document = json.loads(registration(V1))

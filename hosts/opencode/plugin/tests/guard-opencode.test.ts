@@ -462,6 +462,20 @@ describe("OpenCode guard: chain", () => {
     expect(logLines().filter((l) => l.rule === "chain").map((l) => l.decision)).toEqual(["chain_allow", "chain_deny"]);
   });
 
+  test("a manifest record without dispatch-guard switches the guard (and its chain) off for opencode", async () => {
+    configure(["deny_if", "needle-in-args"]);
+    const file = process.env.SHOAL_GUARD_CHAIN_FILE as string;
+    const doc = JSON.parse(readFileSync(file, "utf8"));
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN, "msg_001", "#direct");
+    writeFileSync(file, JSON.stringify({ ...doc, claude: { modules: ["core", "host-claude"] } }));
+    await expect(call(guard, "bash", MAIN, { command: "echo needle-in-args" })).rejects.toThrow("m0: saw needle-in-args");
+    writeFileSync(file, JSON.stringify({ ...doc, opencode: { modules: ["core", "host-opencode"], version: "3.8.0" } }));
+    await call(guard, "bash", MAIN, { command: "echo needle-in-args" });
+    writeFileSync(file, JSON.stringify({ ...doc, opencode: { modules: ["core", "host-opencode", "dispatch-guard"] } }));
+    await expect(call(guard, "bash", MAIN, { command: "echo needle-in-args" })).rejects.toThrow("m0: saw needle-in-args");
+  });
+
   test("a failing member never blocks", async () => {
     configure(["exit1"], ["garbage"]);
     const guard = makeGuard(defaultSessions());
