@@ -186,29 +186,87 @@ class InferenceTests(Base):
         for host in ("codex", "claude", "agy", "grok", "opencode"):
             self.assertIsNone(shoal_install.infer(host, self.env), host)
 
-    def test_codex_inferred_from_files(self) -> None:
+    GUARD_CMD = 'python3 "$HOME/.local/share/shoal/guard/shoal_guard.py" --host %s --event X'
+
+    def codex_with_role(self) -> Path:
         codex = Path(self.env["CODEX_HOME"])
         (codex / "agents").mkdir(parents=True)
         role = next((ROOT / "templates/agents").glob("*.toml")).name
         (codex / "agents" / role).write_text("x")
+        return codex
+
+    def test_codex_inferred_from_files(self) -> None:
+        codex = self.codex_with_role()
+        (codex / "hooks.json").write_text('{"hooks": {}}')
+        (codex / "config.toml").write_text("[other]\nx = 1\n")
         self.assertEqual(shoal_install.infer("codex", self.env), ["core", "host-codex"])
-        (codex / "hooks.json").write_text('{"a": "shoal_guard.py", "b": "shoal_autoroute_gate.py"}')
+        hooks = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": self.GUARD_CMD % "codex"}]},
+                                    {"hooks": [{"type": "command", "command": "python3 shoal_autoroute_gate.py"}]}]}}
+        (codex / "hooks.json").write_text(json.dumps(hooks))
         (codex / "config.toml").write_text('[plugins."shoal-jev-router@shoal-codex"]\nenabled = true\n')
         self.assertEqual(
             shoal_install.infer("codex", self.env),
             ["core", "host-codex", "dispatch-guard", "codex-autoroute", "jev-router"],
         )
 
+    def test_codex_undeterminable_is_treated_as_installed(self) -> None:
+        codex = self.codex_with_role()  # 沒有 hooks.json、config.toml
+        full = ["core", "host-codex", "dispatch-guard", "codex-autoroute", "jev-router"]
+        self.assertEqual(shoal_install.infer("codex", self.env), full)
+        (codex / "hooks.json").write_text("{not json")
+        self.assertEqual(shoal_install.infer("codex", self.env), full)
+
+    def agy_with_links(self) -> Path:
+        gem = Path(self.env["HOME"]) / ".gemini"
+        (gem / "config" / "agents").mkdir(parents=True)
+        src = next((ROOT / "hosts/agy/dist/agents").iterdir())
+        (gem / "config" / "agents" / src.name).symlink_to(src)
+        return gem
+
+    def test_agy_guard_group_in_hooks_file_is_installed(self) -> None:
+        gem = self.agy_with_links()
+        group = {"shoal-guard": {"PreToolUse": [{"type": "command", "command": self.GUARD_CMD % "agy"}]}}
+        (gem / "config" / "hooks.json").write_text(json.dumps(group))
+        self.assertEqual(shoal_install.infer("agy", self.env), ["core", "host-agy", "dispatch-guard"])
+
+    def test_agy_guard_group_via_symlink_is_installed(self) -> None:
+        gem = self.agy_with_links()
+        real = self.tmp / "dotfile" / "hooks.json"
+        real.parent.mkdir()
+        group = {"shoal-guard": {"PreToolUse": [{"type": "command", "command": self.GUARD_CMD % "agy"}]}}
+        real.write_text(json.dumps(group))
+        (gem / "config" / "hooks.json").symlink_to(real)
+        self.assertIn("dispatch-guard", shoal_install.infer("agy", self.env))
+
+    def test_agy_readable_hooks_without_guard_is_not_installed(self) -> None:
+        gem = self.agy_with_links()
+        (gem / "config" / "hooks.json").write_text('{"other": {"PreToolUse": []}}')
+        self.assertEqual(shoal_install.infer("agy", self.env), ["core", "host-agy"])
+
+    def test_agy_undeterminable_is_treated_as_installed(self) -> None:
+        gem = self.agy_with_links()
+        self.assertIn("dispatch-guard", shoal_install.infer("agy", self.env))  # 沒有 hooks 檔
+        (gem / "config" / "hooks.json").write_text("{broken")
+        self.assertIn("dispatch-guard", shoal_install.infer("agy", self.env))  # 壞掉的 JSON
+        (gem / "config" / "hooks.json").unlink()
+        (gem / "config" / "hooks.json").symlink_to(self.tmp / "missing.json")  # 斷掉的 symlink
+        self.assertIn("dispatch-guard", shoal_install.infer("agy", self.env))
+
+    def test_grok_guard_is_assumed_installed(self) -> None:
+        agents = Path(self.env["GROK_HOME"]) / "agents"
+        agents.mkdir(parents=True)
+        (agents / next((ROOT / "hosts/grok/dist/agents").iterdir()).name).write_text("x")
+        self.assertEqual(shoal_install.infer("grok", self.env), ["core", "host-grok", "dispatch-guard"])
+
     def test_existing_machine_without_manifest_is_not_changed_by_list(self) -> None:
-        codex = Path(self.env["CODEX_HOME"])
-        (codex / "agents").mkdir(parents=True)
-        role = next((ROOT / "templates/agents").glob("*.toml")).name
-        (codex / "agents" / role).write_text("x")
+        codex = self.codex_with_role()
+        (codex / "hooks.json").write_text('{"hooks": {}}')
+        (codex / "config.toml").write_text("[other]\nx = 1\n")
         before = self.tree()
         _, out, _ = self.run_cli("--list", "--host", "codex")
         self.assertIn("inferred", out)
         self.assertEqual(self.tree(), before)
-        _, out, _ = self.run_cli("--host", "codex")  # 推導的基底：既有機器沒有 guard 就不新增
+        _, out, _ = self.run_cli("--host", "codex")  # 推導的基底：確定沒有 guard 就不新增
         self.assertIn("(base: inferred)", out)
         self.assertNotIn("dispatch-guard", out.splitlines()[0])
 

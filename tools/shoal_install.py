@@ -117,6 +117,25 @@ def _any_named(dist: Path, target: Path) -> bool:
 
 
 # ---- inference（R4：沒有 manifest 時由實際檔案推導）----
+# 原則：推導只會多算、不會少算。判斷不出來（檔案不存在、不是合法 JSON、讀不到、host 沒有可讀的
+# hook 檔）一律視為已安裝，避免 --apply 寫出不含該模組的 manifest 而讓 sync 丟掉它。
+def _shoal_hook_entries(host: str, home: Path) -> Optional[int]:
+    """用 install_hooks 的辨識方式數 hook 檔裡 shoal 的 handler；讀不出來回傳 None。symlink 會跟隨。"""
+    try:
+        import install_hooks
+
+        _, data = install_hooks.read_json(install_hooks.config_path(host, home, {}))
+        return install_hooks.owned_entries(host, data) if data else None
+    except Exception:
+        return None
+
+
+def _guard_installed(host: str, home: Path) -> bool:
+    if host not in ("codex", "agy"):
+        return True  # claude plugin、opencode plugin 內建；grok 沒有可靠的判斷
+    return _shoal_hook_entries(host, home) != 0
+
+
 def infer(host: str, env: Mapping[str, str], repo: Path = REPO) -> Optional[list[str]]:
     """回傳該 host 目前實際安裝的模組；host 完全沒裝時回傳 None。"""
     home = host_home(host, env)
@@ -126,13 +145,22 @@ def infer(host: str, env: Mapping[str, str], repo: Path = REPO) -> Optional[list
         if not any((home / "agents" / f"{n}.toml").exists() for n in names):
             return None
         mods += ["core", "host-codex"]
-        hooks = _read(home / "hooks.json")
-        if "shoal_guard" in hooks:
+        if _guard_installed("codex", home):
             mods.append("dispatch-guard")
-        if "shoal_autoroute_gate" in hooks:
+        try:
+            hooks = (home / "hooks.json").read_text(encoding="utf-8")
+            json.loads(hooks)
+            autoroute = "shoal_autoroute_gate" in hooks
+        except (OSError, ValueError):
+            autoroute = True
+        if autoroute:
             mods.append("codex-autoroute")
-        cfg = _read(home / "config.toml")
-        if JEV_PLUGIN in cfg or (home / "plugins/cache/shoal-codex/shoal-jev-router").exists():
+        try:
+            cfg = (home / "config.toml").read_text(encoding="utf-8")
+            jev = JEV_PLUGIN in cfg or (home / "plugins/cache/shoal-codex/shoal-jev-router").exists()
+        except OSError:
+            jev = True
+        if jev:
             mods.append("jev-router")
     elif host == "claude":
         if "shoal@shoal" not in _read(home / "plugins" / "installed_plugins.json"):
@@ -146,16 +174,12 @@ def infer(host: str, env: Mapping[str, str], repo: Path = REPO) -> Optional[list
         ):
             return None
         mods += ["core", "host-agy"]
-        if "shoal_guard" in _read(home / "settings.json"):
+        if _guard_installed("agy", home):
             mods.append("dispatch-guard")
     elif host == "grok":
         if not _any_named(repo / "hosts/grok/dist/agents", home / "agents"):
             return None
-        mods += ["core", "host-grok"]
-        if "shoal_guard" in _read(home / "hooks.json") or any(
-            "shoal_guard" in _read(p) for p in (home / "hooks").glob("*.json")
-        ):
-            mods.append("dispatch-guard")
+        mods += ["core", "host-grok", "dispatch-guard"]
     elif host == "opencode":
         if not (home / "plugins" / "shoal-opencode.js").exists():
             return None
