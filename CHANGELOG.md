@@ -46,6 +46,12 @@ guard 的每個閘門都接上（[`docs/specs/guard-every-gate`](./docs/specs/gu
 - 設計不變式第 3 條新增：有 harness 的 host 必須把每個能當閘門的事件都接上 guard，
   接不了的要列出原因與證據。
 - guard log 多記 `agent_type`、`agent_id` 與 session／turn 的短雜湊。
+- 快速模式（尚未發版，歸在此標題下；發版時改列 v3.7.0）：預設走快、風險觸發才走嚴謹流程。
+  prompt 的獨立 `#fast` 讓整個 session 等同每回合都帶 `#direct`（寫在 state，跨回合保留），
+  `#strict` 關閉；`SHOAL_GUARD_FAST=1` 對每個 session 生效（給沒有 prompt 文字的 agy）。
+  放行範圍與 `#direct` 相同（main 改檔、非 shoal 可寫 role 的 subagent 改檔）；
+  leaf 不派工、verify role 不改檔、完成檢查不變。log 在開啟時多一個 `fast: true`。
+  orchestration 文件加兩條路徑的說明（預設快、risk trigger 或使用者要求才走嚴謹）。
 
 ### Known limitations
 

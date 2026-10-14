@@ -766,6 +766,12 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   `x#direct`、`#direct-ly` 不算）只放行那一輪，下一輪失效，同時關掉那一輪的 R1、R2 與 G4；
   `SHOAL_GUARD_DIRECT=1` 對整個 session 放行 R1、R2、G4。guard 只記「這輪有 `#direct`」的旗標，
   不記錄 prompt 內容。
+- 快速模式：prompt 內獨立的 `#fast`（偵測規則同 `#direct`）讓這個 session 之後的每一回合都當成帶
+  `#direct`，記在 state 的 `fast`，跨回合保留，直到獨立的 `#strict`（同一個 prompt 兩者都有時以
+  `#strict` 為準）；`SHOAL_GUARD_FAST=1` 對每個 session 生效，給沒有 prompt 文字的 agy。放行的範圍
+  與 `#direct` 完全相同（main 的 R1、R2、G4、G5，以及 E1 的 subagent 放行，Codex、Grok 把 `#fast`
+  當成 `#direct` 回合）；LEAF、VERIFY_EDIT 與完成檢查不變。log 在開啟時多一個 `fast: true`，R1、E1 的
+  deny 訊息在有 prompt 文字的 host 多提示 `#fast`。
 - subagent 不受 R1、G4、G5 影響（它們是 main session 規則）；既不是宣告也沒有寫檔的前景 `Bash`
   與其他工具不會被 guard 計入或寫 log；3.4.0 起，本回合已有改檔且尚未檢查時，前景 `Bash` 會把
   state 的 `checked` 設為真（見下面的完成檢查），其他情況不碰 state。

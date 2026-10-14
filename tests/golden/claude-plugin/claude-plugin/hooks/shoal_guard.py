@@ -22,6 +22,8 @@ host.  Main-session rules: R2 (file count) only advises, on claude/codex in enfo
 one-per-turn `additionalContext` reminder.  G4 (claude only) denies main's background shell (`Bash`
 with run_in_background); it is released for one turn by a standalone `#direct` token in the user's
 prompt, or for good by SHOAL_GUARD_DIRECT=1.
+Fast mode (a standalone `#fast` in the prompt until `#strict`, or SHOAL_GUARD_FAST=1) counts every turn as `#direct`;
+LEAF, VERIFY_EDIT and the completion check are unchanged.
 
 The main-session edit rule (R1 for edit tools, G5 for a foreground `Bash` that literally writes a
 file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-declared-direct):
@@ -187,16 +189,22 @@ DIRECT_TURNS_MAX = 16
 # whitespace and is followed by the end, whitespace or sentence punctuation (ASCII or CJK).  Anything
 # else (`x#direct`, `(#direct)`, `#directly`, a URL fragment) is not.  Code the user quoted does not
 # count: fenced blocks and inline spans are masked with NUL (never whitespace) before matching.
-DIRECT_TOKEN_RE = re.compile(r"(?<!\S)#direct(?![^\s.,;:!?\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f])")
+def _token_re(name: str) -> "re.Pattern[str]":
+    return re.compile(r"(?<!\S)#" + name + r"(?![^\s.,;:!?\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f])")
+
+
+DIRECT_TOKEN_RE = _token_re("direct")
+FAST_TOKEN_RE = _token_re("fast")
+STRICT_TOKEN_RE = _token_re("strict")
 FENCE_OPEN_RE = re.compile(r" {0,3}`{3,}")
 FENCE_CLOSE_RE = re.compile(r" {0,3}`{3,}\s*$")
 INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)(?:(?!\n[ \t\r]*\n).)+?(?<!`)\1(?!`)", re.DOTALL)
 
 
-def has_direct_token(prompt: Any) -> bool:
-    """True when the user's prompt carries `#direct` as typed instruction, outside any code."""
+def _unquoted(prompt: Any) -> Optional[str]:
+    """The prompt text with fenced blocks and inline code masked, or None when it is not a string."""
     if not isinstance(prompt, str):
-        return False
+        return None
     lines: List[str] = []
     in_fence = False
     for line in prompt.split("\n"):
@@ -208,8 +216,25 @@ def has_direct_token(prompt: Any) -> bool:
             lines.append("\0")
         else:
             lines.append(line)
-    text = INLINE_CODE_RE.sub("\0", "\n".join(lines))
-    return DIRECT_TOKEN_RE.search(text) is not None
+    return INLINE_CODE_RE.sub("\0", "\n".join(lines))
+
+
+def has_direct_token(prompt: Any) -> bool:
+    """True when the user's prompt carries `#direct` as typed instruction, outside any code."""
+    text = _unquoted(prompt)
+    return text is not None and DIRECT_TOKEN_RE.search(text) is not None
+
+
+def fast_switch(prompt: Any) -> Optional[str]:
+    """Fast mode switch typed in the prompt: "off" for `#strict` (wins when both appear), "on" for `#fast`, else None."""
+    text = _unquoted(prompt)
+    if text is None:
+        return None
+    if STRICT_TOKEN_RE.search(text) is not None:
+        return "off"
+    return "on" if FAST_TOKEN_RE.search(text) is not None else None
+
+
 # Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
 # `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
 ROLE_NAMESPACES = ("shoal:",)
@@ -252,6 +277,7 @@ LOG_FIELDS = (
     "agent_id",
     "session",  # first 8 hex of sha256 of the session id / turn id: attributes lines, never reveals the id
     "turn",
+    "fast",
 )
 
 MESSAGES = {
@@ -273,7 +299,7 @@ MESSAGES = {
         "R1": (
             "Shoal dispatch guard: this turn is classified as implementation work and no write "
             "role has been dispatched. Dispatch executor or applier, or add #direct to your "
-            "prompt to edit directly."
+            "prompt (or #fast for the whole session) to edit directly."
         ),
         "G4": (
             "Shoal dispatch guard: the main session does not start background shells. Dispatch "
@@ -281,7 +307,7 @@ MESSAGES = {
         ),
         "STRICT": (
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
-            "write-capable role (executor or applier), or ask the user to add #direct to the prompt."
+            "write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."
         ),
         "STRICT_ND": (
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
@@ -302,7 +328,7 @@ MESSAGES = {
         "E1D": (
             "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. "
             "Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that "
-            "started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+            "started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
         ),
         "STOP": (
             "Shoal completion check: this turn changed files and no check ran afterwards. Run a "
@@ -313,7 +339,7 @@ MESSAGES = {
             "Shoal dispatch guard: the main session delegates edits by default. Dispatch a "
             "write-capable role (executor or applier), or declare direct work first by running "
             'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add '
-            "#direct to the prompt."
+            "#direct (or #fast for the whole session) to the prompt."
         ),
     },
     "zh-TW": {
@@ -326,7 +352,7 @@ MESSAGES = {
         "VERIFY_EDIT": "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
         "R1": (
             "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。"
-            "請派給 executor 或 applier，或在 prompt 加上 #direct 以直接修改。"
+            "請派給 executor 或 applier，或在 prompt 加上 #direct（單輪）或 #fast（整個 session）以直接修改。"
         ),
         "G4": (
             "Shoal dispatch guard：main session 不自己開背景 shell。"
@@ -334,7 +360,7 @@ MESSAGES = {
         ),
         "STRICT": (
             "Shoal dispatch guard：main session 不自己改檔。"
-            "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"
+            "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。"
         ),
         "STRICT_ND": (
             "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier）並等它啟動、"
@@ -352,7 +378,7 @@ MESSAGES = {
         ),
         "E1D": (
             "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。"
-            "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct、"
+            "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct 或 #fast、"
             "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"
         ),
         "STOP": (
@@ -362,7 +388,7 @@ MESSAGES = {
         "DECLARE": (
             "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
             "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
-            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。'
+            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。'
         ),
     },
 }
@@ -514,6 +540,10 @@ def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
     line: Dict[str, Any] = {"ts": datetime.now(timezone.utc).isoformat()}
     for key in LOG_FIELDS[1:]:
         value = record.get(key)
+        if key == "fast":  # the only boolean field: present only when fast mode was on
+            if value is True:
+                line[key] = True
+            continue
         if key == "file" and isinstance(value, str):
             value = os.path.basename(value)
         value = _safe_text(value)
@@ -1123,11 +1153,14 @@ class _Guard:
 
     def __init__(self, event: Dict[str, Any], env: Dict[str, str], home: Path) -> None:
         self.event = event
-        self.env = env
+        # Fast mode (SHOAL_GUARD_FAST=1) is `#direct` for every turn: reuse the SHOAL_GUARD_DIRECT release paths.
+        self.fast = env.get("SHOAL_GUARD_FAST") == "1"
+        self.env = dict(env, SHOAL_GUARD_DIRECT="1") if self.fast else env
         self.home = home
         self.host = str(event.get("host") or "")
         self.mode = resolve_mode(self.host, env)
         self.r1 = resolve_r1(self.host, env)
+        self.fast_state = False  # the session's fast flag as persisted by this prompt event
         self._dir: Optional[Path] = None
         self._dir_tried = False
 
@@ -1151,6 +1184,8 @@ class _Guard:
         if self.event.get("is_subagent") or self.event.get("kind") == "subagent_start":
             record["agent_type"] = self.event.get("role")
             record["agent_id"] = self.event.get("agent_id")
+        if self.fast:
+            record["fast"] = True
         record.update(extra)
         _append_log(self.guard_dir, record)
 
@@ -1253,7 +1288,7 @@ class _Guard:
             if guard is None:
                 return False
             state = _read_json(guard / "state" / (sid + ".json"))
-            return tid in _direct_turns(state)
+            return tid in _direct_turns(state) or state.get("fast") is True
         except Exception:
             return False
 
@@ -1607,6 +1642,15 @@ class _Guard:
                 return self.result("skip", skip=lock_skip)
             return self._locked(is_boundary, keep_turn and tid is None, tid, state_path, guard)
 
+    def _prompt_direct(self, prior: Dict[str, Any]) -> bool:
+        """Prompt event: update the session's fast flag (`#fast` on, `#strict` off, otherwise unchanged) and return
+        whether this turn counts as `#direct` (its own token, or fast mode on)."""
+        switch = self.event.get("fast")
+        self.fast_state = switch == "on" or (prior.get("fast") is True and switch != "off")
+        if self.fast_state:
+            self.fast = True
+        return self.event.get("direct") is True or self.fast_state
+
     def _locked(
         self, is_boundary: bool, keep: bool, tid: Optional[str], state_path: Path, guard: Path
     ) -> Dict[str, Any]:
@@ -1619,27 +1663,33 @@ class _Guard:
                 if not prior:
                     return self.result("skip", skip="missing_id")
                 prior_turns = _direct_turns(prior)
+                direct = self._prompt_direct(prior)
                 edited = prior.get("edited") if isinstance(prior.get("edited"), list) else []
                 prior_tid = prior.get("turn_id")
                 state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
                          "dispatched": False, "advised": False, "edited": edited,
-                         "direct": event.get("direct") is True, "declared": False, "pending": 0,
+                         "direct": direct, "declared": False, "pending": 0,
                          "changed": False, "checked": False, "stop_blocked": False}
-                if event.get("direct") is True and isinstance(prior_tid, str):
+                if direct and isinstance(prior_tid, str):
                     prior_turns = (prior_turns + [prior_tid])[-DIRECT_TURNS_MAX:]
                 if prior_turns:
                     state["direct_turns"] = prior_turns
+                if self.fast_state:
+                    state["fast"] = True
                 _carry_agents(state, prior)
             else:
                 prior = _read_json(state_path)
                 prior_turns = _direct_turns(prior)
-                if event.get("direct") is True and isinstance(tid, str):
+                direct = self._prompt_direct(prior)
+                if direct and isinstance(tid, str):
                     prior_turns = (prior_turns + [tid])[-DIRECT_TURNS_MAX:]
                 state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
-                         "direct": event.get("direct") is True, "declared": False, "pending": 0,
+                         "direct": direct, "declared": False, "pending": 0,
                          "changed": False, "checked": False, "stop_blocked": False}
                 if prior_turns:
                     state["direct_turns"] = prior_turns
+                if self.fast_state:
+                    state["fast"] = True
                 _carry_agents(state, prior)
             if not _write_json(state_path, state):
                 return self.result("skip", skip="state_write_failed")
@@ -1665,6 +1715,9 @@ class _Guard:
         }
         if kept_turns:
             state["direct_turns"] = kept_turns  # E1: turns that carried #direct, kept across turns
+        if prior_state.get("fast") is True:
+            state["fast"] = True  # fast mode lasts for the session (set by #fast, cleared by #strict)
+            self.fast = True
         _carry_agents(state, prior_state)  # codex: agents released by #direct / already counted as started
 
         if event.get("tool_kind") == "dispatch":
@@ -2043,6 +2096,7 @@ def _event(
     workspace: Any = None,
     dispatched_roles: Optional[List[str]] = None,
     fully_idle: Any = None,
+    fast: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
         "host": host,
@@ -2058,6 +2112,7 @@ def _event(
         "paths": paths or [],
         "dispatched_role": _str(dispatched_role),
         "direct": direct,
+        "fast": fast,  # prompt events: "on" (`#fast`), "off" (`#strict`) or None (no switch typed)
         "command": command if isinstance(command, str) else None,
         "stop_hook_active": stop_hook_active,  # `stop` events only: the host's raw value, judged by the guard
         "workspace": _str(workspace),  # agy only: the conversation's workspace paths, joined
@@ -2098,7 +2153,7 @@ def _adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if name == "UserPromptSubmit":
         prompt = payload.get("prompt")  # read for the #direct token only; never stored or logged
         has_direct = has_direct_token(prompt)
-        return _event("claude", "prompt", *base, direct=has_direct)
+        return _event("claude", "prompt", *base, direct=has_direct, fast=fast_switch(prompt))
     if name in ("PostToolUse", "PostToolUseFailure"):
         # PostToolUseFailure (a Bash call that failed, e.g. a test run exiting non-zero) is a call that ran too.  Its
         # payload shape was not captured: only tool_name, tool_input, agent_id, session_id, prompt_id are relied on.
@@ -2174,7 +2229,8 @@ def _adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return _event("codex", "stop", *base, stop_hook_active=payload.get("stop_hook_active"))
     if name == "UserPromptSubmit":
         # The payload's `prompt` field is what shoal_autoroute_gate.py reads on Codex too.
-        return _event("codex", "prompt", *base, direct=has_direct_token(payload.get("prompt")))
+        return _event("codex", "prompt", *base, direct=has_direct_token(payload.get("prompt")),
+                      fast=fast_switch(payload.get("prompt")))
     if name == "PostToolUse":
         # tests/fixtures/codex_subagent_tool_shapes.json: PostToolUse has tool_name, tool_input and tool_response; it
         # does not fire for a call that failed to start, and a subagent's call carries agent_id (sub).
@@ -2220,7 +2276,8 @@ def adapt_grok(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         sub_type,
     )
     if name == "user_prompt_submit":
-        return _event("grok", "prompt", *base, direct=has_direct_token(payload.get("prompt")))
+        return _event("grok", "prompt", *base, direct=has_direct_token(payload.get("prompt")),
+                      fast=fast_switch(payload.get("prompt")))
     if name == "subagent_start":
         # tests/fixtures/grok_guard_event_shapes.json: sessionId is MAIN's; subagentId/subagentType name the NEW subagent,
         # whose own events carry sessionId == subagentId.

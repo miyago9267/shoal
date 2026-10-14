@@ -36,7 +36,7 @@
   "agy (docs/specs/guard-every-gate S5): extra event keys `workspace` (session_start, dispatch), `dispatched_roles` (dispatch), `fully_idle` (stop). Main vs subagent is not in the event: it is inferred from session_start / dispatch order, so those vectors drive it with those events and a distinct session_id per conversation.",
   "3.6.0 (guard-every-gate E8): a step with event kind post_shell (tool_kind shell, command, turn_id; is_subagent for a subagent) is the PostToolUse of a shell call that really ran, on claude and codex only; it decides none. A plain foreground one after a change sets checked and records post_seen; until the session's first post_shell, a PreToolUse shell call still sets checked (fallback for a registration without PostToolUse); afterwards PreToolUse no longer counts. Other hosts ignore post_shell and keep the PreToolUse rule. The post_* vectors cover both."
  ],
- "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn"],
+ "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn", "fast"],
  "env_defaults": {"SHOAL_GUARD_R1": "classified"},
  "vectors": [
   {
@@ -1149,7 +1149,7 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt to edit directly."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt (or #fast for the whole session) to edit directly."}}
    ]
   },
   {
@@ -1158,7 +1158,7 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard\uff1a\u672c\u8f2a\u5df2\u88ab\u5206\u985e\u70ba\u5be6\u4f5c\u5de5\u4f5c\uff0c\u4e14\u5c1a\u672a\u6d3e\u51fa write role\u3002\u8acb\u6d3e\u7d66 executor \u6216 applier\uff0c\u6216\u5728 prompt \u52a0\u4e0a #direct \u4ee5\u76f4\u63a5\u4fee\u6539\u3002"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard\uff1a\u672c\u8f2a\u5df2\u88ab\u5206\u985e\u70ba\u5be6\u4f5c\u5de5\u4f5c\uff0c\u4e14\u5c1a\u672a\u6d3e\u51fa write role\u3002\u8acb\u6d3e\u7d66 executor \u6216 applier\uff0c\u6216\u5728 prompt \u52a0\u4e0a #direct\uff08\u55ae\u8f2a\uff09\u6216 #fast\uff08\u6574\u500b session\uff09\u4ee5\u76f4\u63a5\u4fee\u6539\u3002"}}
    ]
   },
   {
@@ -1467,7 +1467,7 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt to edit directly."}}
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt (or #fast for the whole session) to edit directly."}}
    ]
   },
   {
@@ -1476,7 +1476,7 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。請派給 executor 或 applier，或在 prompt 加上 #direct 以直接修改。"}}
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。請派給 executor 或 applier，或在 prompt 加上 #direct（單輪）或 #fast（整個 session）以直接修改。"}}
    ]
   },
   {
@@ -1780,8 +1780,8 @@
    "env": {"SHOAL_GUARD_R1": "declare"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -1789,8 +1789,8 @@
    "env": {"SHOAL_GUARD_R1": "declare", "SHOAL_GUARD_LANG": "zh-TW"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。"}}
    ]
   },
   {
@@ -1798,7 +1798,7 @@
    "env": {"SHOAL_GUARD_R1": "declare"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -1931,8 +1931,8 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
    ]
@@ -2119,7 +2119,7 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt to edit directly."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt (or #fast for the whole session) to edit directly."}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}
    ]
   },
@@ -2160,7 +2160,7 @@
    "env": {"SHOAL_GUARD_R1": "bogus"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2168,7 +2168,7 @@
    "env": {"SHOAL_GUARD_R1": ""},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2176,7 +2176,7 @@
    "env": {"SHOAL_GUARD_R1": "declare"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {"name": "grok_r1_unset_is_strict", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}]},
@@ -2247,8 +2247,8 @@
    "env": {"SHOAL_GUARD_R1": "declare"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2257,8 +2257,8 @@
    "env": {"SHOAL_GUARD_R1": "declare", "SHOAL_GUARD_LANG": "zh-TW"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。"}}
    ]
   },
   {
@@ -2280,7 +2280,7 @@
    "env": {"SHOAL_GUARD_R1": "declare"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "declared"}}
    ]
@@ -2366,7 +2366,7 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "state", "rule": "declare"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
    ]
@@ -2433,7 +2433,7 @@
    "env": {"SHOAL_GUARD_R1": ""},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2442,7 +2442,7 @@
    "env": {"SHOAL_GUARD_R1": "bogus"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2451,7 +2451,7 @@
    "env": {"SHOAL_GUARD_R1": "declare"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2495,8 +2495,8 @@
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2504,8 +2504,8 @@
    "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_LANG": "zh-TW"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。"}}
    ]
   },
   {
@@ -2514,10 +2514,10 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ],
    "log_lacks": ["\"rule\":\"declare\"", "\"reason\"", "\"tool\":\"Bash\",\"decision\":\"state\""]
   },
@@ -2527,8 +2527,8 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2537,7 +2537,7 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2548,8 +2548,8 @@
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "direct"}},
     {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2566,7 +2566,7 @@
    "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "true"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2574,7 +2574,7 @@
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
     {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
@@ -2582,7 +2582,7 @@
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
     {"event": {"kind": "subagent_start", "role": "applier", "turn_id": "t2"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
@@ -2594,15 +2594,15 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "watcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "researcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "verifier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "plan-critic"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2613,7 +2613,7 @@
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo ok"}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "ls -la && git status"}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "grep 'a > b' f"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ],
    "log_lacks": []
   },
@@ -2634,7 +2634,7 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF", "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "is_subagent": true, "role": "executor", "dispatched_role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
    ]
@@ -2644,9 +2644,9 @@
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
     {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/x"]}, "expect": {"decision": "allow", "rule": "dispatched"}}
@@ -2676,7 +2676,7 @@
    "env": {"SHOAL_GUARD_R1": ""},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2684,7 +2684,7 @@
    "env": {"SHOAL_GUARD_R1": "bogus"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2692,7 +2692,7 @@
    "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2709,8 +2709,8 @@
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2719,8 +2719,8 @@
    "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_LANG": "zh-TW"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。"}}
    ]
   },
   {
@@ -2730,10 +2730,10 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ],
    "log_lacks": ["\"rule\":\"declare\"", "\"reason\"", "\"tool\":\"Bash\",\"decision\":\"state\""]
   },
@@ -2744,8 +2744,8 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2755,7 +2755,7 @@
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2767,8 +2767,8 @@
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "direct"}},
     {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2787,10 +2787,10 @@
    "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "true"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
-  {"name": "codex_strict_write_role_dispatch_unlocks_this_turn_only", "host": "codex", "env": {"SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "applier", "agent_id": "a2", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}]},
+  {"name": "codex_strict_write_role_dispatch_unlocks_this_turn_only", "host": "codex", "env": {"SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "allow", "rule": "dispatched"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t2", "dispatched_role": "applier"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "applier", "agent_id": "a2", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}]},
   {
    "name": "codex_strict_read_only_and_verify_dispatch_do_not_unlock",
    "host": "codex",
@@ -2798,15 +2798,15 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "watcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "researcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "verifier"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "plan-critic"}, "expect": {"decision": "allow", "rule": "dispatch"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2818,7 +2818,7 @@
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo ok"}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "ls -la && git status"}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "grep 'a > b' f"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ],
    "log_lacks": ["\"tool\":\"Bash\""]
   },
@@ -2841,12 +2841,12 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF", "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "is_subagent": true, "role": "executor", "dispatched_role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}
    ]
   },
-  {"name": "codex_strict_denied_calls_are_not_counted_for_r2", "host": "codex", "env": {"SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/x"]}, "expect": {"decision": "allow", "rule": "dispatched"}}]},
+  {"name": "codex_strict_denied_calls_are_not_counted_for_r2", "host": "codex", "env": {"SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/x"]}, "expect": {"decision": "allow", "rule": "dispatched"}}]},
   {
    "name": "codex_strict_shadow_would_deny_and_edit_goes_ahead",
    "host": "codex",
@@ -2874,7 +2874,7 @@
    "env": {"SHOAL_GUARD_R1": ""},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2883,7 +2883,7 @@
    "env": {"SHOAL_GUARD_R1": "bogus"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2892,7 +2892,7 @@
    "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2919,11 +2919,11 @@
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2932,7 +2932,7 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "allow", "rule": "dispatched"}},
@@ -2972,7 +2972,7 @@
     {"event": {"kind": "subagent_start", "role": "researcher", "turn_id": "t1"}, "expect": {"decision": "none"}},
     {"event": {"kind": "subagent_start", "role": "plan-critic", "turn_id": "t1"}, "expect": {"decision": "none"}},
     {"event": {"kind": "subagent_start", "role": "unknown", "turn_id": "t1"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2982,10 +2982,10 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
     {"event": {"kind": "subagent_start", "role": "scout", "turn_id": "t1"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "watcher"}, "expect": {"decision": "allow", "rule": "dispatch"}},
     {"event": {"kind": "subagent_start", "role": "watcher", "turn_id": "t1"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -2994,10 +2994,10 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -3005,7 +3005,7 @@
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": null}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -3016,8 +3016,8 @@
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
     {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t2"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -3076,7 +3076,7 @@
     {"event": {"kind": "subagent_start", "role": 7, "turn_id": "t1"}, "expect": {"decision": "none"}},
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "session_id": null, "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "missing_id"}},
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "session_id": "bad id", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "invalid_id"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {
@@ -3136,7 +3136,7 @@
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}
    ]
   },
   {"name": "codex_m11_dispatch_call_no_longer_unlocks_the_start_event_does", "host": "codex", "env": {"SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_agent", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "dispatched"}}]},
@@ -3751,7 +3751,7 @@
   {"name": "grok_subagent_event_without_a_record_still_gets_the_role_rules", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "lost1", "agent_id": "lost1", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "lost1", "agent_id": "lost1", "tool_name": "run_terminal_command", "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "deny", "rule": "E1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "applier", "session_id": "lost1", "agent_id": "lost1", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "executor", "session_id": "lost1", "agent_id": "lost1", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "verifier", "session_id": "lost1", "agent_id": "lost1", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "scout", "session_id": "lost1", "agent_id": "lost1", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": null, "is_subagent": true, "role": "applier", "session_id": "lost1", "agent_id": "lost1", "tool_name": "spawn_subagent", "dispatched_role": "scout"}, "expect": {"decision": "deny", "rule": "LEAF"}}]},
   {"name": "grok_leaf_dispatch_denied_for_a_recorded_subagent", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "applier", "agent_id": "sub1", "turn_id": null}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": null, "is_subagent": true, "role": "applier", "session_id": "sub1", "agent_id": "sub1", "tool_name": "spawn_subagent", "dispatched_role": "scout"}, "expect": {"decision": "deny", "rule": "LEAF"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_subagent", "turn_id": null, "dispatched_role": "scout", "session_id": "sub1"}, "expect": {"decision": "deny", "rule": "LEAF"}}]},
   {"name": "grok_verify_role_keeps_its_rule", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "verifier", "agent_id": "v1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "verifier", "session_id": "v1", "agent_id": "v1", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": null, "is_subagent": true, "role": "verifier", "session_id": "v1", "agent_id": "v1", "tool_name": "run_terminal_command", "command": "npm test > /tmp/t.log"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": null, "is_subagent": true, "role": "verifier", "session_id": "v1", "agent_id": "v1", "tool_name": "run_terminal_command", "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "deny", "rule": "E1"}}]},
-  {"name": "grok_denial_messages_name_the_exits", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "write", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}]},
+  {"name": "grok_denial_messages_name_the_exits", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "write", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}]},
   {"name": "grok_mode_override_to_shadow_denies_nothing", "host": "grok", "env": {"SHOAL_GUARD": "shadow", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "write", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "tool_name": "run_terminal_command", "turn_id": null, "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "would_deny", "rule": "R1"}}, {"event": {"kind": "subagent_start", "role": "general", "agent_id": "sub2", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "sub2", "agent_id": "sub2", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "E1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "sub2", "agent_id": "sub2", "tool_name": "run_terminal_command", "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "would_deny", "rule": "E1"}}]},
   {"name": "grok_mode_off_decides_nothing", "host": "grok", "env": {"SHOAL_GUARD": "off", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "write", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "subagent_start", "role": "general", "agent_id": "sub2", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "sub2", "agent_id": "sub2", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}]},
   {"name": "grok_subagent_write_switch_off_leaves_subagents_alone", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null, "SHOAL_GUARD_SUBAGENT_WRITE": "off"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "general", "agent_id": "sub2", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "sub2", "agent_id": "sub2", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "sub2", "agent_id": "sub2", "tool_name": "run_terminal_command", "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "verifier", "session_id": "sub2", "agent_id": "sub2", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}]},
@@ -3954,7 +3954,7 @@
      "expect": {
       "decision": "deny",
       "rule": "E1",
-      "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+      "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
      }
     }
    ]
@@ -4860,7 +4860,7 @@
     }
    ]
   },
-  {"name": "e1_codex_on_denial_message_lists_the_exits", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "on"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "worker", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."}}]},
+  {"name": "e1_codex_on_denial_message_lists_the_exits", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "on"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "worker", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."}}]},
   {
    "name": "e1_codex_on_shoal_write_roles_allowed",
    "host": "codex",
@@ -6596,7 +6596,7 @@
     "expect": {
      "decision": "deny",
      "rule": "E1",
-     "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+     "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
     }
    }
   ]
@@ -6951,8 +6951,8 @@
   {"name": "e1_codex_default_unset_allowlist_allows_worker", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_WRITE_AGENTS": "worker"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}]},
   {"name": "e1_codex_explicit_off_is_the_previous_behaviour", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "off", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "shell", "tool_name": "Bash", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "command": "echo hi > $WORK/src/a"}, "expect": {"decision": "none"}}, {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w2", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}]},
   {"name": "e1_codex_default_unset_shadow_logs_would_deny", "host": "codex", "env": {"SHOAL_GUARD": "shadow", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "E1"}}], "log_contains": ["\"decision\":\"would_deny\""]},
-  {"name": "e1_codex_default_unset_denial_message_names_hash_direct", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."}}]},
-  {"name": "e1_codex_default_unset_denial_message_zh_tw", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_LANG": "zh-TW"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct、把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"}}]},
+  {"name": "e1_codex_default_unset_denial_message_names_hash_direct", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."}}]},
+  {"name": "e1_codex_default_unset_denial_message_zh_tw", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_LANG": "zh-TW"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct 或 #fast、把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"}}]},
   {"name": "e1_codex_direct_turn_releases_the_agent_started_in_it", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "shell", "tool_name": "Bash", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "command": "echo hi > $WORK/src/a"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u9", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "subagent_start", "role": "general-purpose", "agent_id": "w2", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "general-purpose", "agent_id": "w2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}]},
   {"name": "e1_codex_direct_release_survives_the_next_turn_but_not_a_new_agent", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w2", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "tool_name": "Bash", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w2", "command": "echo hi > $WORK/src/a"}, "expect": {"decision": "deny", "rule": "E1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "E1"}}]},
   {"name": "e1_codex_direct_release_is_per_session", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"], "session_id": "s2"}, "expect": {"decision": "deny", "rule": "E1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "u1", "is_subagent": true, "role": "worker", "agent_id": "w1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}]},
@@ -7301,6 +7301,21 @@
  {"name": "post_codex_post_seen_by_a_write_still_turns_the_pre_fallback_off", "host": "codex", "env": {"SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "tool_name": "apply_patch"}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "post_shell", "tool_kind": "shell", "turn_id": "t1", "command": "echo hi > $WORK/src/b"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "python3 -m unittest"}, "expect": {"decision": "none"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "block", "rule": "STOP", "reason": "Shoal completion check: this turn changed files and no check ran afterwards. Run a verification now (tests, a verifier or watcher role), or say explicitly in your report that the change is unverified."}}]},
  {"name": "post_codex_change_after_a_post_check_clears_it", "host": "codex", "env": {"SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "tool_name": "apply_patch"}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "post_shell", "tool_kind": "shell", "turn_id": "t1", "command": "python3 -m unittest"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "tool_name": "apply_patch"}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "block", "rule": "STOP", "reason": "Shoal completion check: this turn changed files and no check ran afterwards. Run a verification now (tests, a verifier or watcher role), or say explicitly in your report that the change is unverified."}}]},
  {"name": "post_grok_pre_shell_still_counts_as_the_check", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null, "SHOAL_GUARD_STOP": "enforce"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_subagent", "turn_id": null, "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "python3 -m unittest"}, "expect": {"decision": "none"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "none"}}]},
- {"name": "post_grok_post_shell_event_is_ignored", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null, "SHOAL_GUARD_STOP": "enforce"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_subagent", "turn_id": null, "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "post_shell", "tool_kind": "shell", "turn_id": "t1", "command": "python3 -m unittest"}, "expect": {"decision": "none"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "block", "rule": "STOP"}}]}
+ {"name": "post_grok_post_shell_event_is_ignored", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null, "SHOAL_GUARD_STOP": "enforce"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "spawn_subagent", "turn_id": null, "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}}, {"event": {"kind": "subagent_start", "role": "executor", "agent_id": "a1", "turn_id": null}, "expect": {"decision": "state", "rule": "dispatch_started"}}, {"event": {"kind": "post_shell", "tool_kind": "shell", "turn_id": "t1", "command": "python3 -m unittest"}, "expect": {"decision": "none"}}, {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "block", "rule": "STOP"}}]},
+  {"name": "fast_claude_token_persists_across_turns_until_strict", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "command": "echo x > $WORK/src/a.py"}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "prompt", "turn_id": "t3", "fast": "off"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t3", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "prompt", "turn_id": "t4"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t4", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}], "log_contains": ["\"fast\":true"]},
+  {"name": "fast_strict_wins_when_both_switches_typed", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "prompt", "turn_id": "t2", "fast": "off"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}]},
+  {"name": "fast_claude_is_per_session", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "session_id": "s2"}, "expect": {"decision": "deny", "rule": "R1"}}]},
+  {"name": "fast_env_allows_main_edit_on_every_turn", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_FAST": "1"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}], "log_contains": ["\"fast\":true"]},
+  {"name": "fast_env_other_value_is_not_fast", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_FAST": "true"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}], "log_lacks": ["\"fast\""]},
+  {"name": "fast_missing_state_is_not_fast", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}], "log_lacks": ["\"fast\""]},
+  {"name": "fast_state_with_non_boolean_flag_is_not_fast", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "setup": {"state_file": {"session": "s1", "content": "{\"turn_id\": \"t1\", \"dispatched\": false, \"advised\": false, \"edited\": [], \"direct\": false, \"fast\": \"yes\", \"declared\": false, \"pending\": 0, \"changed\": false, \"checked\": false, \"stop_blocked\": false}"}}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}]},
+  {"name": "fast_claude_releases_non_shoal_subagent_edit_in_later_turns", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "general-purpose"}, "expect": {"decision": "deny", "rule": "E1"}}, {"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "general-purpose"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t2", "is_subagent": true, "role": "general-purpose", "command": "echo hi > $WORK/src/a"}, "expect": {"decision": "none"}}, {"event": {"kind": "prompt", "turn_id": "t3", "fast": "off"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t3", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "general-purpose"}, "expect": {"decision": "deny", "rule": "E1"}}]},
+  {"name": "fast_codex_releases_agent_started_in_a_fast_session", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "worker", "agent_id": "w1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "u1", "paths": ["$WORK/src/a"], "tool_name": "apply_patch", "is_subagent": true, "role": "worker", "agent_id": "w1"}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}]},
+  {"name": "fast_grok_releases_subagent_started_in_a_fast_session", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "subagent_start", "role": "general", "agent_id": "sub1", "turn_id": null}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": null, "is_subagent": true, "role": "general", "session_id": "sub1", "agent_id": "sub1", "tool_name": "write", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}, {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "write", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}]},
+  {"name": "fast_opencode_token_releases_main_edit_on_later_turns", "host": "opencode", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}}]},
+  {"name": "fast_env_releases_non_shoal_subagent_edit_on_every_host", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_FAST": "1"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "tool_name": "apply_patch", "is_subagent": true, "role": "worker", "agent_id": "w1"}, "expect": {"decision": "none"}}]},
+  {"name": "fast_keeps_verify_edit_and_leaf_dispatch_denied", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "watcher"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "shoal:verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t2", "dispatched_role": "scout", "is_subagent": true, "role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}}]},
+  {"name": "fast_env_keeps_verify_edit_and_leaf_dispatch_denied", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_FAST": "1"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "watcher"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout", "is_subagent": true, "role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}}]},
+  {"name": "fast_denial_messages_name_fast", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "general-purpose"}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."}}]}
  ]
 }

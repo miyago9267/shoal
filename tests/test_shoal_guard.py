@@ -116,7 +116,7 @@ class DeclarationParserTests(unittest.TestCase):
             guard.MESSAGES["en"]["DECLARE"],
             "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role "
             '(executor or applier), or declare direct work first by running exactly : shoal-direct "<reason>" '
-            "as its own shell command, or ask the user to add #direct to the prompt.")
+            "as its own shell command, or ask the user to add #direct (or #fast for the whole session) to the prompt.")
 
 
 class WindowsNoOpTests(unittest.TestCase):
@@ -755,7 +755,7 @@ class StrictCliTests(CliCase):
         self.assertEqual(
             guard.MESSAGES["en"]["STRICT"],
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role "
-            "(executor or applier), or ask the user to add #direct to the prompt.")
+            "(executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt.")
         for lang in ("en", "zh-TW"):
             text = guard.MESSAGES[lang]["STRICT"]
             for needle in ("executor", "applier", "#direct"):

@@ -70,21 +70,24 @@ kind = "gate"
 required = true
 sep = "newline"
 text = '''
-- Risk precedes size. Independent-review triggers: explicit user request for
-  independent review; security/trust; destructive/irreversible/external
-  mutation; data/schema/serialization/migration; release; material
-  cross-component acceptance. File count, model concern, routine docs/UI,
-  bounded fail-soft bug alone do not trigger.'''
+- Risk precedes size. Independent-review triggers: explicit user request;
+  security/trust; destructive/irreversible/external mutation;
+  data/schema/serialization/migration; release; guard/hard-rule changes;
+  material cross-component acceptance. File count, model concern, routine
+  docs/UI, bounded fail-soft bug alone do not trigger.
+- Fast (default): dispatch or edit, one targeted check, no plan review,
+  separate verifier or paid live run. Rigorous: risk trigger or user request.
+  Name the lane at start.'''
 
 [[clause]]
 id = "direct-when-small"
 kind = "routing"
 sep = "newline"
 text = '''
-- Without a risk trigger, the main session still does not edit files itself:
-  every edit goes to a write-capable role. Direct main edits exist only under
-  the user's `#direct`. Reading, running commands, diagnosis, integration, and
-  judgment stay with main. Otherwise use phase-aware lifecycle below.'''
+- Without a risk trigger, main still does not edit files itself: every edit
+  goes to a write-capable role, except under the user's `#direct` or a `#fast`
+  session. Reading, running commands, diagnosis, integration, and judgment
+  stay with main. Otherwise use phase-aware lifecycle below.'''
 
 [[clause]]
 id = "discovery-gate"

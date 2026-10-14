@@ -169,19 +169,22 @@ Clear intent does not require `explore_then_plan` by itself: a bounded release r
   worker count, ownership, stops. If absent, apply this policy without
   searching/installing. shoal and Baton compose; neither bypasses the
   other's named-role, model-routing, leaf, approval, or verification boundaries.
-- Risk precedes size. Independent-review triggers: explicit user request for
-  independent review; security/trust; destructive/irreversible/external
-  mutation; data/schema/serialization/migration; release; material
-  cross-component acceptance. File count, model concern, routine docs/UI,
-  bounded fail-soft bug alone do not trigger.
+- Risk precedes size. Independent-review triggers: explicit user request;
+  security/trust; destructive/irreversible/external mutation;
+  data/schema/serialization/migration; release; guard/hard-rule changes;
+  material cross-component acceptance. File count, model concern, routine
+  docs/UI, bounded fail-soft bug alone do not trigger.
+- Fast (default): dispatch or edit, one targeted check, no plan review,
+  separate verifier or paid live run. Rigorous: risk trigger or user request.
+  Name the lane at start.
 
 For low-risk, local, reversible work, use one targeted acceptance check in the
 main session and do not add an independent verifier.
 
-- Without a risk trigger, the main session still does not edit files itself:
-  every edit goes to a write-capable role. Direct main edits exist only under
-  the user's `#direct`. Reading, running commands, diagnosis, integration, and
-  judgment stay with main. Otherwise use phase-aware lifecycle below.
+- Without a risk trigger, main still does not edit files itself: every edit
+  goes to a write-capable role, except under the user's `#direct` or a `#fast`
+  session. Reading, running commands, diagnosis, integration, and judgment
+  stay with main. Otherwise use phase-aware lifecycle below.
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
   may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.

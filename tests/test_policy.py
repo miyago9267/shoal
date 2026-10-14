@@ -193,8 +193,8 @@ class PolicyTests(unittest.TestCase):
             "No untyped fallback is permitted",
             "must not silently substitute an untyped child",
             "it reports delegation unavailable",
-            "the main session still does not edit files itself",
-            "Direct main edits exist only under the user's `#direct`",
+            "main still does not edit files itself",
+            "except under the user's `#direct` or a `#fast` session",
             "an unavailable worker is not a licence to edit",
             "report an unavailable worker to the user",
         ):

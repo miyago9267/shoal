@@ -103,14 +103,14 @@ class OtherHostsRoleTests(unittest.TestCase):
     POLICY_SHA256 = {
         "codex": {
             "agents-md.bootstrap.md": "05506fc776f399ac88365375e9f3cf9a2dda285929a737cd1949bdc80eb67943",
-            "agents-md.orchestration.md": "b4fe958250f6059cc06bd2d87be776bd00e0c0aec27538215b9fffcc93f30491",
+            "agents-md.orchestration.md": "699eff90f24ff10d8aeaa627d550b02cd4f9705a7295d5eff8cdb1d0ed55323d",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
             "rules/shoal-agy.md": "e42a60769a8ac715394af090ba601c4ce49b91218974141ddc907ae046c1caff",
             "skills/shoal-orchestration/SKILL.md": "d9ecd94a9d5656791edc026b5c3abd315817341f09b34a184f58f0787f90b6f2",
             "skills/shoal-orchestration/references/orchestration-policy.md":
-                "fe4b74baf3a20387acb4df4ec52f127dd97a32d7905ee9ee25b220af70ca8002",
+                "3a66e9d4b6e57b170c1cf27220b7ea38c6e339cfadc899dd9b72d4425d2a77bf",
             "skills/shoal-orchestration/references/workflow-extensions.md":
                 "354ddedd06c0dc21aa00c2182fd9784ffbdb82cfda05cf5bbe166cd400939fc1",
         },
@@ -346,8 +346,8 @@ class PolicyClauseTests(unittest.TestCase):
     def test_rewritten_default_delegation_clauses(self) -> None:
         flat = " ".join(self.policy.split())
         for needle in (
-            "the main session still does not edit files itself: every edit goes to a write-capable role. "
-            "Direct main edits exist only under the user's `#direct`.",
+            "main still does not edit files itself: every edit goes to a write-capable role, "
+            "except under the user's `#direct` or a `#fast` session.",
             "Direct main execution of qualifying mechanical work exists only under the user's `#direct`.",
             "is not a licence to edit: diagnose in main, delegate the fix, and report an unavailable worker to the user.",
             "Reconnaissance over two or more independent surfaces goes to parallel `scout` calls",
@@ -493,7 +493,7 @@ class DesignInvariantsTests(unittest.TestCase):
 
         text = squash((ROOT / "docs" / "DESIGN-INVARIANTS.md").read_text(encoding="utf-8"))
         for wanted in (
-            "派工不以數字門檻強制。改檔一律由可寫的 role 執行，除非使用者以 `#direct` 授權 main 直接改；"
+            "派工不以數字門檻強制。改檔一律由可寫的 role 執行，除非使用者以 `#direct` 授權 main 直接改（或 session 處於 `#fast`）；"
             "互不相干的偵察與長指令預設派工。讀檔、診斷、整合與判斷由 main 直接做。",
             "hook 強制硬規則：leaf 不再派 subagent、verifier 類 role 不改檔、main 以背景方式開 shell、main 未派工"
             "就改檔（`#direct` 可放行），以及非 shoal 可寫 role 的 subagent 改檔（`#direct`、"

@@ -57,6 +57,8 @@ export type GuardEvent = {
   command?: string | null;
   /** prompt events (claude): the user's prompt carried a standalone `#direct` token. */
   direct?: boolean;
+  /** prompt events: "on" for a standalone `#fast`, "off" for `#strict`; absent when neither was typed. */
+  fast?: "on" | "off" | null;
   /** stop events: the host's raw `stop_hook_active` value; only exactly `false` lets the guard block. */
   stop_hook_active?: unknown;
   /** codex: the subagent's id on its events and on `subagent_start` (its own turn_id differs from main's). */
@@ -85,6 +87,8 @@ type StateFile = {
   advised: boolean;
   edited: string[];
   direct: boolean;
+  /** fast mode is on for this session (set by `#fast`, cleared by `#strict`; omitted when off). */
+  fast?: boolean;
   /** write dispatches whose role has not started yet (M11; START_UNLOCK_HOSTS only). */
   pending: number;
   /** main declared direct work this turn (`: shoal-direct <reason>`, M3). */
@@ -170,13 +174,18 @@ const START_UNLOCK_HOSTS = new Set(["claude", "codex", "opencode", "grok", "agy"
 // sentence punctuation (ASCII or CJK).  Fenced blocks and inline code spans are masked with NUL
 // first, so quoted code never counts.  The OpenCode adapter does not read prompts; this exists so
 // both implementations replay tests/fixtures/direct_token_vectors.json.
-const DIRECT_TOKEN_RE = /(?<!\S)#direct(?![^\s.,;:!?\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f])/;
+const tokenRe = (name: string): RegExp =>
+  new RegExp("(?<!\\S)#" + name + "(?![^\\s.,;:!?\\u3002\\uff0c\\u3001\\uff1b\\uff1a\\uff01\\uff1f])");
+const DIRECT_TOKEN_RE = tokenRe("direct");
+const FAST_TOKEN_RE = tokenRe("fast");
+const STRICT_TOKEN_RE = tokenRe("strict");
 const FENCE_OPEN_RE = /^ {0,3}`{3,}/;
 const FENCE_CLOSE_RE = /^ {0,3}`{3,}\s*$/;
 const INLINE_CODE_RE = /(?<!`)(`+)(?!`)(?:(?!\n[ \t\r]*\n)[\s\S])+?(?<!`)\1(?!`)/g;
 
-export function hasDirectToken(prompt: unknown): boolean {
-  if (typeof prompt !== "string") return false;
+/** The prompt text with fenced blocks and inline code masked, or null when it is not a string. */
+function unquoted(prompt: unknown): string | null {
+  if (typeof prompt !== "string") return null;
   const lines: string[] = [];
   let inFence = false;
   for (const line of prompt.split("\n")) {
@@ -188,7 +197,20 @@ export function hasDirectToken(prompt: unknown): boolean {
       lines.push("\0");
     } else lines.push(line);
   }
-  return DIRECT_TOKEN_RE.test(lines.join("\n").replace(INLINE_CODE_RE, "\0"));
+  return lines.join("\n").replace(INLINE_CODE_RE, "\0");
+}
+
+export function hasDirectToken(prompt: unknown): boolean {
+  const text = unquoted(prompt);
+  return text !== null && DIRECT_TOKEN_RE.test(text);
+}
+
+/** Fast mode switch typed in the prompt: "off" for `#strict` (wins when both appear), "on" for `#fast`, else null. */
+export function fastSwitch(prompt: unknown): "on" | "off" | null {
+  const text = unquoted(prompt);
+  if (text === null) return null;
+  if (STRICT_TOKEN_RE.test(text)) return "off";
+  return FAST_TOKEN_RE.test(text) ? "on" : null;
 }
 // Role-name namespaces accepted as the same role (K3).  Explicit allowlist only: any other
 // `x:name` stays unknown, so it neither unlocks nor counts as a leaf/verify role.
@@ -235,7 +257,7 @@ const DISPATCH_NAME: Record<string, string> = {
   agy: "invoke_subagent",
   opencode: "task",
 };
-const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn"];
+const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn", "fast"];
 
 const MESSAGES: Record<string, Record<string, string>> = {
   en: {
@@ -253,13 +275,13 @@ const MESSAGES: Record<string, Record<string, string>> = {
     R1:
       "Shoal dispatch guard: this turn is classified as implementation work and no write " +
       "role has been dispatched. Dispatch executor or applier, or add #direct to your " +
-      "prompt to edit directly.",
+      "prompt (or #fast for the whole session) to edit directly.",
     G4:
       "Shoal dispatch guard: the main session does not start background shells. Dispatch " +
       "watcher in the background instead, or add #direct to your prompt.",
     STRICT:
       "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
-      "write-capable role (executor or applier), or ask the user to add #direct to the prompt.",
+      "write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt.",
     STRICT_ND:
       "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
       "write-capable role (executor or applier) and wait until it has started, add the role to " +
@@ -276,7 +298,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
     E1D:
       "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. " +
       "Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that " +
-      "started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1.",
+      "started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1.",
     STOP:
       "Shoal completion check: this turn changed files and no check ran afterwards. Run a " +
       "verification now (tests, a verifier or watcher role), or say explicitly in your report " +
@@ -285,7 +307,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Shoal dispatch guard: the main session delegates edits by default. Dispatch a " +
       "write-capable role (executor or applier), or declare direct work first by running " +
       'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add ' +
-      "#direct to the prompt.",
+      "#direct (or #fast for the whole session) to the prompt.",
   },
   "zh-TW": {
     ADVISE:
@@ -296,13 +318,13 @@ const MESSAGES: Record<string, Record<string, string>> = {
     VERIFY_EDIT: "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
     R1:
       "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。" +
-      "請派給 executor 或 applier，或在 prompt 加上 #direct 以直接修改。",
+      "請派給 executor 或 applier，或在 prompt 加上 #direct（單輪）或 #fast（整個 session）以直接修改。",
     G4:
       "Shoal dispatch guard：main session 不自己開背景 shell。" +
       "請改在背景派出 watcher，或在 prompt 加上 #direct。",
     STRICT:
       "Shoal dispatch guard：main session 不自己改檔。" +
-      "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。",
+      "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。",
     STRICT_ND:
       "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier）並等它啟動、" +
       "把 role 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1（這個 host 沒有 prompt 標記可用）。",
@@ -316,7 +338,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
     E1D:
       "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。" +
-      "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct、" +
+      "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct 或 #fast、" +
       "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
     STOP:
       "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。" +
@@ -324,7 +346,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
     DECLARE:
       "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
       "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
-      ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。',
+      ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。',
   },
 };
 
@@ -518,9 +540,13 @@ export function shortHash(value: unknown): string | undefined {
 /** Append one whitelisted record to guard.jsonl (1 MiB cap).  Never throws. */
 export function appendLog(dir: string | null, record: LogRecord): void {
   if (dir === null) return;
-  const line: Record<string, string> = { ts: new Date().toISOString() };
+  const line: Record<string, string | boolean> = { ts: new Date().toISOString() };
   for (const key of LOG_FIELDS) {
     let value = record[key];
+    if (key === "fast") {
+      if (value === true) line.fast = true; // the only boolean field: present only when fast mode was on
+      continue;
+    }
     if (key === "file" && typeof value === "string") value = basename(value);
     const text = safeText(value);
     if (text !== null) line[key] = text;
@@ -783,12 +809,18 @@ class Guard {
   readonly r1: string;
   private dir: string | null = null;
   private dirTried = false;
+  private fast: boolean;
+  private fastState = false; // the session's fast flag as persisted by this prompt event
+  private readonly env: Env;
 
   constructor(
     public event: GuardEvent,
-    private readonly env: Env,
+    env: Env,
     private readonly home: string,
   ) {
+    // Fast mode (SHOAL_GUARD_FAST=1) is `#direct` for every turn: reuse the SHOAL_GUARD_DIRECT release paths.
+    this.fast = env.SHOAL_GUARD_FAST === "1";
+    this.env = this.fast ? { ...env, SHOAL_GUARD_DIRECT: "1" } : env;
     this.host = String(event.host || "");
     this.mode = resolveMode(this.host, env);
     this.r1 = resolveR1(this.host, env);
@@ -818,6 +850,7 @@ class Guard {
       reason: opts.note,
       session: shortHash(this.event.session_id),
       turn: shortHash(this.event.turn_id),
+      fast: this.fast,
       ...(this.event.is_subagent || this.event.kind === "subagent_start"
         ? { agent_type: this.event.role, agent_id: this.event.agent_id }
         : {}),
@@ -895,7 +928,8 @@ class Guard {
       if (!validId(sid) || !validId(tid)) return false;
       const dir = this.guardDirectory;
       if (dir === null) return false;
-      return directTurns(readJson(join(dir, "state", sid + ".json"))).includes(tid as string);
+      const state = readJson(join(dir, "state", sid + ".json"));
+      return directTurns(state).includes(tid as string) || state.fast === true;
     } catch {
       return false;
     }
@@ -1256,6 +1290,17 @@ class Guard {
     );
   }
 
+  /**
+   * Prompt event: update the session's fast flag (`#fast` on, `#strict` off, otherwise unchanged) and return whether
+   * this turn counts as `#direct` (its own token, or fast mode on).
+   */
+  private promptDirect(prior: Record<string, unknown>): boolean {
+    const sw = this.event.fast;
+    this.fastState = sw === "on" || (prior.fast === true && sw !== "off");
+    if (this.fastState) this.fast = true;
+    return this.event.direct === true || this.fastState;
+  }
+
   /** The state read-modify-write; the caller holds the per-session lock. */
   private locked(isBoundary: boolean, keep: boolean, tid: string | null, statePath: string, dir: string): GuardResult {
     const event = this.event;
@@ -1266,7 +1311,8 @@ class Guard {
         const prior = readJson(statePath);
         if (Object.keys(prior).length === 0) return this.result("skip", { skip: "missing_id" });
         let turns = directTurns(prior);
-        if (event.direct === true && typeof prior.turn_id === "string") {
+        const direct = this.promptDirect(prior);
+        if (direct && typeof prior.turn_id === "string") {
           turns = [...turns, prior.turn_id].slice(-DIRECT_TURNS_MAX);
         }
         next = {
@@ -1274,7 +1320,7 @@ class Guard {
           dispatched: false,
           advised: false,
           edited: Array.isArray(prior.edited) ? (prior.edited as string[]) : [],
-          direct: event.direct === true,
+          direct,
           declared: false,
           pending: 0,
           changed: false,
@@ -1282,17 +1328,19 @@ class Guard {
           stop_blocked: false,
         };
         if (turns.length > 0) next.direct_turns = turns;
+        if (this.fastState) next.fast = true;
         carryAgents(next, prior);
       } else {
         const priorState = readJson(statePath);
         let turns = directTurns(priorState);
-        if (event.direct === true && typeof tid === "string") turns = [...turns, tid].slice(-DIRECT_TURNS_MAX);
+        const direct = this.promptDirect(priorState);
+        if (direct && typeof tid === "string") turns = [...turns, tid].slice(-DIRECT_TURNS_MAX);
         next = {
           turn_id: tid,
           dispatched: false,
           advised: false,
           edited: [],
-          direct: event.direct === true,
+          direct,
           declared: false,
           pending: 0,
           changed: false,
@@ -1300,6 +1348,7 @@ class Guard {
           stop_blocked: false,
         };
         if (turns.length > 0) next.direct_turns = turns;
+        if (this.fastState) next.fast = true;
         carryAgents(next, priorState);
       }
       if (!writeJson(statePath, next)) return this.result("skip", { skip: "state_write_failed" });
@@ -1324,6 +1373,10 @@ class Guard {
       stop_blocked: prior.stop_blocked === true, // B3: this turn's one block is spent
     };
     if (keptTurns.length > 0) state.direct_turns = keptTurns; // E1: turns that carried #direct
+    if (priorState.fast === true) {
+      state.fast = true; // fast mode lasts for the session (set by #fast, cleared by #strict)
+      this.fast = true;
+    }
     carryAgents(state, priorState); // codex: agents released by #direct / already counted as started
 
     if (event.tool_kind === "dispatch") {

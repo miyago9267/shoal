@@ -19,7 +19,7 @@
  */
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import { homedir } from "node:os";
-import { evaluate, hasDirectToken, logSkip, patchPaths, type Env, type GuardEvent } from "./core.js";
+import { evaluate, fastSwitch, hasDirectToken, logSkip, patchPaths, type Env, type GuardEvent } from "./core.js";
 
 const HOST = "opencode";
 const SESSION_LOOKUP_TIMEOUT_MS = 3000;
@@ -179,7 +179,7 @@ export function createOpenCodeGuard(
           .map((part) => (record(part).type === "text" ? str(record(part).text) : null))
           .filter((t): t is string => t !== null)
           .join("\n");
-        evaluate(event("prompt", sessionID, turnID, info, { direct: hasDirectToken(text) }), env, homeOf(env));
+        evaluate(event("prompt", sessionID, turnID, info, { direct: hasDirectToken(text), fast: fastSwitch(text) }), env, homeOf(env));
       } catch {
         logSkip(HOST, env, homeOf(env), "exception");
       }
