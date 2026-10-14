@@ -9,9 +9,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1650,20 +1652,80 @@ class ChainCliTests(CliCase):
         self.assertEqual(decisions, ["chain_error", "chain_error", "chain_timeout"])
         self.assertTrue(all("ms" in r and r["member"].startswith("m") for r in self.log_records() if r.get("rule") == "chain"))
 
-    def test_manifest_record_without_dispatch_guard_switches_the_host_off(self) -> None:
-        # modular-install S3: `--without dispatch-guard` is a persistent switch read from the same manifest
+    def test_manifest_record_without_dispatch_guard_runs_chain_only(self) -> None:
+        # modular-install S3 switch + issue #3: members present -> chain-only; none for the host -> off
         self.configure(["deny", "stop right there"])
         manifest = Path(self.chain_env["SHOAL_GUARD_CHAIN_FILE"])
         doc = json.loads(manifest.read_text(encoding="utf-8"))
         payload = claude_tool("Read", {"file_path": "x"}, cwd=self.work)
-        for modules, denied in ((["core", "host-claude", "dispatch-guard"], True), (["core", "host-claude"], False)):
+        for modules in (["core", "host-claude", "dispatch-guard"], ["core", "host-claude"]):
             manifest.write_text(json.dumps({**doc, "claude": {"modules": modules, "version": "3.8.0"}}), encoding="utf-8")
-            out = self.run_guard("claude", payload, **self.chain_env)
-            self.assertEqual(bool(out), denied, modules)
+            self.assertTrue(self.run_guard("claude", payload, **self.chain_env), modules)
+        manifest.write_text(json.dumps({"chain": [], "claude": {"modules": ["core"], "version": "3.8.0"}}), encoding="utf-8")
+        self.assertEqual(self.run_guard("claude", payload, **self.chain_env), "")
         # a record for another host does not switch this host off
         manifest.write_text(json.dumps({**doc, "opencode": {"modules": ["core", "host-opencode"], "version": "3.8.0"}}), encoding="utf-8")
         self.assertTrue(self.run_guard("claude", payload, **self.chain_env))
         self.assertFalse(guard.dispatch_guard_selected("opencode", {"SHOAL_GUARD_CHAIN_FILE": str(manifest)}, Path(self.home)))
+
+    def event_payload(self, name: str, **extra: Any) -> dict:
+        return {"hook_event_name": name, "session_id": "sess-1", "cwd": self.work, **extra}
+
+    def test_context_becomes_additional_context_on_claude_events_only(self) -> None:
+        self.configure(["context", "mind the style"])
+        manifest = Path(self.chain_env["SHOAL_GUARD_CHAIN_FILE"])
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+        doc["chain"][0]["events"] = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionEnd", "Stop"]
+        manifest.write_text(json.dumps(doc), encoding="utf-8")
+        cases = (("PreToolUse", {"tool_name": "Read", "tool_input": {}}), ("PostToolUse", {"tool_name": "Edit", "tool_input": {"file_path": "a"}}),
+                 ("UserPromptSubmit", {"prompt": "hi", "prompt_id": "p1"}))
+        for name, extra in cases:
+            out = json.loads(self.run_guard("claude", self.event_payload(name, **extra), **self.chain_env))
+            self.assertEqual(out, {"hookSpecificOutput": {"hookEventName": name, "additionalContext": "mind the style"}}, name)
+        for name in ("SessionEnd", "Stop"):  # Claude has no additionalContext there: log only
+            self.assertEqual(self.run_guard("claude", self.event_payload(name, stop_hook_active=True), **self.chain_env), "")
+        self.assertIn("chain_context", [r["decision"] for r in self.log_records()])
+        for host_name, extra in (("codex", {"tool_name": "Read", "tool_input": {}, "turn_id": "t"}),):
+            doc["chain"][0]["hosts"] = ["codex"]
+            manifest.write_text(json.dumps(doc), encoding="utf-8")
+            self.assertEqual(self.run_guard(host_name, self.event_payload("PreToolUse", **extra), **self.chain_env), "")
+
+    def test_post_tool_use_edit_and_session_end_reach_only_subscribers(self) -> None:
+        record = os.path.join(self.home, "seen.txt")
+        self.configure(["record", record])
+        manifest = Path(self.chain_env["SHOAL_GUARD_CHAIN_FILE"])
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+        post = self.event_payload("PostToolUse", tool_name="Edit", tool_input={"file_path": "a"})
+        end = self.event_payload("SessionEnd")
+        self.assertEqual(self.run_guard("claude", post, **self.chain_env), "")
+        self.assertEqual(self.run_guard("claude", end, **self.chain_env), "")
+        self.assertFalse(os.path.exists(record))
+        doc["chain"][0]["events"] = ["PostToolUse", "SessionEnd"]
+        manifest.write_text(json.dumps(doc), encoding="utf-8")
+        self.run_guard("claude", post, **self.chain_env)
+        self.run_guard("claude", end, **self.chain_env)
+        self.assertEqual(len(Path(record).read_text(encoding="utf-8").splitlines()), 2)
+
+    def test_event_nobody_needs_exits_fast_without_state_or_spawn(self) -> None:
+        record = os.path.join(self.home, "seen.txt")
+        self.configure(["record", record])  # a default (PreToolUse) member
+        for payload in (self.event_payload("PostToolUse", tool_name="Edit", tool_input={}), self.event_payload("SessionEnd")):
+            self.assertEqual(self.run_guard("claude", payload, **self.chain_env), "")
+        self.assertFalse(os.path.exists(record))
+        self.assertFalse(os.path.exists(self.state))
+        raw = json.dumps(self.event_payload("PostToolUse", tool_name="Edit", tool_input={})).encode()
+        env = self.env(**self.chain_env)
+        started = time.monotonic()
+        runs = 5
+        for _ in range(runs):
+            subprocess.run([sys.executable, str(GUARD), "--host", "claude"], input=raw, capture_output=True, env=env, timeout=30)
+        guard_ms = (time.monotonic() - started) * 1000 / runs
+        started = time.monotonic()
+        for _ in range(runs):
+            subprocess.run([sys.executable, "-c", "pass"], capture_output=True, env=env, timeout=30)
+        base_ms = (time.monotonic() - started) * 1000 / runs
+        print("\nfast-exit PostToolUse(Edit): %.1f ms per run, bare python %.1f ms" % (guard_ms, base_ms), file=sys.stderr)
+        self.assertLess(guard_ms, base_ms + 250)
 
     def test_no_manifest_changes_nothing(self) -> None:
         self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work)), "")

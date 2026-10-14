@@ -2,8 +2,11 @@
 """Fixture guard-chain member.  argv[1] picks the behaviour; stdin is the raw hook payload.
 
 allow | deny <reason> | garbage | unknown | exit1 | sleep | deny_if <needle> | record <file> (append stdin, allow)
+context <text> (allow + advisory context) | deny_context <reason> <text> | env_context (allow + context
+"host=<SHOAL_GUARD_HOST> event=<SHOAL_GUARD_EVENT>") | report (allow, self-reported member and version)
 """
 import json
+import os
 import sys
 import time
 
@@ -28,3 +31,12 @@ elif mode == "deny_if":
 elif mode == "record":
     with open(sys.argv[2], "a", encoding="utf-8") as handle:
         handle.write(data + "\n")
+elif mode == "context":
+    print(json.dumps({"decision": "allow", "context": sys.argv[2]}))
+elif mode == "deny_context":
+    print(json.dumps({"decision": "deny", "reason": sys.argv[2], "context": sys.argv[3]}))
+elif mode == "env_context":
+    print(json.dumps({"decision": "allow", "context": "host=%s event=%s" % (
+        os.environ.get("SHOAL_GUARD_HOST"), os.environ.get("SHOAL_GUARD_EVENT"))}))
+elif mode == "report":
+    print(json.dumps({"decision": "allow", "member": "fx-reporter", "version": "1.2.3", "ignored": {"x": 1}}))
