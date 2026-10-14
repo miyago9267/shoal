@@ -9,6 +9,13 @@ written.
 
 ## Unreleased
 
+## v3.7.0
+
+- Session-wide fast mode: a standalone `#fast` in a prompt makes the rest of
+  the session behave as if every turn carried `#direct`; `#strict` turns it
+  off. For Codex the guard treats `#fast` as a `#direct` turn. Leaf and
+  verify-role rules and the completion check are unchanged.
+
 ## v3.6.0
 
 - The guard registration is now `shoal-guard-v5`: it adds a `PostToolUse`

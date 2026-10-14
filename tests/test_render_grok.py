@@ -63,7 +63,7 @@ class GrokRenderTests(rh.HostRenderCase):
         rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-grok v.+ -->$", rules),
                          [f"<!-- shoal-grok v{version} -->"])
-        self.assertEqual(version, "3.6.0")
+        self.assertEqual(version, "3.7.0")
 
     def test_rules_equal_upstream_except_the_rename(self) -> None:  # AC-GW-003
         # 2.0.0 起 rules 不再逐字等於上游：只差 docs/specs/shoal-rebrand/RENAME.md 的名稱替換與版本 marker。
@@ -95,7 +95,7 @@ class GrokRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:  # AC-GW-005
         src = self.root / "hosts" / "grok" / "src" / "rules" / "shoal-grok.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-grok v3.6.0 -->\n"
+        marker = "<!-- shoal-grok v3.7.0 -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
@@ -164,7 +164,8 @@ class GrokDocsTests(unittest.TestCase):
         readme, install = self.read("README.md"), self.read("INSTALL.md")
         self.assertIn("https://github.com/Nanako0129/pilotfish-grok", readme)
         self.assertIn("tools/install_grok.py", readme)
-        self.assertIn((ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip(), readme)
+        # 版本表在 README 改成產品首頁後移到 INSTALL.md。
+        self.assertIn((ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip(), install)
         self.assertIn("## Grok Build", install)
         for flag in ("--apply", "--fix-toggles", "--restore", "--uninstall"):
             self.assertIn(flag, install)

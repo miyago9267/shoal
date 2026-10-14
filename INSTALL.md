@@ -766,12 +766,12 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   `x#direct`、`#direct-ly` 不算）只放行那一輪，下一輪失效，同時關掉那一輪的 R1、R2 與 G4；
   `SHOAL_GUARD_DIRECT=1` 對整個 session 放行 R1、R2、G4。guard 只記「這輪有 `#direct`」的旗標，
   不記錄 prompt 內容。
-- 快速模式：prompt 內獨立的 `#fast`（偵測規則同 `#direct`）讓這個 session 之後的每一回合都當成帶
-  `#direct`，記在 state 的 `fast`，跨回合保留，直到獨立的 `#strict`（同一個 prompt 兩者都有時以
-  `#strict` 為準）；`SHOAL_GUARD_FAST=1` 對每個 session 生效，給沒有 prompt 文字的 agy。放行的範圍
-  與 `#direct` 完全相同（main 的 R1、R2、G4、G5，以及 E1 的 subagent 放行，Codex、Grok 把 `#fast`
-  當成 `#direct` 回合）；LEAF、VERIFY_EDIT 與完成檢查不變。log 在開啟時多一個 `fast: true`，R1、E1 的
-  deny 訊息在有 prompt 文字的 host 多提示 `#fast`。
+- 快速模式：prompt 內獨立的 `#fast`（偵測規則同 `#direct`）讓這個 session 之後的每一回合都當成帶 `#direct`，記在
+  state 的 `fast`，跨回合保留，直到獨立的 `#strict`（同一個 prompt 兩者都有時以 `#strict` 為準）；
+  `SHOAL_GUARD_FAST=1` 對每個 session 生效，給沒有 prompt 文字的 agy。放行的範圍與 `#direct`
+  完全相同（main 的 R1、R2、G4、G5，以及 E1 的 subagent 放行，Codex、Grok 把 `#fast` 當成 `#direct`
+  回合）；LEAF、VERIFY_EDIT 與完成檢查不變。log 在開啟時多一個 `fast: true`，R1、E1 的 deny 訊息在有
+  prompt 文字的 host 多提示 `#fast`。
 - subagent 不受 R1、G4、G5 影響（它們是 main session 規則）；既不是宣告也沒有寫檔的前景 `Bash`
   與其他工具不會被 guard 計入或寫 log；3.4.0 起，本回合已有改檔且尚未檢查時，前景 `Bash` 會把
   state 的 `checked` 設為真（見下面的完成檢查），其他情況不碰 state。
@@ -910,13 +910,16 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 `plugin/` 目錄與這條路徑無關。需要 Claude Code 2.1 以上與 `python3`。
 
 ```bash
-# 1. 釘在 tag 上安裝（不追預設 branch）。
-claude plugin marketplace add miyago9267/shoal#v3.6.0
+# 1. 安裝最新穩定版（預設 branch，即 main）。
+claude plugin marketplace add miyago9267/shoal
 claude plugin install shoal@shoal
 
-# 升級：marketplace 的 source 不同會被拒絕，所以先移除再用新 tag 加回。
+# 想釘在某個版本：把 vX.Y.Z 換成實際存在的 tag。
+# claude plugin marketplace add miyago9267/shoal#vX.Y.Z
+
+# 升級：marketplace 的 source 不同會被拒絕，所以先移除再加回。
 claude plugin marketplace remove shoal
-claude plugin marketplace add miyago9267/shoal#v3.6.0
+claude plugin marketplace add miyago9267/shoal
 claude plugin update shoal@shoal
 
 # 解除安裝。
@@ -929,9 +932,9 @@ claude --plugin-dir ./claude-plugin
 
 - `owner/repo#<ref>` 的 `<ref>` 是 branch 或 tag，由 `git clone --branch` 解析（在
   Claude Code 2.1.291 實測：ref 不存在時回報 `Remote branch ... not found`）。不寫
-  `#<ref>` 會跟預設 branch，不建議。tag 沿用 repo 的 `v<VERSION>`，必須包含
-  `claude-plugin/` 與 `.claude-plugin/marketplace.json`；第一個含 plugin 的 tag 發佈前，
-  上面的 `#v3.6.0` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
+  `#<ref>` 會跟預設 branch（main，即最新穩定版）。要釘版本時，tag 沿用 repo 的
+  `v<VERSION>`，必須包含 `claude-plugin/` 與 `.claude-plugin/marketplace.json`；該 tag
+  發佈前，`#vX.Y.Z` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
 - guard hook 的 command 一律是
@@ -1072,10 +1075,9 @@ shoal 只維護一份 role 定義（`scout`、`executor`、`verifier` 等）。�
 
 ### 選模與 watcher、researcher
 
-role 只寫 tier，不寫模型。resolver 在每個 host 的模型目錄裡排除 capability
-不到門檻的模型，再依 tier 規則挑一個；grok 設為 `inherit`，沿用 grok 自己的
-選模。用 `python3 tools/render.py --host <host> --explain` 可以看到每個 role
-的候選、排除原因與結果。
+role 只寫 tier，不寫模型。resolver 在每個 host 的模型目錄裡排除 capability 不到門檻的模型，再依 tier 規則挑一個；
+grok 設為 `inherit`，沿用 grok 自己的選模。用
+`python3 tools/render.py --host <host> --explain` 可以看到每個 role 的候選、排除原因與結果。
 
 core 另有兩個 role，五個 host 都綁定並安裝：
 
@@ -1101,12 +1103,12 @@ Claude 的 policy 渲染；其他 host 的 main-session policy 文字不變（sp
 
 ### 呼叫鏈
 
-main session 先判斷互動形態與風險。已有穩定契約的實作、互不相干的偵察與長
-指令預設派工；只有寫 brief 的成本高於直接改時才自己做。有風險或大型工作才走
-五道關卡，依階段派唯讀、審查或寫入的 role。每次派工都帶 effort，可寫 role 的
-description 以 `fix:`、`feat:` 這類類型開頭（目前只有 Claude 的 policy 渲染這些條款）。完整規則在各 host 的
-orchestration policy（例如
-`hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md`）。
+main session 先判斷互動形態與風險。已有穩定契約的實作、互不相干的偵察與長指令預設派工；只有寫 brief 的成本高於直接改時才自己做。
+有風險或大型工作才走五道關卡，依階段派唯讀、審查或寫入的 role。每次派工都帶 effort，可寫 role 的 description 以 `fix:`、
+`feat:` 這類類型開頭（目前只有 Claude 的 policy 渲染這些條款）。完整規則在各 host 的 orchestration
+policy（例如
+`hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md`）
+。
 
 ![呼叫鏈：互動形態、風險判斷、五道關卡與各 host 的執行時機制](./docs/assets/shoal-call-chain.svg)
 
@@ -1126,8 +1128,8 @@ tests/golden/<host>/       各 host 的逐位元組基準
 upstream.lock              各 host 對應的上游與版本
 ```
 
-`hosts/codex/` 另含 `VERSION`、`README.md`、`CHANGELOG.md`，是 Codex host 自己
-的文件。安裝腳本 `install/`、`INSTALL.md` 留在 repo 根目錄。
+`hosts/codex/` 另含 `VERSION`、`README.md`、`CHANGELOG.md`，是 Codex host 自己的文件。安裝腳本
+`install/`、`INSTALL.md` 留在 repo 根目錄。
 
 ### render
 
@@ -1163,40 +1165,35 @@ python3 tools/render.py --host claude --write
 | OpenCode | 專案：`hosts/opencode/plugin/install/install.sh --target DIR --enable`；全域：`install.sh --global --enable`，見 [本檔](#opencode) |
 
 Claude Code、Gemini/agy 的 role 檔案安裝步驟仍依賴 dotfile 的腳本；Grok Build 由
-`tools/install_grok.py` 安裝 agents、roles、rules 與原生 hooks，不再手動複製。
-dispatch guard（`hooks/shoal_guard.py`）在五個 host 的安裝方式：Codex 由
-`install/install.py` 一併註冊（需在 Codex 內用 `/hooks` 核准一次），Grok 隨
-`install_grok.py` 安裝，Claude Code 與 agy 由 `tools/install_hooks.py` 安裝，OpenCode
-的 guard 在 plugin 內。Claude、Codex、Grok 與 agy 預設 enforce（agy 以 conversation 的事件順序
-推斷 main 與 subagent，是推斷不是事實，細節見 INSTALL.md；agy 沒有 `#direct`），
-`SHOAL_GUARD=off` 關閉。
-R2（檔案數）在所有 host 都只提醒；subagent 的 LEAF、VERIFY_EDIT 會擋。
-五個 host 上（預設 `strict`；agy 沒有 `#direct`）main 沒派 write role、使用者也沒有 `#direct` 就改檔
-（R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）會被擋，不需要任何分類來源；
-出口只有兩個：派 `executor`／`applier`，或請使用者在 prompt 加 `#direct`。main 自己宣告的出口
-（`: shoal-direct "<理由>"`，3.2.x 的 `declare`）在 live gate 中被 Claude 每次拿來自己做，所以預設拿掉，
-但仍可用 `SHOAL_GUARD_R1=declare` 選回。main 自己開背景 shell（G4，只有 Claude）同樣被擋；R2 仍只提醒。
-`SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：只在外部分類來源標出
-實作工作時擋）、`off`。
-`SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的 subagent 改檔
-（五個 host 預設 `on`；Claude、Codex、Grok、OpenCode 上啟動該工作的
-prompt 帶 `#direct` 可放行，agy 沒有 `#direct`，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
+`tools/install_grok.py` 安裝 agents、roles、rules 與原生 hooks，不再手動複製。dispatch
+guard（`hooks/shoal_guard.py`）在五個 host 的安裝方式：Codex 由 `install/install.py`
+一併註冊（需在 Codex 內用 `/hooks` 核准一次），Grok 隨 `install_grok.py` 安裝，Claude Code 與 agy 由
+`tools/install_hooks.py` 安裝，OpenCode 的 guard 在 plugin 內。Claude、Codex、Grok 與 agy
+預設 enforce（agy 以 conversation 的事件順序推斷 main 與 subagent，是推斷不是事實，細節見 INSTALL.md；
+agy 沒有 `#direct`），`SHOAL_GUARD=off` 關閉。R2（檔案數）在所有 host 都只提醒；subagent 的 LEAF、
+VERIFY_EDIT 會擋。五個 host 上（預設 `strict`；agy 沒有 `#direct`）main 沒派 write role、使用者也沒有
+`#direct` 就改檔（R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）會被擋，不需要任何分類來源；
+出口只有兩個：派 `executor`／`applier`，或請使用者在 prompt 加 `#direct`。main
+自己宣告的出口（`: shoal-direct "<理由>"`，3.2.x 的 `declare`）在 live gate 中被 Claude 每次拿來自己做，
+所以預設拿掉，但仍可用 `SHOAL_GUARD_R1=declare` 選回。main 自己開背景 shell（G4，只有 Claude）同樣被擋；R2
+仍只提醒。`SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：
+只在外部分類來源標出實作工作時擋）、`off`。`SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的
+subagent 改檔（五個 host 預設 `on`；Claude、Codex、Grok、OpenCode 上啟動該工作的 prompt 帶
+`#direct` 可放行，agy 沒有 `#direct`，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
 [本檔](#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
 `shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組），之後升到
 `shoal-guard-v4`（加 `SubagentStart` 群組），3.6.0 升到 `shoal-guard-v5`（加
-`PostToolUse` 群組，完成檢查改以指令真的執行為準；每次新增群組都要在 Codex 用
-`/hooks` 再核准一次）。Claude
-從 3.3.1 起、Codex 從 `shoal-guard-v4` 起，Grok、agy、OpenCode 從 3.6.0 起，在 role 真的啟動
-（`SubagentStart`／`subagent_start`／agy 的新 conversation `SessionStart`／OpenCode 的
-`session.created`）後才放行派工，guard 腳本與 hook 註冊必須一起更新；沒有 host 還在派工呼叫
-當下放行（見 INSTALL.md）。
-3.4.0 起 Claude 與 Codex 多一道完成檢查：guard 逐回合記下 main 有沒有改檔、改檔之後有沒有跑過
-檢查（派出 `verifier`／`watcher`，或 main 執行任何不寫檔的前景 shell 指令），回合結束時若改過檔
-卻沒有任何檢查，`Stop` 會擋一次，要求補做驗證，或在回報中明寫未驗證；同一回合只擋一次，
-讀不到資料或 payload 不合預期時一律放行。`SHOAL_GUARD_STOP=off` 關閉（預設 `on`，對 Claude、Codex、
-Grok、agy 有效）；Grok 的 `stop` 事件（`reason == end_turn`）已掛上，但它的 block 輸出還沒有 live 驗證，預設只記
-`would_block`，`SHOAL_GUARD_STOP=enforce` 才真的擋，agy 的 `Stop` 同樣預設只記
-`would_block`；OpenCode 沒有已記錄的結束事件，不啟用。
+`PostToolUse` 群組，完成檢查改以指令真的執行為準；每次新增群組都要在 Codex 用 `/hooks` 再核准一次）。Claude 從
+3.3.1 起、Codex 從 `shoal-guard-v4` 起，Grok、agy、OpenCode 從 3.6.0 起，在 role
+真的啟動（`SubagentStart`／`subagent_start`／agy 的新 conversation
+`SessionStart`／OpenCode 的 `session.created`）後才放行派工，guard 腳本與 hook 註冊必須一起更新；沒有
+host 還在派工呼叫當下放行（見 INSTALL.md）。3.4.0 起 Claude 與 Codex 多一道完成檢查：guard 逐回合記下 main
+有沒有改檔、改檔之後有沒有跑過檢查（派出 `verifier`／`watcher`，或 main 執行任何不寫檔的前景 shell 指令），
+回合結束時若改過檔卻沒有任何檢查，`Stop` 會擋一次，要求補做驗證，或在回報中明寫未驗證；同一回合只擋一次，讀不到資料或 payload
+不合預期時一律放行。`SHOAL_GUARD_STOP=off` 關閉（預設 `on`，對 Claude、Codex、Grok、agy 有效）；Grok 的
+`stop` 事件（`reason == end_turn`）已掛上，但它的 block 輸出還沒有 live 驗證，預設只記 `would_block`，
+`SHOAL_GUARD_STOP=enforce` 才真的擋，agy 的 `Stop` 同樣預設只記 `would_block`；OpenCode
+沒有已記錄的結束事件，不啟用。
 
 Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [--apply]`
 每日從 committed HEAD 同步（dotfile SessionStart hook 呼叫），見 [本檔](#每日同步)。
@@ -1205,12 +1202,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.6.0 |
-| codex host | 3.6.0（`hosts/codex/VERSION`） |
-| claude host | 3.6.0（`hosts/claude/VERSION`） |
-| agy host | 3.6.0（`hosts/agy/VERSION`） |
-| grok host | 3.6.0（`hosts/grok/VERSION`） |
-| opencode host | 3.6.0（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.7.0 |
+| codex host | 3.7.0（`hosts/codex/VERSION`） |
+| claude host | 3.7.0（`hosts/claude/VERSION`） |
+| agy host | 3.7.0（`hosts/agy/VERSION`） |
+| grok host | 3.7.0（`hosts/grok/VERSION`） |
+| opencode host | 3.7.0（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。
@@ -1226,8 +1223,8 @@ bun install --frozen-lockfile && bun run lint:md
 ### 已知限制
 
 - 各 host 的 policy 文字尚未合併成一份，目前只有 role 與 binding 共用（規劃中）。
-- Codex、grok 與 OpenCode 有 shoal 自己的 installer；Claude Code、agy 的 role 檔案安裝
-  仍在 dotfile，只有 dispatch guard 由 `tools/install_hooks.py` 安裝。
+- Codex、grok 與 OpenCode 有 shoal 自己的 installer；Claude Code、agy 的 role 檔案安裝仍在
+  dotfile，只有 dispatch guard 由 `tools/install_hooks.py` 安裝。
 - dispatch guard 不防同 uid 的 model 經 shell 竄改 state、設定或環境變數，也不擋 shell
   寫檔；agy 的 main 與 subagent 是由 conversation 順序推斷（混合派工時類別 unknown，不擋）。完整列表見
   [docs/specs/dispatch-enforcement](./docs/specs/dispatch-enforcement/SPEC.md)。
