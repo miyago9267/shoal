@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 700" width="960" height="700" role="img" aria-labelledby="ttl dsc" font-family='-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif'>
+<title id="ttl">How one request gets done</title>
+<desc id="dsc">Your request goes to the main session, which reads, decides and integrates. The fast path covers most work: scouts look things up in parallel, applier or executor edit files, watcher keeps an eye on long commands. The rigorous path runs only when there is risk, meaning security, irreversible or external actions, data migration or a release: review the plan, you approve, edit, then verifier checks. All results return to the main session, which reports what was done and what was verified.</desc>
+<style>
+.bg{fill:#f7f9fc}.fg{fill:#152238}.muted{fill:#5b6b80}.ln{stroke:#c9d4e2;fill:none;stroke-width:1.5}
+.card{fill:#fff;stroke:#c9d4e2;stroke-width:1.2}
+.sb{fill:#eaf0ff;stroke:#a9bff5}.sg{fill:#e3f5ec;stroke:#a6dcc0}.sa{fill:#fff1dc;stroke:#ecc98d}.sp{fill:#efe9ff;stroke:#c9b8f1}.sr{fill:#fde8e8;stroke:#eeb0b0}.sx{fill:#eef1f5;stroke:#b4bfcd;stroke-dasharray:5 4}
+.ar{stroke:#5b6b80;stroke-width:1.8;fill:none}.arh{fill:#5b6b80}
+.t{font-weight:700;font-size:26px}.st{font-size:15px}.h{font-weight:700;font-size:16px}.b{font-size:15px}.sm{font-size:13px}.xs{font-size:12px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.bold{font-weight:700}
+@media (prefers-color-scheme: dark){
+.bg{fill:#101827}.fg{fill:#f3f6fb}.muted{fill:#a9b6c8}.ln{stroke:#3a4a60}
+.card{fill:#172235;stroke:#3a4a60}
+.sb{fill:#1b2d59;stroke:#4f74c4}.sg{fill:#173d2e;stroke:#3f9470}.sa{fill:#473219;stroke:#a07a43}.sp{fill:#2d2247;stroke:#7059a8}.sr{fill:#4a2323;stroke:#a35a5a}.sx{fill:#1d2838;stroke:#5d6d82}
+.ar{stroke:#a9b6c8}.arh{fill:#a9b6c8}}
+</style>
+<rect width="960" height="700" class="bg"/>
+<text x="40" y="52" class="t fg" text-anchor="start">How one request gets done</text>
+<text x="40" y="80" class="st muted" text-anchor="start">The main session decides and integrates; roles do only the part they are given</text>
+<rect x="380" y="104" width="200" height="44" rx="10" class="sb"/>
+<text x="480.0" y="131.0" class="b fg" text-anchor="middle">Your request</text>
+<path d="M480 148 L480 176" class="ar"/>
+<path d="M475 169 L480 176 L485 169 Z" class="arh"/>
+<rect x="220" y="178" width="520" height="74" rx="14" class="card"/>
+<text x="480" y="212" class="h fg" text-anchor="middle">Main session</text>
+<text x="480" y="236" class="b muted" text-anchor="middle">reads, decides, integrates</text>
+<path d="M480 252 V272 M250 272 H710 M250 272 V296 M710 272 V296" class="ln"/>
+<text x="496" y="268" class="sm muted" text-anchor="start">dispatches</text>
+<rect x="40" y="298" width="420" height="296" rx="14" class="card"/>
+<text x="60" y="334" class="h fg" text-anchor="start">Fast path</text>
+<rect x="350.14" y="316" width="89.86" height="26" rx="13" class="sg"/>
+<text x="395.07" y="334" class="sm fg" text-anchor="middle">most work</text>
+<rect x="500" y="298" width="420" height="296" rx="14" class="card"/>
+<text x="520" y="334" class="h fg" text-anchor="start">Rigorous path</text>
+<rect x="704.58" y="316" width="195.42" height="26" rx="13" class="sa"/>
+<text x="802.29" y="334" class="sm fg" text-anchor="middle">only when there is risk</text>
+<rect x="60" y="360" width="380" height="62" rx="10" class="sg"/>
+<text x="78" y="386" class="b bold fg" text-anchor="start">scouts, several in parallel</text>
+<text x="78" y="407" class="sm muted" text-anchor="start">look things up, read code</text>
+<rect x="60" y="434" width="380" height="62" rx="10" class="sg"/>
+<text x="78" y="460" class="b bold fg" text-anchor="start">applier / executor</text>
+<text x="78" y="481" class="sm muted" text-anchor="start">edit files</text>
+<rect x="60" y="508" width="380" height="62" rx="10" class="sg"/>
+<text x="78" y="534" class="b bold fg" text-anchor="start">watcher</text>
+<text x="78" y="555" class="sm muted" text-anchor="start">keeps an eye on long commands</text>
+<rect x="520" y="360" width="380" height="66" rx="10" class="sa"/>
+<text x="710" y="388" class="b fg" text-anchor="middle">Security, irreversible or external</text>
+<text x="710" y="411" class="b fg" text-anchor="middle">actions, data migration, release</text>
+<rect x="520" y="458" width="80" height="66" rx="10" class="sa"/>
+<text x="560.0" y="486.0" class="b fg" text-anchor="middle">Review</text>
+<text x="560.0" y="506.0" class="b fg" text-anchor="middle">plan</text>
+<path d="M600 491 L620 491" class="ar"/>
+<path d="M613 486 L620 491 L613 496 Z" class="arh"/>
+<rect x="620" y="458" width="80" height="66" rx="10" class="sa"/>
+<text x="660.0" y="486.0" class="b fg" text-anchor="middle">You</text>
+<text x="660.0" y="506.0" class="b fg" text-anchor="middle">approve</text>
+<path d="M700 491 L720 491" class="ar"/>
+<path d="M713 486 L720 491 L713 496 Z" class="arh"/>
+<rect x="720" y="458" width="80" height="66" rx="10" class="sa"/>
+<text x="760.0" y="486.0" class="b fg" text-anchor="middle">Edit</text>
+<text x="760.0" y="506.0" class="b fg" text-anchor="middle">files</text>
+<path d="M800 491 L820 491" class="ar"/>
+<path d="M813 486 L820 491 L813 496 Z" class="arh"/>
+<rect x="820" y="458" width="80" height="66" rx="10" class="sp"/>
+<text x="860.0" y="486.0" class="sm mono bold fg" text-anchor="middle">verifier</text>
+<text x="860.0" y="506.0" class="b fg" text-anchor="middle">checks</text>
+<text x="710" y="552" class="sm muted" text-anchor="start"></text>
+<path d="M250 594 V620 M710 594 V620 M250 620 H710 M480 620 V636" class="ln"/>
+<text x="496" y="616" class="sm muted" text-anchor="start">results come back</text>
+<path d="M480 630 L480 650" class="ar"/>
+<path d="M475 643 L480 650 L485 643 Z" class="arh"/>
+<rect x="200" y="652" width="560" height="38" rx="12" class="card"/>
+<text x="480" y="677" class="h fg" text-anchor="middle">Reports what was done and what was verified</text>
+</svg>

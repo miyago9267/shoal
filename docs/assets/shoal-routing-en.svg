@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 616" width="960" height="616" role="img" aria-labelledby="ttl dsc" font-family='-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif'>
+<title id="ttl">Same role, the right model on every tool</title>
+<desc id="dsc">A matrix of the models actually used by six roles on five tools. Claude Code: haiku, sonnet, sonnet, opus, opus, fable for scout, applier, executor, verifier, researcher, plan-critic. Codex CLI: gpt-6-luna, gpt-6-luna, gpt-6-astra, gpt-6-sol, gpt-6-sol, gpt-6-sol. Gemini / agy: flash, flash, pro, pro, pro, pro. OpenCode: deepseek-v4-flash, deepseek-v4-flash, gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-sol, gpt-5.6-sol. Grok Build uses the main model you set yourself.</desc>
+<style>
+.bg{fill:#f7f9fc}.fg{fill:#152238}.muted{fill:#5b6b80}.ln{stroke:#c9d4e2;fill:none;stroke-width:1.5}
+.card{fill:#fff;stroke:#c9d4e2;stroke-width:1.2}
+.sb{fill:#eaf0ff;stroke:#a9bff5}.sg{fill:#e3f5ec;stroke:#a6dcc0}.sa{fill:#fff1dc;stroke:#ecc98d}.sp{fill:#efe9ff;stroke:#c9b8f1}.sr{fill:#fde8e8;stroke:#eeb0b0}.sx{fill:#eef1f5;stroke:#b4bfcd;stroke-dasharray:5 4}
+.ar{stroke:#5b6b80;stroke-width:1.8;fill:none}.arh{fill:#5b6b80}
+.t{font-weight:700;font-size:26px}.st{font-size:15px}.h{font-weight:700;font-size:16px}.b{font-size:15px}.sm{font-size:13px}.xs{font-size:12px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.bold{font-weight:700}
+@media (prefers-color-scheme: dark){
+.bg{fill:#101827}.fg{fill:#f3f6fb}.muted{fill:#a9b6c8}.ln{stroke:#3a4a60}
+.card{fill:#172235;stroke:#3a4a60}
+.sb{fill:#1b2d59;stroke:#4f74c4}.sg{fill:#173d2e;stroke:#3f9470}.sa{fill:#473219;stroke:#a07a43}.sp{fill:#2d2247;stroke:#7059a8}.sr{fill:#4a2323;stroke:#a35a5a}.sx{fill:#1d2838;stroke:#5d6d82}
+.ar{stroke:#a9b6c8}.arh{fill:#a9b6c8}}
+</style>
+<rect width="960" height="616" class="bg"/>
+<text x="40" y="52" class="t fg" text-anchor="start">Same role, the right model on every tool</text>
+<text x="40" y="80" class="st muted" text-anchor="start">Cheap models for lookups and mechanical edits, strong ones for checking and review</text>
+<text x="48" y="140.0" class="b muted" text-anchor="start">Role</text>
+<text x="272.0" y="140.0" class="h fg" text-anchor="middle">Claude Code</text>
+<text x="416.0" y="140.0" class="h fg" text-anchor="middle">Codex CLI</text>
+<text x="560.0" y="140.0" class="h fg" text-anchor="middle">Gemini / agy</text>
+<text x="704.0" y="140.0" class="h fg" text-anchor="middle">OpenCode</text>
+<text x="848.0" y="140.0" class="h fg" text-anchor="middle">Grok Build</text>
+<path d="M40 158 H920" class="ln"/>
+<text x="48" y="189" class="b mono bold fg" text-anchor="start">scout</text>
+<text x="48" y="208" class="sm muted" text-anchor="start">lookups</text>
+<rect x="205" y="167" width="134" height="48" rx="8" class="sg"/>
+<text x="272.0" y="196.0" class="xs mono bold fg" text-anchor="middle">haiku</text>
+<rect x="349" y="167" width="134" height="48" rx="8" class="sg"/>
+<text x="416.0" y="196.0" class="xs mono bold fg" text-anchor="middle">gpt-6-luna</text>
+<rect x="493" y="167" width="134" height="48" rx="8" class="sg"/>
+<text x="560.0" y="196.0" class="xs mono bold fg" text-anchor="middle">flash</text>
+<rect x="637" y="167" width="134" height="48" rx="8" class="sg"/>
+<text x="704.0" y="196.0" class="xs mono bold fg" text-anchor="middle">deepseek-v4-flash</text>
+<text x="48" y="247" class="b mono bold fg" text-anchor="start">applier</text>
+<text x="48" y="266" class="sm muted" text-anchor="start">mechanical edits</text>
+<rect x="205" y="225" width="134" height="48" rx="8" class="sa"/>
+<text x="272.0" y="254.0" class="xs mono bold fg" text-anchor="middle">sonnet</text>
+<rect x="349" y="225" width="134" height="48" rx="8" class="sg"/>
+<text x="416.0" y="254.0" class="xs mono bold fg" text-anchor="middle">gpt-6-luna</text>
+<rect x="493" y="225" width="134" height="48" rx="8" class="sg"/>
+<text x="560.0" y="254.0" class="xs mono bold fg" text-anchor="middle">flash</text>
+<rect x="637" y="225" width="134" height="48" rx="8" class="sg"/>
+<text x="704.0" y="254.0" class="xs mono bold fg" text-anchor="middle">deepseek-v4-flash</text>
+<text x="48" y="305" class="b mono bold fg" text-anchor="start">executor</text>
+<text x="48" y="324" class="sm muted" text-anchor="start">needs judgment</text>
+<rect x="205" y="283" width="134" height="48" rx="8" class="sa"/>
+<text x="272.0" y="312.0" class="xs mono bold fg" text-anchor="middle">sonnet</text>
+<rect x="349" y="283" width="134" height="48" rx="8" class="sa"/>
+<text x="416.0" y="312.0" class="xs mono bold fg" text-anchor="middle">gpt-6-astra</text>
+<rect x="493" y="283" width="134" height="48" rx="8" class="sp"/>
+<text x="560.0" y="312.0" class="xs mono bold fg" text-anchor="middle">pro</text>
+<rect x="637" y="283" width="134" height="48" rx="8" class="sa"/>
+<text x="704.0" y="312.0" class="xs mono bold fg" text-anchor="middle">gpt-5.6-luna</text>
+<text x="48" y="363" class="b mono bold fg" text-anchor="start">verifier</text>
+<text x="48" y="382" class="sm muted" text-anchor="start">checks the result</text>
+<rect x="205" y="341" width="134" height="48" rx="8" class="sp"/>
+<text x="272.0" y="370.0" class="xs mono bold fg" text-anchor="middle">opus</text>
+<rect x="349" y="341" width="134" height="48" rx="8" class="sp"/>
+<text x="416.0" y="370.0" class="xs mono bold fg" text-anchor="middle">gpt-6-sol</text>
+<rect x="493" y="341" width="134" height="48" rx="8" class="sp"/>
+<text x="560.0" y="370.0" class="xs mono bold fg" text-anchor="middle">pro</text>
+<rect x="637" y="341" width="134" height="48" rx="8" class="sp"/>
+<text x="704.0" y="370.0" class="xs mono bold fg" text-anchor="middle">gpt-5.6-sol</text>
+<text x="48" y="421" class="b mono bold fg" text-anchor="start">researcher</text>
+<text x="48" y="440" class="sm muted" text-anchor="start">outside research</text>
+<rect x="205" y="399" width="134" height="48" rx="8" class="sp"/>
+<text x="272.0" y="428.0" class="xs mono bold fg" text-anchor="middle">opus</text>
+<rect x="349" y="399" width="134" height="48" rx="8" class="sp"/>
+<text x="416.0" y="428.0" class="xs mono bold fg" text-anchor="middle">gpt-6-sol</text>
+<rect x="493" y="399" width="134" height="48" rx="8" class="sp"/>
+<text x="560.0" y="428.0" class="xs mono bold fg" text-anchor="middle">pro</text>
+<rect x="637" y="399" width="134" height="48" rx="8" class="sp"/>
+<text x="704.0" y="428.0" class="xs mono bold fg" text-anchor="middle">gpt-5.6-sol</text>
+<text x="48" y="479" class="b mono bold fg" text-anchor="start">plan-critic</text>
+<text x="48" y="498" class="sm muted" text-anchor="start">reviews the plan</text>
+<rect x="205" y="457" width="134" height="48" rx="8" class="sp"/>
+<text x="272.0" y="486.0" class="xs mono bold fg" text-anchor="middle">fable</text>
+<rect x="349" y="457" width="134" height="48" rx="8" class="sp"/>
+<text x="416.0" y="486.0" class="xs mono bold fg" text-anchor="middle">gpt-6-sol</text>
+<rect x="493" y="457" width="134" height="48" rx="8" class="sp"/>
+<text x="560.0" y="486.0" class="xs mono bold fg" text-anchor="middle">pro</text>
+<rect x="637" y="457" width="134" height="48" rx="8" class="sp"/>
+<text x="704.0" y="486.0" class="xs mono bold fg" text-anchor="middle">gpt-5.6-sol</text>
+<rect x="781" y="167" width="134" height="338" rx="8" class="sx"/>
+<text x="848.0" y="319.0" class="sm fg" text-anchor="middle">Uses your own</text>
+<text x="848.0" y="341.0" class="sm fg" text-anchor="middle">main model</text>
+<text x="848.0" y="363.0" class="sm mono muted" text-anchor="middle">(inherit)</text>
+<rect x="40" y="521" width="18" height="18" rx="5" class="sg"/>
+<text x="66" y="535" class="sm fg" text-anchor="start">Budget</text>
+<rect x="135.24" y="521" width="18" height="18" rx="5" class="sa"/>
+<text x="161.24" y="535" class="sm fg" text-anchor="start">Mid</text>
+<rect x="207.86" y="521" width="18" height="18" rx="5" class="sp"/>
+<text x="233.86" y="535" class="sm fg" text-anchor="start">Strongest</text>
+<text x="40" y="568" class="sm muted" text-anchor="start">Models are picked from each tool's available list; Grok Build keeps the model you set</text>
+</svg>

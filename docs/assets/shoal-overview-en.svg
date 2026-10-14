@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" role="img" aria-labelledby="ttl dsc" font-family='-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif'>
+<title id="ttl">Define roles once. Every tool gets its own setup.</title>
+<desc id="dsc">Three layers. The first is the role catalog in core/, where each role is defined once. The second is per-tool settings that choose the model, permissions and tool names. The third is the files generated for Claude Code, Codex CLI, Gemini / agy, OpenCode and Grok Build. Adding a tool is configuration, not code.</desc>
+<style>
+.bg{fill:#f7f9fc}.fg{fill:#152238}.muted{fill:#5b6b80}.ln{stroke:#c9d4e2;fill:none;stroke-width:1.5}
+.card{fill:#fff;stroke:#c9d4e2;stroke-width:1.2}
+.sb{fill:#eaf0ff;stroke:#a9bff5}.sg{fill:#e3f5ec;stroke:#a6dcc0}.sa{fill:#fff1dc;stroke:#ecc98d}.sp{fill:#efe9ff;stroke:#c9b8f1}.sr{fill:#fde8e8;stroke:#eeb0b0}.sx{fill:#eef1f5;stroke:#b4bfcd;stroke-dasharray:5 4}
+.ar{stroke:#5b6b80;stroke-width:1.8;fill:none}.arh{fill:#5b6b80}
+.t{font-weight:700;font-size:26px}.st{font-size:15px}.h{font-weight:700;font-size:16px}.b{font-size:15px}.sm{font-size:13px}.xs{font-size:12px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.bold{font-weight:700}
+@media (prefers-color-scheme: dark){
+.bg{fill:#101827}.fg{fill:#f3f6fb}.muted{fill:#a9b6c8}.ln{stroke:#3a4a60}
+.card{fill:#172235;stroke:#3a4a60}
+.sb{fill:#1b2d59;stroke:#4f74c4}.sg{fill:#173d2e;stroke:#3f9470}.sa{fill:#473219;stroke:#a07a43}.sp{fill:#2d2247;stroke:#7059a8}.sr{fill:#4a2323;stroke:#a35a5a}.sx{fill:#1d2838;stroke:#5d6d82}
+.ar{stroke:#a9b6c8}.arh{fill:#a9b6c8}}
+</style>
+<rect width="960" height="560" class="bg"/>
+<text x="40" y="52" class="t fg" text-anchor="start">Define roles once. Every tool gets its own setup.</text>
+<text x="40" y="80" class="st muted" text-anchor="start">Model, permissions and tool names are resolved per tool</text>
+<rect x="40" y="110" width="880" height="104" rx="14" class="card"/>
+<rect x="40" y="126" width="5" height="72" rx="2" class="sb"/>
+<text x="66" y="148" class="h fg" text-anchor="start">Role catalog</text>
+<rect x="66" y="164" width="59.0" height="26" rx="13" class="sb"/>
+<text x="95.5" y="182" class="sm mono fg" text-anchor="middle">core/</text>
+<text x="290" y="142" class="b muted" text-anchor="start">Each role says what it does and what it may touch</text>
+<rect x="290" y="160" width="68.0" height="34" rx="17" class="sb"/>
+<text x="324.0" y="182" class="b mono fg" text-anchor="middle">scout</text>
+<rect x="368.0" y="160" width="84.80000000000001" height="34" rx="17" class="sb"/>
+<text x="410.4" y="182" class="b mono fg" text-anchor="middle">applier</text>
+<rect x="462.8" y="160" width="93.2" height="34" rx="17" class="sb"/>
+<text x="509.40000000000003" y="182" class="b mono fg" text-anchor="middle">executor</text>
+<rect x="566.0" y="160" width="93.2" height="34" rx="17" class="sb"/>
+<text x="612.6" y="182" class="b mono fg" text-anchor="middle">verifier</text>
+<rect x="669.2" y="160" width="109.99999999999999" height="34" rx="17" class="sb"/>
+<text x="724.2" y="182" class="b mono fg" text-anchor="middle">researcher</text>
+<rect x="789.2" y="160" width="34.4" height="34" rx="17" class="sb"/>
+<text x="806.4000000000001" y="182" class="b mono fg" text-anchor="middle">…</text>
+<rect x="40" y="250" width="880" height="104" rx="14" class="card"/>
+<rect x="40" y="266" width="5" height="72" rx="2" class="sp"/>
+<text x="66" y="288" class="h fg" text-anchor="start">Per-tool settings</text>
+<rect x="66" y="304" width="66.80000000000001" height="26" rx="13" class="sp"/>
+<text x="99.4" y="322" class="sm mono fg" text-anchor="middle">hosts/</text>
+<text x="290" y="282" class="b muted" text-anchor="start">Which model, which permissions, what the tools are called</text>
+<rect x="290" y="300" width="110" height="34" rx="17" class="sp"/>
+<text x="345.0" y="322" class="b fg" text-anchor="middle">Model</text>
+<rect x="412" y="300" width="131.7" height="34" rx="17" class="sp"/>
+<text x="477.85" y="322" class="b fg" text-anchor="middle">Permissions</text>
+<rect x="555.7" y="300" width="123.0" height="34" rx="17" class="sp"/>
+<text x="617.2" y="322" class="b fg" text-anchor="middle">Tool names</text>
+<rect x="40" y="390" width="880" height="104" rx="14" class="card"/>
+<rect x="40" y="406" width="5" height="72" rx="2" class="sg"/>
+<text x="66" y="428" class="h fg" text-anchor="start">Generated files</text>
+<text x="290" y="422" class="b muted" text-anchor="start">Each tool gets its own full set</text>
+<rect x="290" y="440" width="114.0" height="34" rx="17" class="sg"/>
+<text x="347.0" y="462" class="sm bold fg" text-anchor="middle">Claude Code</text>
+<rect x="414.0" y="440" width="114.0" height="34" rx="17" class="sg"/>
+<text x="471.0" y="462" class="sm bold fg" text-anchor="middle">Codex CLI</text>
+<rect x="538.0" y="440" width="114.0" height="34" rx="17" class="sg"/>
+<text x="595.0" y="462" class="sm bold fg" text-anchor="middle">Gemini / agy</text>
+<rect x="662.0" y="440" width="114.0" height="34" rx="17" class="sg"/>
+<text x="719.0" y="462" class="sm bold fg" text-anchor="middle">OpenCode</text>
+<rect x="786.0" y="440" width="114.0" height="34" rx="17" class="sg"/>
+<text x="843.0" y="462" class="sm bold fg" text-anchor="middle">Grok Build</text>
+<path d="M480 214 L480 246" class="ar"/>
+<path d="M475 239 L480 246 L485 239 Z" class="arh"/>
+<path d="M480 354 L480 386" class="ar"/>
+<path d="M475 379 L480 386 L485 379 Z" class="arh"/>
+<text x="480" y="520" class="h fg" text-anchor="middle">Adding a tool is configuration, not code</text>
+</svg>

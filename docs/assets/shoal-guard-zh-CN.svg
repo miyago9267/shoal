@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" width="960" height="620" role="img" aria-labelledby="ttl dsc" font-family='-apple-system, BlinkMacSystemFont, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif'>
+<title id="ttl">五个工具拦同样的事</title>
+<desc id="dsc">四种情况：主 session 直接改文件会被拦下，出口是写入角色真的启动，或你说 #direct；不是 shoal 写入角色的 agent 改文件会被拦下，出口是改派 applier 或 executor；角色再往下派工会被拦下，出口是汇报给主 session；改完文件没跑检查就收工会被问一次，出口是跑检查或说明为什么不用。五个工具都强制执行。</desc>
+<style>
+.bg{fill:#f7f9fc}.fg{fill:#152238}.muted{fill:#5b6b80}.ln{stroke:#c9d4e2;fill:none;stroke-width:1.5}
+.card{fill:#fff;stroke:#c9d4e2;stroke-width:1.2}
+.sb{fill:#eaf0ff;stroke:#a9bff5}.sg{fill:#e3f5ec;stroke:#a6dcc0}.sa{fill:#fff1dc;stroke:#ecc98d}.sp{fill:#efe9ff;stroke:#c9b8f1}.sr{fill:#fde8e8;stroke:#eeb0b0}.sx{fill:#eef1f5;stroke:#b4bfcd;stroke-dasharray:5 4}
+.ar{stroke:#5b6b80;stroke-width:1.8;fill:none}.arh{fill:#5b6b80}
+.t{font-weight:700;font-size:26px}.st{font-size:15px}.h{font-weight:700;font-size:16px}.b{font-size:15px}.sm{font-size:13px}.xs{font-size:12px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.bold{font-weight:700}
+@media (prefers-color-scheme: dark){
+.bg{fill:#101827}.fg{fill:#f3f6fb}.muted{fill:#a9b6c8}.ln{stroke:#3a4a60}
+.card{fill:#172235;stroke:#3a4a60}
+.sb{fill:#1b2d59;stroke:#4f74c4}.sg{fill:#173d2e;stroke:#3f9470}.sa{fill:#473219;stroke:#a07a43}.sp{fill:#2d2247;stroke:#7059a8}.sr{fill:#4a2323;stroke:#a35a5a}.sx{fill:#1d2838;stroke:#5d6d82}
+.ar{stroke:#a9b6c8}.arh{fill:#a9b6c8}}
+</style>
+<rect width="960" height="620" class="bg"/>
+<text x="40" y="52" class="t fg" text-anchor="start">五个工具拦同样的事</text>
+<text x="40" y="80" class="st muted" text-anchor="start">拦下之后都留有出口，不会把你卡死</text>
+<text x="56" y="124" class="b muted bold" text-anchor="start">发生什么事</text>
+<text x="416" y="124" class="b muted bold" text-anchor="start">结果</text>
+<text x="536" y="124" class="b muted bold" text-anchor="start">出口</text>
+<path d="M40 136 H920" class="ln"/>
+<rect x="40" y="148" width="880" height="80" rx="14" class="card"/>
+<text x="56" y="188.0" class="b fg" text-anchor="start">主 session 直接改文件</text>
+<rect x="404" y="170" width="100" height="36" rx="10" class="sr"/>
+<text x="454.0" y="193.0" class="b bold fg" text-anchor="middle">拦下</text>
+<path d="M374 188 L398 188" class="ar"/>
+<path d="M391 183 L398 188 L391 193 Z" class="arh"/>
+<text x="536" y="177.5" class="b fg" text-anchor="start">写入角色真的启动了，</text>
+<text x="536" y="198.5" class="b fg" text-anchor="start">或你说 #direct</text>
+<path d="M524 162 V214" class="ln"/>
+<rect x="40" y="240" width="880" height="80" rx="14" class="card"/>
+<text x="56" y="269.5" class="b fg" text-anchor="start">不是 shoal 写入角色的</text>
+<text x="56" y="290.5" class="b fg" text-anchor="start">agent 改文件</text>
+<rect x="404" y="262" width="100" height="36" rx="10" class="sr"/>
+<text x="454.0" y="285.0" class="b bold fg" text-anchor="middle">拦下</text>
+<path d="M374 280 L398 280" class="ar"/>
+<path d="M391 275 L398 280 L391 285 Z" class="arh"/>
+<text x="536" y="280.0" class="b fg" text-anchor="start">改派 applier 或 executor</text>
+<path d="M524 254 V306" class="ln"/>
+<rect x="40" y="332" width="880" height="80" rx="14" class="card"/>
+<text x="56" y="372.0" class="b fg" text-anchor="start">角色再往下派工</text>
+<rect x="404" y="354" width="100" height="36" rx="10" class="sr"/>
+<text x="454.0" y="377.0" class="b bold fg" text-anchor="middle">拦下</text>
+<path d="M374 372 L398 372" class="ar"/>
+<path d="M391 367 L398 372 L391 377 Z" class="arh"/>
+<text x="536" y="372.0" class="b fg" text-anchor="start">改成汇报给主 session</text>
+<path d="M524 346 V398" class="ln"/>
+<rect x="40" y="424" width="880" height="80" rx="14" class="card"/>
+<text x="56" y="464.0" class="b fg" text-anchor="start">改完文件没跑检查就收工</text>
+<rect x="404" y="446" width="100" height="36" rx="10" class="sa"/>
+<text x="454.0" y="469.0" class="b bold fg" text-anchor="middle">问一次</text>
+<path d="M374 464 L398 464" class="ar"/>
+<path d="M391 459 L398 464 L391 469 Z" class="arh"/>
+<text x="536" y="464.0" class="b fg" text-anchor="start">跑检查，或说明为什么不用</text>
+<path d="M524 438 V490" class="ln"/>
+<text x="40" y="552" class="h fg" text-anchor="start">五个工具都强制执行</text>
+<rect x="208.0" y="530" width="104.94" height="32" rx="16" class="sg"/>
+<text x="260.47" y="551" class="sm bold fg" text-anchor="middle">Claude Code</text>
+<rect x="320.94" y="530" width="89.86" height="32" rx="16" class="sg"/>
+<text x="365.87" y="551" class="sm bold fg" text-anchor="middle">Codex CLI</text>
+<rect x="418.8" y="530" width="112.48" height="32" rx="16" class="sg"/>
+<text x="475.04" y="551" class="sm bold fg" text-anchor="middle">Gemini / agy</text>
+<rect x="539.28" y="530" width="82.32" height="32" rx="16" class="sg"/>
+<text x="580.4399999999999" y="551" class="sm bold fg" text-anchor="middle">OpenCode</text>
+<rect x="629.5999999999999" y="530" width="97.39999999999999" height="32" rx="16" class="sg"/>
+<text x="678.3" y="551" class="sm bold fg" text-anchor="middle">Grok Build</text>
+</svg>
