@@ -3,7 +3,7 @@
 > A Codex-native orchestration layer that chooses a realistic first move for
 > clear work, broad changes, and open-ended ideas.
 
-[繁體中文](../../docs/README.zh-TW.md) · [简体中文](../../docs/README.zh-CN.md)
+[繁體中文](./README.zh-TW.md) · [简体中文](./README.zh-CN.md)
 
 Shoal-Codex is an independent Codex CLI adaptation inspired by
 [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish). It combines
@@ -214,8 +214,8 @@ prompt is in [INSTALL_PROMPT.md](../../INSTALL_PROMPT.md).
 | 1.6.0 intent runtime and live evidence | [intent-aware spec](../../docs/specs/intent-aware-review-routing-1-6-0/SPEC.md) |
 | Usage-routing benchmark | [benchmark README](../../docs/benchmarks/usage-routing-v1/README.md) |
 | Native verification | [verification README](../../docs/verification/README.md) |
-| Traditional Chinese entry | [docs/README.zh-TW.md](../../docs/README.zh-TW.md) |
-| Simplified Chinese entry | [docs/README.zh-CN.md](../../docs/README.zh-CN.md) |
+| Traditional Chinese entry | [README.zh-TW.md](./README.zh-TW.md) |
+| Simplified Chinese entry | [README.zh-CN.md](./README.zh-CN.md) |
 
 ## Local verification
 

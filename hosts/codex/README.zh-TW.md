@@ -3,14 +3,14 @@
 > Codex 原生的 orchestration layer，依照需求的明確程度與風險，選擇合適
 > 的第一步：直接執行、探索後規劃，或共同釐清。
 
-[English](../hosts/codex/README.md) · [简体中文](./README.zh-CN.md)
+[English](./README.md) · [简体中文](./README.zh-CN.md)
 
 Shoal-Codex 是受
 [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish) 啟發的獨立 Codex CLI
 版本。它整合 typed agent roles、明確的 approval boundaries、adaptive intent
 routing，以及使用 fresh context 的 outcome verification。
 
-![自適應意圖路由：需求、模式、checkpoint 與實驗結果](./assets/adaptive-routing-overview-zh-TW.svg)
+![自適應意圖路由：需求、模式、checkpoint 與實驗結果](../../docs/assets/adaptive-routing-overview-zh-TW.svg)
 
 ## 專案做什麼
 
@@ -29,7 +29,7 @@ ceiling，避免分析無限擴張；並用 `direction_checkpoint` 判斷應該�
 1.6.0 另外支援目前 turn 的明確 review intent：`fast` 省略 optional review
 overhead、`default` 依照既有 risk policy、`strict` 擴大 review 與 verification。
 這個 signal 不會覆寫必要的 approval 或 safety gate；Matrix 與「品質兼顧的成本
-效益」指標請見 [1.6.0 spec](./specs/intent-aware-review-routing-1-6-0/SPEC.md)。
+效益」指標請見 [1.6.0 spec](../../docs/specs/intent-aware-review-routing-1-6-0/SPEC.md)。
 
 ## 從意圖到 role
 
@@ -63,24 +63,27 @@ Intent routing 決定互動形狀；上游 Nanako0129/pilotfish 的 role system 
 
 Root session 負責 routing、Plan synthesis、approval decision、integration 與
 finding disposition。完整的 delegation 與 verification 規則請看
-[docs/design.md](./design.md)。
+[docs/design.md](../../docs/design.md)。
 
 ## 為什麼這樣拆 role
 
 這些 role 將直接執行與高不確定性的 review 分開。v6 benchmark 使用固定的
 artifact task 作為 native-rollout proxy：
 
-<img src="./assets/v6-weighted-tokens-zh-TW.svg" alt="每組 12 次試驗的加權 token 使用量" width="720">
+<img src="../../docs/assets/v6-weighted-tokens-zh-TW.svg"
+  alt="每組 12 次試驗的加權 token 使用量" width="720">
 
-<img src="./assets/v6-equivalent-cost-zh-TW.svg" alt="每組 12 次試驗的等效成本" width="720">
+<img src="../../docs/assets/v6-equivalent-cost-zh-TW.svg"
+  alt="每組 12 次試驗的等效成本" width="720">
 
-<img src="./assets/v6-median-wall-time-zh-TW.svg" alt="每個候選者的中位 wall time" width="720">
+<img src="../../docs/assets/v6-median-wall-time-zh-TW.svg"
+  alt="每個候選者的中位 wall time" width="720">
 
 既有 v6 benchmark 早於 GPT-6 role binding，不代表 GPT-6 的品質或延遲比較結果。
 目前的 policy 讓 Luna 處理 atomic／mechanical 工作，Sol 處理一般判斷、設計與 QA，
 只有深層架構或衝突證據才使用 Astra。Root session 不會自動切換模型。這是 routing
 decision，不是通用的 intelligence ranking。歷史 benchmark 與 bar charts 請看
-[usage-routing benchmark](./benchmarks/usage-routing-v1/README.md)。
+[usage-routing benchmark](../../docs/benchmarks/usage-routing-v1/README.md)。
 
 ## Opt-in Astra 主工作階段
 
@@ -119,7 +122,7 @@ receipt，native contract 由 runtime evidence 驗證。
 
 這些結果支持較窄的「模式選擇、approval 與 checkpoint」主張，不代表每個
 response 都完美。Strict misses 與完整分析留在
-[實驗結果](./specs/adaptive-intent-routing/EXPERIMENT-RESULTS.md) 中追蹤。
+[實驗結果](../../docs/specs/adaptive-intent-routing/EXPERIMENT-RESULTS.md) 中追蹤。
 
 ## 快速安裝
 
@@ -153,20 +156,20 @@ Remote installation 必須在 script URL 與 archive ref 使用同一個 release
 或完整 commit SHA。不要從可變動的 `main` 安裝到真實 Codex home。
 
 完整的 approval、migration、backup、recovery 與 trust 步驟請看
-[INSTALL.md](../INSTALL.md)、[install/AGENT-INSTALL.md](../install/AGENT-INSTALL.md)
-與可重用的 [INSTALL_PROMPT.md](../INSTALL_PROMPT.md)。
+[INSTALL.md](../../INSTALL.md)、[install/AGENT-INSTALL.md](../../install/AGENT-INSTALL.md)
+與可重用的 [INSTALL_PROMPT.md](../../INSTALL_PROMPT.md)。
 
 ## 文件導覽
 
 | 主題 | 文件 |
 | --- | --- |
-| Design 與 policy 邊界 | [docs/design.md](./design.md) |
-| Prompt／description 文件鎖 | [lock spec](./specs/prompt-document-lock/SPEC.md) |
-| Adaptive routing 設計 | [EXPERIMENT.md](./specs/adaptive-intent-routing/EXPERIMENT.md) |
-| Adaptive routing 結果 | [EXPERIMENT-RESULTS.md](./specs/adaptive-intent-routing/EXPERIMENT-RESULTS.md) |
-| Live experiment protocol | [LIVE-EXPERIMENT.md](./specs/adaptive-intent-routing/LIVE-EXPERIMENT.md) |
-| Usage-routing benchmark | [benchmark README](./benchmarks/usage-routing-v1/README.md) |
-| Native verification | [verification README](./verification/README.md) |
+| Design 與 policy 邊界 | [docs/design.md](../../docs/design.md) |
+| Prompt／description 文件鎖 | [lock spec](../../docs/specs/prompt-document-lock/SPEC.md) |
+| Adaptive routing 設計 | [EXPERIMENT.md](../../docs/specs/adaptive-intent-routing/EXPERIMENT.md) |
+| Adaptive routing 結果 | [EXPERIMENT-RESULTS.md](../../docs/specs/adaptive-intent-routing/EXPERIMENT-RESULTS.md) |
+| Live experiment protocol | [LIVE-EXPERIMENT.md](../../docs/specs/adaptive-intent-routing/LIVE-EXPERIMENT.md) |
+| Usage-routing benchmark | [benchmark README](../../docs/benchmarks/usage-routing-v1/README.md) |
+| Native verification | [verification README](../../docs/verification/README.md) |
 
 ## 本地驗證
 

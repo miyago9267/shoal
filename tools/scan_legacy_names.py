@@ -54,8 +54,12 @@ EXEMPT_FILES = frozenset(
     }
 )
 HISTORICAL_CHANGELOGS = frozenset({"CHANGELOG.md", "hosts/codex/CHANGELOG.md"})
-CREDIT_FILE = "README.md"
-CREDIT_HEADING = "## 來源與致謝"
+# 致謝與上游關係的章節：標題起到下一個 `## ` 之間不掃。
+CREDIT_SECTIONS = {
+    "README.md": ("## 來源與致謝", "## 和 pilot" "fish 的關係"),
+    "docs/README.zh-CN.md": ("## 来源与致谢", "## 与 pilot" "fish 的关系"),
+    "docs/README.en.md": ("## Credits", "## shoal and pilot" "fish"),
+}
 
 _PROTECTED = [re.compile(p) for p in LEGACY_PROTECTED]
 _VERSION_HEADING = re.compile(r"^## v(\d+)\.(\d+)\.(\d+)")
@@ -123,9 +127,9 @@ def _skipped_ranges(path: str, lines: list[str]) -> set[int]:
             if match and tuple(int(g) for g in match.groups()) < (2, 0, 0):
                 skip.update(range(index + 1, len(lines) + 1))
                 break
-    if path == CREDIT_FILE:
+    for heading in CREDIT_SECTIONS.get(path, ()):
         start = next(
-            (i for i, line in enumerate(lines) if line.startswith(CREDIT_HEADING)), None
+            (i for i, line in enumerate(lines) if line.startswith(heading)), None
         )
         if start is not None:
             end = next(

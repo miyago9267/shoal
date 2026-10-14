@@ -16,7 +16,9 @@ DEFAULT_FILES = (
     "README.md",
     "hosts/codex/README.md",
     "hosts/codex/CHANGELOG.md",
-    "docs/README.zh-TW.md",
+    "hosts/codex/README.zh-TW.md",
+    "hosts/codex/README.zh-CN.md",
+    "docs/README.en.md",
     "docs/README.zh-CN.md",
 )
 
