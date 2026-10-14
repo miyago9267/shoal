@@ -67,8 +67,13 @@ Claude、Codex 那輪與 OpenCode、Grok 的部分執行不算數；之後改在
 - agy（2 次有效）：main 自己改檔被 R1 擋下，deny 訊息只列 agy 能用的三個
   出口（無 `#direct`）；conversation 推論正確（`scout` 判為唯讀、`applier`
   判為可寫）。未觸發「非可寫 subagent 改檔被擋」：`scout` 沒有寫檔工具，自行
-  拒絕。`applier` 回來後 main 再改檔仍被擋，原因是 agy 每次模型呼叫都是新回合
-  （`turn_boundary`），解鎖只維持到下一次呼叫。
+  拒絕。`applier` 回來後 main 再改檔仍被擋。證據：raw stream（round3 `a2.out`）在
+  `invoke_subagent` 之後、main 的下一個回應之前有一則 `system_message`（step 8）；guard log
+  （2026-10-14T05:58:04Z）在 subagent 的 `SessionStart` 之後出現一筆 main 的
+  `turn_boundary`，中間沒有 main 的新 `SessionStart`。程式只在 `PreInvocation` 且
+  `invocationNum == 0` 時才記 `turn_boundary`，所以推得：subagent 回報讓 main 開了新一輪
+  invocation，編號從 0 起算。stream 不含 `invocationNum`，這是推論，沒有直接看到該欄位。
+  解鎖因此維持到 subagent 回報為止，不是「到下一次模型呼叫」。
 
 付費執行次數（含不算數的，capture＋第一輪＋重跑）：Claude 2+2+2、
 Codex 3+2+1、OpenCode 3+2+2、Grok 4+1+2+1、agy 2+2。
@@ -94,5 +99,16 @@ Codex 3+2+1、OpenCode 3+2+2、Grok 4+1+2+1、agy 2+2。
 - 2026-10-14 本機負載過高，完整 unit suite 沒有跑完；只跑了 render、
   prompt lock、install、plugin、delegation default 與 OpenCode `bun test`
   等針對性檢查。整合驗證交給 PR #1 的 CI。
-- CI 結果：PR #1 的 CI 在 `fe102ed`（ubuntu、macOS、windows 的 Python tests
-  與 Markdown lint）全數 success；`440cb8d` 之後的 CI 結果待收尾時補上。
+- CI 結果：PR #1 的 CI 在 `0e6e6b1` 全綠（ubuntu、macOS、windows 的 Python tests
+  與 Markdown lint）。OpenCode plugin 的 `bun test` 原本沒有 CI job，現在補上。
+
+## 合併前驗證的發現與剩餘風險
+
+- 合併前 verifier 確認 guard 行為正確；指出文件缺口（Claude、Codex 的 E8 表、過時的
+  INSTALL 說明、agy 回合措辭、OpenCode 沒有 CI），已在同一個 commit 修正。
+- agy：類別 unknown 的 subagent（混合派工）只記 `would_deny_unknown_class`，不擋。
+- agent type 名稱的信任：可寫權限以 host 回報的名稱為準。verifier 認為前提多半不成立
+  （自訂 agent 取 `executor` 之類的名稱，或 Grok 改寫通用型別）。便宜的驗證：Grok 跑一次，
+  比對 `subagent_start.subagentType` 與實際載入的 agent；Claude 用一個叫 `executor` 的專案 agent
+  寫 repo，看是否被放行。
+- OpenCode 的 `perl -i` 偵測只有 unit test，沒有重跑 live。

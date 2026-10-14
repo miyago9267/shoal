@@ -16,7 +16,10 @@
    可寫 role 的 subagent 改檔（`#direct`、`SHOAL_GUARD_WRITE_AGENTS` 可放行）。
    這些規則不依賴任何分類器。含數字門檻的規則只提醒。有 harness 的 host，
    每個能掛 gate 的事件都必須掛上；掛不上的事件要列出原因與證據，
-   新的 host 綁定沒有這張表不予接受。
+   新的 host 綁定沒有這張表不予接受。各 host 的表見
+   [`guard-every-gate/SPEC.md`](./specs/guard-every-gate/SPEC.md) 的 E8 檢查表，
+   OpenCode 的表在
+   [INSTALL.md](../INSTALL.md#claude-上-guard-的行為300-起)。
 4. **規則與策略由 core 定義，所有 host 共用。** host 的 adapter 只放三類內容：
    工具與參數名稱、model 綁定、該 host 特有的調校參數。host 做不到的條款明列
    省略理由。

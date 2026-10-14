@@ -115,10 +115,10 @@ const HOST_DEFAULT_MODE: Record<string, string> = {
 // Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
 const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
 // Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
-// {"decision": "block", "reason": ...}: only they block an unverified completion (B4).  grok, agy and opencode
-// have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches
-// the check off on these hosts and has no effect elsewhere.  Grok has the payload but its block output is not yet
-// exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
+// {"decision": "block", "reason": ...}: only they block an unverified completion (B4).  opencode has no
+// recorded end-of-turn payload for the main session, so it never blocks.  SHOAL_GUARD_STOP switches the check off
+// on these hosts and has no effect elsewhere.  Grok and agy have the payload but their block output is not yet
+// exercised: their default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
 const STOP_HOSTS = new Set(["claude", "codex", "grok", "agy"]);
 const STOP_SHADOW_DEFAULT_HOSTS = new Set(["grok", "agy"]);
 // agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its
@@ -153,8 +153,9 @@ const DENY_MAIN_HOSTS = new Set(["claude"]);
 // the default.
 const DECLARE_HOSTS = new Set(["claude", "codex", "opencode", "grok", "agy"]);
 // Hosts where "a write-level role was dispatched" unlocks only once the role has started (M11): the dispatch
-// call records a pending write dispatch and the SubagentStart event of the same session releases it.  Every
-// other host unlocks at the dispatch call itself (no start event is recorded for it).  The registration and
+// call records a pending write dispatch and the start event releases it (SubagentStart on claude and codex,
+// `subagent_start` on grok, the new conversation's SessionStart on agy, `session.created` on opencode).  Every
+// host the guard knows is in this set, so none unlocks at the dispatch call itself.  The registration and
 // the guard script ship together; see hooks/shoal_guard.py.
 const START_UNLOCK_HOSTS = new Set(["claude", "codex", "opencode", "grok", "agy"]);
 // Codex: the first tool call of a write-level role's agent is start evidence as well (the SubagentStart hook may not be
@@ -638,8 +639,8 @@ export function writeAgentAllowed(role: string | null | undefined, env: Env): bo
 }
 
 /**
- * SHOAL_GUARD_STOP: `off` disables the completion check on claude, codex and grok; any other value (or none) keeps
- * it on (grok: logging only, see stopBlocks).  No effect on a host outside STOP_HOSTS.
+ * SHOAL_GUARD_STOP: `off` disables the completion check on claude, codex, grok and agy; any other value (or none)
+ * keeps it on (grok and agy: logging only, see stopBlocks).  No effect on a host outside STOP_HOSTS.
  */
 export function stopEnabled(host: string, env: Env): boolean {
   return STOP_HOSTS.has(host) && env.SHOAL_GUARD_STOP !== "off";
@@ -652,8 +653,8 @@ export function stopBlocks(host: string, env: Env): boolean {
 
 /**
  * SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
- * Unset, unrecognized, or `strict` / `declare` on another host -> the host default (`strict` on
- * claude and codex, `classified` elsewhere).
+ * Unset, unrecognized, or `strict` / `declare` on a host outside DECLARE_HOSTS -> `classified`.  Every host the
+ * guard knows (claude, codex, opencode, grok, agy) is in DECLARE_HOSTS, so `strict` is the default there.
  */
 export function resolveR1(host: string, env: Env): string {
   const raw = env.SHOAL_GUARD_R1 || "";

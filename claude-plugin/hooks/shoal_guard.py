@@ -25,7 +25,7 @@ prompt, or for good by SHOAL_GUARD_DIRECT=1.
 
 The main-session edit rule (R1 for edit tools, G5 for a foreground `Bash` that literally writes a
 file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-declared-direct):
-  strict      (default on claude and codex) deny unless this turn has a dispatched write role,
+  strict      (default on claude, codex, grok and agy) deny unless this turn has a dispatched write role,
               `#direct` / SHOAL_GUARD_DIRECT=1, or the target is exempt.  A `: shoal-direct` command is an
               ordinary no-op here and a classification file has no effect (docs/specs/guard-declared-direct,
               M9).  The only exits are dispatch and the user's `#direct`.
@@ -34,17 +34,17 @@ file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-dec
               `: shoal-direct <reason>`, see parse_declaration) or a classification file whose role
               is `parent_local`.  No classification file, or any other role, has no effect.
   classified  the v3.1.0 rule: deny (claude) or advise (other hosts) only when the turn is
-              classified judgment/mechanical by the optional classification file.  Default on every
-              host that cannot gate (agy).
+              classified judgment/mechanical by the optional classification file.  Selectable with
+              SHOAL_GUARD_R1=classified; the default on no shipped host (an unknown host falls back to it).
   off         no R1/G5; the hard rules, G4 and R2 are untouched.
 
 "A write-level role was dispatched" (the unlock in every mode) means, on claude, codex and grok, that the role has
-started (M11, E3, E4): the dispatch call records a pending write dispatch and the SubagentStart event of the same
-session releases it (codex: once per agent_id; its subagent's first edit or shell call also counts, see
-START_UNLOCK_HOSTS; grok: its `subagent_start`).  On every other host the dispatch call itself unlocks.
+started (M11, E3, E4): the dispatch call records a pending write dispatch and the start event releases it
+(claude and codex: SubagentStart of the same session, codex once per agent_id and its subagent's first edit or shell
+call also counts, see START_UNLOCK_HOSTS; grok: its `subagent_start`; agy: the SessionStart of the new subagent
+conversation).  Every host this script serves is in START_UNLOCK_HOSTS, so none unlocks at the dispatch call itself.
 
-Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` (default on every host
-but claude, codex and grok) leaves the subagent rules exactly as they were; `on` (default on claude, codex and grok) makes a subagent that is not a shoal write-capable role (an edit
+Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` leaves the subagent rules exactly as they were; `on` (the default on claude, codex, grok and agy) makes a subagent that is not a shoal write-capable role (an edit
 tool or a literal shell write, as in G5, outside the exempt paths) get E1: deny in enforce, `would_deny` in shadow.
 Exits: dispatch a shoal write role, put the agent type in SHOAL_GUARD_WRITE_AGENTS (comma-separated, exact match on the
 raw type or the type without a `shoal:` prefix), or SHOAL_GUARD_DIRECT=1.  On claude a user's `#direct`
@@ -53,7 +53,7 @@ it, and the prompt event keeps the last DIRECT_TURNS_MAX turn ids that carried `
 (`direct_turns`), so a background Workflow child that edits after the main session moved on is still judged by the turn
 that launched it.  Codex: a subagent has its own turn id, so the SubagentStart event of an agent records its agent_id when main's
 current turn carried `#direct` (`direct_agents`, the last AGENTS_MAX) and that agent is released.  Other hosts have no
-such payload evidence: not released.  Grok: a subagent's events carry its own session id, so `subagent_start` (sent
+such payload evidence: not released (agy has no prompt text at all).  Grok: a subagent's events carry its own session id, so `subagent_start` (sent
 under main's session id, with the subagent's id and type) records subagent id -> {main session, role, whether main's
 turn carried `#direct`} in `state/grok.agents.json` (the last GROK_AGENTS_MAX); a tool event whose session id is in that
 file is a subagent call of that role, and the recorded flag releases it.  A subagent event with a `subagentType` and no
@@ -108,9 +108,9 @@ HOST_DEFAULT_MODE = {
 # Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
 ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
-# `{"decision": "block", "reason": ...}`: only they block an unverified completion (B4).  agy and opencode
-# have no recorded end-of-turn payload for the main session, so they never block.  SHOAL_GUARD_STOP switches the
-# check off on these hosts and has no effect elsewhere.  Grok has the payload (tests/fixtures/grok_guard_event_shapes.json)
+# `{"decision": "block", "reason": ...}`: only they block an unverified completion (B4).  grok and agy record a
+# `would_block` only (STOP_SHADOW_DEFAULT_HOSTS); opencode has no recorded end-of-turn payload for the main session, so
+# it never blocks.  SHOAL_GUARD_STOP switches the check off on these hosts and has no effect elsewhere.  Grok has the payload (tests/fixtures/grok_guard_event_shapes.json)
 # but its block output is not yet exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
 STOP_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
 STOP_SHADOW_DEFAULT_HOSTS = frozenset({"grok", "agy"})
@@ -148,9 +148,9 @@ DECLARE_HOSTS = frozenset({"claude", "codex", "opencode", "grok", "agy"})
 # Hosts where "a write-level role was dispatched" unlocks only once the role has actually started (M11):
 # the PreToolUse of the dispatch call records a pending write dispatch and the SubagentStart event of the
 # same session releases it.  Claude's SubagentStart payload (session_id equal to main's, agent_id, agent_type,
-# prompt_id) is recorded in tests/fixtures/claude_subagent_start_shape.json.  Every other host unlocks at the
-# dispatch call itself, as before: no start event is recorded for it, and without one a pending dispatch
-# would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
+# prompt_id) is recorded in tests/fixtures/claude_subagent_start_shape.json.  Grok's `subagent_start` and agy's
+# SessionStart of a new conversation are the start events there.  A host outside this set would unlock at the dispatch
+# call itself (none ships); without a start event a pending dispatch would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
 # together; a Claude install whose registration lacks SubagentStart has no start event and would stay locked.
 START_UNLOCK_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
 # Codex (docs/specs/guard-every-gate E3; tests/fixtures/codex_subagent_tool_shapes.json): SubagentStart carries the new
@@ -566,7 +566,7 @@ def resolve_mode(host: str, env: Dict[str, str]) -> str:
 
 def subagent_write_enabled(host: str, env: Dict[str, str]) -> bool:
     """SHOAL_GUARD_SUBAGENT_WRITE: `on` enables E1, `off` disables it; unset (or any other value) follows the
-    host default: on for claude, off elsewhere."""
+    host default: on for claude, codex, grok and agy (SUBAGENT_WRITE_DEFAULT_ON_HOSTS)."""
     raw = env.get("SHOAL_GUARD_SUBAGENT_WRITE")
     if raw in ("on", "off"):
         return raw == "on"

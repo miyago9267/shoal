@@ -27,15 +27,23 @@ guard 的每個閘門都接上（[`docs/specs/guard-every-gate`](./docs/specs/gu
   `SessionStart`）都改成以啟動為準，派工失敗不放行。
 - Codex 的 hook 註冊升到 `shoal-guard-v4`，升級後要用 `/hooks` 重新核准新增的
   `SubagentStart`；核准前，以可寫 role 的第一次工具呼叫作為啟動依據。
-- OpenCode、Grok、agy 的 guard 預設由只記錄（shadow）改為 enforce，main 自己改檔預設被擋
+- Grok、agy 的 guard 預設由只記錄（shadow）改為 enforce，main 自己改檔預設被擋
   （與 Claude、Codex 相同）；要回到只記錄可設 `SHOAL_GUARD=shadow`。
-  OpenCode 開始檢查 `bash` 與 `apply_patch`。
+- OpenCode 的 guard 原本就是 enforce；這次改的是 main 改檔規則由 `classified` 改為 `strict`
+  （沒派 write role 也沒有 `#direct` 就擋），並開始檢查 `bash` 與 `apply_patch`，解鎖改以
+  `session.created` 啟動為準。
 - agy 的 main／subagent 與 role 由 conversation 的順序推論；判不出來時不擋，只記錄。
 - 完成檢查：Grok、agy 以只記錄方式接上（`SHOAL_GUARD_STOP=enforce` 才擋）；
   OpenCode 的結束事件沒有回傳值，無法擋，所以沒有接。
 - 設計不變式第 3 條新增：有 harness 的 host 必須把每個能當閘門的事件都接上 guard，
   接不了的要列出原因與證據。
 - guard log 多記 `agent_type`、`agent_id` 與 session／turn 的短雜湊。
+
+### Known limitations
+
+- 可寫權限以 host 回報的 agent type 名稱為準：專案自訂、但取了 shoal 可寫 role 名稱的
+  agent（例如叫 `executor` 的專案 agent）會被當成那個 role。Grok 還會把通用 subagent 型別
+  改寫成 `shoal:executor`。尚未 live 驗證這個前提。
 
 ## v3.5.0
 

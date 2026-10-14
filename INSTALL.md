@@ -613,8 +613,14 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   所以沒有 `#direct`；出口只有：派 write role 並等它啟動、`SHOAL_GUARD_WRITE_AGENTS`、`SHOAL_GUARD_DIRECT=1`。
   agy 不檢查 leaf 不得再派工（只記 log）；完成檢查接在 `Stop`，預設 shadow（只記 `would_block`），
   `SHOAL_GUARD_STOP=enforce` 才擋，擋的輸出格式尚未 live 驗證。
-  在 agy 上，write role 啟動只放行 main session 到下一次模型呼叫（每次呼叫都是一個回合），
-  所以 role 回來之後 main 再改檔會再被擋；請把改檔派給該 role。
+  agy 上 main 的解鎖只維持到 main conversation 的下一個 `PreInvocation` 且
+  `invocationNum == 0`
+  （程式只在這個條件重置回合，不是每次模型呼叫；`adapt_agy`）。2026-10-14 live 觀察到：
+  subagent 回報時 agy 在 main conversation 補一則 `system_message`，緊接著 guard log 出現一筆
+  main 的 `turn_boundary`（之前沒有 main 的新 `SessionStart`），所以 role 回來之後 main 再改檔
+  又被擋。由此推得：subagent 回報會讓 main 開始新一輪 invocation，編號從 0 起算。raw stream
+  不含 `invocationNum`，這是由「guard 只在 0 時記 `turn_boundary`」推得，沒有直接看到該欄位。
+  實際效果：解鎖撐不到 subagent 回報之後；請把改檔派給該 role。
 - 只有 command 含 `shoal_guard.py --host` 的 handler 算 shoal 的；其他 hook、其他 key、
   key 順序與 2 空格縮排都原樣保留。重複執行不會改變結果，也不會產生新備份。
 - 寫入前把原檔備份到 `${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/`
@@ -627,7 +633,7 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 ### Claude 上 guard 的行為（3.0.0 起）
 
 [`docs/specs/delegation-default`](./docs/specs/delegation-default/SPEC.md)
-讓 Claude 上的 main session 規則回到 deny；OpenCode 的行為不變（R1、R2 只提醒）；Grok、agy 見各自的段落。
+讓 Claude 上的 main session 規則回到 deny；Grok、agy、OpenCode 的 R1 現在也預設 deny（見下表與各自的段落）。
 3.2.1 起 Codex 的 R1 與 G5 和 Claude 一樣（見下）。
 3.2.0 起 R1 與 G5 不再等分類來源（宣告）；3.3.0 起預設改成 `strict`：main 沒派 write role、
 使用者也沒有 `#direct` 就不能改檔，宣告不再是出口
@@ -639,11 +645,11 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 | --- | --- | --- |
 | `strict` | Claude、Codex（3.3.0 起）、Grok、agy | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
 | `declare` | 無（3.2.x 的預設，可選） | enforce 時 deny，除非本輪有：已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告（下一節），或分類檔的 `role` 是 `parent_local`。沒有分類檔、或其他 `role`，都不影響結果。shadow 記 `would_deny` |
-| `classified` | 其他 host（OpenCode） | 3.1.0 的規則：只有分類檔把本輪標成 `judgment` 或 `mechanical` 時才擋（Claude：deny；其他 host 只提醒） |
+| `classified` | 無（可選；3.6.0 前的 OpenCode 預設） | 3.1.0 的規則：只有分類檔把本輪標成 `judgment` 或 `mechanical` 時才擋（Claude：deny；其他 host 只提醒） |
 | `off` | 無 | 關掉 R1 與 G5。硬規則（LEAF、VERIFY_EDIT）、G4、R2 不受影響 |
 
 未設定、空字串、無法辨識的值，或在不能閘控的 host 上設 `strict`／`declare`，都用該 host 的預設
-（Claude、Codex 是 `strict`，其他是 `classified`）。
+（所有 host 都是 `strict`；3.6.0 前 OpenCode 是 `classified`）。
 `declare`、`classified`、`off` 的行為與 3.2.1 相同。
 被 deny 的改檔與 shell 寫檔不計入 R2 的檔案數，也不會在同一次呼叫送出 R2 提醒。
 
@@ -666,7 +672,8 @@ shadow 記 `would_deny`（規則 id `E1`）。verify 等級的 role 的編輯仍
 
 出口：派 shoal 可寫的 role；把 agent type 加進 `SHOAL_GUARD_WRITE_AGENTS`（逗號分隔，去掉空白，
 比對原始 type 或去掉 `shoal:` 前綴的 type，例如 Workflow 預設的 `workflow-subagent`）；設
-`SHOAL_GUARD_DIRECT=1`；或在 Claude、Codex 上，啟動這項工作的那一回合 prompt 帶 `#direct`。
+`SHOAL_GUARD_DIRECT=1`；或在 Claude、Codex、Grok、OpenCode 上，啟動這項工作的那一回合
+prompt 帶 `#direct`（agy 的 payload 沒有 prompt 文字，不支援）。
 最後一項靠 subagent 事件帶的 `session_id` 與 `prompt_id` 對到主 session 的 state 檔，其中
 `direct_turns` 保存最近 16 個帶 `#direct` 的回合 id，所以背景 Workflow 的子 agent 在主 session 已進入
 下一回合後才改檔，仍以啟動它的那一回合為準。state 檔讀不到或內容壞掉一律視為未放行。
@@ -674,10 +681,17 @@ Codex 的 subagent 有自己的 `turn_id`（和主 session 不同，同一個 su
 `agent_id`：`SubagentStart`（帶主 session 的 `session_id`）發生時，若主 session 當下這一回合帶 `#direct`，
 就把該 `agent_id` 記進 state 檔的 `direct_agents`（最近 32 個），之後這個 agent 的改檔以此放行；
 之後的非 `#direct` 回合才啟動的 agent、其他 session 的 agent 都不放行，state 讀不到或壞掉一律視為未放行。
-其他 host 的 subagent 事件沒有這組證據，`#direct` 不放行 subagent。
+Grok 在 `subagent_start` 時記下當下 main 那一回合有沒有 `#direct`（`state/grok.agents.json`）；
+OpenCode 以 child session 建立當下 main 的那一回合為準。agy 沒有 `#direct`，所以不放行 subagent。
 派出非 shoal 的 agent type 仍然允許，也不會解鎖 main 的改檔。
 Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TMPDIR`（含 Claude 的 scratchpad）
 屬豁免路徑；導到 repo 內的路徑會被 E1 擋下。
+
+**已知限制：可寫權限以 host 回報的 agent type 名稱為準。** 專案裡自訂、但取了 shoal 可寫 role 名稱
+的 agent（例如叫 `executor` 的專案 agent）會被當成那個 role，E1 不擋它，它也能解鎖 main。Grok 還會把
+通用 subagent 型別改寫成 `shoal:executor`（live 觀察），所以通用 subagent 的 `subagent_start`
+可能就帶著可寫 role 的名稱。guard 看不到實際載入的 agent 內容。這個前提是否成立尚未驗證（見
+[PROGRESS.md](./docs/specs/guard-every-gate/PROGRESS.md)）。
 
 #### 宣告
 
@@ -721,12 +735,12 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
 
 #### 規則總表
 
-| 規則 | 條件 | Claude／Codex（enforce） | Claude／Codex（shadow） | Grok、agy、OpenCode（OpenCode 見下一節；Grok、agy 預設 enforce 時與 Claude 相同） |
+| 規則 | 條件 | Claude／Codex（enforce） | Claude／Codex（shadow） | Grok、agy、OpenCode（預設 enforce，與 Claude 相同；OpenCode 見下一節） |
 | --- | --- | --- | --- | --- |
-| R1 | `strict`：本輪沒有派工或 `#direct`；`declare`：本輪沒有派工、`#direct`、宣告或 `parent_local`；`classified`：分類檔把本輪標成 `judgment` 或 `mechanical` 且沒派工。路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | 只提醒（`advise`） |
+| R1 | `strict`：本輪沒有派工或 `#direct`；`declare`：本輪沒有派工、`#direct`、宣告或 `parent_local`；`classified`：分類檔把本輪標成 `judgment` 或 `mechanical` 且沒派工。路徑不在豁免範圍 | deny main 的 `Edit`、`Write`、`MultiEdit`、`NotebookEdit` | 記 `would_deny` | deny（`strict`；選 `classified` 時只提醒） |
 | R2 | 本輪 main 直接改到第 3 個不同的檔案 | 只提醒 | 只提醒 | 只提醒 |
 | G4 | main（payload 沒有 `agent_id`）呼叫 `Bash` 且 `run_in_background: true`（只有 Claude；Codex 沒有這個欄位） | deny，訊息要求改派背景的 `watcher` | 記 `would_deny` | 無此規則 |
-| G5（3.0.1 起） | R1 的條件成立，且 main 前景呼叫的 `Bash` 指令字面上寫檔（見下） | 以 R1 的規則 id 與訊息 deny | 記 `would_deny`（規則 `R1`） | 無此規則 |
+| G5（3.0.1 起） | R1 的條件成立，且 main 前景呼叫的 `Bash` 指令字面上寫檔（見下） | 以 R1 的規則 id 與訊息 deny | 記 `would_deny`（規則 `R1`） | 同左（Grok `run_terminal_command`、agy `run_command`、OpenCode `bash`） |
 
 - 派出 `watcher`、`researcher`、`scout` 等非 write role 不會解除 R1（任何模式）；G4 不因任何派工解除。
   派出 `executor`、`applier`、`security-executor` 之後，本輪的改檔與 shell 寫檔放行。
@@ -772,7 +786,10 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   - OpenCode：`task` 呼叫只記待啟動；帶 `parentID`（就是 main session）與 write role 的
     `agent` 的 `session.created` 才放行（`client.session.get` 看到未知的子 session 時等同啟動）。
     role 名稱不存在或權限被擋的派工沒有 `session.created`，所以不放行。
-  - 其他 host 不變（派工呼叫放行）。
+  - Grok：`spawn_subagent` 只記待啟動；`subagent_start` 事件（以 main 的 session id 送出，帶 `subagentId`
+    與 `subagentType`）才釋放。
+  - agy：`invoke_subagent` 只記待啟動；新 conversation 的 `SessionStart` 認領後，write 類別才釋放。
+  - 沒有任何 host 還在派工呼叫當下解鎖：五個 host 都以啟動事件為準（`START_UNLOCK_HOSTS`）。
 - **OpenCode（TypeScript 移植）：shell 與 `apply_patch` 也在 guard 內，預設 enforce。**
   依據是 `tests/fixtures/opencode_guard_event_shapes.json`（opencode 1.18.31，
   2026-10-13 實測）。
@@ -798,13 +815,17 @@ OpenCode 事件與 guard 的對照（`docs/DESIGN-INVARIANTS.md` 第 3 條要求
 | `tool.execute.before`（`task`） | 是 | LEAF、派工待啟動 | `subagent_type` 不會先驗證，失敗的派工只留下這個事件 |
 | `event` `session.created` | 是 | 啟動（M11／E3）、main 與 subagent 的辨識 | 帶 `parentID` 與 `agent`；失敗的派工沒有此事件 |
 | `chat.message` | 是 | 回合邊界、`#direct` | `output.message.id` 是回合 id，`output.parts[].text` 是 prompt |
+| `command.execute.before` | 否 | 無 | 外掛 API 有此 hook，fixture 只列名稱，未實測是否觸發與 payload；沒有規則需要 slash command 事件，改檔與 shell 閘門都在 `tool.execute.before` |
+| `shell.env` | 否 | 無 | fixture 記錄有觸發，但沒有記 payload 形狀，能否擋未實測；沒有規則需要 |
+| `chat.params`、`chat.headers`、`experimental.chat.system.transform`、`experimental.chat.messages.transform`、`experimental.text.complete`、`experimental.provider.small_model`、`experimental.session.compacting`、`experimental.compaction.autocontinue`、`tool.definition`、`config`、`tool`、`auth`、`provider`、`dispose` | 否 | 無 | fixture 只列名稱（`chat.params`、`system.transform`、`text.complete` 有觸發）；沒有規則與 model 參數、system prompt、compaction、provider 設定相關，payload 未實測 |
 | `tool.execute.after` | 否 | 無需 | 失敗的派工不觸發，啟動已由 `session.created` 判斷 |
 | `event` `session.idle`／`session.status` | 否 | 完成檢查（B2、B3） | `event` hook 的型別是 `(input) => Promise<void>`，沒有回傳值也沒有 output，無法擋；`session.idle` 在 turn 結束後才發。以 `session.promptAsync` 重新提示的行為沒有實測，不實作 |
 | `permission.ask` | 否 | 無 | 尚未量測，沒有證據顯示它能區分 main 與 subagent |
 
-- **完成檢查（3.4.0 起，Claude 與 Codex；docs/specs/shared-rules B2 到 B4）。** guard 逐回合記兩件事：
+- **完成檢查（3.4.0 起，Claude 與 Codex；Grok、agy 預設只記錄；
+  docs/specs/shared-rules B2 到 B4）。** guard 逐回合記兩件事：
   - `changed`：main 的改檔工具或 shell 寫檔被放行且目標不是豁免路徑；或可寫的 role 算「已派工」
-    （Claude 與 Codex 都在啟動事件釋放待啟動派工的那一刻；其他 host 在派工呼叫）。
+    （各 host 都在啟動事件釋放待啟動派工的那一刻；沒有 host 在派工呼叫當下算）。
   - `checked`：在最近一次 `changed` 之後，派出或啟動了 verify 等級的 role（`verifier`、`watcher`），
     或 main 執行了前景 `Bash`、而且那個指令既不寫檔也不是 `: shoal-direct` 宣告。之後再發生一次
     `changed` 會清掉 `checked`；改檔之前的前景指令不算。判斷只看有沒有跑，不判斷指令是不是測試
@@ -819,9 +840,9 @@ OpenCode 事件與 guard 的對照（`docs/DESIGN-INVARIANTS.md` 第 3 條要求
     其他情況一律不表態（失敗開放）：別的回合的 `Stop`、state 讀不到或超過上限、id 缺漏、
     `stop_hook_active` 不是 `false`、subagent 的 `Stop`、shadow（log 記 `would_block`）、
     `SHOAL_GUARD=off`。
-  - 開關：`SHOAL_GUARD_STOP=on|off`（預設 `on`；其他值視為 `on`），只對 Claude 與 Codex
-    有效。agy 的 `Stop` 已掛上（只看讓整個 session 閒置的那一次，`fullyIdle: true`），預設 shadow，與
-    Grok 相同；OpenCode 沒有已記錄的結束事件 payload，不啟用，永遠不擋。
+  - 開關：`SHOAL_GUARD_STOP=on|off`（預設 `on`；其他值視為 `on`），對 Claude、Codex、Grok、agy 有效
+    （Grok、agy 預設 shadow，`SHOAL_GUARD_STOP=enforce` 才擋）。agy 的 `Stop` 已掛上
+    （只看讓整個 session 閒置的那一次，`fullyIdle: true`）；OpenCode 沒有已記錄的結束事件 payload，不啟用，永遠不擋。
   - 註冊：plugin 的 `hooks.json` 與全域 `install_hooks.py --host claude` 都加了沒有
     matcher 的 `Stop`；
     plugin 與全域並存時，`--plugin` 的讓出判斷對 `Stop` 同樣看全域 settings 有沒有註冊。guard 腳本與
