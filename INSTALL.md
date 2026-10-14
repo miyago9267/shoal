@@ -989,7 +989,10 @@ claude --plugin-dir ./claude-plugin --plugin-dir ./claude-guard-plugin
   三個路徑，要加上 `claude-guard-plugin/`；並且在 `shoal@shoal` 之外，依
   `${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json` 的 `claude.modules`
   決定：含 `dispatch-guard`（或沒有 manifest，沿用預設 ON）就 `claude plugin install` /
-  `update` `shoal-dispatch-guard@shoal`；不含就 `claude plugin uninstall` 它。manifest
+  `update` `shoal-dispatch-guard@shoal`；
+  不含 `dispatch-guard` 而且 `chain` 沒有 `claude` 成員時，
+  才 `claude plugin uninstall` 它（除非 `dispatch-guard` 被取消**且**chain 沒有 claude 成員，
+  否則都要裝）。manifest
   的內容由 `tools/shoal_install.py` 維護；updater 不要自己改它。
 - guard hook 的 command 一律是
   `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin`，
@@ -1116,7 +1119,21 @@ Claude 與 OpenCode 的 guard 在 plugin 裡，沒有可拆的 hook 註冊。`--
 在這兩個 host
 是持久開關：plugin 的檔案**照樣裝著**，manifest 的 host 紀錄沒有 `dispatch-guard` 時，guard 讀同一份 manifest，
 以 `off` 模式執行（同時不呼叫 chain 成員）；`--with dispatch-guard` 再 `--apply` 即恢復。環境變數
-`SHOAL_GUARD` 不能蓋過這個開關。`--with jev-router` 維持原樣；關掉 `jev-router` 不會替你解除安裝 plugin。
+`SHOAL_GUARD` 不能蓋過這個開關。`--with jev-router` 維持原樣；
+關掉 `jev-router` 不會替你解除安裝 plugin。
+
+**chain-only 模式**：`--without dispatch-guard` 但 manifest 的 `chain` 在該 host 有成員時，
+shoal 仍會註冊同一個 guard hook（同一支 `shoal_guard.py`），讓 chain 能執行；guard 在這個狀態下只呼叫 chain
+成員，不做 shoal 自己的判斷。所以 guard hook 要不要註冊，是「選了 `dispatch-guard`，或 chain 在該 host
+有成員」。Codex、agy、Grok 的 `sync_global.py` 也照這條規則。Claude 同理：chain 有 claude 成員時，
+即使 `--without dispatch-guard`，guard plugin 仍要裝，`--apply` 印出的 plugin 指令也會包含它。
+`--chain-add`／`--chain-remove` 加 `--apply` 讓這個決定翻轉時（manifest 有該 host 的紀錄、沒選
+`dispatch-guard`），會自動重跑該 host 的 guard 安裝步驟（Codex 的 `install.py`、agy 的
+`install_hooks.py`、Grok 的 `install_grok.py`；dry-run 只印出指令）；Claude 的 plugin 由使用者安裝，
+只會印出要執行的 `claude plugin install／uninstall shoal-dispatch-guard@shoal`。
+
+**manifest 路徑**：和 guard 一致，`XDG_DATA_HOME` 必須是絕對路徑，空值、相對路徑或 `~` 開頭都會被忽略，
+退回 `$HOME/.local/share`（XDG Base Directory spec），installer 與 guard 才會讀同一份檔案。
 
 注意：dotfile 的 updater 若會自己把 `Explore.md` 裝回 `~/.claude/agents/`，要改成先讀 manifest。
 
@@ -1140,7 +1157,9 @@ python3 tools/shoal_install.py --list          # 底部列出 chain
 另一個獨立專案叫 `shoal-guard`，只經 chain 接入。為了不混淆，shoal 內建 guard 的 hook 註冊名稱全部改為
 `shoal-dispatch-guard`：Codex projection `shoal-guard-v1`～`v5` 變成 `shoal-dispatch-guard-v1`（群組內容
 與舊 v5 逐位元組相同）；agy 的 hooks 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。腳本檔名
-`shoal_guard.py` 不變。舊安裝重跑 installer（或 `sync_global.py`）會原地遷移，重複執行結果不變。
+`shoal_guard.py` 不變。agy 的舊群組只有在裡面每個 handler 都是 shoal 自己的才會遷移；含有任何外部
+handler（`shoal-guard` 也是外部專案的名字）就整組不碰，installer 印一行 notice，
+uninstall 也不移除。舊安裝重跑 installer（或 `sync_global.py`）會原地遷移，重複執行結果不變。
 Codex 因為 hooks.json 的內容沒變，通常不需要重新核准；若 Codex 提示 hook 需要核准，請在互動 session 用
 `/hooks` 核准一次。
 

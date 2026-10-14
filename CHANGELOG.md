@@ -28,6 +28,13 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `shoal-dispatch-guard-v1`（群組內容與舊 v5 逐位元組相同，舊 id 原地遷移），
   agy 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。Codex 若提示 hook 需要
   核准，用 `/hooks` 核准一次。腳本檔名 `shoal_guard.py` 不變。
+- agy 舊群組 `shoal-guard` 只在每個 handler 都是 shoal 自己的時候才遷移，含外部
+  handler 就原樣保留（`shoal-guard` 也是外部專案的名字）。
+- manifest 路徑與 guard 一致：非絕對路徑的 `XDG_DATA_HOME` 一律忽略，退回
+  `$HOME/.local/share`。
+- chain 在某個 host 有成員時，即使 `--without dispatch-guard` 也保留 shoal hook
+  （chain-only 模式；Claude 仍裝 guard plugin）。`--chain-add`／`--chain-remove` 加 `--apply`
+  讓決定翻轉時會重跑該 host 的 guard 安裝步驟，`sync_global.py` 同樣遵守。
 - Codex install state 可以沒有 `hook_registration`（關掉 autoroute 時），
   與 `guard_registration` 的處理一致。
 
