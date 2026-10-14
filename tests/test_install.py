@@ -1388,6 +1388,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             hooks = home / "hooks.json"
             document = json.loads(hooks.read_text())
+            document["hooks"].pop("SessionEnd", None)  # homes of this era have no SessionEnd group
             guard_stop = TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["Stop"]
             document["hooks"]["Stop"] = [g for g in document["hooks"]["Stop"] if g != guard_stop]
             foreign = _foreign_group("/keep-me")
@@ -1421,6 +1422,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             hooks = home / "hooks.json"
             document = json.loads(hooks.read_text())
+            document["hooks"].pop("SessionEnd", None)  # homes of this era have no SessionEnd group
             post = TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["PostToolUse"]
             self.assertEqual(document["hooks"]["PostToolUse"], [post])
             foreign = {"matcher": "^Bash$", "hooks": [{"type": "command", "command": "/keep-me", "timeout": 5}]}
@@ -1449,6 +1451,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             hooks = home / "hooks.json"
             document = json.loads(hooks.read_text())
+            document["hooks"].pop("SessionEnd", None)  # homes of this era have no SessionEnd group
             del document["hooks"]["SubagentStart"]
             del document["hooks"]["PostToolUse"]  # v3 predates the v5 group as well
             foreign = _foreign_group("/keep-me")
@@ -2194,20 +2197,37 @@ class ModuleSwitchTests(unittest.TestCase):
             self.assertEqual(self.run_install(home, with_guard=False, with_autoroute=False), 0)
             self.assertEqual(self.run_install(home, with_guard=False, with_autoroute=False), 0)
 
-    def test_legacy_v5_state_is_migrated_to_the_new_guard_id_without_touching_hooks_json(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            self.assertEqual(self.run_install(home), 0)
-            state = self.state(home)
-            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v5")  # legacy id
-            _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
-            hooks_before = (home / "hooks.json").read_bytes()
-            self.assertEqual(self.run_install(home), 0)
-            self.assertEqual((home / "hooks.json").read_bytes(), hooks_before)
-            self.assertEqual(self.state(home)["guard_registration"]["projection_id"], "shoal-dispatch-guard-v1")
-            after = _state_path(home).read_bytes()
-            self.assertEqual(self.run_install(home), 0)
-            self.assertEqual(_state_path(home).read_bytes(), after)
+    def _make_v5_home(self, home: Path) -> bytes:
+        """Turn a fresh install into a shoal-guard-v5 / shoal-dispatch-guard-v1 home; return the fresh hooks.json bytes."""
+        hooks = home / "hooks.json"
+        current = hooks.read_bytes()
+        document = json.loads(current)
+        document["hooks"].pop("SessionEnd")  # v5 / v1 predate the SessionEnd group
+        document["hooks"]["PostToolUse"] = [hook_registration.TRUSTED_PROJECTIONS["shoal-guard-v5"]["PostToolUse"]]
+        _write_registration(hooks, document)
+        return current
+
+    def test_legacy_v5_state_is_migrated_to_the_new_guard_id_in_place(self) -> None:
+        for old_id in ("shoal-guard-v5", "shoal-dispatch-guard-v1"):
+            with self.subTest(old_id), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory) / "home"
+                self.assertEqual(self.run_install(home), 0)
+                current = self._make_v5_home(home)
+                state = self.state(home)
+                state["guard_registration"] = hook_registration.projection_state(old_id)
+                _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
+                self.assertEqual(self.run_install(home), 0)
+                self.assertEqual((home / "hooks.json").read_bytes(), current)  # same groups as a fresh v2 install
+                self.assertEqual(self.state(home)["guard_registration"]["projection_id"], "shoal-dispatch-guard-v2")
+                after = _state_path(home).read_bytes()
+                self.assertEqual(self.run_install(home), 0)
+                self.assertEqual(_state_path(home).read_bytes(), after)
+                # --without dispatch-guard removes the v2 registration again
+                self.assertEqual(self.run_install(home, with_guard=False), 0)
+                self.assertNotIn("guard_registration", self.state(home))
+                self.assertFalse((home / GUARD_SCRIPT).exists())
+                self.assertNotIn("SessionEnd", json.loads((home / "hooks.json").read_text())["hooks"])
+
 
 
 if __name__ == "__main__":

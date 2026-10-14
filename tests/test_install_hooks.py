@@ -539,6 +539,32 @@ class AgyTests(Case):
         self.assertEqual(self.cli("agy", "--apply")[0], 0)
         self.assertEqual(path.read_bytes(), after)
 
+    def test_legacy_group_with_a_foreign_handler_is_left_untouched(self) -> None:
+        # "shoal-guard" 也是外部專案用的群組名：含非 shoal handler 就不遷移，install / uninstall 都不碰它
+        legacy_key = "shoal-guard"
+        self.assertEqual(self.cli("agy", "--apply")[0], 0)
+        path = self.gemini / "config" / "hooks.json"
+        owned = self.load(path)["shoal-dispatch-guard"]["SessionStart"][0]
+        foreign = {"SessionStart": [owned, {"type": "command", "command": "other-tool --start", "timeout": 5}]}
+        base = {"orca-status": self.FOREIGN["orca-status"], legacy_key: foreign}
+        path.write_text(json.dumps(base, indent=2) + "\n", encoding="utf-8")
+        self.assertEqual(self.cli("agy", "--apply")[0], 0)
+        after = self.load(path)
+        self.assertEqual(after[legacy_key], foreign)
+        self.assertIn("shoal-dispatch-guard", after)  # 新群組照裝
+        self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
+        self.assertEqual(self.load(path), base)
+
+    def test_legacy_group_with_only_a_foreign_handler_and_non_object_is_untouched(self) -> None:
+        legacy_key = "shoal-guard"
+        path = self.gemini / "config" / "hooks.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for group in ({"Stop": [{"type": "command", "command": "other", "timeout": 1}]}, ["not", "an", "object"], {}):
+            base = {legacy_key: group}
+            path.write_text(json.dumps(base) + "\n", encoding="utf-8")
+            self.assertEqual(self.cli("agy", "--apply")[0], 0)
+            self.assertEqual(self.load(path)[legacy_key], group)
+
     def test_uninstall_removes_a_legacy_named_group_too(self) -> None:
         legacy_key = "shoal-guard"  # legacy group name
         self.assertEqual(self.cli("agy", "--apply")[0], 0)
@@ -814,7 +840,7 @@ class CodexInstallPyInteropTests(Case):
     def test_install_hooks_then_install_py_adopts_without_duplicates_or_drift(self) -> None:
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         self.assertEqual(self.install_py(), 0)
-        self.assertEqual(len(self.guard_commands()), 5)  # UserPromptSubmit + Stop + PreToolUse + SubagentStart + PostToolUse
+        self.assertEqual(len(self.guard_commands()), 6)  # UserPromptSubmit + Stop + PreToolUse + SubagentStart + PostToolUse + SessionEnd
         state = self.load(self.codex.with_name("codex-home.shoal-install-state.json"))
         self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
         self.assertIn("hooks/shoal_guard.py", state["target_fingerprints"])
@@ -822,7 +848,7 @@ class CodexInstallPyInteropTests(Case):
         self.assertEqual(self.install_py(), 0)  # idempotent
         self.assertEqual(self.cli("codex", "--apply")[0], 0)  # install_hooks is a no-op now
         self.assertEqual((self.codex / "hooks.json").read_bytes(), before)
-        self.assertEqual(len(self.guard_commands()), 5)
+        self.assertEqual(len(self.guard_commands()), 6)
         # install.py owns the guard now: bypassing its state is refused
         code, _, err = self.cli("codex", "--uninstall", "--apply")
         self.assertEqual(code, 2)
@@ -836,7 +862,7 @@ class CodexInstallPyInteropTests(Case):
         self.assertEqual(code, 0, err)
         self.assertEqual((self.codex / "hooks.json").read_bytes(), hooks)
         self.assertEqual(self.codex_script_bytes(), script)
-        self.assertEqual(len(self.guard_commands()), 5)
+        self.assertEqual(len(self.guard_commands()), 6)
         self.assertEqual(self.install_py(), 0)
 
     def test_install_hooks_on_a_pre_guard_installed_home_then_install_py(self) -> None:
@@ -846,7 +872,7 @@ class CodexInstallPyInteropTests(Case):
         test_install._make_pre_guard(self.codex)
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         self.assertEqual(self.install_py(), 0)  # no installed_hook_drift, no duplicates
-        self.assertEqual(len(self.guard_commands()), 5)
+        self.assertEqual(len(self.guard_commands()), 6)
 
     def codex_script_bytes(self) -> bytes:
         return (self.codex / "hooks" / "shoal_guard.py").read_bytes()

@@ -90,10 +90,11 @@ class Base(unittest.TestCase):
         env.update(extra)
         return env
 
-    def write_manifest(self, host: str, modules: list[str]) -> None:
+    def write_manifest(self, host: str, modules: list[str], chain_hosts: list[str] | None = None) -> None:
         path = self.data / "shoal" / "modules.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({host: {"modules": modules, "version": "x"}, "chain": []}))
+        chain = [{"name": "ext", "command": ["ext"], "hosts": chain_hosts, "order": 0}] if chain_hosts else []
+        path.write_text(json.dumps({host: {"modules": modules, "version": "x"}, "chain": chain}))
 
     def sync(
         self, *args: str, env: dict[str, str] | None = None
@@ -254,6 +255,13 @@ class CodexTests(Base):
         self.write_manifest("codex", ["core", "host-codex"])
         self.assertEqual(self.codex_sync()[0], "codex: up-to-date")
 
+    def test_chain_members_keep_guard_hooks_synced_without_dispatch_guard(self) -> None:
+        (self.agents / "a.toml").write_text("v1\n")
+        self.write_manifest("codex", ["core", "host-codex"], ["codex"])
+        self.assertIn("guard hooks", self.codex_sync()[0])
+        self.write_manifest("codex", ["core", "host-codex"], ["agy"])  # 別的 host 的成員不算
+        self.assertEqual(self.codex_sync()[0], "codex: up-to-date")
+
     def test_manifest_for_other_host_does_not_change_codex(self) -> None:
         self.write_manifest("grok", ["core", "host-grok"])
         env = self.jev_env(self.jev_setup())
@@ -341,6 +349,11 @@ class AgyTests(Base):
         self.assertIn("guard hooks", self.sync("--host", "agy")[1][0])
         self.write_manifest("agy", ["core", "host-agy"])
         self.assertEqual(self.sync("--host", "agy")[1][0], "agy: up-to-date (symlinks ok)")
+
+    def test_chain_members_keep_agy_guard_hooks_without_dispatch_guard(self) -> None:
+        self.links()
+        self.write_manifest("agy", ["core", "host-agy"], ["agy"])
+        self.assertIn("guard hooks", self.sync("--host", "agy")[1][0])
 
     def test_dry_run_does_not_write(self) -> None:
         self.links()

@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import shoal_install  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "hooks"))
+import shoal_guard  # noqa: E402
+
 
 class Base(unittest.TestCase):
     def setUp(self) -> None:
@@ -215,6 +218,119 @@ class ApplyTests(Base):
         self.assertEqual(
             shoal_install.manifest_path(self.env), self.home / ".local/share/shoal/modules.json"
         )
+
+
+    def test_non_absolute_xdg_data_home_is_ignored_like_the_guard(self) -> None:
+        # XDG Base Directory spec；guard（Python/TS）同一條規則，兩邊才會讀到同一份 manifest
+        fallback = self.home / ".local/share/shoal/modules.json"
+        for bad in ("relative/dir", "~/xdg", "./x", ""):
+            self.env["XDG_DATA_HOME"] = bad
+            self.assertEqual(shoal_install.manifest_path(self.env), fallback, bad)
+        self.env["XDG_DATA_HOME"] = str(self.data)
+        self.assertEqual(shoal_install.manifest_path(self.env), self.manifest)
+
+    def test_relative_xdg_data_home_writes_to_home_fallback(self) -> None:
+        self.env["XDG_DATA_HOME"] = "rel"
+        self.assertEqual(self.run_cli("--host", "claude", "--apply")[0], 0)
+        self.assertTrue((self.home / ".local/share/shoal/modules.json").is_file())
+        self.assertFalse(Path("rel").exists())
+
+
+class ChainOnlyTests(Base):
+    """--without dispatch-guard 但 chain 在該 host 有成員：shoal hook 仍要註冊（chain-only）。"""
+
+    def add(self, hosts: str, *extra: str) -> tuple[int, str, str]:
+        return self.run_cli("--chain-add", "ext", "--chain-command", '["ext"]', "--chain-hosts", hosts, *extra)
+
+    def seed(self, host: str, mods: list[str], chain_hosts: str = "") -> None:
+        self.manifest.parent.mkdir(parents=True, exist_ok=True)
+        chain = [{"name": "ext", "command": ["ext"], "hosts": chain_hosts.split(","), "order": 0}] if chain_hosts else []
+        self.manifest.write_text(json.dumps({host: {"modules": mods, "version": "x"}, "chain": chain}))
+
+    def test_install_keeps_guard_hook_when_chain_has_members_for_host(self) -> None:
+        self.seed("codex", ["core", "host-codex"], "codex")
+        _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard")
+        self.assertNotIn("--no-guard", next(l for l in out.splitlines() if "install/install.py" in l))
+        self.assertIn("chain-only", out)
+        self.seed("agy", ["core", "host-agy"], "agy")
+        _, out, _ = self.run_cli("--host", "agy", "--without", "dispatch-guard")
+        self.assertNotIn("--uninstall", out)
+        self.seed("grok", ["core", "host-grok"], "grok")
+        _, out, _ = self.run_cli("--host", "grok", "--without", "dispatch-guard")
+        self.assertNotIn("--no-guard", out)
+
+    def test_installer_and_guard_agree_on_chain_only(self) -> None:
+        # installer 保留 guard hook（inst2）與 guard 在同一份 manifest 上只跑 chain（chain2）要同時成立。
+        self.seed("codex", ["core", "host-codex"], "codex")
+        _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard")
+        self.assertNotIn("--no-guard", next(l for l in out.splitlines() if "install/install.py" in l))
+        env = {"XDG_DATA_HOME": str(self.data)}
+        self.assertFalse(shoal_guard.dispatch_guard_selected("codex", env, self.home))
+        guard = shoal_guard._Guard({"host": "codex"}, env, self.home)
+        self.assertTrue(guard.chain_only)
+        self.assertNotEqual(guard.mode, "off")
+        # 沒有 codex 成員：installer 移除 hook，guard 整個 off。
+        self.seed("codex", ["core", "host-codex"], "agy")
+        _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard")
+        self.assertIn("--no-guard", out)
+        guard = shoal_guard._Guard({"host": "codex"}, env, self.home)
+        self.assertFalse(guard.chain_only)
+        self.assertEqual(guard.mode, "off")
+
+    def test_chain_for_another_host_does_not_keep_the_hook(self) -> None:
+        self.seed("codex", ["core", "host-codex"], "agy")
+        _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard")
+        self.assertIn("--no-guard", out)
+        self.assertNotIn("chain-only", out)
+
+    def test_claude_prints_guard_plugin_when_chain_has_claude_members(self) -> None:
+        self.seed("claude", ["core", "host-claude"], "claude")
+        _, out, _ = self.run_cli("--host", "claude", "--without", "dispatch-guard")
+        self.assertIn("claude plugin install shoal-dispatch-guard@shoal", out)
+        self.assertNotIn("uninstall", out)
+        self.seed("claude", ["core", "host-claude"], "codex")
+        _, out, _ = self.run_cli("--host", "claude", "--without", "dispatch-guard")
+        self.assertNotIn("claude plugin install shoal-dispatch-guard@shoal", out)
+
+    def test_chain_add_apply_reinstalls_guard_step_for_codex_agy_grok(self) -> None:
+        for host, needle in (("codex", "install/install.py"), ("agy", "install_hooks.py"), ("grok", "install_grok.py")):
+            self.calls.clear()
+            self.seed(host, ["core", f"host-{host}"])
+            code, out, _ = self.add(host)  # dry-run: 只印
+            self.assertEqual((code, self.calls), (0, []))
+            self.assertIn("would run", out)
+            self.assertEqual(self.add(host, "--apply")[0], 0)
+            self.assertEqual(len(self.calls), 1, host)
+            self.assertIn(needle, " ".join(self.calls[0]))
+            self.assertNotIn("--no-guard", self.calls[0])
+            self.assertNotIn("--uninstall", self.calls[0])
+            self.calls.clear()
+            self.assertEqual(self.run_cli("--chain-remove", "ext", "--apply")[0], 0)
+            self.assertEqual(len(self.calls), 1, host)
+            cmd = self.calls[0]
+            self.assertTrue("--no-guard" in cmd or "--uninstall" in cmd, host)
+
+    def test_chain_add_does_not_rerun_when_dispatch_guard_selected_or_no_manifest(self) -> None:
+        self.seed("codex", ["core", "host-codex", "dispatch-guard"])
+        self.assertEqual(self.add("codex", "--apply")[0], 0)
+        self.assertEqual(self.calls, [])
+        self.manifest.unlink()
+        self.assertEqual(self.add("agy", "--apply")[0], 0)
+        self.assertEqual(self.calls, [])
+
+    def test_chain_add_failure_of_follow_up_is_reported(self) -> None:
+        self.seed("agy", ["core", "host-agy"])
+        code, _, err = self.run_cli("--chain-add", "ext", "--chain-command", '["ext"]', "--chain-hosts", "agy", "--apply", runner=lambda c, e: 3)
+        self.assertEqual(code, 1)
+        self.assertIn("exit 3", err)
+
+    def test_chain_add_for_claude_prints_plugin_command(self) -> None:
+        self.seed("claude", ["core", "host-claude"])
+        _, out, _ = self.add("claude", "--apply")
+        self.assertIn("run manually: claude plugin install shoal-dispatch-guard@shoal", out)
+        self.assertEqual(self.calls, [])
+        _, out, _ = self.run_cli("--chain-remove", "ext", "--apply")
+        self.assertIn("claude plugin uninstall shoal-dispatch-guard@shoal", out)
 
 
 class ChainTests(Base):

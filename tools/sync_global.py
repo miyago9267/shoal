@@ -40,6 +40,7 @@ shoal 2.0.0 把所有安裝出去的名稱都改了（docs/specs/shoal-rebrand�
 installed manifest（`${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`，tools/shoal_install.py 寫入）
 有該 host 的紀錄時，只同步選到的模組：codex 沒選 dispatch-guard 就不跑 guard hooks，沒選 jev-router 就不
 補裝；agy 沒選 dispatch-guard 就不跑 guard hooks；grok 沒選 dispatch-guard 就帶 --no-guard（不把 guard 裝回去）。
+但 manifest 的 chain 在該 host 有成員時視同 guard 要保留（chain-only），照常同步 guard hook。
 opencode 與 claude 的 guard 在 plugin 內，由 guard 自己讀同一份 manifest 切成 off。沒有 manifest（或沒有該 host 的
 紀錄）時行為與沒有這個機制時完全相同。
 
@@ -198,6 +199,11 @@ def selected(ctx: Ctx, host: str, module: str) -> bool:
     return mods is None or module in mods
 
 
+def guard_selected(ctx: Ctx, host: str) -> bool:
+    """guard hook 要不要同步：選了 dispatch-guard，或 manifest 的 chain 在該 host 有成員（chain-only）。"""
+    return shoal_install.guard_wanted(shoal_install.manifest_modules(ctx.env, host), ctx.env, host)
+
+
 def codex_home(ctx: Ctx) -> Path:
     return ctx.abs_env("CODEX_HOME", ctx.home / ".codex")
 
@@ -265,7 +271,7 @@ def sync_codex_roles(
 
 # 遷移後由正常的 installer 安裝的新名（只用在 dry-run 的計畫文字）。
 CODEX_INSTALL_NEW = (
-    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-dispatch-guard-v1 hook groups, "
+    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-dispatch-guard-v2 hook groups, "
     "shoal-codex AGENTS.md block, new install state"
 )
 
@@ -329,7 +335,7 @@ def sync_codex(ctx: Ctx) -> Result:
         parts.append(migrated)
         if not ctx.apply:
             return "updated", migrated
-    if selected(ctx, "codex", "dispatch-guard") and installer_changes(
+    if guard_selected(ctx, "codex") and installer_changes(
         "install_hooks.py", ["--host", "codex"], ctx
     ):
         parts.append("guard hooks")
@@ -369,7 +375,7 @@ def sync_grok(ctx: Ctx) -> Result:
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
     plan: dict = {}
-    extra = [] if selected(ctx, "grok", "dispatch-guard") else ["--no-guard"]
+    extra = [] if guard_selected(ctx, "grok") else ["--no-guard"]
     if installer_changes("install_grok.py", extra, ctx, plan):
         legacy = plan.get("legacy") or []
         if legacy:
@@ -497,7 +503,7 @@ def sync_agy(ctx: Ctx) -> Result:
         return "skipped", f"{home} 不存在"
     migrated, kept, relinked = migrate_agy_skill_link(ctx)
     removed, role_links = remove_legacy_agy_links(ctx, f"skills/{LEGACY_AGY_SKILL}" if migrated else "")
-    changed = selected(ctx, "agy", "dispatch-guard") and installer_changes(
+    changed = guard_selected(ctx, "agy") and installer_changes(
         "install_hooks.py", ["--host", "agy"], ctx
     )
     problems = agy_link_problems(ctx)

@@ -50,10 +50,19 @@ def load_registry() -> dict:
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 
 
+def default_runner(cmd: list[str], env: Mapping[str, str]) -> int:
+    return subprocess.run(cmd, env=dict(env), cwd=REPO).returncode
+
+
 # ---- manifest ----
 def manifest_path(env: Mapping[str, str]) -> Path:
+    # 和 guard（Python/TS）同一條規則：XDG Base Directory spec，非絕對路徑的 XDG_DATA_HOME 一律忽略，
+    # 退回 $HOME/.local/share；不展開 ~，也不把相對路徑當成相對 cwd，兩邊才會讀到同一份 manifest。
     data = env.get("XDG_DATA_HOME")
-    base = Path(data).expanduser() if data else Path(env.get("HOME") or Path.home()) / ".local" / "share"
+    if data and os.path.isabs(data):
+        base = Path(data)
+    else:
+        base = Path(env.get("HOME") or Path.home()) / ".local" / "share"
     return base / "shoal" / "modules.json"
 
 
@@ -64,6 +73,16 @@ def load_manifest(env: Mapping[str, str]) -> Optional[dict]:
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def chain_hosts(env: Mapping[str, str], host: str) -> bool:
+    """manifest 的 chain 是否有適用於該 host 的成員。"""
+    return any(host in (m.get("hosts") or []) for m in chain_members(env))
+
+
+def guard_wanted(mods: Optional[list[str]], env: Mapping[str, str], host: str) -> bool:
+    """guard hook 要不要註冊：選了 dispatch-guard，或 chain 在這個 host 有成員（chain-only 模式，由 guard 端處理）。"""
+    return mods is None or "dispatch-guard" in mods or chain_hosts(env, host)
 
 
 def manifest_modules(env: Mapping[str, str], host: str) -> Optional[list[str]]:
@@ -253,7 +272,7 @@ def wrapped_commands(host: str, mods: list[str], env: Mapping[str, str]) -> list
     home = host_home(host, env)
     if host == "codex":
         cmds = [[py, str(REPO / "install/install.py"), "--codex-home", str(home)]]
-        if "dispatch-guard" not in mods:
+        if not guard_wanted(mods, env, host):
             cmds[0].append("--no-guard")
         if "codex-autoroute" not in mods:
             cmds[0].append("--no-autoroute")
@@ -262,10 +281,10 @@ def wrapped_commands(host: str, mods: list[str], env: Mapping[str, str]) -> list
         return cmds
     if host == "agy":
         cmd = [py, str(REPO / "tools/install_hooks.py"), "--host", "agy", "--home", str(home)]
-        return [[*cmd, "--apply"] if "dispatch-guard" in mods else [*cmd, "--uninstall", "--apply"]]
+        return [[*cmd, "--apply"] if guard_wanted(mods, env, host) else [*cmd, "--uninstall", "--apply"]]
     if host == "grok":
         cmd = [py, str(REPO / "tools/install_grok.py"), "--grok-home", str(home), "--apply"]
-        return [cmd if "dispatch-guard" in mods else [*cmd, "--no-guard"]]
+        return [cmd if guard_wanted(mods, env, host) else [*cmd, "--no-guard"]]
     if host == "opencode":
         cmd = ["sh", str(REPO / "hosts/opencode/plugin/install/install.sh"), "--global"]
         if env.get("OPENCODE_CONFIG_DIR"):
@@ -322,8 +341,35 @@ def parse_chain_member(args: argparse.Namespace, reg: dict, env: Mapping[str, st
     return {"name": name, "command": command, "hosts": hosts, "order": order}
 
 
-def do_chain(args: argparse.Namespace, reg: dict, env: Mapping[str, str]) -> int:
+def _guard_follow_up(hosts: list[str], before: dict[str, bool], args: argparse.Namespace, env: Mapping[str, str], runner: Runner) -> int:
+    """chain 變更讓某 host 的 guard hook 決定翻轉時，重跑該 host 的 guard 安裝步驟（只在 manifest 有該 host 且沒選
+    dispatch-guard 時才可能翻轉）。codex/agy/grok 重跑單一 guard installer；claude 只印 plugin 指令（plugin 由使用者裝）。"""
+    for host in hosts:
+        mods = manifest_modules(env, host)
+        if mods is None or "dispatch-guard" in mods or host not in before:
+            continue
+        now = guard_wanted(mods, env, host)
+        if now == before[host]:
+            continue
+        if host == "claude":
+            verb = "install" if now else "uninstall"
+            print(("would print: " if not args.apply else "run manually: ") + f"claude plugin {verb} {CLAUDE_GUARD_PLUGIN}")
+            continue
+        if host not in ("codex", "agy", "grok"):
+            continue
+        cmd = wrapped_commands(host, mods, env)[0]
+        print(("would run: " if not args.apply else "run: ") + " ".join(cmd))
+        if args.apply:
+            code = runner(cmd, env)
+            if code != 0:
+                print(f"failed: {' '.join(cmd)} exit {code}；manifest 已更新，請手動重跑上面這行", file=sys.stderr)
+                return 1
+    return 0
+
+
+def do_chain(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runner: Runner = default_runner) -> int:
     data = load_manifest(env) or {}
+    before = {h: guard_wanted(manifest_modules(env, h), env, h) for h in reg["hosts"]}
     chain = [m for m in data.get("chain", []) if isinstance(m, dict)] if isinstance(data.get("chain"), list) else []
     if args.chain_add is not None:
         member = parse_chain_member(args, reg, env)
@@ -340,23 +386,28 @@ def do_chain(args: argparse.Namespace, reg: dict, env: Mapping[str, str]) -> int
         print(f"chain remove: {args.chain_remove}")
     if not args.apply:
         print(f"dry-run：未寫入任何檔案；--apply 會寫 {manifest_path(env)}（成員只登記，不會被執行）")
+        _preview_follow_up(data, chain, before, args, reg, env)
         return 0
     print(f"manifest: {_save_manifest(env, {**data, 'chain': chain})}")
-    return 0
+    return _guard_follow_up(list(reg["hosts"]), before, args, env, runner)
+
+
+def _preview_follow_up(data: dict, chain: list, before: dict[str, bool], args: argparse.Namespace, reg: dict, env: Mapping[str, str]) -> None:
+    """dry-run：manifest 還沒寫，用暫時覆蓋的 env 預覽（不寫檔）會觸發哪些 guard 步驟。"""
+    with tempfile.TemporaryDirectory(prefix="shoal-chain-preview-") as tmp:
+        preview = {**env, "XDG_DATA_HOME": tmp}
+        _save_manifest(preview, {**data, "chain": chain})
+        _guard_follow_up(list(reg["hosts"]), before, args, preview, default_runner)
 
 
 CLAUDE_GUARD_PLUGIN = "shoal-dispatch-guard@shoal"
 
 
-def claude_steps(mods: list[str]) -> list[str]:
+def claude_steps(mods: list[str], env: Mapping[str, str]) -> list[str]:
     steps = ["claude plugin marketplace add miyago9267/shoal", "claude plugin install shoal@shoal"]
-    if "dispatch-guard" in mods:
+    if guard_wanted(mods, env, "claude"):
         steps.append(f"claude plugin install {CLAUDE_GUARD_PLUGIN}")
     return steps
-
-
-def default_runner(cmd: list[str], env: Mapping[str, str]) -> int:
-    return subprocess.run(cmd, env=dict(env), cwd=REPO).returncode
 
 
 # ---- commands ----
@@ -395,11 +446,14 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
     for cmd in cmds:
         print("would run:" if not args.apply else "run:", " ".join(cmd))
     if host == "claude":
-        for step in claude_steps(mods):
+        for step in claude_steps(mods, env):
             print(("would print: " if not args.apply else "run manually: ") + step)
         if "claude-explore" in mods:
             print("note: Explore.md 由 dotfile updater 裝進 ~/.claude/agents/")
-    if host == "claude" and "dispatch-guard" not in mods:
+    chain_only = "dispatch-guard" not in mods and chain_hosts(env, host)
+    if chain_only and host in ("codex", "agy", "grok", "claude"):
+        print(f"note: dispatch-guard 關閉但 chain 在 {host} 有成員：仍註冊 shoal hook（chain-only 模式），讓 chain 能執行")
+    if host == "claude" and "dispatch-guard" not in mods and not chain_only:
         print(f"note: dispatch-guard 關閉：不安裝 {CLAUDE_GUARD_PLUGIN}（hook 都在那個 plugin）；若已裝過，自行執行 claude plugin uninstall {CLAUDE_GUARD_PLUGIN}")
     if host == "opencode" and "dispatch-guard" not in mods:
         print(
@@ -453,7 +507,7 @@ def main(argv: Optional[list[str]] = None, env: Optional[Mapping[str, str]] = No
         if args.chain_add is not None and args.chain_remove is not None or args.host:
             parser.error("--chain-add、--chain-remove 不能互相搭配，也不能和 --host 一起用")
         try:
-            return do_chain(args, reg, env)
+            return do_chain(args, reg, env, runner)
         except InstallError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

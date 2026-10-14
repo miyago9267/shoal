@@ -282,13 +282,32 @@ def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str,
 AGY_FLAT_EVENTS = ("SessionStart", "PreInvocation", "Stop")
 
 
+def _legacy_group_is_owned(group: Any) -> bool:
+    """舊群組內每個 handler 都符合 OWNED（且至少有一個）才算 shoal 自己的，可以 migrate。"""
+    if not isinstance(group, dict):
+        return False
+    handlers: list[Any] = []
+    for value in group.values():
+        if not isinstance(value, list):
+            return False
+        for item in value:
+            handlers.extend(_group_handlers(item) if isinstance(item, dict) and "hooks" in item else [item])
+    return bool(handlers) and all(is_owned(h) for h in handlers)
+
+
 def _migrate_legacy_agy_group(config: dict[str, Any]) -> dict[str, Any]:
     """legacy 舊群組名 "shoal-guard"（3.8.0 之前），migrate：沒有新群組就原地改名（key 位置不變），兩個都在就把舊群組的 shoal handler 併入新群組。"""
     if LEGACY_AGY_GROUP not in config:
         return config
     old = config[LEGACY_AGY_GROUP]
-    if not isinstance(old, dict):
-        raise InstallError(f'hooks.json 的 "{LEGACY_AGY_GROUP}" 不是物件，不處理')
+    if not _legacy_group_is_owned(old):
+        # "shoal-guard" 也是另一個外部專案用的群組名；裡面只要有一個不是 shoal 的 handler 就整組不碰。
+        print(
+            f'notice: hooks.json 的 "{LEGACY_AGY_GROUP}" 群組含有非 shoal 的 handler（或不是 shoal 的群組），'
+            "不遷移、不移除，原樣保留",
+            file=sys.stderr,
+        )
+        return config
     if AGY_GROUP not in config:
         return {(AGY_GROUP if key == LEGACY_AGY_GROUP else key): value for key, value in config.items()}
     out = {key: value for key, value in config.items() if key != LEGACY_AGY_GROUP}
@@ -403,6 +422,8 @@ def owned_entries(host: str, data: dict[str, Any]) -> int:
     else:
         for name in (AGY_GROUP, LEGACY_AGY_GROUP):
             group = data.get(name) or {}
+            if name == LEGACY_AGY_GROUP and not _legacy_group_is_owned(group):
+                continue
             for event, value in group.items():
                 for item in value if isinstance(value, list) else []:
                     count += is_owned(item) + sum(
