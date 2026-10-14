@@ -4,18 +4,29 @@
     "name": "Miyago",
     "url": "https://github.com/miyago9267"
   },
-  "description": "Marketplace for the shoal Claude Code plugin.",
+  "description": "Marketplace for the shoal Claude Code plugins.",
   "plugins": [
     {
       "name": "shoal",
       "source": "./claude-plugin",
       "version": "3.8.0",
-      "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap.",
+      "description": "Shoal orchestration roles, skill and policy bootstrap.",
       "category": "productivity",
       "tags": [
         "orchestration",
         "subagents",
         "delegation"
+      ]
+    },
+    {
+      "name": "shoal-dispatch-guard",
+      "source": "./claude-guard-plugin",
+      "version": "3.8.0",
+      "description": "Optional dispatch guard hooks for the shoal plugin.",
+      "category": "productivity",
+      "tags": [
+        "dispatch-guard",
+        "hooks"
       ]
     }
   ]

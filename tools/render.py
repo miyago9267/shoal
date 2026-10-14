@@ -5,7 +5,8 @@
 <host> 是 claude、codex、agy、grok、opencode，或 hosts/<name>/binding.toml 宣告
 renderer = "generic-md" 的 host（輸出格式由 binding 的 [output] 宣告，不需寫程式碼）。
 另有 claude-plugin：由 claude 的 render 結果、hooks/shoal_guard.py 與根目錄 VERSION 產生
-Claude plugin（claude-plugin/ 與 .claude-plugin/marketplace.json），不屬於五個 host。
+兩個 Claude plugin（claude-plugin/ = shoal、claude-guard-plugin/ = shoal-dispatch-guard）與
+.claude-plugin/marketplace.json，不屬於五個 host。
 
 --explain 只印出每個 role 的選模與權限推導過程，不讀也不改 dist。
 --explain-policy 印出 core policy 每份文件的條款狀態（core / omitted / replaced）與 addenda；
@@ -1233,7 +1234,9 @@ CLAUDE_PLUGIN_HOST = "claude-plugin"  # --host 的名稱
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
 CLAUDE_PLUGIN_SRC = "hosts/claude/plugin-src"
 # render 擁有的路徑（相對 repo 根）；其下多出的檔案由 --check 回報、--write 刪除。
-CLAUDE_PLUGIN_OWNED = (CLAUDE_PLUGIN, CLAUDE_MARKETPLACE)
+# modular-install S4: guard 是獨立的 plugin（shoal-dispatch-guard），不想要 guard 的人不裝它的 hook。
+CLAUDE_GUARD_PLUGIN = "claude-guard-plugin"
+CLAUDE_PLUGIN_OWNED = (CLAUDE_PLUGIN, CLAUDE_GUARD_PLUGIN, CLAUDE_MARKETPLACE)
 CLAUDE_PLUGIN_AUTHOR = {"name": "Miyago", "url": "https://github.com/miyago9267"}
 CLAUDE_PLUGIN_REPO = "https://github.com/miyago9267/shoal"
 # 與 tools/install_hooks.py 的 CLAUDE_MATCHER 相同；全域安裝與 plugin 的 guard 要看到同一批工具。
@@ -1257,14 +1260,23 @@ def product_version(root: Path) -> str:
 
 
 def _plugin_hooks() -> dict:
-    guard = {"type": "command", "command": CLAUDE_PLUGIN_GUARD, "timeout": CLAUDE_PLUGIN_TIMEOUT}
+    """base plugin（shoal）：只有 SessionStart 的 policy 注入；沒有任何 guard hook。"""
     return {
-        "description": "shoal dispatch guard and policy bootstrap for Claude Code.",
+        "description": "shoal policy bootstrap for Claude Code.",
         "hooks": {
             "SessionStart": [{
                 "matcher": "startup|resume|clear|compact",
                 "hooks": [{"type": "command", "command": CLAUDE_PLUGIN_SESSIONSTART}],
             }],
+        },
+    }
+
+
+def _guard_plugin_hooks() -> dict:
+    guard = {"type": "command", "command": CLAUDE_PLUGIN_GUARD, "timeout": CLAUDE_PLUGIN_TIMEOUT}
+    return {
+        "description": "shoal dispatch guard for Claude Code.",
+        "hooks": {
             "UserPromptSubmit": [{"hooks": [dict(guard)]}],
             # M11: the guard unlocks a write dispatch only when the role has started (no matcher: the guard
             # ignores every other agent_type itself).  This registration and the guard script ship together.
@@ -1295,28 +1307,45 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
         out[f"{CLAUDE_PLUGIN}/hooks/emit-sessionstart.sh"] = src.read_bytes()
     except OSError as exc:
         raise RenderError(f"無法讀取 {src}: {exc}") from exc
-    out[f"{CLAUDE_PLUGIN}/hooks/shoal_guard.py"] = _guard_script(root)
     out[f"{CLAUDE_PLUGIN}/hooks/hooks.json"] = _json_bytes(_plugin_hooks())
-    out[f"{CLAUDE_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
-        "name": "shoal",
+    out[f"{CLAUDE_GUARD_PLUGIN}/hooks/shoal_guard.py"] = _guard_script(root)
+    out[f"{CLAUDE_GUARD_PLUGIN}/hooks/hooks.json"] = _json_bytes(_guard_plugin_hooks())
+    out[f"{CLAUDE_GUARD_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
+        "name": "shoal-dispatch-guard",
         "version": version,
-        "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
+        "description": "Optional dispatch guard for the shoal Claude Code plugin (hooks only).",
         "author": CLAUDE_PLUGIN_AUTHOR,
         "repository": CLAUDE_PLUGIN_REPO,
         "license": "MIT",
-        "keywords": ["orchestration", "subagents", "delegation", "dispatch-guard"],
+        "keywords": ["dispatch-guard", "hooks"],
+    })
+    out[f"{CLAUDE_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
+        "name": "shoal",
+        "version": version,
+        "description": "Shoal orchestration roles, skill and policy bootstrap for Claude Code.",
+        "author": CLAUDE_PLUGIN_AUTHOR,
+        "repository": CLAUDE_PLUGIN_REPO,
+        "license": "MIT",
+        "keywords": ["orchestration", "subagents", "delegation"],
     })
     out[CLAUDE_MARKETPLACE] = _json_bytes({
         "name": "shoal",
         "owner": CLAUDE_PLUGIN_AUTHOR,
-        "description": "Marketplace for the shoal Claude Code plugin.",
+        "description": "Marketplace for the shoal Claude Code plugins.",
         "plugins": [{
             "name": "shoal",
             "source": f"./{CLAUDE_PLUGIN}",
             "version": version,
-            "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap.",
+            "description": "Shoal orchestration roles, skill and policy bootstrap.",
             "category": "productivity",
             "tags": ["orchestration", "subagents", "delegation"],
+        }, {
+            "name": "shoal-dispatch-guard",
+            "source": f"./{CLAUDE_GUARD_PLUGIN}",
+            "version": version,
+            "description": "Optional dispatch guard hooks for the shoal plugin.",
+            "category": "productivity",
+            "tags": ["dispatch-guard", "hooks"],
         }],
     })
     return out

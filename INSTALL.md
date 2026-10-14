@@ -938,16 +938,20 @@ shoal 只開一個擴充點：guard chain。外部 guard 不改 shoal 的程式�
 ## Claude Code plugin
 
 Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容（10 個 role，含 `watcher`、`researcher`、
-`shoal-orchestration` skill、dispatch guard、policy bootstrap）全部由
+`shoal-orchestration` skill、policy bootstrap；dispatch guard 在另一個可選 plugin）全部由
 `python3 tools/render.py --host claude-plugin --write` 從 `hosts/claude/dist`、
-`hooks/shoal_guard.py` 與根目錄 `VERSION` 產生，輸出在 `claude-plugin/` 與
-`.claude-plugin/marketplace.json`；`--check` 與 golden 擋住手改。Codex 的
+`hooks/shoal_guard.py` 與根目錄 `VERSION` 產生，輸出在 `claude-plugin/`（`shoal`）、
+`claude-guard-plugin/`（`shoal-dispatch-guard`）與
+`.claude-plugin/marketplace.json`（兩個 plugin 同一個 marketplace）；
+`--check` 與 golden 擋住手改。Codex 的
 `plugin/` 目錄與這條路徑無關。需要 Claude Code 2.1 以上與 `python3`。
 
 ```bash
 # 1. 安裝最新穩定版（預設 branch，即 main）。
 claude plugin marketplace add miyago9267/shoal
 claude plugin install shoal@shoal
+# dispatch guard 預設要裝；不要 guard 就省略這行（等於只有政策文字）。
+claude plugin install shoal-dispatch-guard@shoal
 
 # 想釘在某個版本：把 vX.Y.Z 換成實際存在的 tag。
 # claude plugin marketplace add miyago9267/shoal#vX.Y.Z
@@ -956,13 +960,15 @@ claude plugin install shoal@shoal
 claude plugin marketplace remove shoal
 claude plugin marketplace add miyago9267/shoal
 claude plugin update shoal@shoal
+claude plugin update shoal-dispatch-guard@shoal
 
-# 解除安裝。
+# 解除安裝（只關 guard 就只跑第一行）。
+claude plugin uninstall shoal-dispatch-guard@shoal
 claude plugin uninstall shoal@shoal
 claude plugin marketplace remove shoal
 
 # 只在單一 session 試用（不寫任何 config）。
-claude --plugin-dir ./claude-plugin
+claude --plugin-dir ./claude-plugin --plugin-dir ./claude-guard-plugin
 ```
 
 - `owner/repo#<ref>` 的 `<ref>` 是 branch 或 tag，由 `git clone --branch` 解析（在
@@ -972,6 +978,19 @@ claude --plugin-dir ./claude-plugin
   發佈前，`#vX.Y.Z` 指令會失敗。`claude plugin tag claude-plugin` 也可以建
   `shoal--v<VERSION>` 形式的 tag，兩種擇一，marketplace 用哪個就 `#` 哪個。
 - plugin 與 marketplace 的版本都等於根目錄 `VERSION`。
+- 拆分（modular-install S4）：base `shoal` 帶 role、skill、policy 與 SessionStart 的 policy
+  注入（`hooks/hooks.json` 只有 SessionStart），沒有任何 guard hook。`shoal-dispatch-guard`
+  只有 `hooks/hooks.json` 與 `hooks/shoal_guard.py`，兩個 plugin 的 hook 在同一個 session
+  合併執行；guard 看的是 hook payload 的 `agent_type`，與哪個 plugin 註冊無關，所以仍
+  認得 `shoal:<role>`。`tools/shoal_install.py --host claude` 預設兩個都裝，
+  `--without dispatch-guard` 不裝 guard plugin。
+- dotfile updater 的契約（updater 在 repo 外，這裡只記規則）：從 shoal 升到有拆分的版本時，
+  只更新 `shoal@shoal` 會讓 guard 消失（base 不再帶 hook）。updater 現在只 `git archive`
+  三個路徑，要加上 `claude-guard-plugin/`；並且在 `shoal@shoal` 之外，依
+  `${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json` 的 `claude.modules`
+  決定：含 `dispatch-guard`（或沒有 manifest，沿用預設 ON）就 `claude plugin install` /
+  `update` `shoal-dispatch-guard@shoal`；不含就 `claude plugin uninstall` 它。manifest
+  的內容由 `tools/shoal_install.py` 維護；updater 不要自己改它。
 - guard hook 的 command 一律是
   `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin`，
   路徑加引號，安裝路徑含空白也能跑；SessionStart 的 `emit-sessionstart.sh` 自己固定
@@ -1229,7 +1248,8 @@ core/roles.toml            host 中立的 role 定義
 hosts/<host>/binding.toml  可用 model、access 對應的權限、effort
 hosts/<host>/src/          該 host 的 policy 與 skill 原文
 hosts/<host>/dist/         render 產出，已 commit（codex 產出在 templates/）
-claude-plugin/             Claude plugin，render 產出（--host claude-plugin），不手改
+claude-plugin/             Claude plugin shoal（role、skill、policy），render 產出（--host claude-plugin），不手改
+claude-guard-plugin/       Claude plugin shoal-dispatch-guard（guard hook），同上
 .claude-plugin/            Claude marketplace manifest，同上
 tools/render.py            renderer 與 --check
 tools/install_grok.py      由 committed HEAD 安裝 grok host（預設 dry-run）
@@ -1253,7 +1273,8 @@ python3 tools/render.py --host claude --write
 
 `--host` 可選 `claude`、`codex`、`agy`、`grok`、`opencode`，以及 binding 設
 `renderer = "generic-md"` 的 host。另有 `--host claude-plugin`：產生 Claude plugin
-（`claude-plugin/`、`.claude-plugin/marketplace.json`），不是第六個 host。
+（`claude-plugin/`、`claude-guard-plugin/`、
+`.claude-plugin/marketplace.json`），不是第六個 host。
 修改 core 或 binding 後先 `--write`，再跑
 `python3 -m unittest discover -s tests` 確認 golden 差異是預期的。
 

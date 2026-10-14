@@ -112,6 +112,7 @@ class DryRunTests(Base):
             self.assertIn("dry-run", out)
         code, out, _ = self.run_cli("--host", "claude")
         self.assertIn("claude plugin install shoal@shoal", out)
+        self.assertIn("claude plugin install shoal-dispatch-guard@shoal", out)  # D5: the guard is on by default
         self.assertEqual(self.calls, [])
         self.assertEqual(self.tree(), [str(self.home)])
 
@@ -142,10 +143,15 @@ class DryRunTests(Base):
         self.assertIn("--uninstall --apply", out)
         _, out, _ = self.run_cli("--host", "agy")
         self.assertNotIn("--uninstall", out)
-        for host in ("claude", "opencode"):  # the guard ships inside the plugin: persistent switch, files stay
-            _, out, _ = self.run_cli("--host", host, "--without", "dispatch-guard")
-            self.assertIn("off 模式", out)
-            self.assertNotIn("--no-guard", out)
+        _, out, _ = self.run_cli("--host", "opencode", "--without", "dispatch-guard")  # guard inside the plugin
+        self.assertIn("off 模式", out)
+        self.assertNotIn("--no-guard", out)
+        # claude (S4): the guard is its own plugin, so --without means it is not installed at all
+        _, out, _ = self.run_cli("--host", "claude", "--without", "dispatch-guard")
+        self.assertIn("claude plugin install shoal@shoal", out)
+        self.assertNotIn("claude plugin install shoal-dispatch-guard@shoal", out)
+        self.assertIn("claude plugin uninstall shoal-dispatch-guard@shoal", out)
+        self.assertNotIn("off 模式", out)
 
     def test_claude_explore_removal_only_when_identical_to_dist(self) -> None:
         agents = Path(self.env["CLAUDE_CONFIG_DIR"]) / "agents"
@@ -368,6 +374,8 @@ class InferenceTests(Base):
         claude = Path(self.env["CLAUDE_CONFIG_DIR"])
         (claude / "plugins").mkdir(parents=True)
         (claude / "plugins" / "installed_plugins.json").write_text('{"shoal@shoal": []}')
+        self.assertEqual(shoal_install.infer("claude", self.env), ["core", "host-claude"])  # base only: no guard plugin
+        (claude / "plugins" / "installed_plugins.json").write_text('{"shoal@shoal": [], "shoal-dispatch-guard@shoal": []}')
         self.assertEqual(shoal_install.infer("claude", self.env), ["core", "host-claude", "dispatch-guard"])
         oc = Path(self.env["OPENCODE_CONFIG_DIR"])
         (oc / "plugins").mkdir(parents=True)

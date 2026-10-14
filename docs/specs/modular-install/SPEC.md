@@ -136,7 +136,7 @@ marketplace 是否只快取子目錄需要查。GitHub release 每 host 一個 t
 | S1 | `modules.json` schema、`--list`、`--dry-run`，各 host 預設等於現況；`sync_global.py` 讀 manifest（沒有時走推導） | unittest（schema、推導、sync 過濾）；每個 host 一次 dry-run，輸出與今天相同 |
 | S2 | **Guard chain 擴充點（唯一改 core 的 slice）**，細節見下 | 見下 |
 | S3 | `dispatch-guard`、`codex-autoroute`、`jev-router` 各 host 可選，`--without` 實作與移除 | unittest 加 `install_hooks --uninstall` 回歸；各 host 暫存 home apply 後 dry-run 為空 |
-| S4 | Claude 拆 `shoal` 與 `shoal-guard` plugin（若可行）；Codex 只補 installer 旗標 | live 僅 Claude 1 次：只裝 base 可派 role 且無 hook，再裝 guard 確認 hook 觸發 |
+| S4 | Claude 拆 `shoal` 與 `shoal-dispatch-guard` plugin（已實作：`claude-guard-plugin/`，同一個 marketplace）；Codex 只補 installer 旗標 | live 僅 Claude 1 次：只裝 base 可派 role 且無 hook，再裝 guard 確認 hook 觸發 |
 | S5 | README、INSTALL.md 的模組說明；release 範圍 | `bun run lint:md`、`scan_legacy_names.py` |
 
 **S2 guard chain**：

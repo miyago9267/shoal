@@ -10,7 +10,7 @@
     },
     "host-claude": {
       "kind": "host", "hosts": ["claude"], "depends_on": ["core"], "default_new": true,
-      "paths": ["claude-plugin/agents", "claude-plugin/skills", "claude-plugin/policy", ".claude-plugin/"],
+      "paths": ["claude-plugin/", ".claude-plugin/"],
       "summary": "Claude plugin shoal@shoal（role、skill、政策文字）"
     },
     "host-codex": {
@@ -35,7 +35,7 @@
     },
     "dispatch-guard": {
       "kind": "optional", "hosts": ["claude", "codex", "agy", "grok", "opencode"], "depends_on": ["host"],
-      "default_new": true, "paths": ["hooks/shoal_guard.py", "hosts/opencode/plugin/src/guard/"],
+      "default_new": true, "paths": ["hooks/shoal_guard.py", "claude-guard-plugin/", "hosts/opencode/plugin/src/guard/"],
       "summary": "派工守門 hook；關掉等於只有政策文字"
     },
     "codex-autoroute": {

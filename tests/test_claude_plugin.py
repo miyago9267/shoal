@@ -1,7 +1,7 @@
 """Claude plugin (generic-shoal K1, K2, K4, K5, K6): render, golden, quoting, guard `--plugin` deferral.
 
 tests/golden/claude-plugin is a copy of the render output (repo-relative paths); refresh it by
-copying `claude-plugin/` and `.claude-plugin/marketplace.json` after `render.py --host claude-plugin --write`.
+copying `claude-plugin/`, `claude-guard-plugin/` and `.claude-plugin/marketplace.json` after `render.py --host claude-plugin --write`.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ import shoal_guard as guard  # noqa: E402
 GOLDEN = ROOT / "tests" / "golden" / "claude-plugin"
 GUARD = ROOT / "hooks" / "shoal_guard.py"
 PLUGIN = ROOT / "claude-plugin"
+GUARD_PLUGIN = ROOT / "claude-guard-plugin"
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
@@ -60,7 +61,7 @@ def golden_files() -> dict[str, bytes]:
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
-        self.assertEqual(len(golden), 19)
+        self.assertEqual(len(golden), 21)
         rendered = render.render_claude_plugin(ROOT)
         self.assertEqual(sorted(rendered), sorted(golden))
         for rel, data in golden.items():
@@ -78,8 +79,9 @@ class GoldenTests(unittest.TestCase):
 class ContentTests(unittest.TestCase):
     def test_guard_copy_is_byte_identical_to_the_single_source(self) -> None:
         self.assertEqual(
-            (PLUGIN / "hooks" / "shoal_guard.py").read_bytes(), GUARD.read_bytes()
+            (GUARD_PLUGIN / "hooks" / "shoal_guard.py").read_bytes(), GUARD.read_bytes()
         )
+        self.assertFalse((PLUGIN / "hooks" / "shoal_guard.py").exists())  # S4: the base plugin carries no guard
 
     def test_agents_skills_and_policy_come_from_the_claude_dist(self) -> None:
         dist = render.RENDERERS["claude"](ROOT)
@@ -100,31 +102,46 @@ class ContentTests(unittest.TestCase):
         market = json.loads(
             (ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8")
         )
+        guard_plugin = json.loads(
+            (GUARD_PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
         self.assertEqual(plugin["version"], VERSION)
         self.assertEqual(plugin["name"], "shoal")
+        self.assertEqual((guard_plugin["name"], guard_plugin["version"]), ("shoal-dispatch-guard", VERSION))
         self.assertEqual(market["name"], "shoal")
-        (entry,) = market["plugins"]
-        self.assertEqual((entry["name"], entry["version"]), ("shoal", VERSION))
+        self.assertEqual(
+            [(e["name"], e["version"]) for e in market["plugins"]],
+            [("shoal", VERSION), ("shoal-dispatch-guard", VERSION)],
+        )
 
     def test_marketplace_source_is_the_plugin_dir_and_not_the_codex_one(self) -> None:
         market = json.loads(
             (ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8")
         )
-        source = market["plugins"][0]["source"]
-        self.assertEqual(source, "./claude-plugin")
-        self.assertTrue((ROOT / source / ".claude-plugin" / "plugin.json").is_file())
-        self.assertNotEqual((ROOT / source).resolve(), (ROOT / "plugin").resolve())
+        sources = [e["source"] for e in market["plugins"]]
+        self.assertEqual(sources, ["./claude-plugin", "./claude-guard-plugin"])
+        for source in sources:
+            self.assertTrue((ROOT / source / ".claude-plugin" / "plugin.json").is_file())
+            self.assertNotEqual((ROOT / source).resolve(), (ROOT / "plugin").resolve())
+
+
+class BaseHooksTests(unittest.TestCase):
+    def test_base_plugin_registers_only_the_policy_bootstrap(self) -> None:
+        # S4: every guard hook lives in the shoal-dispatch-guard plugin; the base plugin only injects the policy.
+        hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        self.assertEqual(list(hooks), ["SessionStart"])
+        self.assertNotIn("shoal_guard", (PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
 
 
 class HooksJsonTests(unittest.TestCase):
     def setUp(self) -> None:
         self.hooks = json.loads(
-            (PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8")
+            (GUARD_PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8")
         )["hooks"]
 
     def test_events_and_matchers(self) -> None:
         self.assertEqual(
-            sorted(self.hooks), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionStart", "Stop", "SubagentStart", "UserPromptSubmit"]
+            sorted(self.hooks), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "Stop", "SubagentStart", "UserPromptSubmit"]
         )
         self.assertNotIn("matcher", self.hooks["SubagentStart"][0])
         self.assertNotIn("matcher", self.hooks["Stop"][0])
@@ -145,7 +162,7 @@ class HooksJsonTests(unittest.TestCase):
         self.assertIn("--host claude --plugin", handler["command"])
         self.assertEqual(self.hooks["SubagentStart"][0].get("matcher"), None)  # every agent_type; the guard filters
         self.assertEqual(
-            set(self.hooks), {"SessionStart", "UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure"}
+            set(self.hooks), {"UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure"}
         )
 
     def test_stop_event_is_registered_whenever_the_guard_blocks_on_it(self) -> None:
@@ -161,22 +178,26 @@ class HooksJsonTests(unittest.TestCase):
         for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure"):
             (handler,) = self.hooks[event][0]["hooks"]
             self.assertEqual(handler["command"], guard_cmd, event)
-        (start,) = self.hooks["SessionStart"][0]["hooks"]
+        base = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        (start,) = base["SessionStart"][0]["hooks"]
         self.assertEqual(
             start["command"],
             '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/emit-sessionstart.sh"',
         )
 
     def test_no_command_uses_an_unquoted_plugin_root(self) -> None:
-        text = (PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8")
-        for match in re.finditer(r"\$\{CLAUDE_PLUGIN_ROOT\}", text):
-            self.assertEqual(text[match.start() - 2 : match.start()], '\\"')
+        for plugin in (PLUGIN, GUARD_PLUGIN):
+            text = (plugin / "hooks" / "hooks.json").read_text(encoding="utf-8")
+            for match in re.finditer(r"\$\{CLAUDE_PLUGIN_ROOT\}", text):
+                self.assertEqual(text[match.start() - 2 : match.start()], '\\"')
 
     @unittest.skipIf(os.name == "nt", "POSIX shell")
     def test_commands_run_from_a_plugin_root_with_spaces(self) -> None:
         with tempfile.TemporaryDirectory(prefix="shoal plugin ") as tmp:
             root = Path(tmp, "my plugin")
-            shutil.copytree(PLUGIN, root)
+            shutil.copytree(GUARD_PLUGIN, root)
+            base_root = Path(tmp, "my base plugin")
+            shutil.copytree(PLUGIN, base_root)
             env = {
                 **os.environ,
                 "CLAUDE_PLUGIN_ROOT": str(root),
@@ -195,9 +216,11 @@ class HooksJsonTests(unittest.TestCase):
                 timeout=30,
             )
             self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, b"", b""))
-            (start,) = self.hooks["SessionStart"][0]["hooks"]
+            base = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+            (start,) = base["SessionStart"][0]["hooks"]
             proc = subprocess.run(
-                start["command"], shell=True, capture_output=True, env=env, timeout=30
+                start["command"], shell=True, capture_output=True,
+                env={**env, "CLAUDE_PLUGIN_ROOT": str(base_root)}, timeout=30
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertEqual(
@@ -224,7 +247,8 @@ class RenderCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_check_fails_when_one_byte_changes(self) -> None:
-        for rel in ("claude-plugin/hooks/shoal_guard.py", "claude-plugin/hooks/hooks.json",
+        for rel in ("claude-guard-plugin/hooks/shoal_guard.py", "claude-plugin/hooks/hooks.json",
+                    "claude-guard-plugin/hooks/hooks.json",
                     ".claude-plugin/marketplace.json", "claude-plugin/agents/scout.md"):
             target = self.root / rel
             original = target.read_bytes()
@@ -247,7 +271,7 @@ class RenderCommandTests(unittest.TestCase):
         guard_src.write_bytes(guard_src.read_bytes() + b"# changed\n")
         self.assertEqual(run_render(self.root, "--check").returncode, 1)
         self.assertEqual(run_render(self.root, "--write").returncode, 0)
-        self.assertEqual((self.root / "claude-plugin" / "hooks" / "shoal_guard.py").read_bytes(), guard_src.read_bytes())
+        self.assertEqual((self.root / "claude-guard-plugin" / "hooks" / "shoal_guard.py").read_bytes(), guard_src.read_bytes())
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
 
     def test_changing_the_version_requires_rewriting_the_manifests(self) -> None:
@@ -265,7 +289,7 @@ class RenderCommandTests(unittest.TestCase):
 
     def test_write_repairs_and_removes_stale_files(self) -> None:
         (self.root / "claude-plugin" / "agents" / "stale.md").write_text("x", encoding="utf-8")
-        (self.root / "claude-plugin" / "hooks" / "shoal_guard.py").write_bytes(b"broken")
+        (self.root / "claude-guard-plugin" / "hooks" / "shoal_guard.py").write_bytes(b"broken")
         self.assertEqual(run_render(self.root, "--write").returncode, 0)
         self.assertFalse((self.root / "claude-plugin" / "agents" / "stale.md").exists())
         self.assertEqual(run_render(self.root, "--check").returncode, 0)

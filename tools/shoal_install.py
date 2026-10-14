@@ -10,7 +10,8 @@
 
 --without 現在對這三個模組真的生效（再跑一次不帶它們，只移除 shoal 自己的 entry）：
   dispatch-guard   codex：install.py --no-guard；agy：install_hooks --uninstall；grok：install_grok --no-guard；
-                   claude、opencode：guard 在 plugin 內，檔案照裝，manifest 沒有 dispatch-guard 時 guard 讀同一份
+                   claude：guard 是獨立 plugin shoal-dispatch-guard，沒選就不裝它（已裝的要自行 uninstall）；
+                   opencode：guard 在 plugin 內，檔案照裝，manifest 沒有 dispatch-guard 時 guard 讀同一份
                    manifest 並以 off 模式執行（持久開關）
   codex-autoroute  codex：install.py --no-autoroute
   claude-explore   claude：移除 ~/.claude/agents/Explore.md（只在內容與 repo 的 dist 逐位元組相同時）
@@ -140,7 +141,7 @@ def _shoal_hook_entries(host: str, home: Path) -> Optional[int]:
 
 def _guard_installed(host: str, home: Path) -> bool:
     if host not in ("codex", "agy"):
-        return True  # claude plugin、opencode plugin 內建；grok 沒有可靠的判斷
+        return True  # opencode plugin 內建；grok 沒有可靠的判斷（claude 看 CLAUDE_GUARD_PLUGIN，不走這裡）
     return _shoal_hook_entries(host, home) != 0
 
 
@@ -171,9 +172,12 @@ def infer(host: str, env: Mapping[str, str], repo: Path = REPO) -> Optional[list
         if jev:
             mods.append("jev-router")
     elif host == "claude":
-        if "shoal@shoal" not in _read(home / "plugins" / "installed_plugins.json"):
+        installed = _read(home / "plugins" / "installed_plugins.json")
+        if "shoal@shoal" not in installed:
             return None
-        mods += ["core", "host-claude", "dispatch-guard"]  # plugin 內建 guard
+        mods += ["core", "host-claude"]
+        if CLAUDE_GUARD_PLUGIN in installed:  # S4：guard 是獨立 plugin
+            mods.append("dispatch-guard")
         if (home / "agents" / "Explore.md").exists():
             mods.append("claude-explore")
     elif host == "agy":
@@ -341,10 +345,14 @@ def do_chain(args: argparse.Namespace, reg: dict, env: Mapping[str, str]) -> int
     return 0
 
 
-CLAUDE_STEPS = (
-    "claude plugin marketplace add miyago9267/shoal",
-    "claude plugin install shoal@shoal",
-)
+CLAUDE_GUARD_PLUGIN = "shoal-dispatch-guard@shoal"
+
+
+def claude_steps(mods: list[str]) -> list[str]:
+    steps = ["claude plugin marketplace add miyago9267/shoal", "claude plugin install shoal@shoal"]
+    if "dispatch-guard" in mods:
+        steps.append(f"claude plugin install {CLAUDE_GUARD_PLUGIN}")
+    return steps
 
 
 def default_runner(cmd: list[str], env: Mapping[str, str]) -> int:
@@ -387,11 +395,13 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
     for cmd in cmds:
         print("would run:" if not args.apply else "run:", " ".join(cmd))
     if host == "claude":
-        for step in CLAUDE_STEPS:
+        for step in claude_steps(mods):
             print(("would print: " if not args.apply else "run manually: ") + step)
         if "claude-explore" in mods:
             print("note: Explore.md 由 dotfile updater 裝進 ~/.claude/agents/")
-    if host in ("claude", "opencode") and "dispatch-guard" not in mods:
+    if host == "claude" and "dispatch-guard" not in mods:
+        print(f"note: dispatch-guard 關閉：不安裝 {CLAUDE_GUARD_PLUGIN}（hook 都在那個 plugin）；若已裝過，自行執行 claude plugin uninstall {CLAUDE_GUARD_PLUGIN}")
+    if host == "opencode" and "dispatch-guard" not in mods:
         print(
             "note: dispatch-guard 關閉：guard 隨 plugin 的檔案仍會安裝，manifest 沒有 dispatch-guard 時它讀同一份 manifest，"
             "以 off 模式執行（同時不呼叫 chain 成員）；加回 --with dispatch-guard 即恢復"

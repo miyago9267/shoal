@@ -1,7 +1,7 @@
 {
   "name": "shoal",
   "version": "3.8.0",
-  "description": "Shoal orchestration roles, skill, dispatch guard and policy bootstrap for Claude Code.",
+  "description": "Shoal orchestration roles, skill and policy bootstrap for Claude Code.",
   "author": {
     "name": "Miyago",
     "url": "https://github.com/miyago9267"
@@ -11,7 +11,6 @@
   "keywords": [
     "orchestration",
     "subagents",
-    "delegation",
-    "dispatch-guard"
+    "delegation"
   ]
 }

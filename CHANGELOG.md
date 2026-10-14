@@ -14,8 +14,13 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `claude-explore` 真的生效：`install/install.py` 新增 `--no-guard`、
   `--no-autoroute`，`tools/install_grok.py` 新增 `--no-guard`，agy 用
   `install_hooks.py --uninstall`；重跑時只移除 shoal 自己的 entry。
-  Claude 與 OpenCode 的 guard 在 plugin 內，`--without dispatch-guard` 是
-  持久開關（檔案仍安裝，guard 讀 manifest 後以 `off` 執行）。預設不變。
+  OpenCode 的 guard 在 plugin 內，`--without dispatch-guard` 是
+  持久開關（檔案仍安裝，guard 讀 manifest 後以 `off` 執行）；Claude 見下一項。預設不變。
+- Claude plugin 拆成 `shoal`（role、skill、policy、SessionStart 注入）與可選的
+  `shoal-dispatch-guard`（全部 guard hook），同一個 marketplace；
+  `shoal_install.py --host claude` 預設兩個都裝，`--without dispatch-guard` 不裝
+  guard plugin（modular-install S4）。升級時 dotfile updater 要另外安裝
+  `shoal-dispatch-guard@shoal`，規則見 [INSTALL.md](./INSTALL.md)。
 - 新增 `--chain-add NAME --chain-command '<JSON argv>'
   --chain-hosts h1,h2 [--chain-order N]`、`--chain-remove NAME`，
   `--list` 顯示 chain；註冊時不執行成員。
