@@ -252,7 +252,7 @@ def sync_codex_roles(
 
 # 遷移後由正常的 installer 安裝的新名（只用在 dry-run 的計畫文字）。
 CODEX_INSTALL_NEW = (
-    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-guard-v4 hook groups, "
+    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-guard-v5 hook groups, "
     "shoal-codex AGENTS.md block, new install state"
 )
 

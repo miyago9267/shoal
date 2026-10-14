@@ -36,8 +36,9 @@ Miyago 2026-10-13 兩句話：「只要有對應的 hook 可以當成事件閘�
   （`hosts/opencode/plugin/src/guard/opencode.ts:65,111,126`），deny 靠 throw；
   非 edit、非 `task` 的工具直接 return（`:133`），所以 shell 寫檔沒被看到；沒有
   結束事件的檢查。
-- Codex 沒註冊 `PostToolUse`（`install/hook_registration.py` 只有
-  `UserPromptSubmit`、`PreToolUse`、`Stop`）。repo 沒有 spawn 工具的
+- Codex 原本沒註冊 `PostToolUse`（`install/hook_registration.py` 只有
+  `UserPromptSubmit`、`PreToolUse`、`Stop`；3.6.0 的 `shoal-guard-v5` 為完成檢查
+  補上）。repo 沒有 spawn 工具的
   `tool_response` 形狀，也沒有 spawn 失敗的 payload 紀錄
   （`tests/fixtures` 與 specs 中只有 `shared-rules/SPEC.md` D6 提到
   `tool_response` 一詞，無欄位紀錄）。
@@ -117,7 +118,7 @@ Miyago 2026-10-13 兩句話：「只要有對應的 hook 可以當成事件閘�
 | `user_prompt_submit` | 是 | `#direct` 偵測、回合邊界 | 帶 `prompt`、`promptId` |
 | `stop`（`reason == end_turn`） | 是，預設 shadow（S4 新增） | B2/B3 完成檢查 | `{"decision":"block"}` 依文件可擋但**未實測**，待 live；session 結束時的第二次 `stop` 不帶 `end_turn`，忽略 |
 | `subagent_stop` | 是（既有的格式 gate，非 guard） | verifier／plan-critic／security-reviewer 的輸出格式 | 與 guard 無關 |
-| `post_tool_use`、`session_start`、`session_end` | 否 | 無 | 無規則需要它們；`post_tool_use` 的 `spawn_subagent` 結果只能事後確認，E3 已由 `subagent_start` 取代 |
+| `post_tool_use`、`session_start`、`session_end` | 否 | 無 | B2 仍以 `PreToolUse` 的前景 shell 呼叫記錄（本 host 的完成檢查只記錄，沒有註冊 `PostToolUse` 的版本）；其餘無規則需要它們；`post_tool_use` 的 `spawn_subagent` 結果只能事後確認，E3 已由 `subagent_start` 取代 |
 | 派出不存在的 role | 未知 | 無 | 實測不確定（一次觀察像是起了通用 subagent 而非報錯）；若起了通用 subagent，其 `subagent_start` 的型別不是 shoal 可寫 role，E1 照常擋它的寫入 |
 
 ### E8 檢查表：Claude（S2，Claude Code 2.1.x，2026-10-13；payload 見 `tests/fixtures/claude_subagent_tool_shapes.json`、`claude_subagent_start_shape.json`、`stop_payload_shapes.json`）
@@ -127,8 +128,8 @@ Miyago 2026-10-13 兩句話：「只要有對應的 hook 可以當成事件閘�
 | 事件 | 掛上？ | 規則 | 沒掛的原因／證據 |
 |---|---|---|---|
 | `UserPromptSubmit` | 是 | `#direct` 偵測、回合邊界（`prompt_id`） | 帶 `prompt`、`prompt_id` |
-| `PreToolUse`（matcher `Edit\|Write\|NotebookEdit\|MultiEdit\|Agent\|Workflow\|Bash`） | 是 | R1／G5（strict）、E1、VERIFY_EDIT、LEAF、G4、R2、B2 的檢查記錄、記 pending dispatch | deny 已實測被遵守；subagent 的 Write／Edit／Bash 都會觸發，`Bash` 帶 `tool_input.command`。其他工具（`Read`、`Grep` 等）不在 matcher：沒有規則需要 |
-| `PostToolUse` | 否 | 無 | 工具已經執行完才觸發（payload 帶 `tool_response`、`duration_ms`），無法阻止任何事。沒有規則需要事後證據：B2 只看前景 `Bash` 有沒有跑（PreToolUse 即可），啟動由 `SubagentStart` 判斷 |
+| `PreToolUse`（matcher `Edit\|Write\|NotebookEdit\|MultiEdit\|Agent\|Workflow\|Bash`） | 是 | R1／G5（strict）、E1、VERIFY_EDIT、LEAF、G4、R2、B2 的檢查記錄（有 `PostToolUse` 之後只作後備）、記 pending dispatch | deny 已實測被遵守；subagent 的 Write／Edit／Bash 都會觸發，`Bash` 帶 `tool_input.command`。其他工具（`Read`、`Grep` 等）不在 matcher：沒有規則需要 |
+| `PostToolUse`（matcher `Bash`） | 是（attached）：completion check counts executed shell calls（3.6.0 起） | B2：main 的前景 `Bash`（不寫檔、不是宣告）執行完才把 `checked` 設為真；同時記 `post_seen`。subagent 的 `PostToolUse`（帶 `agent_id`）不算；背景 `Bash` 不算 | 工具已經執行完才觸發（payload 帶 `tool_response`、`duration_ms`），無法阻止任何事；使用者拒絕或沒跑成的呼叫不會觸發，所以 `PreToolUse` 只代表「嘗試」。舊註冊（沒有這個事件）的後備：同一個 session 在第一次看到 `PostToolUse` 之前，`PreToolUse` 的前景 `Bash` 仍算；看過一次之後 `PreToolUse` 不再算。Claude 的非零 exit 是否改走 `PostToolUseFailure` 未實測，失敗的檢查指令可能不算（只擋一次） |
 | `SubagentStart` | 是（3.3.1 起） | E3（以啟動為準釋放 pending dispatch）、`#direct` 對 subagent 的放行 | 帶 `agent_id`、`agent_type`、與 main 相同的 `session_id`；Workflow 的 child 也會觸發 |
 | `SubagentStop` | 否 | 無 | 目前沒有規則需要 subagent 的結束：完成檢查擋的是 main 的 `Stop`。payload 帶 `agent_transcript_path`、`last_assistant_message`、`stop_hook_active`；能否擋 subagent 的結束未實測 |
 | `Stop`（main） | 是（3.4.0 起） | B2/B3 完成檢查 | payload 已實測；guard 的 `{"decision":"block"}` 有送出一次（fixture `facts`），Claude 如何處理該輸出未實測（`stop_payload_shapes.json`），失效時只是照常結束 |
@@ -140,21 +141,21 @@ Miyago 2026-10-13 兩句話：「只要有對應的 hook 可以當成事件閘�
 payload 見 `tests/fixtures/codex_payload_shapes.json`、
 `codex_subagent_tool_shapes.json`（後者的 `events_codex_supports` 列 11 個事件）。
 
-註冊在 `install/hook_registration.py`（`shoal-guard-v4`），由
+註冊在 `install/hook_registration.py`（`shoal-guard-v5`；v4 加 `SubagentStart`，v5 加 `PostToolUse`），由
 `tools/install_hooks.py --host codex` 與 `install/install.py` 寫入 `hooks.json`；
 新增的群組要在 Codex 用 `/hooks` 核准。
 
 | 事件 | 掛上？ | 規則 | 沒掛的原因／證據 |
 |---|---|---|---|
-| `PreToolUse`（matcher `^(apply_patch\|spawn_agent\|collaborationspawn_agent\|Bash)$`） | 是 | R1／G5（strict）、E1、VERIFY_EDIT、LEAF、記 pending dispatch、B2 的檢查記錄 | subagent 的 `apply_patch`、`Bash` 帶 `agent_id`、`agent_type`；`Bash` 的 `tool_input` 只有 `command`，沒有 `run_in_background`（故無 G4）。其他工具不在 matcher：沒有規則需要 |
+| `PreToolUse`（matcher `^(apply_patch\|spawn_agent\|collaborationspawn_agent\|Bash)$`） | 是 | R1／G5（strict）、E1、VERIFY_EDIT、LEAF、記 pending dispatch、B2 的檢查記錄（有 `PostToolUse` 之後只作後備） | subagent 的 `apply_patch`、`Bash` 帶 `agent_id`、`agent_type`；`Bash` 的 `tool_input` 只有 `command`，沒有 `run_in_background`（故無 G4）。其他工具不在 matcher：沒有規則需要 |
 | `PermissionRequest` | 否 | 無 | 在 `events_codex_supports` 內，但三次實測都沒有出現（`events_seen` 不含它），payload 與能否擋都未實測。改檔與 shell 閘門已在 `PreToolUse`，目前沒有規則需要它；E7 規定沒有實測 payload 不啟用 |
-| `PostToolUse` | 否 | 無 | 工具已經執行完才觸發，無法阻止。spawn 的 `PostToolUse` 只帶 `{task_name}`，沒有 `agent_id`，失敗的 spawn 根本不觸發，所以啟動改由 `SubagentStart` 判斷；沒有規則需要事後證據 |
+| `PostToolUse`（matcher `^Bash$`） | 是（attached，`shoal-guard-v5`）：completion check counts executed shell calls | B2：同 Claude 的規則，用 `tool_input.command` 判斷不寫檔、不是宣告；subagent 的（帶 `agent_id`）不算 | 工具已經執行完才觸發，無法阻止；`tool_response` 是字串。spawn 的 `PostToolUse` 只帶 `{task_name}`，沒有 `agent_id`，失敗的 spawn 根本不觸發，所以啟動改由 `SubagentStart` 判斷。後備：Codex 的 guard 讀不到 `/hooks` 核准狀態，所以同一個 session 在第一次看到 `PostToolUse` 之前，`PreToolUse` 的前景 `Bash` 仍算（沒重新核准的使用者不會每次 Stop 都被擋）；看過一次之後 `PreToolUse` 不再算 |
 | `PreCompact`、`PostCompact` | 否 | 無 | 未實測（`events_seen` 不含）；沒有規則與 compaction 有關 |
 | `SessionStart` | 否 | 無 | 有觸發，帶 `source`；沒有規則需要 session 開始 |
 | `SessionEnd` | 否 | 無 | 有觸發，沒有 `turn_id`；沒有規則需要 session 結束 |
 | `UserPromptSubmit` | 是 | `#direct` 偵測、回合邊界（`turn_id`） | 帶 `prompt`、`turn_id` |
 | `Stop`（main） | 是（3.4.0 起，預設 enforce） | B2/B3 完成檢查 | fixture run A 觀察到 guard 擋了一次，main 接著跑了唯讀檢查，第二次 `Stop` 通過 |
-| `SubagentStart` | 是（`shoal-guard-v4`） | E3（以啟動為準）、`direct_agents` 記錄 | 帶 `agent_id`、`agent_type`，只在 role 真的啟動時觸發（未知的 `agent_type` 不觸發）；`turn_id` 是 subagent 自己的 |
+| `SubagentStart` | 是（`shoal-guard-v4` 起） | E3（以啟動為準）、`direct_agents` 記錄 | 帶 `agent_id`、`agent_type`，只在 role 真的啟動時觸發（未知的 `agent_type` 不觸發）；`turn_id` 是 subagent 自己的 |
 | `SubagentStop` | 否 | 無 | 目前沒有規則需要 subagent 的結束：完成檢查擋的是 main 的 `Stop`。payload 有 `last_assistant_message`、`stop_hook_active`；能否擋未實測 |
 
 ## Decisions
@@ -224,4 +225,4 @@ unknown：unknown 不擋，只記 `would_deny_unknown_class`。同一 workspace 
 | `SessionStart` | 是（S5 新增） | 認領 pending，判定 main／subagent；write 類別即「已啟動」解鎖 main（E3） | 新 conversation 的 SessionStart 即 subagent 啟動；`invoke_subagent` 的 PostToolUse 早於 subagent 啟動，不可當證據 |
 | `PreInvocation` | 是 | 回合邊界（`invocationNum == 0`） | 每次 model call 都觸發 |
 | `Stop` | 是，預設 shadow（S5 新增） | B2/B3 完成檢查，僅 main、`fullyIdle: true` | 擋的輸出未實測，`SHOAL_GUARD_STOP=enforce` 才擋 |
-| `PostInvocation`、`PostToolUse` | 否 | 無 | 無規則需要 |
+| `PostInvocation`、`PostToolUse` | 否 | 無 | 無規則需要；B2 仍以 `PreToolUse` 的前景 shell 呼叫記錄（沒有註冊 `PostToolUse`） |

@@ -886,6 +886,53 @@ class StopCheckCliTests(CliCase):
         self.assertEqual(turn("t-2", edit=True, check="python3 -m unittest")[-1], "")
         self.assertEqual(turn("t-3", edit=False)[-1], "")
 
+    def test_posttooluse_raw_payloads_set_the_check_on_claude_and_codex(self) -> None:
+        # E8: PostToolUse (the call really ran) counts; PreToolUse only until the session has seen a PostToolUse.
+        patch = "*** Begin Patch\n*** Update File: a.py\n@@\n-a\n+b\n*** End Patch"
+
+        def claude_post(command: str, turn: str, **kw) -> dict:
+            return claude_tool("Bash", {"command": command}, cwd=self.work, prompt_id=turn, hook_event_name="PostToolUse",
+                               tool_response={"stdout": ""}, duration_ms=1, **kw)
+
+        def codex_post(command: str, turn: str, **kw) -> dict:
+            return CodexAdapterTests.tool("Bash", {"command": command}, cwd=self.work, turn_id=turn,
+                                          hook_event_name="PostToolUse", tool_response="ok", **kw)
+
+        flows = (
+            ("claude", lambda t: claude_prompt(cwd=self.work, prompt_id=t, prompt="#direct do it"),
+             lambda t: claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id=t),
+             lambda c, t: claude_tool("Bash", {"command": c}, cwd=self.work, prompt_id=t),
+             claude_post, self.claude_stop, {"agent_id": "ag-1", "agent_type": "shoal:executor"}),
+            ("codex", lambda t: CodexAdapterTests.prompt(cwd=self.work, turn_id=t, prompt="#direct do it"),
+             lambda t: CodexAdapterTests.tool("apply_patch", {"command": patch}, cwd=self.work, turn_id=t),
+             lambda c, t: CodexAdapterTests.tool("Bash", {"command": c}, cwd=self.work, turn_id=t),
+             codex_post, self.codex_stop, {"agent_id": "ag-1", "agent_type": "applier"}),
+        )
+        for host, prompt, edit, pre, post, stop, sub in flows:
+            with self.subTest(host):
+                self.setUp()  # a fresh sandbox per host
+                # fresh session, PreToolUse only: the fallback counts it (old registration without PostToolUse)
+                for payload in (prompt("a-1"), edit("a-1"), pre("make test", "a-1")):
+                    self.assertEqual(self.run_guard(host, payload), "")
+                self.assertEqual(self.run_guard(host, stop("a-1")), "")
+                # a subagent's PostToolUse neither counts nor marks the session as post-capable
+                for payload in (prompt("a-2"), edit("a-2"), post("make test", "a-2", **sub)):
+                    self.assertEqual(self.run_guard(host, payload), "")
+                self.assertEqual(json.loads(self.run_guard(host, stop("a-2")))["decision"], "block")
+                # the main session's PostToolUse counts and switches the Pre fallback off for the session
+                for payload in (prompt("a-3"), edit("a-3"), post("make test", "a-3")):
+                    self.assertEqual(self.run_guard(host, payload), "")
+                self.assertEqual(self.run_guard(host, stop("a-3")), "")
+                for payload in (prompt("a-4"), edit("a-4"), pre("make test", "a-4")):
+                    self.assertEqual(self.run_guard(host, payload), "")
+                self.assertEqual(json.loads(self.run_guard(host, stop("a-4")))["decision"], "block")
+        # a background Bash or a non-Bash PostToolUse is no event at all
+        background = claude_tool("Bash", {"command": "make test", "run_in_background": True}, cwd=self.work,
+                                 hook_event_name="PostToolUse", tool_response={})
+        self.assertIsNone(guard.adapt_claude(background))
+        self.assertIsNone(guard.adapt_claude({**background, "tool_name": "Read", "tool_input": {"file_path": "a"}}))
+        self.assertIsNone(guard.adapt_codex(CodexAdapterTests.tool("apply_patch", {"command": patch}, hook_event_name="PostToolUse")))
+
     def test_nothing_is_printed_for_a_subagent_stop_or_another_session(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work, prompt="#direct"))
         self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work))

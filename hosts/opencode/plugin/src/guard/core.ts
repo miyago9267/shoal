@@ -43,7 +43,7 @@ export type Env = Record<string, string | undefined>;
 
 export type GuardEvent = {
   host: string;
-  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start" | "stop" | "session_start";
+  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start" | "stop" | "session_start" | "post_shell";
   session_id: string | null;
   turn_id: string | null;
   cwd: string | null;
@@ -93,6 +93,7 @@ type StateFile = {
   changed: boolean;
   /** B2: after the latest change a verify-level role was dispatched or started, or main ran a plain foreground shell call. */
   checked: boolean;
+  post_seen?: boolean; // claude, codex: this session has seen a PostToolUse of a main-session shell call
   /** B3: this turn's one completion block has been spent. */
   stop_blocked: boolean;
   /** E1: the last DIRECT_TURNS_MAX turn ids whose prompt carried `#direct` (omitted when empty). */
@@ -120,6 +121,9 @@ const ROLE_AWARE_HOSTS = new Set(["claude", "codex", "grok", "opencode"]);
 // on these hosts and has no effect elsewhere.  Grok and agy have the payload but their block output is not yet
 // exercised: their default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
 const STOP_HOSTS = new Set(["claude", "codex", "grok", "agy"]);
+// Hosts whose registration carries PostToolUse for the shell tool: there `checked` is set by a shell call that really
+// ran (kind `post_shell`); PreToolUse counts only until the session has seen its first PostToolUse (state `post_seen`).
+const POST_HOSTS = new Set(["claude", "codex"]);
 const STOP_SHADOW_DEFAULT_HOSTS = new Set(["grok", "agy"]);
 // agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its
 // OWN conversation (announced by a `SessionStart`).  The guard infers main vs subagent from the order of events and keeps
@@ -624,6 +628,7 @@ function agentList(state: Record<string, unknown>, key: string): string[] {
 
 /** Keep the two agent lists of `prior` in `state` (they live across turns, like `direct_turns`). */
 function carryAgents(state: StateFile, prior: Record<string, unknown>): void {
+  if (prior.post_seen === true) state.post_seen = true;
   const direct = agentList(prior, "direct_agents");
   if (direct.length > 0) state.direct_agents = direct;
   const started = agentList(prior, "started_agents");
@@ -1094,20 +1099,27 @@ class Guard {
    * once; otherwise one unlocked read of the state file, and the lock and the write only happen when the turn is
    * changed and not yet checked.  Never logs.
    */
-  private noteCheck(): void {
+  private noteCheck(ran = false, counts = true): void {
     if (!stopEnabled(this.host, this.env)) return;
     const tid = this.event.turn_id;
     const paths = this.checkPaths(tid);
     if (paths === null) return;
-    const pendingCheck = (state: Record<string, unknown>): boolean =>
-      state.changed === true && state.checked !== true && (tid == null || state.turn_id === tid);
-    if (!pendingCheck(readJson(paths.statePath))) return;
+    // `ran`: the PostToolUse of that call; it also records `post_seen`, which turns the PreToolUse path off.
+    const pendingCheck = (state: Record<string, unknown>): boolean => {
+      if (!counts) return false; // a write or declaration: not a check itself, but its PostToolUse still proves the hook fires
+      if (!ran && POST_HOSTS.has(this.host) && state.post_seen === true) return false;
+      return state.changed === true && state.checked !== true && (tid == null || state.turn_id === tid);
+    };
+    const needsWrite = (state: Record<string, unknown>): boolean =>
+      pendingCheck(state) || (ran && Object.keys(state).length > 0 && state.post_seen !== true);
+    if (!needsWrite(readJson(paths.statePath))) return;
     withStateLock(
       paths.lockPath,
       () => {
         const state = readJson(paths.statePath);
-        if (pendingCheck(state)) {
-          state.checked = true;
+        if (needsWrite(state)) {
+          if (ran) state.post_seen = true;
+          if (pendingCheck(state)) state.checked = true;
           writeJson(paths.statePath, state);
         }
         return none(this.mode);
@@ -1174,11 +1186,25 @@ class Guard {
     );
   }
 
+  /**
+   * B2 on claude and codex: PostToolUse of a main-session shell call, i.e. the call really ran.  A plain foreground
+   * call (neither a declaration nor a file write) marks the turn checked; any such event records `post_seen`.
+   * It never decides anything.
+   */
+  private postShell(): GuardResult {
+    if (POST_HOSTS.has(this.host)) {
+      const plain = parseDeclaration(this.event.command) === null && this.shellWriteTarget() === null;
+      this.noteCheck(true, plain);
+    }
+    return none(this.mode);
+  }
+
   // -- main session ---------------------------------------------------------
   main(): GuardResult {
     const event = this.event;
     if (event.kind === "subagent_start") return this.subagentStart();
     if (event.kind === "stop") return this.stop();
+    if (event.kind === "post_shell") return this.postShell();
     const isBoundary = event.kind === "prompt" || event.kind === "turn_boundary";
     let toolKind = event.tool_kind;
     if (event.kind === "tool" && toolKind === "background_shell" && !DENY_MAIN_HOSTS.has(this.host)) {

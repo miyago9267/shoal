@@ -25,14 +25,21 @@ guard 的每個閘門都接上（[`docs/specs/guard-every-gate`](./docs/specs/gu
 - 「role 真的啟動才放行」擴大到更多 host：Codex（`SubagentStart`）、OpenCode
   （`session.created`）、Grok（`subagent_start`）、agy（subagent conversation 的
   `SessionStart`）都改成以啟動為準，派工失敗不放行。
-- Codex 的 hook 註冊升到 `shoal-guard-v4`，升級後要用 `/hooks` 重新核准新增的
-  `SubagentStart`；核准前，以可寫 role 的第一次工具呼叫作為啟動依據。
+- Codex 的 hook 註冊升到 `shoal-guard-v5`（v4 加 `SubagentStart`、v5 加
+  `PostToolUse`），升級後要用 `/hooks` 重新核准新增的群組；核准
+  `SubagentStart` 前，以可寫 role 的第一次工具呼叫作為啟動依據。
+  先前裝過 v4 的機器重跑安裝會原地補上 `PostToolUse` 群組。
 - Grok、agy 的 guard 預設由只記錄（shadow）改為 enforce，main 自己改檔預設被擋
   （與 Claude、Codex 相同）；要回到只記錄可設 `SHOAL_GUARD=shadow`。
 - OpenCode 的 guard 原本就是 enforce；這次改的是 main 改檔規則由 `classified` 改為 `strict`
-  （沒派 write role 也沒有 `#direct` 就擋），並開始檢查 `bash` 與 `apply_patch`，解鎖改以
+  （沒派 write role 也沒有 `#direct` 就擋），並開始檢查 `bash`（`apply_patch` 從 3.5.0 起就算改檔），解鎖改以
   `session.created` 啟動為準。
 - agy 的 main／subagent 與 role 由 conversation 的順序推論；判不出來時不擋，只記錄。
+- 完成檢查改以 PostToolUse 確認指令真的執行（Claude、Codex）：使用者拒絕或
+  沒跑成的 shell 呼叫不再算檢查。Claude plugin 與全域 `install_hooks.py` 加
+  matcher 為 `Bash` 的 `PostToolUse`，Codex 加在 `shoal-guard-v5`；舊註冊沒有
+  這個事件時，同一個 session 第一次看到 `PostToolUse` 之前仍以 `PreToolUse`
+  為後備。其他 host 維持 `PreToolUse`。
 - 完成檢查：Grok、agy 以只記錄方式接上（`SHOAL_GUARD_STOP=enforce` 才擋）；
   OpenCode 的結束事件沒有回傳值，無法擋，所以沒有接。
 - 設計不變式第 3 條新增：有 harness 的 host 必須把每個能當閘門的事件都接上 guard，

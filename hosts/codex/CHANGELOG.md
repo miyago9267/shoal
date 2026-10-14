@@ -11,9 +11,11 @@ written.
 
 ## v3.6.0
 
-- The guard registration is now `shoal-guard-v4`: it adds a `SubagentStart`
-  group, so a write role counts as started when it actually starts and a failed
-  dispatch no longer unlocks edits. Approve the new hook once with `/hooks`;
+- The guard registration is now `shoal-guard-v5`: it adds a `PostToolUse`
+  group (matcher `^Bash$`) so the completion check counts a shell call that
+  really ran, and, since `shoal-guard-v4`, a `SubagentStart` group, so a write
+  role counts as started when it actually starts and a failed dispatch no
+  longer unlocks edits. Approve the new hooks once with `/hooks`;
   until then the role's first tool call is used as the start evidence.
 - A subagent that is not a shoal write-capable role (for example the built-in
   `worker`) can no longer edit files or write files through the shell. Exits:

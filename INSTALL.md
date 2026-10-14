@@ -266,13 +266,15 @@ Since host 1.8.3 the installer also registers the dispatch guard
 (`hooks/shoal_guard.py --host codex`,
 [`docs/specs/dispatch-enforcement`](./docs/specs/dispatch-enforcement/SPEC.md))
 next to the autoroute gate. It is a separate script with its own projection ID
-(`shoal-guard-v4`) and its own state entry (`guard_registration`), so the gate
+(`shoal-guard-v5`) and its own state entry (`guard_registration`), so the gate
 is unchanged. It adds a `UserPromptSubmit` group that records the turn and
 reads `#direct`, a `PreToolUse` group with matcher
 `^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$`, and, since 3.4.0,
-a `Stop` group for the completion check (below), and, since `shoal-guard-v4`, a
+a `Stop` group for the completion check (below), since `shoal-guard-v4` a
 `SubagentStart` group without a matcher that tells the guard a dispatched role
-has really started (below). The guard is in
+has really started (below), and since `shoal-guard-v5` a `PostToolUse` group
+with matcher `^Bash$` that lets the completion check count a shell call that
+really ran (below). The guard is in
 enforce mode by default (`SHOAL_GUARD=shadow` logs `would_deny` and `advise`
 records under `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`;
 `SHOAL_GUARD=off` disables it). The subagent rules (LEAF, VERIFY_EDIT) deny.
@@ -302,7 +304,9 @@ registered by an earlier release is upgraded in place: `shoal-guard-v1` (3.2.0 o
 earlier, matcher without `Bash`) has its `PreToolUse` group replaced at the same
 position, `v1` and `v2` (3.2.1 to 3.3.1) gain the guard's own `Stop`
 group, appended after the existing `Stop` entries, and `v1` to `v3` gain the
-`SubagentStart` group (`v3` changes nothing else). Every other entry (your own
+`SubagentStart` group (`v3` changes nothing else), and `v1` to `v4` gain the
+`PostToolUse` group (an earlier, unreleased `v4` install is upgraded in
+place). Every other entry (your own
 `Bash` matcher, your own `Stop` hook, the autoroute gate's own `Stop` group) is
 left untouched. Re-runs change nothing. The installer does not write hook
 trust: after installing **or upgrading to 3.4.0**, approve the new `Stop` hook
@@ -312,7 +316,8 @@ fires (nothing else changes). A `PreToolUse` group that is not re-approved
 after an upgrade from `v1` leaves the guard blind to `Bash` (declarations then
 have no way in, so keep `#direct` and dispatch in mind until you approve).
 **Approve the new `SubagentStart` hook once with `/hooks` after upgrading to
-`shoal-guard-v4`.** The groups you approved before keep their bytes and stay approved.
+`shoal-guard-v4`, and the new `PostToolUse` hook after upgrading to
+`shoal-guard-v5`.** The groups you approved before keep their bytes and stay approved.
 A dispatched write role unlocks the main session's edit once the role has
 started, not at the `spawn_agent` call (docs/specs/guard-every-gate, E3; the
 payloads are in `tests/fixtures/codex_subagent_tool_shapes.json`, Codex CLI
@@ -344,7 +349,16 @@ guard allowed, or a dispatched write-level role (`executor`, `applier`,
 `security-executor`, `sol-executor`; on Codex the dispatch call counts). A check
 is a dispatched `verifier` or `watcher`, or a foreground `Bash` call that is
 neither a file write nor a `: shoal-direct` declaration, made after the latest
-change; a later change clears it. When the main session ends the turn with a
+change; a later change clears it. On Claude and Codex (3.6.0 and `shoal-guard-v5`)
+that shell call counts at its `PostToolUse`, i.e. when it actually ran: a call the
+user rejects or that never runs fires no `PostToolUse` and does not count. The
+guard cannot tell whether the new hook is registered or approved, so until a
+session has seen its first `PostToolUse` of a main-session `Bash` call, the
+`PreToolUse` of that call still counts (the old behaviour; a home that has not
+re-approved hooks is not blocked at every `Stop`); after the first one, only
+`PostToolUse` counts. Other hosts keep the `PreToolUse` rule. A `PostToolUse`
+from a subagent, a background `Bash`, a file write or a declaration is not a
+check. When the main session ends the turn with a
 change and no check, the `Stop` hook answers
 `{"decision":"block","reason":"..."}` once per turn: run a verification, or say
 in the report that the change is unverified. The block is skipped when Codex
@@ -369,8 +383,8 @@ changed.
 When `install/install.py` cannot be reconciled with the Codex home (for
 example a locally modified `shoal_autoroute_gate.py` that the installer
 would replace), `tools/install_hooks.py --host codex` manages only the guard.
-It writes the same `shoal-guard-v4` groups (including `commandWindows`; a
-`shoal-guard-v1`, `v2` or `v3` group is replaced in place) into
+It writes the same `shoal-guard-v5` groups (including `commandWindows`; a
+`shoal-guard-v1` to `v4` group is replaced in place) into
 `<codex-home>/hooks.json` and the committed-`HEAD` script to
 `<codex-home>/hooks/shoal_guard.py` (0600). The codex home is `--home`, then
 `CODEX_HOME`, then `~/.codex`. Dry-run is the default:
@@ -594,7 +608,9 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   `~/.claude`）：`UserPromptSubmit`，以及 matcher 為
   `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash` 的 `PreToolUse`（`Bash`
   是 3.0.0 起為 G4 加的，舊安裝重跑一次就會換成這個 matcher），以及沒有 matcher 的
-  `SubagentStart`（3.3.1 起，M11），以及沒有 matcher 的 `Stop`（3.4.0 起，完成檢查）；舊的
+  `SubagentStart`（3.3.1 起，M11），以及沒有 matcher 的 `Stop`（3.4.0 起，
+  完成檢查），以及 matcher 為 `Bash` 的 `PostToolUse`（3.6.0 起，完成檢查只算
+  真的執行的指令）；舊的
   settings 重跑 `--apply` 會原地補上，你自己的 `Stop` 與其他 entry 不動。
   `settings.json` 若是 symlink（dotfile 管理）
   就寫進它指向的檔案，權限不變。Claude 預設 enforce。
@@ -643,7 +659,7 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 
 | 值 | 預設於 | R1（改檔工具）與 G5（寫檔的 `Bash`） |
 | --- | --- | --- |
-| `strict` | Claude、Codex（3.3.0 起）、Grok、agy | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
+| `strict` | Claude、Codex（3.3.0 起）、Grok、agy、OpenCode（3.6.0 起） | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
 | `declare` | 無（3.2.x 的預設，可選） | enforce 時 deny，除非本輪有：已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告（下一節），或分類檔的 `role` 是 `parent_local`。沒有分類檔、或其他 `role`，都不影響結果。shadow 記 `would_deny` |
 | `classified` | 無（可選；3.6.0 前的 OpenCode 預設） | 3.1.0 的規則：只有分類檔把本輪標成 `judgment` 或 `mechanical` 時才擋（Claude：deny；其他 host 只提醒） |
 | `off` | 無 | 關掉 R1 與 G5。硬規則（LEAF、VERIFY_EDIT）、G4、R2 不受影響 |
@@ -827,7 +843,12 @@ OpenCode 事件與 guard 的對照（`docs/DESIGN-INVARIANTS.md` 第 3 條要求
   - `changed`：main 的改檔工具或 shell 寫檔被放行且目標不是豁免路徑；或可寫的 role 算「已派工」
     （各 host 都在啟動事件釋放待啟動派工的那一刻；沒有 host 在派工呼叫當下算）。
   - `checked`：在最近一次 `changed` 之後，派出或啟動了 verify 等級的 role（`verifier`、`watcher`），
-    或 main 執行了前景 `Bash`、而且那個指令既不寫檔也不是 `: shoal-direct` 宣告。之後再發生一次
+    或 main 執行了前景 `Bash`、而且那個指令既不寫檔也不是 `: shoal-direct` 宣告。
+    Claude 與 Codex 在 `PostToolUse`（指令真的跑了）才算，使用者拒絕或沒跑的呼叫
+    不算；guard 看不出新事件有沒有註冊或核准，所以同一個 session 第一次看到
+    `PostToolUse` 之前，`PreToolUse` 的前景 `Bash` 仍算（後備，舊註冊不會每次
+    Stop 都被擋），看過之後只認 `PostToolUse`；其他 host 維持 `PreToolUse`。
+    之後再發生一次
     `changed` 會清掉 `checked`；改檔之前的前景指令不算。判斷只看有沒有跑，不判斷指令是不是測試
     （spec D3）。沒有改檔的回合，前景 `Bash` 不碰 state，也不寫 log。
   - `Stop` 事件：同一回合的 state、`changed` 且沒有 `checked`、`stop_hook_active` 恰為 `false`、模式為

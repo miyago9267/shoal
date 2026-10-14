@@ -122,7 +122,9 @@ R2（檔案數）在所有 host 都只提醒；subagent 的 LEAF、VERIFY_EDIT �
 prompt 帶 `#direct` 可放行，agy 沒有 `#direct`，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
 [INSTALL.md](./INSTALL.md#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
 `shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組），之後升到
-`shoal-guard-v4`（加 `SubagentStart` 群組；每次新增群組都要在 Codex 用 `/hooks` 再核准一次）。Claude
+`shoal-guard-v4`（加 `SubagentStart` 群組），3.6.0 升到 `shoal-guard-v5`（加
+`PostToolUse` 群組，完成檢查改以指令真的執行為準；每次新增群組都要在 Codex 用
+`/hooks` 再核准一次）。Claude
 從 3.3.1 起、Codex 從 `shoal-guard-v4` 起，Grok、agy、OpenCode 從 3.6.0 起，在 role 真的啟動
 （`SubagentStart`／`subagent_start`／agy 的新 conversation `SessionStart`／OpenCode 的
 `session.created`）後才放行派工，guard 腳本與 hook 註冊必須一起更新；沒有 host 還在派工呼叫

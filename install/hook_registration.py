@@ -25,11 +25,17 @@ CURRENT_PROJECTION_ID = "shoal-autoroute-v1"
 # v4 (docs/specs/guard-every-gate E3) adds a `SubagentStart` group so the guard learns that a dispatched role really
 # started (Codex fires it with agent_id and agent_type; tests/fixtures/codex_subagent_tool_shapes.json); v1-v3 stay
 # allowlisted for the same reason.  The new group is a separate hook, so Codex asks for a `/hooks` approval of it.
-GUARD_PROJECTION_ID = "shoal-guard-v4"
+# v5 (docs/specs/guard-every-gate E8) adds a `PostToolUse` group for the shell tool, so the completion check counts a
+# shell call that really ran, not one that was only attempted (rejected or never run); v1-v4 stay allowlisted so a
+# machine that installed the earlier (unreleased) v4 is upgraded in place by appending the new group.
+GUARD_PROJECTION_ID = "shoal-guard-v5"
+GUARD_PROJECTION_ID_V4 = "shoal-guard-v4"
 GUARD_PROJECTION_ID_V1 = "shoal-guard-v1"
 GUARD_PROJECTION_ID_V2 = "shoal-guard-v2"
 GUARD_PROJECTION_ID_V3 = "shoal-guard-v3"
-GUARD_PROJECTION_IDS = (GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID)
+GUARD_PROJECTION_IDS = (
+    GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID_V4, GUARD_PROJECTION_ID
+)
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
@@ -74,6 +80,11 @@ _GUARD_HANDLER: dict[str, Any] = {
 # tool name as a regular expression.
 GUARD_TOOL_MATCHER_V1 = "^(apply_patch|spawn_agent|collaborationspawn_agent)$"
 GUARD_TOOL_MATCHER = "^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$"
+GUARD_POST_MATCHER = "^Bash$"
+_GUARD_POST_GROUP: dict[str, Any] = {
+    "matcher": GUARD_POST_MATCHER,
+    "hooks": [copy.deepcopy(_GUARD_HANDLER)],
+}
 _GUARD_PROMPT_GROUP: dict[str, Any] = {"hooks": [copy.deepcopy(_GUARD_HANDLER)]}
 _GUARD_TOOL_GROUP_V1: dict[str, Any] = {
     "matcher": GUARD_TOOL_MATCHER_V1,
@@ -104,11 +115,18 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
         "Stop": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
     },
+    GUARD_PROJECTION_ID_V4: {
+        "UserPromptSubmit": _GUARD_PROMPT_GROUP,
+        "Stop": _GUARD_PROMPT_GROUP,
+        "PreToolUse": _GUARD_TOOL_GROUP,
+        "SubagentStart": _GUARD_PROMPT_GROUP,
+    },
     GUARD_PROJECTION_ID: {
         "UserPromptSubmit": _GUARD_PROMPT_GROUP,
         "Stop": _GUARD_PROMPT_GROUP,
         "PreToolUse": _GUARD_TOOL_GROUP,
         "SubagentStart": _GUARD_PROMPT_GROUP,
+        "PostToolUse": _GUARD_POST_GROUP,
     },
 }
 
@@ -560,7 +578,7 @@ def merge_registration(
     older_registered = next(
         (
             guard_id
-            for guard_id in (GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V1)
+            for guard_id in (GUARD_PROJECTION_ID_V4, GUARD_PROJECTION_ID_V3, GUARD_PROJECTION_ID_V2, GUARD_PROJECTION_ID_V1)
             if owned_guard_projection_id is None and _guard_already_registered(merged, guard_id)
         ),
         None,
@@ -568,7 +586,7 @@ def merge_registration(
     if owned_guard_projection_id is None and _guard_already_registered(merged):
         pass  # adopted: placed by tools/install_hooks.py --host codex
     elif older_registered is not None:
-        _upgrade_guard(merged, older_registered, desired_guard)  # placed by 3.4.0 (v3), 3.2.1 (v2) or 3.2.0 and earlier (v1)
+        _upgrade_guard(merged, older_registered, desired_guard)  # placed by an earlier v4, 3.4.0 (v3), 3.2.1 (v2) or 3.2.0 and earlier (v1)
     elif owned_guard_projection_id is None:
         if any(
             _locations(document, group)

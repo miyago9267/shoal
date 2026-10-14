@@ -124,13 +124,15 @@ class HooksJsonTests(unittest.TestCase):
 
     def test_events_and_matchers(self) -> None:
         self.assertEqual(
-            sorted(self.hooks), ["PreToolUse", "SessionStart", "Stop", "SubagentStart", "UserPromptSubmit"]
+            sorted(self.hooks), ["PostToolUse", "PreToolUse", "SessionStart", "Stop", "SubagentStart", "UserPromptSubmit"]
         )
         self.assertNotIn("matcher", self.hooks["SubagentStart"][0])
         self.assertNotIn("matcher", self.hooks["Stop"][0])
         (pre,) = self.hooks["PreToolUse"]
         self.assertEqual(pre["matcher"], install_hooks.CLAUDE_MATCHER)
         self.assertNotIn("matcher", self.hooks["UserPromptSubmit"][0])
+        (post,) = self.hooks["PostToolUse"]  # B2: the completion check counts a Bash call at its PostToolUse
+        self.assertEqual(post["matcher"], "Bash")
 
     def test_start_event_is_registered_whenever_the_guard_unlocks_on_it(self) -> None:
         # M11: the guard (claude) unlocks a write dispatch only on SubagentStart; without this registration the
@@ -141,7 +143,7 @@ class HooksJsonTests(unittest.TestCase):
         self.assertIn("--host claude --plugin", handler["command"])
         self.assertEqual(self.hooks["SubagentStart"][0].get("matcher"), None)  # every agent_type; the guard filters
         self.assertEqual(
-            set(self.hooks), {"SessionStart", "UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop"}
+            set(self.hooks), {"SessionStart", "UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse"}
         )
 
     def test_stop_event_is_registered_whenever_the_guard_blocks_on_it(self) -> None:
@@ -154,7 +156,7 @@ class HooksJsonTests(unittest.TestCase):
 
     def test_every_command_quotes_the_plugin_root(self) -> None:
         guard_cmd = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
-        for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop"):
+        for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse"):
             (handler,) = self.hooks[event][0]["hooks"]
             self.assertEqual(handler["command"], guard_cmd, event)
         (start,) = self.hooks["SessionStart"][0]["hooks"]

@@ -11,15 +11,15 @@
 腳本裝到 ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py（0755），entry 寫進：
   claude  <home>/settings.json（--home，其次 CLAUDE_CONFIG_DIR，預設 ~/.claude）：
           UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse，
-          以及 SubagentStart（3.3.1 起）與 Stop（3.4.0 起，完成檢查）；舊設定重跑 --apply 會原地補上，其他 entry 不動
+          SubagentStart（3.3.1 起）、Stop（3.4.0 起，完成檢查），以及 matcher 為 Bash 的 PostToolUse（3.6.0 起，確認指令真的執行）；舊設定重跑 --apply 會原地補上，其他 entry 不動
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-guard"，
           PreToolUse（matcher "*"）、SessionStart、PreInvocation 與 Stop；每個 command 結尾帶
           --event <名稱>（agy 的 payload 不含事件名稱），舊設定重跑 --apply 會原地補上
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
-          shoal-guard-v4 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
+          shoal-guard-v5 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
           ^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$ 的 PreToolUse，含 commandWindows；
-          另有沒有 matcher 的 SubagentStart（確認 role 真的啟動，v4 起）；
-          舊的 shoal-guard-v1（matcher 沒有 Bash）、v2（沒有 Stop）與 v3（沒有 SubagentStart）重跑會原地換成 v4，
+          另有沒有 matcher 的 SubagentStart（確認 role 真的啟動，v4 起）與 matcher ^Bash$ 的 PostToolUse（v5 起）；
+          舊的 shoal-guard-v1（matcher 沒有 Bash）、v2（沒有 Stop）、v3（沒有 SubagentStart）與 v4（沒有 PostToolUse）重跑會原地換成 v5，
           需要在 Codex 用 /hooks 再核准一次），
           腳本裝到 <home>/hooks/shoal_guard.py（0600）。這是不能跑 install.py 時的窄路徑：
           不碰 shoal_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
@@ -228,6 +228,8 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
         # B3: the completion check; a settings.json from before 3.4.0 has no Stop entry of shoal's.  Other Stop
         # entries of the user stay where they are: only shoal's own handler is replaced or appended.
         "Stop": None if command is None else {"hooks": [_handler(command)]},
+        # B2: the completion check counts a shell call that really ran (PostToolUse), not one that was attempted.
+        "PostToolUse": None if command is None else {"matcher": "Bash", "hooks": [_handler(command)]},
     }
     for event, group in desired.items():
         existing = hooks.get(event)
@@ -248,7 +250,7 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
 
 
 def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
-    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v4 群組（舊的 v1、v2、v3 shoal handler 被原地取代）（command 為 None 時移除）。
+    """Codex hooks.json：放回 install/hook_registration.py 的 shoal-guard-v5 群組（舊的 v1 到 v4 shoal handler 被原地取代）（command 為 None 時移除）。
 
     command 只當安裝／移除的開關；寫入的是 canonical 群組本身，install.py 才認得它。
     """

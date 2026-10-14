@@ -62,7 +62,8 @@ record is still judged by its role, never released by `#direct`.  Verify-level r
 Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
 shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
 `checked` (after the latest change, a verify-level role was dispatched or started, or main ran a foreground shell
-call that is neither a file write nor a declaration).  On claude and codex the `Stop` event is blocked once per
+call that is neither a file write nor a declaration; on claude and codex that call counts at its PostToolUse, i.e. when
+it really ran, and its PreToolUse counts only until the session has seen its first PostToolUse, see POST_HOSTS).  On claude and codex the `Stop` event is blocked once per
 turn when `changed` is set, `checked` is not, `stop_hook_active` is exactly false, the mode is enforce and
 SHOAL_GUARD_STOP is not `off`; everything else (other turn, bad payload, unreadable state, shadow, off) fails
 open.  Grok's `stop` event (only `reason == end_turn`) is attached, but its `{"decision": "block"}` output has not been
@@ -113,6 +114,11 @@ ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
 # it never blocks.  SHOAL_GUARD_STOP switches the check off on these hosts and has no effect elsewhere.  Grok has the payload (tests/fixtures/grok_guard_event_shapes.json)
 # but its block output is not yet exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
 STOP_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
+# Hosts whose registration carries PostToolUse for the shell tool (claude plugin / settings.json, codex shoal-guard-v5).
+# There `checked` is set by a shell call that really ran (docs/specs/guard-every-gate E8); PreToolUse only counts as the
+# fallback until the first PostToolUse of the session arrives (state `post_seen`), because the guard cannot read whether
+# the user has approved the new hook (Codex) or restarted onto the new registration (Claude).
+POST_HOSTS = frozenset({"claude", "codex"})
 STOP_SHADOW_DEFAULT_HOSTS = frozenset({"grok", "agy"})
 # agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its OWN
 # conversation (new conversationId, announced by a `SessionStart`).  The guard infers main vs subagent from the order of
@@ -590,7 +596,9 @@ def _agents(state: Dict[str, Any], key: str) -> List[str]:
 
 
 def _carry_agents(state: Dict[str, Any], prior: Dict[str, Any]) -> None:
-    """Keep the two agent lists of `prior` in `state` (they live across turns, like `direct_turns`)."""
+    """Keep the two agent lists and the `post_seen` flag of `prior` in `state` (they live across turns, like `direct_turns`)."""
+    if prior.get("post_seen") is True:
+        state["post_seen"] = True
     for key in ("direct_agents", "started_agents"):
         kept = _agents(prior, key)
         if kept:
@@ -607,7 +615,7 @@ def write_agent_allowed(role: Any, env: Dict[str, str]) -> bool:
 
 
 def stop_enabled(host: str, env: Dict[str, str]) -> bool:
-    """SHOAL_GUARD_STOP: `off` disables the completion check on claude, codex and grok; any other value (or none)
+    """SHOAL_GUARD_STOP: `off` disables the completion check on claude, codex, grok and agy; any other value (or none)
     keeps it on (grok: logging only, see stop_blocks).  No effect on a host outside STOP_HOSTS."""
     return host in STOP_HOSTS and env.get("SHOAL_GUARD_STOP") != "off"
 
@@ -1419,8 +1427,12 @@ class _Guard:
             return None
         return guard / "state" / (str(sid) + ".json"), guard / "state" / (str(sid) + ".lock")
 
-    def note_check(self) -> None:
+    def note_check(self, ran: bool = False, counts: bool = True) -> None:
         """B2: main ran a plain foreground shell call.  When the turn is changed and unchecked, mark it checked.
+
+        `ran` is True for the PostToolUse of that call (claude, codex): it also records `post_seen`, which turns the
+        PreToolUse path off for the rest of the session.  A PreToolUse call (`ran` False) on a POST_HOSTS host
+        counts only while no PostToolUse has been seen: an old registration without PostToolUse keeps working.
 
         Cheap by construction: hosts outside STOP_HOSTS, SHOAL_GUARD_STOP=off and a missing or invalid id return
         at once; otherwise one unlocked read of the state file, and the lock and the write only happen when the
@@ -1434,21 +1446,31 @@ class _Guard:
         state_path, lock_path = paths
 
         def pending_check(state: Dict[str, Any]) -> bool:
+            if not counts:
+                return False  # a write or declaration: not a check itself, but its PostToolUse still proves the hook fires
+            if not ran and self.host in POST_HOSTS and state.get("post_seen") is True:
+                return False  # the PostToolUse path owns the check on this session
             return (
                 state.get("changed") is True
                 and state.get("checked") is not True
                 and (tid is None or state.get("turn_id") == tid)
             )
 
-        if not pending_check(_read_json(state_path)):
+        def needs_write(state: Dict[str, Any]) -> bool:
+            return pending_check(state) or (ran and bool(state) and state.get("post_seen") is not True)
+
+        if not needs_write(_read_json(state_path)):
             return
         with _state_lock(lock_path) as lock_skip:
             if lock_skip is not None:
                 return
             state = _read_json(state_path)
-            if not pending_check(state):
+            if not needs_write(state):
                 return
-            state["checked"] = True
+            if ran:
+                state["post_seen"] = True
+            if pending_check(state):
+                state["checked"] = True
             _write_json(state_path, state)
 
     def note_verify_started(self) -> None:
@@ -1516,6 +1538,15 @@ class _Guard:
                 return self.result("skip", skip="state_write_failed")
             return self.result("block", "STOP", reason=_text(self.env, "STOP"), note="unverified_change")
 
+    def post_shell(self) -> Dict[str, Any]:
+        """B2 on claude and codex: PostToolUse of a main-session shell call, i.e. the call really ran.  A plain
+        foreground call (neither a declaration nor a file write) after a change marks the turn checked; any such
+        event also records `post_seen`.  It never decides anything, so the result is always "none"."""
+        if self.host in POST_HOSTS:
+            plain = parse_declaration(self.event.get("command")) is None and self.shell_write_target() is None
+            self.note_check(ran=True, counts=plain)
+        return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
+
     # -- main session -------------------------------------------------------
     def main(self) -> Dict[str, Any]:
         event = self.event
@@ -1524,6 +1555,8 @@ class _Guard:
             return self.subagent_start()
         if kind == "stop":
             return self.stop()
+        if kind == "post_shell":
+            return self.post_shell()
         sid, tid = event.get("session_id"), event.get("turn_id")
         is_boundary = kind in ("prompt", "turn_boundary")
         tool_kind = event.get("tool_kind")
@@ -2066,6 +2099,13 @@ def _adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         prompt = payload.get("prompt")  # read for the #direct token only; never stored or logged
         has_direct = has_direct_token(prompt)
         return _event("claude", "prompt", *base, direct=has_direct)
+    if name == "PostToolUse":
+        # tests/fixtures/claude_subagent_tool_shapes.json: same keys as PreToolUse plus tool_response; a subagent's
+        # call carries agent_id (sub).  Only a foreground Bash call matters: it ran, so it can count as a check.
+        tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
+        if tool != "Bash" or tin.get("run_in_background") is True:
+            return None
+        return _event("claude", "post_shell", *base, tool=tool, tool_kind="shell", command=tin.get("command"))
     if name != "PreToolUse":
         return None
     tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
@@ -2133,6 +2173,13 @@ def _adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if name == "UserPromptSubmit":
         # The payload's `prompt` field is what shoal_autoroute_gate.py reads on Codex too.
         return _event("codex", "prompt", *base, direct=has_direct_token(payload.get("prompt")))
+    if name == "PostToolUse":
+        # tests/fixtures/codex_subagent_tool_shapes.json: PostToolUse has tool_name, tool_input and tool_response; it
+        # does not fire for a call that failed to start, and a subagent's call carries agent_id (sub).
+        tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
+        if tool != "Bash" or not isinstance(tin.get("command"), str):
+            return None
+        return _event("codex", "post_shell", *base, tool=tool, tool_kind="shell", command=tin["command"])
     if name != "PreToolUse":
         return None
     tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
@@ -2437,7 +2484,7 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
         return False
     for group in groups:
         group = _dict(group)
-        if name == "PreToolUse" and not _matcher_covers(group.get("matcher"), tool if isinstance(tool, str) else None):
+        if name in ("PreToolUse", "PostToolUse") and not _matcher_covers(group.get("matcher"), tool if isinstance(tool, str) else None):
             continue
         handlers = group.get("hooks")
         for handler in handlers if isinstance(handlers, list) else []:

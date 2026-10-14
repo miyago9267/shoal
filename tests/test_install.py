@@ -1381,7 +1381,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(hooks.read_bytes(), hooks_before)
 
     def test_home_registered_as_guard_v2_is_upgraded_to_v3_in_place(self) -> None:
-        # 3.2.1 to 3.3.1 recorded shoal-guard-v2 (no Stop group).  3.4.0 appends the guard's Stop group and records v3, and shoal-guard-v4 then adds SubagentStart;
+        # 3.2.1 to 3.3.1 recorded shoal-guard-v2 (no Stop group).  3.4.0 appends the guard's Stop group and records v3, and shoal-guard-v4 then adds SubagentStart and v5 PostToolUse;
         # the foreign entry, the autoroute gate and the guard's other two groups keep their place.
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
@@ -1393,6 +1393,7 @@ class NativeInstallTests(unittest.TestCase):
             foreign = _foreign_group("/keep-me")
             document["hooks"]["Stop"].insert(0, foreign)
             del document["hooks"]["SubagentStart"]  # v2 predates it as well
+            del document["hooks"]["PostToolUse"]  # and the v5 PostToolUse group
             _write_registration(hooks, document)
             state = json.loads(_state_path(home).read_text())
             state["guard_registration"] = hook_registration.projection_state("shoal-guard-v2")
@@ -1412,6 +1413,34 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(self.run_install(home), 0)
             self.assertEqual((hooks.read_bytes(), _state_path(home).read_bytes()), before)
 
+    def test_home_registered_as_guard_v4_gains_the_post_tool_use_group_in_place(self) -> None:
+        # The earlier (unreleased) shoal-guard-v4 had no PostToolUse group.  shoal-guard-v5 appends it and records v5;
+        # the foreign entry, the autoroute gate and the four groups the user already approved keep their bytes.
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            self.assertEqual(self.run_install(home), 0)
+            hooks = home / "hooks.json"
+            document = json.loads(hooks.read_text())
+            post = TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID]["PostToolUse"]
+            self.assertEqual(document["hooks"]["PostToolUse"], [post])
+            foreign = {"matcher": "^Bash$", "hooks": [{"type": "command", "command": "/keep-me", "timeout": 5}]}
+            document["hooks"]["PostToolUse"] = [foreign]  # the user's own PostToolUse; v4 had no guard group there
+            _write_registration(hooks, document)
+            state = json.loads(_state_path(home).read_text())
+            state["guard_registration"] = hook_registration.projection_state("shoal-guard-v4")
+            _state_path(home).write_text(json.dumps(state, sort_keys=True) + "\n")
+
+            self.assertEqual(self.run_install(home), 0)
+            installed = json.loads(hooks.read_text())["hooks"]
+            self.assertEqual(installed["PostToolUse"], [foreign, post])
+            for event in ("UserPromptSubmit", "PreToolUse", "Stop", "SubagentStart"):
+                self.assertEqual(installed[event], document["hooks"][event], event)
+            state = json.loads(_state_path(home).read_text())
+            self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
+            before = (hooks.read_bytes(), _state_path(home).read_bytes())
+            self.assertEqual(self.run_install(home), 0)
+            self.assertEqual((hooks.read_bytes(), _state_path(home).read_bytes()), before)
+
     def test_home_registered_as_guard_v3_gains_the_subagent_start_group_in_place(self) -> None:
         # 3.4.0 recorded shoal-guard-v3 (no SubagentStart group).  shoal-guard-v4 appends it and records v4; the foreign
         # entry, the autoroute gate and the three groups the user already approved keep their bytes and positions.
@@ -1421,6 +1450,7 @@ class NativeInstallTests(unittest.TestCase):
             hooks = home / "hooks.json"
             document = json.loads(hooks.read_text())
             del document["hooks"]["SubagentStart"]
+            del document["hooks"]["PostToolUse"]  # v3 predates the v5 group as well
             foreign = _foreign_group("/keep-me")
             document["hooks"]["SubagentStart"] = [foreign]
             _write_registration(hooks, document)

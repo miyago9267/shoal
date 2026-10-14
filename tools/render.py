@@ -1272,6 +1272,8 @@ def _plugin_hooks() -> dict:
             # B3 (shared-rules): the completion check blocks a Stop once per turn.  No matcher; like the others it
             # defers to a global guard that already registers the event (shoal_guard.py global_guard_covers).
             "Stop": [{"hooks": [dict(guard)]}],
+            # B2 (guard-every-gate E8): the completion check counts a Bash call at its PostToolUse, i.e. when it ran.
+            "PostToolUse": [{"matcher": "Bash", "hooks": [dict(guard)]}],
             "PreToolUse": [{"matcher": CLAUDE_PLUGIN_MATCHER, "hooks": [dict(guard)]}],
         },
     }

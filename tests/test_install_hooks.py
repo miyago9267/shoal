@@ -153,8 +153,8 @@ class ClaudeTests(Case):
         data = self.load(path)
         # key order and every unrelated value survive
         self.assertEqual(list(data), list(UNRELATED))
-        # existing events keep their order; the new SubagentStart event is appended after them
-        self.assertEqual(list(data["hooks"]), list(UNRELATED["hooks"]) + ["SubagentStart"])
+        # existing events keep their order; the new SubagentStart and PostToolUse events are appended after them
+        self.assertEqual(list(data["hooks"]), list(UNRELATED["hooks"]) + ["SubagentStart", "PostToolUse"])
         self.assertEqual(data["permissions"], UNRELATED["permissions"])
         # the user's own Stop hook keeps its place; shoal's completion-check handler (3.4.0) is appended after it
         (stop_own, stop_shoal) = data["hooks"]["Stop"]
@@ -170,7 +170,9 @@ class ClaudeTests(Case):
         )
         (start,) = data["hooks"]["SubagentStart"]  # M11: the role's start event releases a pending dispatch
         self.assertNotIn("matcher", start)
-        for group in (prompt[1], tool[1], start, stop_shoal):
+        (post,) = data["hooks"]["PostToolUse"]  # B2: the completion check counts a shell call that really ran
+        self.assertEqual(post["matcher"], "Bash")
+        for group in (prompt[1], tool[1], start, stop_shoal, post):
             (handler,) = group["hooks"]
             self.assertEqual(handler["command"], PORTABLE_CLAUDE)
             self.assertNotIn(str(self.base), handler["command"])
@@ -202,7 +204,7 @@ class ClaudeTests(Case):
         code, _, err = self.cli("claude", "--apply")
         self.assertEqual(code, 0, err)
         data = self.load(self.claude / "settings.json")
-        self.assertEqual(sorted(data["hooks"]), ["PreToolUse", "Stop", "SubagentStart", "UserPromptSubmit"])
+        self.assertEqual(sorted(data["hooks"]), ["PostToolUse", "PreToolUse", "Stop", "SubagentStart", "UserPromptSubmit"])
         self.assertFalse(self.backups.exists())  # nothing existed to back up
 
     def test_symlinked_settings_are_written_through(self) -> None:
@@ -309,7 +311,7 @@ class ClaudeTests(Case):
                 commands = [
                     h["command"] for e in hooks.values() for g in e for h in g["hooks"]
                 ]
-                self.assertEqual(commands, [PORTABLE_CLAUDE] * 4)
+                self.assertEqual(commands, [PORTABLE_CLAUDE] * 5)
                 once = path.read_bytes()
                 self.assertEqual(self.cli("claude", "--apply")[0], 0)
                 self.assertEqual(path.read_bytes(), once)
@@ -785,7 +787,7 @@ class CodexInstallPyInteropTests(Case):
     def test_install_hooks_then_install_py_adopts_without_duplicates_or_drift(self) -> None:
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         self.assertEqual(self.install_py(), 0)
-        self.assertEqual(len(self.guard_commands()), 4)  # UserPromptSubmit + Stop + PreToolUse + SubagentStart
+        self.assertEqual(len(self.guard_commands()), 5)  # UserPromptSubmit + Stop + PreToolUse + SubagentStart + PostToolUse
         state = self.load(self.codex.with_name("codex-home.shoal-install-state.json"))
         self.assertEqual(state["guard_registration"]["projection_id"], GUARD_PROJECTION_ID)
         self.assertIn("hooks/shoal_guard.py", state["target_fingerprints"])
@@ -793,7 +795,7 @@ class CodexInstallPyInteropTests(Case):
         self.assertEqual(self.install_py(), 0)  # idempotent
         self.assertEqual(self.cli("codex", "--apply")[0], 0)  # install_hooks is a no-op now
         self.assertEqual((self.codex / "hooks.json").read_bytes(), before)
-        self.assertEqual(len(self.guard_commands()), 4)
+        self.assertEqual(len(self.guard_commands()), 5)
         # install.py owns the guard now: bypassing its state is refused
         code, _, err = self.cli("codex", "--uninstall", "--apply")
         self.assertEqual(code, 2)
@@ -807,7 +809,7 @@ class CodexInstallPyInteropTests(Case):
         self.assertEqual(code, 0, err)
         self.assertEqual((self.codex / "hooks.json").read_bytes(), hooks)
         self.assertEqual(self.codex_script_bytes(), script)
-        self.assertEqual(len(self.guard_commands()), 4)
+        self.assertEqual(len(self.guard_commands()), 5)
         self.assertEqual(self.install_py(), 0)
 
     def test_install_hooks_on_a_pre_guard_installed_home_then_install_py(self) -> None:
@@ -817,7 +819,7 @@ class CodexInstallPyInteropTests(Case):
         test_install._make_pre_guard(self.codex)
         self.assertEqual(self.cli("codex", "--apply")[0], 0)
         self.assertEqual(self.install_py(), 0)  # no installed_hook_drift, no duplicates
-        self.assertEqual(len(self.guard_commands()), 4)
+        self.assertEqual(len(self.guard_commands()), 5)
 
     def codex_script_bytes(self) -> bytes:
         return (self.codex / "hooks" / "shoal_guard.py").read_bytes()
