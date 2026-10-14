@@ -44,7 +44,7 @@ export type Env = Record<string, string | undefined>;
 
 export type GuardEvent = {
   host: string;
-  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start" | "stop" | "session_start" | "post_shell";
+  kind: "prompt" | "turn_boundary" | "tool" | "subagent_start" | "stop" | "session_start" | "post_shell" | "post_tool" | "session_end";
   session_id: string | null;
   turn_id: string | null;
   cwd: string | null;
@@ -70,6 +70,8 @@ export type GuardEvent = {
   fully_idle?: unknown;
   /** agy, set by the guard: the access class of the subagent conversation the event belongs to. */
   conv_class?: string | null;
+  /** the canonical hook event name when it differs from what `kind` implies (guard chain). */
+  hook_event?: string | null;
 };
 
 export type GuardResult = {
@@ -80,6 +82,8 @@ export type GuardResult = {
   mode: string;
   /** advise only: true when this call is the first of the turn and the host should print `reason`. */
   notify?: boolean;
+  /** guard chain: the members' advisory `context`, joined by a newline (null when none); logged, never sent on opencode. */
+  context?: string | null;
 };
 
 type StateFile = {
@@ -1722,6 +1726,7 @@ class Guard {
 export function evaluate(event: GuardEvent, env: Env, home: string): GuardResult {
   const guard = new Guard(event, env, home);
   if (guard.mode === "off") return none("off");
+  if (event.kind === "post_tool" || event.kind === "session_end") return none(guard.mode); // chain-only events
   if (CONVERSATION_HOSTS.has(guard.host)) {
     const routed = guard.agyRoute();
     if (routed !== null) return routed;

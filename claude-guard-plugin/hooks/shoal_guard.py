@@ -1166,7 +1166,14 @@ class _Guard:
         self.env = dict(env, SHOAL_GUARD_DIRECT="1") if self.fast else env
         self.home = home
         self.host = str(event.get("host") or "")
+        self.started = time.monotonic()  # the chain's budget counts from here
         self.mode = resolve_mode(self.host, env, home)
+        # Chain-only: the manifest switched the dispatch guard off for this host but it has chain members, so the
+        # dispatch rules stay off and the chain still runs (the mode the chain denies with is the host's own).
+        self.chain_only = False
+        if self.mode == "off" and resolve_mode(self.host, env) != "off" and chain_members(self.host, env, home):
+            self.chain_only = True
+            self.mode = resolve_mode(self.host, env)
         self.r1 = resolve_r1(self.host, env)
         self.fast_state = False  # the session's fast flag as persisted by this prompt event
         self._dir: Optional[Path] = None
@@ -2038,6 +2045,14 @@ class _Guard:
 
 def _decide(guard: "_Guard", event: Dict[str, Any]) -> Dict[str, Any]:
     """shoal's own decision on a normalized event."""
+    if guard.chain_only or event.get("kind") in CHAIN_ONLY_KINDS:
+        return {
+            "decision": "none",
+            "rule": None,
+            "skip_reason": None,
+            "reason": None,
+            "mode": guard.mode,
+        }
     if guard.mode == "off":
         return {
             "decision": "none",
@@ -2083,17 +2098,51 @@ def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str
 # ---------------------------------------------------------------------------
 # Config: the `chain` array of the installed module manifest, `${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`
 # (SHOAL_GUARD_CHAIN_FILE overrides the path).  Entry: {"name": str, "command": [argv...], "hosts": [host...],
-# "order": number}.  After shoal's own decision, each entry whose `hosts` holds the current host runs in
-# ascending `order` (stable), argv exec without a shell, the raw hook payload on stdin, cwd and env unchanged.
-# A member denies only by printing {"decision": "deny", "reason": "..."}; {"decision": "allow"} or no output
-# allows.  Non-zero exit, timeout (5 s, SHOAL_GUARD_CHAIN_TIMEOUT_MS), unparseable or unknown output is
-# fail-open (allow) with a chain_error / chain_timeout log line.  The first deny wins and later members are not
-# run; shoal's own deny/block skips the chain.  A chain deny becomes a deny (tool events) or a stop block
-# (stop events) through the same output paths as shoal's own; on other events it is logged only.
+# "order": number, "events": [event...]} (docs/specs/modular-install SPEC, issue miyago9267/shoal#3).
+#
+# Member interface:
+# - Events: a member gets an event only when its `events` lists it (default ["PreToolUse"]; known names are
+#   CHAIN_EVENTS).  The guard forwards PreToolUse, PostToolUse, UserPromptSubmit, SessionEnd and Stop where the host
+#   hook reaches it; an event no shoal rule and no member needs exits before any state write or member spawn.
+# - Exec: argv without a shell, the raw hook payload on stdin, cwd unchanged, env inherited plus SHOAL_GUARD_HOST
+#   (the host name) and SHOAL_GUARD_EVENT (the canonical event name).
+# - Output: one JSON object.  `decision` allow|deny (no output allows); `reason` on deny; optional `context`
+#   (advisory, never blocks); `member` and `version` are only logged (decision chain_report); other fields are ignored.
+# - Verdict: after shoal's own decision, members run in ascending `order` (stable).  The first deny wins and later
+#   members are not run; shoal's own deny/block skips the chain.  Only a PreToolUse deny blocks (deny output) and a
+#   Stop deny blocks the stop (as before); a deny on any other event is logged only.  Non-zero exit, timeout,
+#   unparseable or unknown output is fail-open (allow) with a chain_error / chain_timeout log line.
+# - Context: the members' contexts are joined with a newline.  Claude turns them into
+#   hookSpecificOutput.additionalContext on PreToolUse, PostToolUse and UserPromptSubmit; every other host and event
+#   only logs (chain_context).
+# - Time: each member gets min(5 s, SHOAL_GUARD_CHAIN_TIMEOUT_MS, remaining budget); the whole chain gets the host
+#   hook timeout minus a margin (CHAIN_BUDGET_MS), counted from the start of the evaluation.  A member that finds the
+#   budget used up is skipped with a chain_budget log line (fail-open).
+# - Chain-only: when the manifest has a record for the host without `dispatch-guard` and the host has chain
+#   members, the dispatch rules are off but the chain still runs.
 
 CHAIN_TIMEOUT_MS = 5000
-CHAIN_MAX_TIMEOUT_MS = 60000
+# The hosts' hook timeout is 10 s (tools/render.py CLAUDE_PLUGIN_TIMEOUT, tools/install_hooks.py TIMEOUT and the
+# Codex groups' `timeout` in install/hook_registration.py); the chain must end before the host kills the hook.
+HOST_HOOK_TIMEOUT_MS = 10000
+CHAIN_BUDGET_MARGIN_MS = 2000
+CHAIN_BUDGET_MS = HOST_HOOK_TIMEOUT_MS - CHAIN_BUDGET_MARGIN_MS
+CHAIN_MAX_TIMEOUT_MS = CHAIN_BUDGET_MS
+CHAIN_MIN_SLICE_MS = 100  # less budget than this left: the member is skipped
 CHAIN_MAX_OUTPUT = 65536
+CHAIN_MAX_CONTEXT = 8192
+CHAIN_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionEnd", "Stop")
+CHAIN_DEFAULT_EVENTS = ("PreToolUse",)
+CHAIN_CONTEXT_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit")  # Claude's additionalContext events
+CHAIN_ONLY_KINDS = ("post_tool", "session_end")  # events only the chain looks at
+KIND_EVENT = {
+    "tool": "PreToolUse",
+    "post_shell": "PostToolUse",
+    "post_tool": "PostToolUse",
+    "prompt": "UserPromptSubmit",
+    "session_end": "SessionEnd",
+    "stop": "Stop",
+}
 
 
 def chain_manifest_path(env: Dict[str, str], home: Path) -> Path:
@@ -2120,12 +2169,21 @@ def dispatch_guard_selected(host: str, env: Dict[str, str], home: Path) -> bool:
     return not (isinstance(modules, list) and "dispatch-guard" not in modules)
 
 
-def chain_timeout_ms(env: Dict[str, str]) -> int:
+def _env_ms(env: Dict[str, str], key: str, default: int, cap: int) -> int:
     try:
-        value = int(env.get("SHOAL_GUARD_CHAIN_TIMEOUT_MS", ""))
+        value = int(env.get(key, ""))
     except ValueError:
-        return CHAIN_TIMEOUT_MS
-    return value if 0 < value <= CHAIN_MAX_TIMEOUT_MS else CHAIN_TIMEOUT_MS
+        return default
+    return value if 0 < value <= cap else default
+
+
+def chain_timeout_ms(env: Dict[str, str]) -> int:
+    return _env_ms(env, "SHOAL_GUARD_CHAIN_TIMEOUT_MS", CHAIN_TIMEOUT_MS, CHAIN_MAX_TIMEOUT_MS)
+
+
+def chain_budget_ms(env: Dict[str, str]) -> int:
+    """The whole chain's time; SHOAL_GUARD_CHAIN_BUDGET_MS can only shorten it."""
+    return _env_ms(env, "SHOAL_GUARD_CHAIN_BUDGET_MS", CHAIN_BUDGET_MS, CHAIN_BUDGET_MS)
 
 
 def chain_members(host: str, env: Dict[str, str], home: Path) -> Optional[List[Dict[str, Any]]]:
@@ -2144,40 +2202,62 @@ def chain_members(host: str, env: Dict[str, str], home: Path) -> Optional[List[D
         if not isinstance(entry, dict):
             continue
         name, command, hosts, order = entry.get("name"), entry.get("command"), entry.get("hosts"), entry.get("order", 0)
+        events = entry.get("events", list(CHAIN_DEFAULT_EVENTS))
         if not (isinstance(name, str) and name and isinstance(command, list) and command
                 and all(isinstance(a, str) and a for a in command)
                 and isinstance(hosts, list) and host in hosts
-                and isinstance(order, (int, float)) and not isinstance(order, bool)):
+                and isinstance(order, (int, float)) and not isinstance(order, bool)
+                and isinstance(events, list) and all(isinstance(e, str) for e in events)):
             continue
-        members.append({"name": name, "command": command, "order": order})
+        members.append({"name": name, "command": command, "order": order,
+                        "events": [e for e in events if e in CHAIN_EVENTS]})
     members.sort(key=lambda m: m["order"])
     return members
 
 
-def _chain_call(command: List[str], raw: bytes, env: Dict[str, str], timeout_ms: int) -> Tuple[str, str]:
-    """(outcome, reason): outcome is allow, deny, chain_error or chain_timeout."""
+def chain_event_name(event: Dict[str, Any]) -> Optional[str]:
+    """The canonical hook event a normalized event came from (None: not one a member can subscribe to)."""
+    name = event.get("hook_event")
+    if not isinstance(name, str):
+        name = KIND_EVENT.get(str(event.get("kind")))
+    return name if name in CHAIN_EVENTS else None
+
+
+def _chain_call(command: List[str], raw: bytes, env: Dict[str, str], timeout_ms: int) -> Dict[str, Any]:
+    """{"outcome": allow|deny|chain_error|chain_timeout, "reason", "context", "report"} for one member call."""
+    out: Dict[str, Any] = {"outcome": "chain_error", "reason": "", "context": None, "report": None}
     try:
         proc = subprocess.run(command, input=raw, capture_output=True, timeout=timeout_ms / 1000.0, env=env, check=False)
     except subprocess.TimeoutExpired:
-        return "chain_timeout", ""
+        out["outcome"] = "chain_timeout"
+        return out
     except (OSError, ValueError):
-        return "chain_error", ""
+        return out
     if proc.returncode != 0:
-        return "chain_error", ""
-    out = proc.stdout[:CHAIN_MAX_OUTPUT].decode("utf-8", "replace").strip()
-    if not out:
-        return "allow", ""
+        return out
+    text = proc.stdout[:CHAIN_MAX_OUTPUT].decode("utf-8", "replace").strip()
+    if not text:
+        out["outcome"] = "allow"
+        return out
     try:
-        obj = json.loads(out)
+        obj = json.loads(text)
     except ValueError:
-        return "chain_error", ""
+        return out
     decision = obj.get("decision") if isinstance(obj, dict) else None
     if decision == "allow":
-        return "allow", ""
-    if decision == "deny":
+        out["outcome"] = "allow"
+    elif decision == "deny":
         reason = obj.get("reason")
-        return "deny", reason.strip() if isinstance(reason, str) and reason.strip() else "denied"
-    return "chain_error", ""
+        out["outcome"] = "deny"
+        out["reason"] = reason.strip() if isinstance(reason, str) and reason.strip() else "denied"
+    else:
+        return out
+    context = obj.get("context")
+    if isinstance(context, str) and context.strip():
+        out["context"] = context.strip()[:CHAIN_MAX_CONTEXT]
+    reported = [("id", obj.get("member")), ("version", obj.get("version"))]
+    out["report"] = " ".join("%s=%s" % (k, v[:60]) for k, v in reported if isinstance(v, str) and v) or None
+    return out
 
 
 def _apply_chain(guard: "_Guard", event: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
@@ -2187,6 +2267,8 @@ def _apply_chain(guard: "_Guard", event: Dict[str, Any], result: Dict[str, Any])
     if members is None:
         guard.log("chain_error", rule="chain", member="manifest")
         return result
+    name = chain_event_name(event)
+    members = [m for m in members if name in m["events"]]
     if not members:
         return result
     raw = event.get("_raw_bytes")
@@ -2194,26 +2276,42 @@ def _apply_chain(guard: "_Guard", event: Dict[str, Any], result: Dict[str, Any])
         text = event.get("raw_payload")
         raw = text.encode("utf-8") if isinstance(text, str) else json.dumps(
             {k: v for k, v in event.items() if not k.startswith("_")}).encode("utf-8")
+    member_env = dict(guard.env, SHOAL_GUARD_HOST=guard.host, SHOAL_GUARD_EVENT=str(name))
     timeout_ms = chain_timeout_ms(guard.env)
+    deadline = guard.started + chain_budget_ms(guard.env) / 1000.0
     enforce = guard.mode == "enforce"
+    contexts: List[str] = []
     for member in members:
+        remaining_ms = int((deadline - time.monotonic()) * 1000)
+        if remaining_ms < CHAIN_MIN_SLICE_MS:
+            guard.log("chain_budget", rule="chain", member=member["name"], ms="0")
+            continue
         started = time.monotonic()
-        outcome, reason = _chain_call(member["command"], raw, guard.env, timeout_ms)
+        called = _chain_call(member["command"], raw, member_env, min(timeout_ms, remaining_ms))
+        outcome = called["outcome"]
         ms = int((time.monotonic() - started) * 1000)
         guard.log(outcome if outcome.startswith("chain_") else "chain_" + outcome, rule="chain", member=member["name"], ms=str(ms))
+        if called["report"]:
+            guard.log("chain_report", rule="chain", member=member["name"], reason=called["report"])
+        if called["context"]:
+            guard.log("chain_context", rule="chain", member=member["name"])
+            contexts.append(called["context"])
         if outcome != "deny":
             continue
         kind = event.get("kind")
-        if kind not in ("tool", "stop"):
-            continue  # nothing to refuse on prompt/start events
+        if name not in ("PreToolUse", "Stop") or kind not in ("tool", "stop"):
+            continue  # only a PreToolUse deny blocks (and a Stop block, as before); elsewhere it is logged only
         base = "deny" if kind == "tool" else "block"
         return {
             "decision": base if enforce else "would_" + base,
             "rule": "chain",
             "skip_reason": None,
-            "reason": "%s: %s" % (member["name"], reason),
+            "reason": "%s: %s" % (member["name"], called["reason"]),
             "mode": guard.mode,
+            "context": None,
         }
+    if contexts:
+        result = dict(result, context="\n".join(contexts))
     return result
 
 
@@ -2573,6 +2671,27 @@ def block_output(reason: str) -> str:
     return json.dumps({"decision": "block", "reason": reason})
 
 
+def context_output(event_name: str, context: str) -> str:
+    """Advisory chain context for Claude: hookSpecificOutput.additionalContext (non-blocking)."""
+    return json.dumps({"hookSpecificOutput": {"hookEventName": event_name, "additionalContext": context}})
+
+
+def chain_only_event(host: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """An event no shoal rule reads but a chain member may subscribe to: Claude/Codex PostToolUse of a tool the
+    adapters ignore (edit tools, apply_patch) and SessionEnd.  Carries no state; None for anything else."""
+    if host not in ("claude", "codex") or "hookEventName" in payload:
+        return None
+    name = payload.get("hook_event_name")
+    kind = {"PostToolUse": "post_tool", "SessionEnd": "session_end"}.get(name) if isinstance(name, str) else None
+    if kind is None:
+        return None
+    event = _event(host, kind, payload.get("session_id"), payload.get("turn_id") or payload.get("prompt_id"),
+                   payload.get("cwd"), bool(payload.get("agent_id")), payload.get("agent_type"),
+                   tool=payload.get("tool_name") if kind == "post_tool" else None)
+    event["agent_id"] = _str(payload.get("agent_id"))
+    return event
+
+
 def deny_output(host: str, reason: str) -> str:
     if host in ("claude", "codex"):
         return json.dumps(
@@ -2753,15 +2872,23 @@ def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
             return None
         event = (adapt_agy(payload, env.get("SHOAL_GUARD_EVENT")) if host == "agy" else ADAPTERS[host](payload))
         if event is None:
+            event = chain_only_event(host, payload)
+        if event is None:
             return None
+        if host in ("claude", "codex") and isinstance(payload.get("hook_event_name"), str):
+            event["hook_event"] = payload["hook_event_name"]  # the chain's canonical event name
         event["_raw_bytes"] = raw  # the guard chain receives the payload exactly as it arrived
         result = evaluate(event, env, home)
         if result["decision"] == "deny":
             return deny_output(host, result["reason"])
         if result["decision"] == "block":
             return block_output(result["reason"])
-        if result["decision"] == "advise" and result.get("notify"):
-            return advise_output(result["reason"])
+        advice = result["reason"] if result["decision"] == "advise" and result.get("notify") else None
+        context, name = result.get("context"), chain_event_name(event)
+        if context and host == "claude" and name in CHAIN_CONTEXT_EVENTS:
+            return context_output(name, "\n".join(part for part in (advice, context) if part))
+        if advice is not None:
+            return advise_output(advice)
     except BaseException:
         try:
             _skip_log(host, env, home, "exception")

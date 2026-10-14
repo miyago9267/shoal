@@ -915,23 +915,38 @@ shoal 只開一個擴充點：guard chain。外部 guard 不改 shoal 的程式�
 ```json
 {"chain": [
   {"name": "my-guard", "command": ["/usr/local/bin/my-guard", "check"],
-   "hosts": ["claude", "codex"], "order": 10}
+   "hosts": ["claude", "codex"], "order": 10, "events": ["PreToolUse", "PostToolUse"]}
 ]}
 ```
 
 - `command` 是 argv 清單，直接 exec（不經 shell），cwd 與環境變數沿用 hook 的。`hosts` 含目前 host 的
-  項目才會跑，依 `order` 由小到大。欄位不合格的項目會被略過。
+  項目才會跑，依 `order` 由小到大。欄位不合格的項目會被略過。env 除了繼承的之外，另注入
+  `SHOAL_GUARD_HOST`（host 名稱）與 `SHOAL_GUARD_EVENT`（事件的標準名稱，例如 `PreToolUse`）。
+- `events` 是成員要收的事件，預設 `["PreToolUse"]`；可填 `PreToolUse`、`PostToolUse`、
+  `UserPromptSubmit`、`SessionEnd`、`Stop`，沒登記的事件不會轉給該成員，不認得的名字會被忽略。
+  Claude 的 guard plugin 與 Codex 的 hook 註冊會把改檔工具的 `PostToolUse`、`SessionEnd`
+  也送進 guard（Claude 的 `PostToolUse` matcher 是 `Edit|Write|MultiEdit|NotebookEdit`，
+  Codex 是 `^(Bash|apply_patch)$`）；
+  沒有任何規則、任何成員需要的事件，guard 在讀完 manifest 後立刻結束，不寫 state、不啟動成員。
+  OpenCode、Grok、agy 目前仍只轉發既有的事件（OpenCode 只有 PreToolUse），其餘等 shoal-guard M3 再補。
 - 成員在 stdin 收到 host 傳給 shoal guard 的原始 payload（同一份 JSON）。OpenCode 沒有 stdin payload，
   收到的是 `tool.execute.before` 的 input 加 `args`，且只涵蓋 guard 會判斷的 edit、bash、task 呼叫。
 - 成員要擋時，在 stdout 印 `{"decision": "deny", "reason": "..."}`。
   `{"decision": "allow"}` 或沒有輸出
   都是放行。任一成員 deny 就整體 deny，host 收到的是 guard 自己 deny 用的原生輸出，理由前面加
-  name 與冒號（`<name>:`）；stop 事件改成 block，prompt 等其他事件只記 log。
+  name 與冒號（`<name>:`）。只有 `PreToolUse` 的 deny 會擋；`Stop` 維持原本的 block；
+  其他事件（`PostToolUse`、`UserPromptSubmit`、`SessionEnd`）的 deny 只記 log。
 - shoal 自己已經 deny 或 block 時不會呼叫成員；第一個 deny 之後的成員也不會跑。
   `SHOAL_GUARD=off` 時整條 chain 不跑，`shadow` 時 deny 只記成 `would_deny`。
+- 輸出可以多帶 `context`（字串，建議性、不會擋）：Claude 在 `PreToolUse`、`PostToolUse`、
+  `UserPromptSubmit` 轉成 `hookSpecificOutput.additionalContext`，多個成員的 context 以換行串起來；
+  其他 host 與事件只寫 log（`chain_context`，不含內文），不送給模型。`member`、`version` 只寫進
+  log（`chain_report`），其他不認得的欄位一律忽略。
 - fail-open：非零 exit、逾時、輸出不是 JSON 或 decision 不認得，一律當作放行，log 記
-  `chain_error` 或 `chain_timeout`。逾時預設 5 秒
-  （`SHOAL_GUARD_CHAIN_TIMEOUT_MS` 可調，上限 60000）。
+  `chain_error` 或 `chain_timeout`。每個成員逾時預設 5 秒
+  （`SHOAL_GUARD_CHAIN_TIMEOUT_MS` 可調，上限 8000）。整條 chain 另有總時限：host 的 hook 逾時
+  （10 秒）減 2 秒，從 guard 開始判斷算起（`SHOAL_GUARD_CHAIN_BUDGET_MS` 只能再縮短）；剩餘時間用完時，
+  後面的成員被略過並記 `chain_budget`（fail-open）。
   每個成員一筆 log，欄位有 `member` 與 `ms`。
 - 每個成員多一次 process 呼叫，延遲會加在每次 tool call 上；OpenCode 以 await 執行，同樣如此。
 
@@ -1115,8 +1130,12 @@ installer，`--apply` 只印出 `claude plugin` 指令並記錄模組。
 Claude 與 OpenCode 的 guard 在 plugin 裡，沒有可拆的 hook 註冊。`--without dispatch-guard`
 在這兩個 host
 是持久開關：plugin 的檔案**照樣裝著**，manifest 的 host 紀錄沒有 `dispatch-guard` 時，guard 讀同一份 manifest，
-以 `off` 模式執行（同時不呼叫 chain 成員）；`--with dispatch-guard` 再 `--apply` 即恢復。環境變數
-`SHOAL_GUARD` 不能蓋過這個開關。`--with jev-router` 維持原樣；關掉 `jev-router` 不會替你解除安裝 plugin。
+以 `off` 模式執行；如果 manifest 的 `chain` 對這個 host 有成員，則改成「只跑 chain」（dispatch 規則關、
+chain 照跑，deny 的模式沿用 host 本身的 `SHOAL_GUARD`／預設）。
+`--with dispatch-guard` 再 `--apply` 即恢復。環境變數 `SHOAL_GUARD=off` 仍會連 chain 一起關掉；
+其他值不能蓋過這個開關。Codex、agy、Grok 在關掉 dispatch-guard 時 installer 會移除 hook，
+保留「只跑 chain」的 hook 由 installer 端處理。
+`--with jev-router` 維持原樣；關掉 `jev-router` 不會替你解除安裝 plugin。
 
 注意：dotfile 的 updater 若會自己把 `Explore.md` 裝回 `~/.claude/agents/`，要改成先讀 manifest。
 

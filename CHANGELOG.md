@@ -28,6 +28,16 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `shoal-dispatch-guard-v1`（群組內容與舊 v5 逐位元組相同，舊 id 原地遷移），
   agy 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。Codex 若提示 hook 需要
   核准，用 `/hooks` 核准一次。腳本檔名 `shoal_guard.py` 不變。
+- Guard chain 成員介面（[issue #3](https://github.com/miyago9267/shoal/issues/3#issuecomment-6164300725)）：
+  manifest 項目新增 `events`（預設 `["PreToolUse"]`，可選 `PostToolUse`、`UserPromptSubmit`、
+  `SessionEnd`、`Stop`），只轉給有宣告的成員，只有 `PreToolUse` 的 deny 會擋；輸出可帶建議性的
+  `context`（Claude 轉成 `additionalContext`，其他 host 只記 log）；成員 env 注入
+  `SHOAL_GUARD_HOST`、`SHOAL_GUARD_EVENT`；整條 chain 有總時限（hook 逾時 10 秒減 2 秒），超過的成員略過並記
+  `chain_budget`，單一成員上限由 60 秒降為 8 秒；關掉 dispatch-guard 但有 chain 成員時，guard 只跑 chain。
+  Claude guard plugin 加掛改檔工具的 `PostToolUse` 與 `SessionEnd`；Codex 註冊改為
+  `shoal-dispatch-guard-v2`（`PostToolUse` matcher 加 `apply_patch`、新增 `SessionEnd`，
+  `shoal-dispatch-guard-v1` 與 `shoal-guard-v5` 原地升級），Codex 要用 `/hooks` 重新核准。
+  OpenCode、Grok、agy 的更多事件轉發等 shoal-guard M3。
 - Codex install state 可以沒有 `hook_registration`（關掉 autoroute 時），
   與 `guard_registration` 的處理一致。
 

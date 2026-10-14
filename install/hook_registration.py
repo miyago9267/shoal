@@ -32,12 +32,17 @@ CURRENT_PROJECTION_ID = "shoal-autoroute-v1"
 # `shoal-dispatch-guard-v1` (a separate project owns the old name).  The new id has the byte-identical groups of
 # the legacy v5, so an old registration is migrated in place: hooks.json is untouched and only the install state is
 # re-recorded under the new id.  The legacy ids stay allowlisted below only so that such an old state still validates.
-GUARD_PROJECTION_ID = "shoal-dispatch-guard-v1"
+# v2 (3.8.0, guard chain member interface, issue miyago9267/shoal#3) widens the `PostToolUse` matcher to the patch tool
+# (`^(Bash|apply_patch)$`) and adds a `SessionEnd` group, so chain members can subscribe to those events.  The groups
+# change, so this is a new id: an existing `shoal-dispatch-guard-v1` (or legacy `shoal-guard-v5`) registration is
+# upgraded in place by `_upgrade_guard`, and Codex asks for a `/hooks` re-approval of the changed and new groups.
+GUARD_PROJECTION_ID = "shoal-dispatch-guard-v2"
+GUARD_PROJECTION_ID_V1 = "shoal-dispatch-guard-v1"  # 3.8.0 pre-release id, same groups as the legacy v5
 LEGACY_GUARD_PROJECTION_ID_V1 = "shoal-guard-v1"  # legacy id, migrated to shoal-dispatch-guard-v1
 LEGACY_GUARD_PROJECTION_ID_V2 = "shoal-guard-v2"  # legacy id, migrated
 LEGACY_GUARD_PROJECTION_ID_V3 = "shoal-guard-v3"  # legacy id, migrated
 LEGACY_GUARD_PROJECTION_ID_V4 = "shoal-guard-v4"  # legacy id, migrated
-LEGACY_GUARD_PROJECTION_ID_V5 = "shoal-guard-v5"  # legacy id, migrated (same groups as the current id)
+LEGACY_GUARD_PROJECTION_ID_V5 = "shoal-guard-v5"  # legacy id, migrated (same groups as shoal-dispatch-guard-v1)
 LEGACY_GUARD_PROJECTION_IDS = (
     LEGACY_GUARD_PROJECTION_ID_V1,
     LEGACY_GUARD_PROJECTION_ID_V2,
@@ -45,7 +50,7 @@ LEGACY_GUARD_PROJECTION_IDS = (
     LEGACY_GUARD_PROJECTION_ID_V4,
     LEGACY_GUARD_PROJECTION_ID_V5,
 )
-GUARD_PROJECTION_IDS = (*LEGACY_GUARD_PROJECTION_IDS, GUARD_PROJECTION_ID)
+GUARD_PROJECTION_IDS = (*LEGACY_GUARD_PROJECTION_IDS, GUARD_PROJECTION_ID_V1, GUARD_PROJECTION_ID)
 
 _COMMAND = (
     '/usr/bin/env python3 "${CODEX_HOME:-$HOME/.codex}/hooks/'
@@ -90,7 +95,12 @@ _GUARD_HANDLER: dict[str, Any] = {
 # tool name as a regular expression.
 GUARD_TOOL_MATCHER_V1 = "^(apply_patch|spawn_agent|collaborationspawn_agent)$"
 GUARD_TOOL_MATCHER = "^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$"
-GUARD_POST_MATCHER = "^Bash$"
+GUARD_POST_MATCHER_V1 = "^Bash$"
+GUARD_POST_MATCHER = "^(Bash|apply_patch)$"
+_GUARD_POST_GROUP_V1: dict[str, Any] = {
+    "matcher": GUARD_POST_MATCHER_V1,
+    "hooks": [copy.deepcopy(_GUARD_HANDLER)],
+}
 _GUARD_POST_GROUP: dict[str, Any] = {
     "matcher": GUARD_POST_MATCHER,
     "hooks": [copy.deepcopy(_GUARD_HANDLER)],
@@ -105,12 +115,17 @@ _GUARD_TOOL_GROUP: dict[str, Any] = {
     "hooks": [copy.deepcopy(_GUARD_HANDLER)],
 }
 
-_GUARD_CURRENT_PROJECTION: dict[str, dict[str, Any]] = {
+_GUARD_V5_PROJECTION: dict[str, dict[str, Any]] = {
     "UserPromptSubmit": _GUARD_PROMPT_GROUP,
     "Stop": _GUARD_PROMPT_GROUP,
     "PreToolUse": _GUARD_TOOL_GROUP,
     "SubagentStart": _GUARD_PROMPT_GROUP,
+    "PostToolUse": _GUARD_POST_GROUP_V1,
+}
+_GUARD_CURRENT_PROJECTION: dict[str, dict[str, Any]] = {
+    **_GUARD_V5_PROJECTION,
     "PostToolUse": _GUARD_POST_GROUP,
+    "SessionEnd": _GUARD_PROMPT_GROUP,
 }
 
 # Registry entries are immutable trust anchors.  Future releases add a new
@@ -139,7 +154,8 @@ TRUSTED_PROJECTIONS: dict[str, dict[str, dict[str, Any]]] = {
         "PreToolUse": _GUARD_TOOL_GROUP,
         "SubagentStart": _GUARD_PROMPT_GROUP,
     },
-    LEGACY_GUARD_PROJECTION_ID_V5: _GUARD_CURRENT_PROJECTION,
+    LEGACY_GUARD_PROJECTION_ID_V5: _GUARD_V5_PROJECTION,
+    GUARD_PROJECTION_ID_V1: _GUARD_V5_PROJECTION,
     GUARD_PROJECTION_ID: _GUARD_CURRENT_PROJECTION,
 }
 
@@ -626,7 +642,7 @@ def merge_registration(
         older_registered = next(
             (
                 guard_id
-                for guard_id in (LEGACY_GUARD_PROJECTION_ID_V4, LEGACY_GUARD_PROJECTION_ID_V3, LEGACY_GUARD_PROJECTION_ID_V2, LEGACY_GUARD_PROJECTION_ID_V1)
+                for guard_id in (GUARD_PROJECTION_ID_V1, LEGACY_GUARD_PROJECTION_ID_V5, LEGACY_GUARD_PROJECTION_ID_V4, LEGACY_GUARD_PROJECTION_ID_V3, LEGACY_GUARD_PROJECTION_ID_V2, LEGACY_GUARD_PROJECTION_ID_V1)
                 if owned_guard_projection_id is None and _guard_already_registered(merged, guard_id)
             ),
             None,
@@ -634,7 +650,7 @@ def merge_registration(
         if owned_guard_projection_id is None and _guard_already_registered(merged):
             pass  # adopted: placed by tools/install_hooks.py --host codex
         elif older_registered is not None:
-            _upgrade_guard(merged, older_registered, desired_guard)  # placed by an earlier v4, 3.4.0 (v3), 3.2.1 (v2) or 3.2.0 and earlier (v1)
+            _upgrade_guard(merged, older_registered, desired_guard)  # placed by shoal-dispatch-guard-v1 / shoal-guard-v5 (same groups), an earlier v4, 3.4.0 (v3), 3.2.1 (v2) or 3.2.0 and earlier (v1)
         elif owned_guard_projection_id is None:
             if any(
                 _locations(document, group)

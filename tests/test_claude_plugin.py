@@ -141,15 +141,18 @@ class HooksJsonTests(unittest.TestCase):
 
     def test_events_and_matchers(self) -> None:
         self.assertEqual(
-            sorted(self.hooks), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "Stop", "SubagentStart", "UserPromptSubmit"]
+            sorted(self.hooks), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionEnd", "Stop", "SubagentStart", "UserPromptSubmit"]
         )
         self.assertNotIn("matcher", self.hooks["SubagentStart"][0])
         self.assertNotIn("matcher", self.hooks["Stop"][0])
         (pre,) = self.hooks["PreToolUse"]
         self.assertEqual(pre["matcher"], install_hooks.CLAUDE_MATCHER)
         self.assertNotIn("matcher", self.hooks["UserPromptSubmit"][0])
-        (post,) = self.hooks["PostToolUse"]  # B2: the completion check counts a Bash call at its PostToolUse
+        # B2: the completion check counts a Bash call at its PostToolUse; guard chain (issue #3) adds the edit tools
+        post, post_edit = self.hooks["PostToolUse"]
         self.assertEqual(post["matcher"], "Bash")
+        self.assertEqual(post_edit["matcher"], "Edit|Write|MultiEdit|NotebookEdit")
+        self.assertNotIn("matcher", self.hooks["SessionEnd"][0])
         (fail,) = self.hooks["PostToolUseFailure"]  # a failed Bash call fires this instead of PostToolUse
         self.assertEqual(fail["matcher"], "Bash")
 
@@ -162,7 +165,7 @@ class HooksJsonTests(unittest.TestCase):
         self.assertIn("--host claude --plugin", handler["command"])
         self.assertEqual(self.hooks["SubagentStart"][0].get("matcher"), None)  # every agent_type; the guard filters
         self.assertEqual(
-            set(self.hooks), {"UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure"}
+            set(self.hooks), {"UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure", "SessionEnd"}
         )
 
     def test_stop_event_is_registered_whenever_the_guard_blocks_on_it(self) -> None:
@@ -175,9 +178,10 @@ class HooksJsonTests(unittest.TestCase):
 
     def test_every_command_quotes_the_plugin_root(self) -> None:
         guard_cmd = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
-        for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure"):
-            (handler,) = self.hooks[event][0]["hooks"]
-            self.assertEqual(handler["command"], guard_cmd, event)
+        for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure", "SessionEnd"):
+            for group in self.hooks[event]:
+                (handler,) = group["hooks"]
+                self.assertEqual(handler["command"], guard_cmd, event)
         base = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
         (start,) = base["SessionStart"][0]["hooks"]
         self.assertEqual(

@@ -147,6 +147,19 @@ marketplace 是否只快取子目錄需要查。GitHub release 每 host 一個 t
   逾時或輸出不可解析，一律 fail-open 並寫一行 log，與 guard 現行 fail-open 一致。
 - per-host：成員收到 host 的原始 payload（同一份 stdin JSON，roadmap 的
   「same stdin JSON」）；host adapter 只轉換輸出格式，不做特例。
+- 成員介面（後續決定，見 [issue #3 的決定留言](https://github.com/miyago9267/shoal/issues/3#issuecomment-6164300725)）：
+  - 輸出：一個 JSON 物件，`decision` allow|deny、deny 時的 `reason`、可選的建議性 `context`；
+    `member`、`version` 只寫 log，其他欄位忽略。Claude 把 `context` 轉成 `additionalContext`
+    （PreToolUse、PostToolUse、UserPromptSubmit），其他 host 只記 log。
+  - 事件：項目的 `events`（預設 `["PreToolUse"]`）宣告要收的事件，只轉給有宣告的成員；只有 PreToolUse 的
+    deny 會擋（Stop 維持 block），其他事件的 deny 只記 log。Claude plugin 加掛改檔工具的 PostToolUse 與
+    SessionEnd；Codex 註冊升為 `shoal-dispatch-guard-v2`。
+    OpenCode、Grok、agy 等 shoal-guard M3。
+  - 逾時：每個成員 5 秒；整條 chain 的總時限是 host hook 逾時（10 秒）減 2 秒，超過者略過並記
+    `chain_budget`；單一成員上限降為 8 秒。
+  - 環境與輸入：argv 原樣、不經 shell；stdin 為原始 payload（OpenCode 例外）；另注入
+    `SHOAL_GUARD_HOST`、`SHOAL_GUARD_EVENT`。
+  - 關掉 dispatch-guard 但該 host 有 chain 成員時，guard 以「只跑 chain」執行。
 - parity：Python（`shoal_guard.py`）與 TS（OpenCode `src/guard/`）以共用 vectors
   驗證行為一致。
 - 驗收：shoal-guard 只靠設定就能接入（以 fake 外部成員測試），且 shoal 程式碼

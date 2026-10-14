@@ -1285,10 +1285,15 @@ def _guard_plugin_hooks() -> dict:
             # defers to a global guard that already registers the event (shoal_guard.py global_guard_covers).
             "Stop": [{"hooks": [dict(guard)]}],
             # B2 (guard-every-gate E8): the completion check counts a Bash call at its PostToolUse, i.e. when it ran.
-            "PostToolUse": [{"matcher": "Bash", "hooks": [dict(guard)]}],
+            # guard chain (issue #3): PostToolUse of the edit tools and SessionEnd reach the members that subscribe
+            "PostToolUse": [
+                {"matcher": "Bash", "hooks": [dict(guard)]},
+                {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [dict(guard)]},
+            ],
             # a Bash call that failed (non-zero exit) fires this instead; it still ran, so it counts the same
             "PostToolUseFailure": [{"matcher": "Bash", "hooks": [dict(guard)]}],
             "PreToolUse": [{"matcher": CLAUDE_PLUGIN_MATCHER, "hooks": [dict(guard)]}],
+            "SessionEnd": [{"hooks": [dict(guard)]}],
         },
     }
 
