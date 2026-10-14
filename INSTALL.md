@@ -351,7 +351,9 @@ is a dispatched `verifier` or `watcher`, or a foreground `Bash` call that is
 neither a file write nor a `: shoal-direct` declaration, made after the latest
 change; a later change clears it. On Claude and Codex (3.6.0 and `shoal-guard-v5`)
 that shell call counts at its `PostToolUse`, i.e. when it actually ran: a call the
-user rejects or that never runs fires no `PostToolUse` and does not count. The
+user rejects or that never runs fires no `PostToolUse` and does not count; on
+Claude a call that fails (a test run exiting non-zero) fires `PostToolUseFailure`,
+which counts the same way, since it did run. The
 guard cannot tell whether the new hook is registered or approved, so until a
 session has seen its first `PostToolUse` of a main-session `Bash` call, the
 `PreToolUse` of that call still counts (the old behaviour; a home that has not

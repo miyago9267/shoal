@@ -1274,6 +1274,8 @@ def _plugin_hooks() -> dict:
             "Stop": [{"hooks": [dict(guard)]}],
             # B2 (guard-every-gate E8): the completion check counts a Bash call at its PostToolUse, i.e. when it ran.
             "PostToolUse": [{"matcher": "Bash", "hooks": [dict(guard)]}],
+            # a Bash call that failed (non-zero exit) fires this instead; it still ran, so it counts the same
+            "PostToolUseFailure": [{"matcher": "Bash", "hooks": [dict(guard)]}],
             "PreToolUse": [{"matcher": CLAUDE_PLUGIN_MATCHER, "hooks": [dict(guard)]}],
         },
     }

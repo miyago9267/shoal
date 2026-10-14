@@ -154,7 +154,7 @@ class ClaudeTests(Case):
         # key order and every unrelated value survive
         self.assertEqual(list(data), list(UNRELATED))
         # existing events keep their order; the new SubagentStart and PostToolUse events are appended after them
-        self.assertEqual(list(data["hooks"]), list(UNRELATED["hooks"]) + ["SubagentStart", "PostToolUse"])
+        self.assertEqual(list(data["hooks"]), list(UNRELATED["hooks"]) + ["SubagentStart", "PostToolUse", "PostToolUseFailure"])
         self.assertEqual(data["permissions"], UNRELATED["permissions"])
         # the user's own Stop hook keeps its place; shoal's completion-check handler (3.4.0) is appended after it
         (stop_own, stop_shoal) = data["hooks"]["Stop"]
@@ -172,7 +172,9 @@ class ClaudeTests(Case):
         self.assertNotIn("matcher", start)
         (post,) = data["hooks"]["PostToolUse"]  # B2: the completion check counts a shell call that really ran
         self.assertEqual(post["matcher"], "Bash")
-        for group in (prompt[1], tool[1], start, stop_shoal, post):
+        (fail,) = data["hooks"]["PostToolUseFailure"]  # a failed shell call still ran
+        self.assertEqual(fail["matcher"], "Bash")
+        for group in (prompt[1], tool[1], start, stop_shoal, post, fail):
             (handler,) = group["hooks"]
             self.assertEqual(handler["command"], PORTABLE_CLAUDE)
             self.assertNotIn(str(self.base), handler["command"])
@@ -204,7 +206,7 @@ class ClaudeTests(Case):
         code, _, err = self.cli("claude", "--apply")
         self.assertEqual(code, 0, err)
         data = self.load(self.claude / "settings.json")
-        self.assertEqual(sorted(data["hooks"]), ["PostToolUse", "PreToolUse", "Stop", "SubagentStart", "UserPromptSubmit"])
+        self.assertEqual(sorted(data["hooks"]), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "Stop", "SubagentStart", "UserPromptSubmit"])
         self.assertFalse(self.backups.exists())  # nothing existed to back up
 
     def test_symlinked_settings_are_written_through(self) -> None:
@@ -311,7 +313,7 @@ class ClaudeTests(Case):
                 commands = [
                     h["command"] for e in hooks.values() for g in e for h in g["hooks"]
                 ]
-                self.assertEqual(commands, [PORTABLE_CLAUDE] * 5)
+                self.assertEqual(commands, [PORTABLE_CLAUDE] * 6)
                 once = path.read_bytes()
                 self.assertEqual(self.cli("claude", "--apply")[0], 0)
                 self.assertEqual(path.read_bytes(), once)

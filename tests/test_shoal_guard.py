@@ -886,6 +886,36 @@ class StopCheckCliTests(CliCase):
         self.assertEqual(turn("t-2", edit=True, check="python3 -m unittest")[-1], "")
         self.assertEqual(turn("t-3", edit=False)[-1], "")
 
+    def test_posttoolusefailure_counts_as_a_check_on_claude(self) -> None:
+        # E8: a Bash call that failed (non-zero exit) fires PostToolUseFailure instead of PostToolUse; it still ran.
+        # The failure payload shape was not captured: only tool_name, tool_input, agent_id, session_id, prompt_id are read.
+        def fail(command: str, turn: str, **kw) -> dict:
+            return claude_tool("Bash", {"command": command}, cwd=self.work, prompt_id=turn,
+                               hook_event_name="PostToolUseFailure", **kw)
+
+        def prompt(t): return claude_prompt(cwd=self.work, prompt_id=t, prompt="#direct do it")
+        def edit(t): return claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id=t)
+
+        for payload in (prompt("f-1"), edit("f-1"), fail("make test", "f-1", error="exit 1")):
+            self.assertEqual(self.run_guard("claude", payload), "")
+        self.assertEqual(self.run_guard("claude", self.claude_stop("f-1")), "")
+        # a subagent's failure does not count
+        for payload in (prompt("f-2"), edit("f-2"), fail("make test", "f-2", agent_id="ag-1", agent_type="shoal:executor")):
+            self.assertEqual(self.run_guard("claude", payload), "")
+        self.assertEqual(json.loads(self.run_guard("claude", self.claude_stop("f-2")))["decision"], "block")
+        # it sets post_seen: a later PreToolUse alone no longer counts
+        pre = claude_tool("Bash", {"command": "make test"}, cwd=self.work, prompt_id="f-3")
+        for payload in (prompt("f-3"), edit("f-3"), pre):
+            self.assertEqual(self.run_guard("claude", payload), "")
+        self.assertEqual(json.loads(self.run_guard("claude", self.claude_stop("f-3")))["decision"], "block")
+        # background, non-Bash and malformed shapes: no event, no exception
+        ev = fail("make test", "f-4")
+        self.assertIsNotNone(guard.adapt_claude(ev))
+        self.assertIsNone(guard.adapt_claude({**ev, "tool_input": {"command": "x", "run_in_background": True}}))
+        self.assertIsNone(guard.adapt_claude({**ev, "tool_name": "Read"}))
+        guard.adapt_claude({**ev, "tool_input": "oops"})  # any shape: fail-open, no exception
+        self.assertIsNone(guard.adapt_claude({"hook_event_name": "PostToolUseFailure"}))
+
     def test_posttooluse_raw_payloads_set_the_check_on_claude_and_codex(self) -> None:
         # E8: PostToolUse (the call really ran) counts; PreToolUse only until the session has seen a PostToolUse.
         patch = "*** Begin Patch\n*** Update File: a.py\n@@\n-a\n+b\n*** End Patch"

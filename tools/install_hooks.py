@@ -230,6 +230,8 @@ def apply_claude(settings: dict[str, Any], command: Optional[str]) -> dict[str, 
         "Stop": None if command is None else {"hooks": [_handler(command)]},
         # B2: the completion check counts a shell call that really ran (PostToolUse), not one that was attempted.
         "PostToolUse": None if command is None else {"matcher": "Bash", "hooks": [_handler(command)]},
+        # a failed Bash call (e.g. tests exiting non-zero) fires PostToolUseFailure instead; it still ran
+        "PostToolUseFailure": None if command is None else {"matcher": "Bash", "hooks": [_handler(command)]},
     }
     for event, group in desired.items():
         existing = hooks.get(event)

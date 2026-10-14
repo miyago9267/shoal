@@ -2099,7 +2099,9 @@ def _adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         prompt = payload.get("prompt")  # read for the #direct token only; never stored or logged
         has_direct = has_direct_token(prompt)
         return _event("claude", "prompt", *base, direct=has_direct)
-    if name == "PostToolUse":
+    if name in ("PostToolUse", "PostToolUseFailure"):
+        # PostToolUseFailure (a Bash call that failed, e.g. a test run exiting non-zero) is a call that ran too.  Its
+        # payload shape was not captured: only tool_name, tool_input, agent_id, session_id, prompt_id are relied on.
         # tests/fixtures/claude_subagent_tool_shapes.json: same keys as PreToolUse plus tool_response; a subagent's
         # call carries agent_id (sub).  Only a foreground Bash call matters: it ran, so it can count as a check.
         tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
@@ -2484,7 +2486,7 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
         return False
     for group in groups:
         group = _dict(group)
-        if name in ("PreToolUse", "PostToolUse") and not _matcher_covers(group.get("matcher"), tool if isinstance(tool, str) else None):
+        if name in ("PreToolUse", "PostToolUse", "PostToolUseFailure") and not _matcher_covers(group.get("matcher"), tool if isinstance(tool, str) else None):
             continue
         handlers = group.get("hooks")
         for handler in handlers if isinstance(handlers, list) else []:

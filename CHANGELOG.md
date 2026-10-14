@@ -37,7 +37,8 @@ guard 的每個閘門都接上（[`docs/specs/guard-every-gate`](./docs/specs/gu
 - agy 的 main／subagent 與 role 由 conversation 的順序推論；判不出來時不擋，只記錄。
 - 完成檢查改以 PostToolUse 確認指令真的執行（Claude、Codex）：使用者拒絕或
   沒跑成的 shell 呼叫不再算檢查。Claude plugin 與全域 `install_hooks.py` 加
-  matcher 為 `Bash` 的 `PostToolUse`，Codex 加在 `shoal-guard-v5`；舊註冊沒有
+  matcher 為 `Bash` 的 `PostToolUse` 與 `PostToolUseFailure`（Claude 指令失敗，
+  如測試非零 exit，走後者，仍算有執行），Codex 加在 `shoal-guard-v5`；舊註冊沒有
   這個事件時，同一個 session 第一次看到 `PostToolUse` 之前仍以 `PreToolUse`
   為後備。其他 host 維持 `PreToolUse`。
 - 完成檢查：Grok、agy 以只記錄方式接上（`SHOAL_GUARD_STOP=enforce` 才擋）；
