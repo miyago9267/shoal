@@ -73,6 +73,7 @@ Other hosts never block: their adapters receive no end-of-turn event that carrie
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -241,6 +242,10 @@ LOG_FIELDS = (
     "skip_reason",
     "mode",
     "reason",
+    "agent_type",  # the subagent's type as the host sent it (raw); absent for main-session events
+    "agent_id",
+    "session",  # first 8 hex of sha256 of the session id / turn id: attributes lines, never reveals the id
+    "turn",
 )
 
 MESSAGES = {
@@ -487,6 +492,13 @@ def _state_lock(path: Path) -> Iterator[Optional[str]]:
 
 def _safe_text(value: Any) -> Optional[str]:
     return value[:200] if isinstance(value, str) else None
+
+
+def short_hash(value: Any) -> Optional[str]:
+    """Non-reversible 8-hex tag of a session or turn id, for the log (None when there is no id)."""
+    if not isinstance(value, str) or not value:
+        return None
+    return hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()[:8]
 
 
 def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
@@ -1090,7 +1102,12 @@ class _Guard:
             "tool": self.event.get("tool_name"),
             "decision": decision,
             "mode": self.mode,
+            "session": short_hash(self.event.get("session_id")),
+            "turn": short_hash(self.event.get("turn_id")),
         }
+        if self.event.get("is_subagent") or self.event.get("kind") == "subagent_start":
+            record["agent_type"] = self.event.get("role")
+            record["agent_id"] = self.event.get("agent_id")
         record.update(extra)
         _append_log(self.guard_dir, record)
 
@@ -1982,6 +1999,13 @@ def _event(
 
 
 def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    event = _adapt_claude(payload)
+    if event is not None:
+        event["agent_id"] = _str(payload.get("agent_id"))  # present on every subagent event; only logged on claude
+    return event
+
+
+def _adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if (
         "hookEventName" in payload
     ):  # grok running Claude-compat hooks: grok's own entry handles it

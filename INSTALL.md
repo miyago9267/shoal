@@ -898,6 +898,12 @@ claude --plugin-dir ./claude-plugin
 資料與保留（K6）：plugin 與全域安裝共用同一個 state 與 log 目錄
 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`（`state/`、`turns/` 與
 `guard.jsonl`）。`guard.jsonl` 超過 1 MiB 就停止寫入，不輪替。
+`guard.jsonl` 每行的欄位：`ts`、`host`、`event`、`tool`、`rule`、`decision`、`file`
+（只有檔名）、`skip_reason`、`mode`、`reason`；另外有 `agent_type`（subagent 的類型，
+照 host 傳來的原樣，例如 `general-purpose`、`worker`、`shoal:applier`；main session
+的事件沒有）、`agent_id`（host 有提供時才有）、`session` 與 `turn`（session id、
+turn id 的 sha256 前 8 個小寫 hex，不是原始 id，只用來分辨不同 session 與 turn）。
+log 不記 prompt、檔案內容。
 `claude plugin uninstall` 與 `marketplace remove` 不會刪這個目錄；要清除時手動執行：
 
 ```bash

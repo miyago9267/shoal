@@ -34,6 +34,7 @@ guard 的每個閘門都接上（[`docs/specs/guard-every-gate`](./docs/specs/gu
   OpenCode 的結束事件沒有回傳值，無法擋，所以沒有接。
 - 設計不變式第 3 條新增：有 harness 的 host 必須把每個能當閘門的事件都接上 guard，
   接不了的要列出原因與證據。
+- guard log 多記 `agent_type`、`agent_id` 與 session／turn 的短雜湊。
 
 ## v3.5.0
 

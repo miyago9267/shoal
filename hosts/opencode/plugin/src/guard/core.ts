@@ -23,6 +23,7 @@ import {
   unlinkSync,
   writeSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { logReason, parseDeclaration } from "./declaration.js";
 import { shellWriteTargets } from "./shell-writes.js";
@@ -229,7 +230,7 @@ const DISPATCH_NAME: Record<string, string> = {
   agy: "invoke_subagent",
   opencode: "task",
 };
-const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason"];
+const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn"];
 
 const MESSAGES: Record<string, Record<string, string>> = {
   en: {
@@ -501,6 +502,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function safeText(value: unknown): string | null {
   return typeof value === "string" ? value.slice(0, 200) : null;
+}
+
+/** Non-reversible 8-hex tag of a session or turn id, for the log (undefined when there is no id). */
+export function shortHash(value: unknown): string | undefined {
+  if (typeof value !== "string" || value === "") return undefined;
+  return createHash("sha256").update(value, "utf8").digest("hex").slice(0, 8);
 }
 
 /** Append one whitelisted record to guard.jsonl (1 MiB cap).  Never throws. */
@@ -803,6 +810,11 @@ class Guard {
       skip_reason: opts.skip,
       file: opts.file,
       reason: opts.note,
+      session: shortHash(this.event.session_id),
+      turn: shortHash(this.event.turn_id),
+      ...(this.event.is_subagent || this.event.kind === "subagent_start"
+        ? { agent_type: this.event.role, agent_id: this.event.agent_id }
+        : {}),
     });
     return {
       decision,

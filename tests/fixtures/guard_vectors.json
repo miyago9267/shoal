@@ -35,7 +35,7 @@
   "3.x (guard-every-gate S4, grok): grok joins the enforce-default, DECLARE_HOSTS (strict by default), START_UNLOCK_HOSTS and E1 default-on hosts. A subagent_start step carries agent_id (the subagent id) and records subagent id -> {session, role, direct} in state/grok.agents.json (the last 64) whatever its role; a tool step whose session_id is a recorded id is a subagent call of the recorded role (is_subagent is filled in, a missing role comes from the record), and its E1 `#direct` release is the recorded flag (main's turn carried #direct at the start). A subagent step with no record keeps the role rules and is never released by #direct; an unreadable record means no record. The stop step on grok logs would_block (rule STOP) and never blocks unless SHOAL_GUARD_STOP is enforce (then block once per turn); off silences it.",
   "agy (docs/specs/guard-every-gate S5): extra event keys `workspace` (session_start, dispatch), `dispatched_roles` (dispatch), `fully_idle` (stop). Main vs subagent is not in the event: it is inferred from session_start / dispatch order, so those vectors drive it with those events and a distinct session_id per conversation."
  ],
- "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason"],
+ "log_whitelist": ["ts", "host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn"],
  "env_defaults": {"SHOAL_GUARD_R1": "classified"},
  "vectors": [
   {
@@ -7278,6 +7278,10 @@
     {"event": {"kind": "session_start", "session_id": "s2", "workspace": "$WORK"}, "expect": {"rule": "conversation_sub"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "session_id": "s2", "turn_id": null, "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}}
    ]
-  }
+  },
+ {"name": "log_attribution_claude_subagent_e1_deny", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "on"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "general-purpose"}, "expect": {"decision": "deny", "rule": "E1"}}], "log_contains": ["\"agent_type\":\"general-purpose\"", "\"session\":\"e8bc163c\"", "\"turn\":\"628b49d9\""], "log_lacks": []},
+ {"name": "log_attribution_codex_worker_e1_deny_has_agent_id", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "on"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "worker", "agent_id": "w1"}, "expect": {"decision": "deny", "rule": "E1"}}], "log_contains": ["\"agent_type\":\"worker\"", "\"agent_id\":\"w1\"", "\"session\":\"e8bc163c\"", "\"turn\":\"628b49d9\""], "log_lacks": []},
+ {"name": "log_attribution_shadow_would_deny_has_agent_type", "host": "claude", "env": {"SHOAL_GUARD": "shadow", "SHOAL_GUARD_SUBAGENT_WRITE": "on"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "shoal:scout"}, "expect": {"decision": "would_deny", "rule": "E1"}}], "log_contains": ["\"decision\":\"would_deny\"", "\"agent_type\":\"shoal:scout\"", "\"session\":\"e8bc163c\""], "log_lacks": []},
+ {"name": "log_attribution_main_session_has_no_agent_type", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": "on", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}], "log_contains": ["\"decision\":\"deny\"", "\"session\":\"e8bc163c\"", "\"turn\":\"628b49d9\""], "log_lacks": ["agent_type", "agent_id", "\"s1\"", "\"t1\""]}
  ]
 }

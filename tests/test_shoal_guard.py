@@ -234,6 +234,42 @@ def claude_start(role="shoal:executor", **kw):
             "agent_id": "ag-1", "agent_type": role, "transcript_path": "/x/y.jsonl", **kw}
 
 
+class LogAttributionTests(CliCase):
+    """guard.jsonl says which agent and which session/turn made the call (short hashes, never raw ids)."""
+
+    HEX8 = r"^[0-9a-f]{8}$"
+
+    def test_claude_subagent_e1_deny_logs_agent_type_and_short_hashes(self) -> None:
+        payload = claude_tool("Edit", {"file_path": self.path("a.py")}, cwd=self.work, agent_id="ag-9",
+                              agent_type="general-purpose")
+        out = self.run_guard("claude", payload, SHOAL_GUARD="enforce", SHOAL_GUARD_SUBAGENT_WRITE="on")
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+        record = self.log_records()[-1]
+        self.assertEqual((record["rule"], record["agent_type"], record["agent_id"]), ("E1", "general-purpose", "ag-9"))
+        self.assertRegex(record["session"], self.HEX8)
+        self.assertRegex(record["turn"], self.HEX8)
+        self.assertNotIn("sess-1", json.dumps(record))
+        self.assertNotIn("p-1", json.dumps(record))
+        self.run_guard("claude", payload, SHOAL_GUARD="enforce", SHOAL_GUARD_SUBAGENT_WRITE="on")
+        first, second = self.log_records()[-2:]
+        self.assertEqual((first["session"], first["turn"]), (second["session"], second["turn"]))  # stable
+
+    def test_shadow_would_deny_keeps_the_fields(self) -> None:
+        payload = claude_tool("Edit", {"file_path": self.path("a.py")}, cwd=self.work, agent_id="ag-9",
+                              agent_type="shoal:scout")
+        self.run_guard("claude", payload, SHOAL_GUARD="shadow", SHOAL_GUARD_SUBAGENT_WRITE="on")
+        record = self.log_records()[-1]
+        self.assertEqual((record["decision"], record["agent_type"]), ("would_deny", "shoal:scout"))
+
+    def test_main_session_event_has_no_agent_fields(self) -> None:
+        self.run_guard("claude", claude_tool("Edit", {"file_path": self.path("a.py")}, cwd=self.work),
+                       SHOAL_GUARD="enforce")
+        record = self.log_records()[-1]
+        self.assertNotIn("agent_type", record)
+        self.assertNotIn("agent_id", record)
+        self.assertRegex(record["session"], self.HEX8)
+
+
 class ClaudeAdapterTests(CliCase):
     def test_normalizes_main_edit_and_dispatch(self) -> None:
         event = guard.adapt_claude(claude_tool("MultiEdit", {"file_path": "/r/a.py", "edits": []}))
@@ -1024,7 +1060,8 @@ class CodexAdapterTests(CliCase):
         worker = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, agent_id="019f-w1", agent_type="worker")
         out = self.run_guard("codex", worker, **env)
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
-        self.assertEqual(self.log_records()[-1]["rule"], "E1")
+        record = self.log_records()[-1]
+        self.assertEqual((record["rule"], record["agent_type"], record["agent_id"]), ("E1", "worker", "019f-w1"))
         applier = self.tool("apply_patch", {"command": self.PATCH}, cwd=self.work, agent_id="019f-a1", agent_type="applier")
         self.assertEqual(self.run_guard("codex", applier, **env), "")
         self.assertEqual(self.run_guard("codex", worker, SHOAL_GUARD_SUBAGENT_WRITE="off", **env), "")
