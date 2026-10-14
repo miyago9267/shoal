@@ -266,7 +266,10 @@ Since host 1.8.3 the installer also registers the dispatch guard
 (`hooks/shoal_guard.py --host codex`,
 [`docs/specs/dispatch-enforcement`](./docs/specs/dispatch-enforcement/SPEC.md))
 next to the autoroute gate. It is a separate script with its own projection ID
-(`shoal-dispatch-guard-v1`, called `shoal-guard-v5` before 3.8.0) and its own
+(`shoal-dispatch-guard-v2`; `shoal-dispatch-guard-v1` and the older
+`shoal-guard-v1` to `v5` are upgraded in place, and Codex asks for one
+`/hooks` re-approval of the changed `PostToolUse` and new `SessionEnd`
+groups) and its own
 state entry (`guard_registration`), so the gate
 is unchanged. It adds a `UserPromptSubmit` group that records the turn and
 reads `#direct`, a `PreToolUse` group with matcher
@@ -389,7 +392,7 @@ changed.
 When `install/install.py` cannot be reconciled with the Codex home (for
 example a locally modified `shoal_autoroute_gate.py` that the installer
 would replace), `tools/install_hooks.py --host codex` manages only the guard.
-It writes the same `shoal-dispatch-guard-v1` groups (including `commandWindows`;
+It writes the same `shoal-dispatch-guard-v2` groups (including `commandWindows`;
 a
 legacy `shoal-guard-v1` to `v4` group is replaced in place) into
 `<codex-home>/hooks.json` and the committed-`HEAD` script to
