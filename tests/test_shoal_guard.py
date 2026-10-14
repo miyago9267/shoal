@@ -1617,6 +1617,44 @@ class AgyAdapterTests(CliCase):
         self.assertEqual(out["decision"], "block")
 
 
+class ChainCliTests(CliCase):
+    """The guard chain through the real script: raw stdin to members, host-native deny output, fail-open."""
+
+    MEMBER = str(ROOT / "tests" / "fixtures" / "chain" / "member.py")
+
+    def configure(self, *modes: list) -> None:
+        manifest = Path(self.home) / "chain.json"
+        manifest.write_text(json.dumps({"chain": [
+            {"name": "m%d" % i, "command": [sys.executable, self.MEMBER, *mode], "hosts": ["claude", "codex"], "order": i}
+            for i, mode in enumerate(modes)]}), encoding="utf-8")
+        self.chain_env = {"SHOAL_GUARD_CHAIN_FILE": str(manifest), "SHOAL_GUARD_CHAIN_TIMEOUT_MS": "1500"}
+
+    def test_member_deny_uses_the_host_native_deny_output(self) -> None:
+        self.configure(["deny", "stop right there"])
+        out = json.loads(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work), **self.chain_env))
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecisionReason"], "m0: stop right there")
+
+    def test_member_receives_the_raw_stdin_bytes(self) -> None:
+        record = os.path.join(self.home, "seen.txt")
+        self.configure(["record", record])
+        raw = b'{"session_id": "sess-1",  "hook_event_name":"PreToolUse", "tool_name":"Read","tool_input":{},"cwd":"%s"}' % self.work.encode()
+        self.assertEqual(self.run_guard("claude", raw, **self.chain_env), "")
+        self.assertEqual(Path(record).read_bytes(), raw + b"\n")
+
+    def test_member_failures_allow_and_log(self) -> None:
+        self.configure(["exit1"], ["garbage"], ["sleep"])
+        self.chain_env["SHOAL_GUARD_CHAIN_TIMEOUT_MS"] = "400"
+        self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work), **self.chain_env), "")
+        decisions = [r["decision"] for r in self.log_records() if r.get("rule") == "chain"]
+        self.assertEqual(decisions, ["chain_error", "chain_error", "chain_timeout"])
+        self.assertTrue(all("ms" in r and r["member"].startswith("m") for r in self.log_records() if r.get("rule") == "chain"))
+
+    def test_no_manifest_changes_nothing(self) -> None:
+        self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work)), "")
+        self.assertEqual([r for r in self.log_records() if r.get("rule") == "chain"], [])
+
+
 class RobustnessTests(CliCase):
     def test_bad_input_exits_zero_silently(self) -> None:
         for raw in (b"", b"not json", b"[1,2]", b"null", b"\xff\xfe"):

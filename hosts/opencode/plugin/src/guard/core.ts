@@ -257,7 +257,7 @@ const DISPATCH_NAME: Record<string, string> = {
   agy: "invoke_subagent",
   opencode: "task",
 };
-const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn", "fast"];
+const LOG_FIELDS = ["host", "event", "tool", "rule", "decision", "file", "skip_reason", "mode", "reason", "agent_type", "agent_id", "session", "turn", "fast", "member", "ms"];
 
 const MESSAGES: Record<string, Record<string, string>> = {
   en: {

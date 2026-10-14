@@ -14,11 +14,17 @@
  * Fail-open: an exception, a missing id, or a session lookup that fails or hangs (unknown session) means
  * "no opinion"; a content-free skip record is logged.
  *
+ * Guard chain (chain.ts): external members run after the core decision and are awaited here, so their latency
+ * adds to the tool call (OpenCode's plugin runtime has no synchronous spawn before the tool).  Only
+ * `tool.execute.before` consults the chain, and only for the edit, bash and task calls the guard judges; the other
+ * hooks and tools are not forwarded to members.
+ *
  * Not attached: the turn-end completion check (E6).  The `event` hook returns void and cannot block, so
  * `session.idle` cannot hold a turn open (INSTALL.md, OpenCode section).
  */
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import { homedir } from "node:os";
+import { applyChain } from "./chain.js";
 import { evaluate, fastSwitch, hasDirectToken, logSkip, patchPaths, type Env, type GuardEvent } from "./core.js";
 
 const HOST = "opencode";
@@ -238,7 +244,9 @@ export function createOpenCodeGuard(
             dispatched_role: str(args.subagent_type),
           });
         }
-        const result = evaluate(guardEvent, env, homeOf(env));
+        // The chain's raw payload: the hook's own input and args, as JSON (OpenCode has no stdin payload).
+        const raw = JSON.stringify({ hook_event_name: "tool.execute.before", ...record(hookInput), args });
+        const result = await applyChain(guardEvent, evaluate(guardEvent, env, homeOf(env)), env, homeOf(env), raw);
         if (result.decision === "deny") reason = result.reason;
       } catch {
         logSkip(HOST, env, homeOf(env), "exception");

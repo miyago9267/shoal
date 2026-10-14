@@ -82,6 +82,7 @@ import os
 import re
 import shlex
 import stat
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -278,6 +279,8 @@ LOG_FIELDS = (
     "session",  # first 8 hex of sha256 of the session id / turn id: attributes lines, never reveals the id
     "turn",
     "fast",
+    "member",  # guard chain: the member's configured name
+    "ms",  # guard chain: the member call's duration in milliseconds
 )
 
 MESSAGES = {
@@ -2028,9 +2031,8 @@ class _Guard:
         )
 
 
-def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str, Any]:
-    """Decide on a normalized event.  Raises only on programming/OS errors (caller fails open)."""
-    guard = _Guard(event, env, home)
+def _decide(guard: "_Guard", event: Dict[str, Any]) -> Dict[str, Any]:
+    """shoal's own decision on a normalized event."""
     if guard.mode == "off":
         return {
             "decision": "none",
@@ -2058,6 +2060,139 @@ def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str
             "mode": guard.mode,
         }
     return guard.main()
+
+
+def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str, Any]:
+    """Decide on a normalized event: shoal's own decision, then the guard chain.  Raises only on
+    programming/OS errors (caller fails open); a chain failure never changes shoal's decision."""
+    guard = _Guard(event, env, home)
+    result = _decide(guard, event)
+    try:
+        return _apply_chain(guard, event, result)
+    except BaseException:
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Guard chain: external members attached by configuration only
+# ---------------------------------------------------------------------------
+# Config: the `chain` array of the installed module manifest, `${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`
+# (SHOAL_GUARD_CHAIN_FILE overrides the path).  Entry: {"name": str, "command": [argv...], "hosts": [host...],
+# "order": number}.  After shoal's own decision, each entry whose `hosts` holds the current host runs in
+# ascending `order` (stable), argv exec without a shell, the raw hook payload on stdin, cwd and env unchanged.
+# A member denies only by printing {"decision": "deny", "reason": "..."}; {"decision": "allow"} or no output
+# allows.  Non-zero exit, timeout (5 s, SHOAL_GUARD_CHAIN_TIMEOUT_MS), unparseable or unknown output is
+# fail-open (allow) with a chain_error / chain_timeout log line.  The first deny wins and later members are not
+# run; shoal's own deny/block skips the chain.  A chain deny becomes a deny (tool events) or a stop block
+# (stop events) through the same output paths as shoal's own; on other events it is logged only.
+
+CHAIN_TIMEOUT_MS = 5000
+CHAIN_MAX_TIMEOUT_MS = 60000
+CHAIN_MAX_OUTPUT = 65536
+
+
+def chain_manifest_path(env: Dict[str, str], home: Path) -> Path:
+    override = env.get("SHOAL_GUARD_CHAIN_FILE", "")
+    if override and os.path.isabs(override):
+        return Path(override)
+    return _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share") / "shoal" / "modules.json"
+
+
+def chain_timeout_ms(env: Dict[str, str]) -> int:
+    try:
+        value = int(env.get("SHOAL_GUARD_CHAIN_TIMEOUT_MS", ""))
+    except ValueError:
+        return CHAIN_TIMEOUT_MS
+    return value if 0 < value <= CHAIN_MAX_TIMEOUT_MS else CHAIN_TIMEOUT_MS
+
+
+def chain_members(host: str, env: Dict[str, str], home: Path) -> Optional[List[Dict[str, Any]]]:
+    """Members for `host` in run order; [] when none; None when the manifest exists but cannot be read."""
+    fd = _open_readable(chain_manifest_path(env, home))
+    if fd is None:
+        return []
+    try:
+        with os.fdopen(fd, "rb") as handle:
+            doc = json.loads(handle.read(MAX_SETTINGS_BYTES + 1)[:MAX_SETTINGS_BYTES])
+    except (OSError, ValueError):
+        return None
+    entries = doc.get("chain") if isinstance(doc, dict) else None
+    members: List[Dict[str, Any]] = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        name, command, hosts, order = entry.get("name"), entry.get("command"), entry.get("hosts"), entry.get("order", 0)
+        if not (isinstance(name, str) and name and isinstance(command, list) and command
+                and all(isinstance(a, str) and a for a in command)
+                and isinstance(hosts, list) and host in hosts
+                and isinstance(order, (int, float)) and not isinstance(order, bool)):
+            continue
+        members.append({"name": name, "command": command, "order": order})
+    members.sort(key=lambda m: m["order"])
+    return members
+
+
+def _chain_call(command: List[str], raw: bytes, env: Dict[str, str], timeout_ms: int) -> Tuple[str, str]:
+    """(outcome, reason): outcome is allow, deny, chain_error or chain_timeout."""
+    try:
+        proc = subprocess.run(command, input=raw, capture_output=True, timeout=timeout_ms / 1000.0, env=env, check=False)
+    except subprocess.TimeoutExpired:
+        return "chain_timeout", ""
+    except (OSError, ValueError):
+        return "chain_error", ""
+    if proc.returncode != 0:
+        return "chain_error", ""
+    out = proc.stdout[:CHAIN_MAX_OUTPUT].decode("utf-8", "replace").strip()
+    if not out:
+        return "allow", ""
+    try:
+        obj = json.loads(out)
+    except ValueError:
+        return "chain_error", ""
+    decision = obj.get("decision") if isinstance(obj, dict) else None
+    if decision == "allow":
+        return "allow", ""
+    if decision == "deny":
+        reason = obj.get("reason")
+        return "deny", reason.strip() if isinstance(reason, str) and reason.strip() else "denied"
+    return "chain_error", ""
+
+
+def _apply_chain(guard: "_Guard", event: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
+    if result.get("mode") == "off" or result["decision"] in ("deny", "block"):
+        return result
+    members = chain_members(guard.host, guard.env, guard.home)
+    if members is None:
+        guard.log("chain_error", rule="chain", member="manifest")
+        return result
+    if not members:
+        return result
+    raw = event.get("_raw_bytes")
+    if not isinstance(raw, bytes):
+        text = event.get("raw_payload")
+        raw = text.encode("utf-8") if isinstance(text, str) else json.dumps(
+            {k: v for k, v in event.items() if not k.startswith("_")}).encode("utf-8")
+    timeout_ms = chain_timeout_ms(guard.env)
+    enforce = guard.mode == "enforce"
+    for member in members:
+        started = time.monotonic()
+        outcome, reason = _chain_call(member["command"], raw, guard.env, timeout_ms)
+        ms = int((time.monotonic() - started) * 1000)
+        guard.log(outcome if outcome.startswith("chain_") else "chain_" + outcome, rule="chain", member=member["name"], ms=str(ms))
+        if outcome != "deny":
+            continue
+        kind = event.get("kind")
+        if kind not in ("tool", "stop"):
+            continue  # nothing to refuse on prompt/start events
+        base = "deny" if kind == "tool" else "block"
+        return {
+            "decision": base if enforce else "would_" + base,
+            "rule": "chain",
+            "skip_reason": None,
+            "reason": "%s: %s" % (member["name"], reason),
+            "mode": guard.mode,
+        }
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2597,6 +2732,7 @@ def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
         event = (adapt_agy(payload, env.get("SHOAL_GUARD_EVENT")) if host == "agy" else ADAPTERS[host](payload))
         if event is None:
             return None
+        event["_raw_bytes"] = raw  # the guard chain receives the payload exactly as it arrived
         result = evaluate(event, env, home)
         if result["decision"] == "deny":
             return deny_output(host, result["reason"])

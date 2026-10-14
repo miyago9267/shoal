@@ -16,6 +16,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { applyChain } from "../src/guard/chain.ts";
 import {
   evaluate,
   guardDir,
@@ -66,6 +67,7 @@ class Sandbox {
       HOME: this.home,
       XDG_STATE_HOME: join(this.home, "xdg-state"),
       TMPDIR: "$TMPDIR",
+      PATH: process.env.PATH ?? "", // guard chain members are exec'd by name
     };
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (value === null) delete env[key];
@@ -84,7 +86,8 @@ class Sandbox {
       const out = value
         .replaceAll("$HOME", this.home)
         .replaceAll("$WORK", this.work)
-        .replaceAll("$TMPDIR", this.tmpdir);
+        .replaceAll("$TMPDIR", this.tmpdir)
+        .replaceAll("$REPO", REPO_ROOT);
       return state ? out.replaceAll("$STATE", state) : out;
     }
     if (Array.isArray(value)) return value.map((item) => this.sub(item, state));
@@ -235,7 +238,7 @@ function checkPost(vector: Json, sandbox: Sandbox, state: string, whitelist: str
   return failures;
 }
 
-function runVector(vector: Json, whitelist: string[]): string[] {
+async function runVector(vector: Json, whitelist: string[]): Promise<string[]> {
   const failures: string[] = [];
   const sandbox = new Sandbox();
   try {
@@ -249,7 +252,15 @@ function runVector(vector: Json, whitelist: string[]): string[] {
     const host = (vector.host as string | undefined) ?? "claude";
     for (const [index, step] of (vector.steps as Json[]).entries()) {
       if (step.write_turn) writeTurn(guardPath, step.write_turn as Json); // the classifier writes between turns
-      const result = evaluate(normalizeEvent(step.event, host, sandbox), env, sandbox.home) as Json;
+      const guardEvent = normalizeEvent(step.event, host, sandbox);
+      const raw = (guardEvent as Json).raw_payload as string | undefined;
+      const result = (await applyChain(
+        guardEvent,
+        evaluate(guardEvent, env, sandbox.home),
+        env,
+        sandbox.home,
+        raw,
+      )) as Json;
       for (const [key, want] of Object.entries(step.expect)) {
         if (result[key] !== want) {
           failures.push(
@@ -277,8 +288,8 @@ describe("guard vectors (shared with hooks/shoal_guard.py)", () => {
   });
 
   for (const vector of doc.vectors as Json[]) {
-    test(vector.name, () => {
-      expect(runVector(vector, doc.log_whitelist as string[])).toEqual([]);
+    test(vector.name, async () => {
+      expect(await runVector(vector, doc.log_whitelist as string[])).toEqual([]);
     });
   }
 });

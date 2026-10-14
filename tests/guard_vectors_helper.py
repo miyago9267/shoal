@@ -47,7 +47,8 @@ class Sandbox:
         shutil.rmtree(self.root, ignore_errors=True)
 
     def env(self, extra: Optional[Dict[str, Optional[str]]]) -> Dict[str, str]:
-        env = {"HOME": self.home, "XDG_STATE_HOME": os.path.join(self.home, "xdg-state"), "TMPDIR": "$TMPDIR"}
+        env = {"HOME": self.home, "XDG_STATE_HOME": os.path.join(self.home, "xdg-state"), "TMPDIR": "$TMPDIR",
+               "PATH": os.environ.get("PATH", "")}  # PATH: guard chain members are exec'd by name
         for key, value in (extra or {}).items():
             if value is None:
                 env.pop(key, None)
@@ -61,7 +62,7 @@ class Sandbox:
 
     def sub(self, value: Any, state: Optional[str] = None) -> Any:
         if isinstance(value, str):
-            value = value.replace("$HOME", self.home).replace("$WORK", self.work).replace("$TMPDIR", self.tmpdir)
+            value = value.replace("$HOME", self.home).replace("$WORK", self.work).replace("$TMPDIR", self.tmpdir).replace("$REPO", str(ROOT))
             return value.replace("$STATE", state) if state else value
         if isinstance(value, list):
             return [self.sub(v, state) for v in value]

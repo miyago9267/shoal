@@ -900,6 +900,35 @@ G5 補的是 R1 看不到的缺口：main 用 `cat > 檔案 <<EOF` 之類的 she
   或 `classified` 模式下沒有分類）也不計入 R2 的檔案數。放行且確實有寫檔的呼叫會留一筆 `allow` log
   （規則 `direct`、`dispatched`、`declared` 或 `uncounted`）。
 
+### Guard chain：外部 guard 以設定掛上
+
+shoal 只開一個擴充點：guard chain。外部 guard 不改 shoal 的程式碼，只在 installed manifest
+（`${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`，測試時可用 `SHOAL_GUARD_CHAIN_FILE`
+指定別的路徑）的 `chain` 陣列登記一筆：
+
+```json
+{"chain": [
+  {"name": "my-guard", "command": ["/usr/local/bin/my-guard", "check"],
+   "hosts": ["claude", "codex"], "order": 10}
+]}
+```
+
+- `command` 是 argv 清單，直接 exec（不經 shell），cwd 與環境變數沿用 hook 的。`hosts` 含目前 host 的
+  項目才會跑，依 `order` 由小到大。欄位不合格的項目會被略過。
+- 成員在 stdin 收到 host 傳給 shoal guard 的原始 payload（同一份 JSON）。OpenCode 沒有 stdin payload，
+  收到的是 `tool.execute.before` 的 input 加 `args`，且只涵蓋 guard 會判斷的 edit、bash、task 呼叫。
+- 成員要擋時，在 stdout 印 `{"decision": "deny", "reason": "..."}`。
+  `{"decision": "allow"}` 或沒有輸出
+  都是放行。任一成員 deny 就整體 deny，host 收到的是 guard 自己 deny 用的原生輸出，理由前面加
+  name 與冒號（`<name>:`）；stop 事件改成 block，prompt 等其他事件只記 log。
+- shoal 自己已經 deny 或 block 時不會呼叫成員；第一個 deny 之後的成員也不會跑。
+  `SHOAL_GUARD=off` 時整條 chain 不跑，`shadow` 時 deny 只記成 `would_deny`。
+- fail-open：非零 exit、逾時、輸出不是 JSON 或 decision 不認得，一律當作放行，log 記
+  `chain_error` 或 `chain_timeout`。逾時預設 5 秒
+  （`SHOAL_GUARD_CHAIN_TIMEOUT_MS` 可調，上限 60000）。
+  每個成員一筆 log，欄位有 `member` 與 `ms`。
+- 每個成員多一次 process 呼叫，延遲會加在每次 tool call 上；OpenCode 以 await 執行，同樣如此。
+
 ## Claude Code plugin
 
 Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容（10 個 role，含 `watcher`、`researcher`、

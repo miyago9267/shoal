@@ -1,13 +1,13 @@
 // OpenCode adapter: hooks, subagent detection through client.session.get, edit tool paths,
 // fail-open behaviour.  The core rules themselves are covered by guard-vectors.test.ts.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createOpenCodeGuard, editPaths } from "../src/guard/opencode.ts";
 
 const PLUGIN_ROOT = resolve(import.meta.dir, "..");
-const ENV_KEYS = ["HOME", "XDG_STATE_HOME", "TMPDIR", "SHOAL_GUARD", "SHOAL_GUARD_DIRECT", "SHOAL_GUARD_LANG", "SHOAL_GUARD_MAX_FILES", "SHOAL_GUARD_R1", "SHOAL_GUARD_WRITE_AGENTS", "SHOAL_GUARD_SUBAGENT_WRITE"];
+const ENV_KEYS = ["HOME", "XDG_STATE_HOME", "TMPDIR", "SHOAL_GUARD", "SHOAL_GUARD_DIRECT", "SHOAL_GUARD_LANG", "SHOAL_GUARD_MAX_FILES", "SHOAL_GUARD_R1", "SHOAL_GUARD_WRITE_AGENTS", "SHOAL_GUARD_SUBAGENT_WRITE", "SHOAL_GUARD_CHAIN_FILE", "SHOAL_GUARD_CHAIN_TIMEOUT_MS", "PATH"];
 
 type Sessions = Record<string, { id: string; parentID?: string | null; agent?: string }>;
 
@@ -436,5 +436,37 @@ describe("editPaths", () => {
     expect(editPaths("apply_patch", { patchText: "*** Update File: x/y.ts\n*** Move to: x/z.ts\n*** Delete File: q" })).toEqual(["x/y.ts", "x/z.ts", "q"]);
     expect(editPaths("write", {})).toEqual([]);
     expect(editPaths("apply_patch", null)).toEqual([]);
+  });
+});
+
+describe("OpenCode guard: chain", () => {
+  const member = join(PLUGIN_ROOT, "..", "..", "..", "tests", "fixtures", "chain", "member.py");
+
+  function configure(...args: string[][]) {
+    const file = join(root, "chain.json");
+    writeFileSync(
+      file,
+      JSON.stringify({ chain: args.map((a, i) => ({ name: `m${i}`, command: ["python3", member, ...a], hosts: ["opencode"], order: i })) }),
+    );
+    process.env.SHOAL_GUARD_CHAIN_FILE = file;
+    process.env.SHOAL_GUARD_CHAIN_TIMEOUT_MS = "1500";
+    process.env.PATH ??= "/usr/bin:/bin";
+  }
+
+  test("a member deny blocks the call with a name-prefixed reason; the payload carries the tool args", async () => {
+    configure(["deny_if", "needle-in-args"]);
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN, "msg_001", "#direct");
+    await call(guard, "bash", MAIN, { command: "ls" });
+    await expect(call(guard, "bash", MAIN, { command: "echo needle-in-args" })).rejects.toThrow("m0: saw needle-in-args");
+    expect(logLines().filter((l) => l.rule === "chain").map((l) => l.decision)).toEqual(["chain_allow", "chain_deny"]);
+  });
+
+  test("a failing member never blocks", async () => {
+    configure(["exit1"], ["garbage"]);
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN, "msg_001", "#direct");
+    await call(guard, "bash", MAIN, { command: "ls" });
+    expect(logLines().filter((l) => l.rule === "chain").map((l) => l.decision)).toEqual(["chain_error", "chain_error"]);
   });
 });
