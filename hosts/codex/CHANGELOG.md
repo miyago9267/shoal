@@ -9,6 +9,17 @@ written.
 
 ## Unreleased
 
+## v3.6.0
+
+- The guard registration is now `shoal-guard-v4`: it adds a `SubagentStart`
+  group, so a write role counts as started when it actually starts and a failed
+  dispatch no longer unlocks edits. Approve the new hook once with `/hooks`;
+  until then the role's first tool call is used as the start evidence.
+- A subagent that is not a shoal write-capable role (for example the built-in
+  `worker`) can no longer edit files or write files through the shell. Exits:
+  dispatch a write role, `SHOAL_GUARD_WRITE_AGENTS`, `SHOAL_GUARD_DIRECT=1`, or
+  `#direct` in the prompt. `SHOAL_GUARD_SUBAGENT_WRITE=off` turns the rule off.
+
 ## v3.5.0
 
 - Codex main-session policy is now rendered from `core/policy/`; Codex-only

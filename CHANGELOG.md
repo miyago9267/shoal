@@ -3,6 +3,38 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.6.0
+
+guard 的每個閘門都接上（[`docs/specs/guard-every-gate`](./docs/specs/guard-every-gate/SPEC.md)）。
+各 host 的事件形狀都有實測紀錄，尚未實測的項目列在
+[PROGRESS.md](./docs/specs/guard-every-gate/PROGRESS.md)。
+
+### Changes
+
+- 新規則：不是 shoal 可寫 role 的 subagent（例如 Codex 內建的 `worker`、Claude 的
+  `general-purpose`、預設的 Workflow child、OpenCode 的 `general`），改檔或用 shell 寫檔會被擋。
+  出口：
+  - 改派 shoal 的可寫 role。
+  - `SHOAL_GUARD_WRITE_AGENTS`（agent 類型白名單，逗號分隔）。
+  - `SHOAL_GUARD_DIRECT=1`。
+  - 在 prompt 加 `#direct`（agy 不支援 `#direct`）。
+  - 開關：`SHOAL_GUARD_SUBAGENT_WRITE=off` 可關掉這條規則。
+- verify 類 role（`watcher`、`verifier`）用 shell 寫到 repo 內的路徑會被擋；
+  寫到 `/tmp`、`$TMPDIR`、scratchpad 不受影響。
+- 「role 真的啟動才放行」擴大到更多 host：Codex（`SubagentStart`）、OpenCode
+  （`session.created`）、Grok（`subagent_start`）、agy（subagent conversation 的
+  `SessionStart`）都改成以啟動為準，派工失敗不放行。
+- Codex 的 hook 註冊升到 `shoal-guard-v4`，升級後要用 `/hooks` 重新核准新增的
+  `SubagentStart`；核准前，以可寫 role 的第一次工具呼叫作為啟動依據。
+- OpenCode、Grok、agy 的 guard 預設由只記錄（shadow）改為 enforce，main 自己改檔預設被擋
+  （與 Claude、Codex 相同）；要回到只記錄可設 `SHOAL_GUARD=shadow`。
+  OpenCode 開始檢查 `bash` 與 `apply_patch`。
+- agy 的 main／subagent 與 role 由 conversation 的順序推論；判不出來時不擋，只記錄。
+- 完成檢查：Grok、agy 以只記錄方式接上（`SHOAL_GUARD_STOP=enforce` 才擋）；
+  OpenCode 的結束事件沒有回傳值，無法擋，所以沒有接。
+- 設計不變式第 3 條新增：有 harness 的 host 必須把每個能當閘門的事件都接上 guard，
+  接不了的要列出原因與證據。
+
 ## v3.5.0
 
 ### Changes

@@ -21,7 +21,7 @@ class AgyRenderTests(rh.HostRenderCase):
         version = (ROOT / "hosts" / "agy" / "VERSION").read_text(encoding="utf-8").strip()
         rules = render.RENDERERS["agy"](ROOT)["rules/shoal-agy.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-agy v.+ -->$", rules), [f"<!-- shoal-agy v{version} -->"])
-        self.assertEqual(version, "3.5.0")
+        self.assertEqual(version, "3.6.0")
 
     def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
         frame = self.root / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
@@ -31,7 +31,7 @@ class AgyRenderTests(rh.HostRenderCase):
     def test_changing_version_requires_rewriting_dist(self) -> None:
         # 常駐文件的 marker 是 policy-frames/bootstrap.md 的字面值（同 claude），VERSION 只做格式檢查。
         frame = self.root / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
-        self.edit(frame, "<!-- shoal-agy v3.5.0 -->", "<!-- shoal-agy v2.0.1 -->")
+        self.edit(frame, "<!-- shoal-agy v3.6.0 -->", "<!-- shoal-agy v2.0.1 -->")
         result = self.check()
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("內容不同: rules/shoal-agy.md", result.stderr)
