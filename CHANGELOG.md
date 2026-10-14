@@ -19,6 +19,7 @@ guard 的每個閘門都接上（[`docs/specs/guard-every-gate`](./docs/specs/gu
   - `SHOAL_GUARD_DIRECT=1`。
   - 在 prompt 加 `#direct`（agy 不支援 `#direct`）。
   - 開關：`SHOAL_GUARD_SUBAGENT_WRITE=off` 可關掉這條規則。
+- shell 寫檔偵測新增 `perl -i`；偵測為逐字比對，直譯器寫檔不在範圍內。
 - verify 類 role（`watcher`、`verifier`）用 shell 寫到 repo 內的路徑會被擋；
   寫到 `/tmp`、`$TMPDIR`、scratchpad 不受影響。
 - 「role 真的啟動才放行」擴大到更多 host：Codex（`SubagentStart`）、OpenCode

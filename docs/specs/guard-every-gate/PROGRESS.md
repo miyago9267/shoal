@@ -36,11 +36,42 @@ draft PR #1。
 
 | Host | 次數 | 備註 |
 | --- | --- | --- |
-| Claude | 2 | |
+| Claude | 2 | 另有 live 驗證 2 次不算數、2 次有效 |
 | Codex | 3 | |
 | OpenCode | 3 | |
 | Grok | 4 | 核准 3 次，多 1 次：capture hook 的 matcher 太寬，重跑 |
 | agy | 2 | |
+
+## live 驗證（2026-10-14）
+
+第一輪的測試 repo 放在 `/private/tmp`，guard 依設計豁免暫存目錄，所以
+Claude、Codex 那輪與 OpenCode、Grok 的部分執行不算數；之後改在
+`~/shoal-live-360/` 重跑。教訓：live 驗證的 repo 不能放在 guard 豁免的路徑。
+
+- Claude（2 次有效）：`general-purpose` 的 Edit 被 E1 擋下，deny 訊息列出
+  出口；`shoal:applier` 放行；`#direct` 那回合的 Workflow child 與
+  `general-purpose` 都放行，state 的 `direct_turns` 記到該回合。
+- Codex（1 次有效，另有一次以 `applier` 驗證 `SubagentStart` 解鎖）：
+  `worker` 的 `apply_patch` 被 E1 擋下，檔案未變，main 回報被擋；`applier`
+  在 `SubagentStart` 後放行。
+- OpenCode（2 次有效）：main 自己改檔被 R1 擋下，`applier` 的
+  `session.created` 後放行。`general` 的 `apply_patch` 被 E1 擋下，但它改用
+  `perl -0pi -e` 從 shell 寫檔成功；guard 的 shell 寫檔偵測原本不認得
+  `perl -i`，`da7ba9e` 已補上。偵測是逐字比對，`python -c`、`node -e`、`cp`
+  等直譯器或複製寫檔仍抓不到，屬已知限制。
+- Grok（2+1 次有效）：main 自己改檔被 R1 擋下，`applier` 的
+  `subagent_start` 後放行；通用 subagent 類型會被 Grok 改寫成
+  `shoal:executor`，因此改用專案層級的自訂 agent `plain-writer` 驗證：其改檔
+  被 E1 擋下，`applier` 接手成功。Stop 的完成檢查以只記錄模式記下
+  would_block。
+- agy（2 次有效）：main 自己改檔被 R1 擋下，deny 訊息只列 agy 能用的三個
+  出口（無 `#direct`）；conversation 推論正確（`scout` 判為唯讀、`applier`
+  判為可寫）。未觸發「非可寫 subagent 改檔被擋」：`scout` 沒有寫檔工具，自行
+  拒絕。`applier` 回來後 main 再改檔仍被擋，原因是 agy 每次模型呼叫都是新回合
+  （`turn_boundary`），解鎖只維持到下一次呼叫。
+
+付費執行次數（含不算數的，capture＋第一輪＋重跑）：Claude 2+2+2、
+Codex 3+2+1、OpenCode 3+2+2、Grok 4+1+2+1、agy 2+2。
 
 ## 尚未 live 驗證
 
@@ -63,4 +94,5 @@ draft PR #1。
 - 2026-10-14 本機負載過高，完整 unit suite 沒有跑完；只跑了 render、
   prompt lock、install、plugin、delegation default 與 OpenCode `bun test`
   等針對性檢查。整合驗證交給 PR #1 的 CI。
-- CI 結果：待 CI。
+- CI 結果：PR #1 的 CI 在 `fe102ed`（ubuntu、macOS、windows 的 Python tests
+  與 Markdown lint）全數 success；`440cb8d` 之後的 CI 結果待收尾時補上。

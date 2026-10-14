@@ -613,6 +613,8 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
   所以沒有 `#direct`；出口只有：派 write role 並等它啟動、`SHOAL_GUARD_WRITE_AGENTS`、`SHOAL_GUARD_DIRECT=1`。
   agy 不檢查 leaf 不得再派工（只記 log）；完成檢查接在 `Stop`，預設 shadow（只記 `would_block`），
   `SHOAL_GUARD_STOP=enforce` 才擋，擋的輸出格式尚未 live 驗證。
+  在 agy 上，write role 啟動只放行 main session 到下一次模型呼叫（每次呼叫都是一個回合），
+  所以 role 回來之後 main 再改檔會再被擋；請把改檔派給該 role。
 - 只有 command 含 `shoal_guard.py --host` 的 handler 算 shoal 的；其他 hook、其他 key、
   key 順序與 2 空格縮排都原樣保留。重複執行不會改變結果，也不會產生新備份。
 - 寫入前把原檔備份到 `${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/`
