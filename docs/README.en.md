@@ -58,7 +58,7 @@ Gemini/agy, and Claude Code without the plugin, are in [INSTALL.md](../INSTALL.m
 
 ## Fast and rigorous
 
-The default path is fast: the main session reads, diagnoses and integrates by itself, and hands edits to a writable role. Risky or large work takes the rigorous path: plan review, approval, then verification when it is done. To let the main session edit directly, add `#direct` to the prompt. To run a whole session fast, add `#fast` to a prompt: the main session may edit directly, while the hard rules (roles do not dispatch further, reviewers do not edit) and the end-of-turn check stay. `#strict` turns it off; for tools without prompt text (agy), set `SHOAL_GUARD_FAST=1`.
+The default path is fast: the main session reads, diagnoses and integrates by itself, and hands edits to a writable role. Risky or large work takes the rigorous path: plan review, approval, then verification when it is done. To let the main session edit directly, you can add `#direct` to the prompt. To run a whole session fast, you can add `#fast` to a prompt: the main session may edit directly, while the hard rules (roles do not dispatch further, reviewers do not edit) and the end-of-turn check stay. You can turn it off with `#strict`; for tools without prompt text (agy), set `SHOAL_GUARD_FAST=1` instead.
 
 ## shoal and pilotfish
 
@@ -71,7 +71,7 @@ shoal derives from [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfis
 | Enforcement | Hooks block only hard rules (a leaf cannot dispatch, a verifier cannot edit) | Also blocks the main session editing directly, non-shoal agents editing, roles that never started, and ending a turn after edits with no check |
 | Evidence | Each decision comes with benchmarks and measurements | Mostly payload captures and per-host live tests, with fewer measurements |
 
-shoal does not replace pilotfish, and it is not simply a newer version of it. It extends the roles and rules to several vendors and adds enforcement, at the cost of being heavier and stricter. If you only use Claude Code and want a light policy backed by measurements, use [pilotfish](https://github.com/Nanako0129/pilotfish). If you use several agent tools and want one definition with consistent enforcement, use shoal.
+shoal does not replace pilotfish, and it is not simply a newer version of it. It extends the roles and rules to several vendors and adds enforcement, at the cost of being heavier and stricter. If you only use Claude Code and want a light policy backed by measurements, use [pilotfish](https://github.com/Nanako0129/pilotfish); if you use several agent tools and want one definition with consistent enforcement, use shoal.
 
 ## Further reading
 

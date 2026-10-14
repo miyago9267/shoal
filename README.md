@@ -58,7 +58,7 @@ Gemini/agy 與不用 plugin 的 Claude Code 見 [INSTALL.md](./INSTALL.md)。
 
 ## 快速與嚴謹
 
-預設走快速路徑：讀檔、診斷和整合由主 session 直接做，改檔派給可寫的 role。遇到風險或大型工作才走嚴謹路徑：計畫審查、核准，完成後再驗證。想讓主 session 自己改檔，在 prompt 加 `#direct`。要整個 session 都走快，在 prompt 加 `#fast`：主 session 可以直接改檔，硬規則（role 不再派工、審查 role 不改檔）和結束前的檢查照舊。`#strict` 關閉；沒有 prompt 文字的工具（agy）設 `SHOAL_GUARD_FAST=1`。
+預設走快速路徑：讀檔、診斷和整合由主 session 直接做，改檔派給可寫的 role。遇到風險或大型工作才走嚴謹路徑：計畫審查、核准，完成後再驗證。想讓主 session 自己改檔，可在 prompt 加 `#direct`。若要整個 session 都走快，可在 prompt 加 `#fast`：主 session 可以直接改檔，硬規則（role 不再派工、審查 role 不改檔）和結束前的檢查照舊。可用 `#strict` 關閉；沒有 prompt 文字的工具（agy）則設 `SHOAL_GUARD_FAST=1`。
 
 ## 和 pilotfish 的關係
 
@@ -71,7 +71,7 @@ shoal 衍生自 [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish)�
 | 強制範圍 | hook 只擋硬規則（leaf 不再派工、verifier 不改檔） | 另擋 main 直接改檔、非 shoal agent 改檔、role 未啟動、改完沒檢查就結束 |
 | 證據 | 每個決定都附 benchmark 與量測 | 以 payload 擷取與各 host 實測為主，量測較少 |
 
-shoal 不取代 pilotfish，也不是它的上位版本：它把 role 與條款擴到多個廠牌並加上強制執行，代價是比較重、比較嚴。只用 Claude Code、想要輕量且有量測支撐的 policy，用 [pilotfish](https://github.com/Nanako0129/pilotfish)。同時用多個 agent 工具、想要一份定義和一致的強制規則，用 shoal。
+shoal 不取代 pilotfish，也不是它的上位版本：它把 role 與條款擴到多個廠牌並加上強制執行，代價是比較重、比較嚴。若只用 Claude Code、想要輕量且有量測支撐的 policy，用 [pilotfish](https://github.com/Nanako0129/pilotfish)；要是同時使用多個 agent 工具、想要一份定義和一致的強制規則，用 shoal。
 
 ## 延伸閱讀
 
