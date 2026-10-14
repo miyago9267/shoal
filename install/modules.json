@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "note": "modular-install S1 registry: data only. depends_on 缺項時 shoal_install 會報錯；default_new 是新裝預設，既有機器由實際檔案推導。",
+  "hosts": ["claude", "codex", "agy", "grok", "opencode"],
+  "modules": {
+    "core": {
+      "kind": "core", "hosts": ["claude", "codex", "agy", "grok", "opencode"], "depends_on": [],
+      "default_new": true, "paths": ["core/"],
+      "summary": "render 的來源；產物隨 host 模組出貨，不單獨安裝"
+    },
+    "host-claude": {
+      "kind": "host", "hosts": ["claude"], "depends_on": ["core"], "default_new": true,
+      "paths": ["claude-plugin/agents", "claude-plugin/skills", "claude-plugin/policy", ".claude-plugin/"],
+      "summary": "Claude plugin shoal@shoal（role、skill、政策文字）"
+    },
+    "host-codex": {
+      "kind": "host", "hosts": ["codex"], "depends_on": ["core"], "default_new": true,
+      "paths": ["templates/agents/", "plugin/"],
+      "summary": "Codex role TOML、AGENTS.md、config 片段、shoal-codex plugin"
+    },
+    "host-agy": {
+      "kind": "host", "hosts": ["agy"], "depends_on": ["core"], "default_new": true,
+      "paths": ["hosts/agy/dist/agents", "hosts/agy/dist/rules", "hosts/agy/dist/skills"],
+      "summary": "agy agents、rules、skills"
+    },
+    "host-grok": {
+      "kind": "host", "hosts": ["grok"], "depends_on": ["core"], "default_new": true,
+      "paths": ["hosts/grok/dist/agents", "hosts/grok/dist/roles", "hosts/grok/dist/rules"],
+      "summary": "Grok agents、roles、rules"
+    },
+    "host-opencode": {
+      "kind": "host", "hosts": ["opencode"], "depends_on": ["core"], "default_new": true,
+      "paths": ["hosts/opencode/dist/roles", "hosts/opencode/plugin/"],
+      "summary": "OpenCode roles、catalog/routing、plugin"
+    },
+    "dispatch-guard": {
+      "kind": "optional", "hosts": ["claude", "codex", "agy", "grok", "opencode"], "depends_on": ["host"],
+      "default_new": true, "paths": ["hooks/shoal_guard.py", "hosts/opencode/plugin/src/guard/"],
+      "summary": "派工守門 hook；關掉等於只有政策文字"
+    },
+    "codex-autoroute": {
+      "kind": "optional", "hosts": ["codex"], "depends_on": ["host-codex"], "default_new": true,
+      "paths": ["hooks/shoal_autoroute_gate.py", "templates/hooks.json"],
+      "summary": "Codex autoroute gate"
+    },
+    "jev-router": {
+      "kind": "optional", "hosts": ["codex"], "depends_on": ["host-codex"], "default_new": false,
+      "paths": ["plugin/plugins/shoal-jev-router"],
+      "summary": "Jev router plugin（依賴 Jev 環境，新裝預設關）"
+    },
+    "claude-explore": {
+      "kind": "optional", "hosts": ["claude"], "depends_on": ["host-claude"], "default_new": true,
+      "paths": ["hosts/claude/dist/agents/Explore.md"],
+      "summary": "Explore agent，裝到 ~/.claude/agents/"
+    },
+    "external": {
+      "kind": "external", "hosts": ["claude", "codex", "agy", "grok", "opencode"], "depends_on": [],
+      "default_new": false, "paths": [],
+      "summary": "外部模組（guard chain 成員）：從自己的來源安裝，經 manifest 的 chain 登記；shoal 不附程式碼"
+    }
+  }
+}

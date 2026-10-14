@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -88,6 +89,11 @@ class Base(unittest.TestCase):
         )
         env.update(extra)
         return env
+
+    def write_manifest(self, host: str, modules: list[str]) -> None:
+        path = self.data / "shoal" / "modules.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({host: {"modules": modules, "version": "x"}, "chain": []}))
 
     def sync(
         self, *args: str, env: dict[str, str] | None = None
@@ -228,6 +234,32 @@ class CodexTests(Base):
         self.sync("--host", "codex", "--apply", env=env)
         self.assertEqual(self.jev_calls(), [])
 
+    def test_manifest_without_jev_router_never_reinstalls(self) -> None:
+        self.write_manifest("codex", ["core", "host-codex", "dispatch-guard"])
+        env = self.jev_env(self.jev_setup())
+        _, lines = self.sync("--host", "codex", "--apply", env=env)
+        self.assertNotIn("jev router", lines[0])
+        self.assertEqual(self.jev_calls(), [])
+
+    def test_manifest_with_jev_router_still_reinstalls(self) -> None:
+        self.write_manifest("codex", ["core", "host-codex", "jev-router"])
+        env = self.jev_env(self.jev_setup())
+        _, lines = self.sync("--host", "codex", "--apply", env=env)
+        self.assertIn("jev router", lines[0])
+        self.assertEqual(self.jev_calls(), ["plugin add shoal-jev-router@shoal-codex"])
+
+    def test_manifest_without_dispatch_guard_skips_guard_hooks(self) -> None:
+        (self.agents / "a.toml").write_text("v1\n")
+        self.assertIn("guard hooks", self.codex_sync()[0])  # 沒有 manifest：和今天一樣
+        self.write_manifest("codex", ["core", "host-codex"])
+        self.assertEqual(self.codex_sync()[0], "codex: up-to-date")
+
+    def test_manifest_for_other_host_does_not_change_codex(self) -> None:
+        self.write_manifest("grok", ["core", "host-grok"])
+        env = self.jev_env(self.jev_setup())
+        _, lines = self.sync("--host", "codex", "--apply", env=env)
+        self.assertIn("jev router", lines[0])
+
     def test_jev_router_dry_run_reports_only(self) -> None:
         env = self.jev_env(self.jev_setup())
         _, lines = self.sync("--host", "codex", env=env)
@@ -303,6 +335,12 @@ class AgyTests(Base):
         self.assertIn(
             "symlink drift: agents/scout 不是 symlink", self.sync("--host", "agy")[1][0]
         )
+
+    def test_manifest_without_dispatch_guard_skips_guard_hooks(self) -> None:
+        self.links()
+        self.assertIn("guard hooks", self.sync("--host", "agy")[1][0])
+        self.write_manifest("agy", ["core", "host-agy"])
+        self.assertEqual(self.sync("--host", "agy")[1][0], "agy: up-to-date (symlinks ok)")
 
     def test_dry_run_does_not_write(self) -> None:
         self.links()

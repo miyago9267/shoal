@@ -37,6 +37,11 @@ shoal 2.0.0 把所有安裝出去的名稱都改了（docs/specs/shoal-rebrand�
             全域 manifest 若還記著舊名的相對路徑，照同樣的順序做：用舊 manifest --disable，再以新名 --enable。
             已停用（manifest 不是 enabled）或從未安裝就略過，不替使用者重新啟用。
 
+installed manifest（`${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`，tools/shoal_install.py 寫入）
+有該 host 的紀錄時，只同步選到的模組：codex 沒選 dispatch-guard 就不跑 guard hooks，沒選 jev-router 就不
+補裝；agy 沒選 dispatch-guard 就不跑 guard hooks。沒有 manifest（或沒有該 host 的紀錄）時行為與沒有
+這個機制時完全相同。grok、opencode 的 installer 沒有可分的模組，不受影響。
+
 stdlib only；重複執行不會改變結果，沒有差異時不寫檔、不建備份。
 """
 
@@ -57,6 +62,7 @@ from typing import Callable, Mapping, Optional
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "install"))
 import legacy_codex  # noqa: E402
+import shoal_install  # noqa: E402
 HOSTS = ("codex", "grok", "agy", "opencode")
 ROLE_DIR = "templates/agents"
 OPENCODE_INSTALL = "hosts/opencode/plugin/install/install.sh"
@@ -185,6 +191,12 @@ def installer_changes(
 
 
 # ---- codex ----
+def selected(ctx: Ctx, host: str, module: str) -> bool:
+    """installed manifest 沒有該 host 的紀錄時一律 True（今天的行為）；有就只看有沒有選該模組。"""
+    mods = shoal_install.manifest_modules(ctx.env, host)
+    return mods is None or module in mods
+
+
 def codex_home(ctx: Ctx) -> Path:
     return ctx.abs_env("CODEX_HOME", ctx.home / ".codex")
 
@@ -316,9 +328,11 @@ def sync_codex(ctx: Ctx) -> Result:
         parts.append(migrated)
         if not ctx.apply:
             return "updated", migrated
-    if installer_changes("install_hooks.py", ["--host", "codex"], ctx):
+    if selected(ctx, "codex", "dispatch-guard") and installer_changes(
+        "install_hooks.py", ["--host", "codex"], ctx
+    ):
         parts.append("guard hooks")
-    if jev_router_missing(ctx, home):
+    if selected(ctx, "codex", "jev-router") and jev_router_missing(ctx, home):
         if not ctx.apply:
             parts.append("jev router reinstall")
         else:
@@ -481,7 +495,9 @@ def sync_agy(ctx: Ctx) -> Result:
         return "skipped", f"{home} 不存在"
     migrated, kept, relinked = migrate_agy_skill_link(ctx)
     removed, role_links = remove_legacy_agy_links(ctx, f"skills/{LEGACY_AGY_SKILL}" if migrated else "")
-    changed = installer_changes("install_hooks.py", ["--host", "agy"], ctx)
+    changed = selected(ctx, "agy", "dispatch-guard") and installer_changes(
+        "install_hooks.py", ["--host", "agy"], ctx
+    )
     problems = agy_link_problems(ctx)
     if migrated and not ctx.apply:  # dry-run：新名的 link 還沒建，不算 drift
         problems = [p for p in problems if not p.startswith(f"skills/{relinked}")]

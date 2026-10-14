@@ -1015,6 +1015,41 @@ plugin 查找設定時，專案的 `.opencode/shoal/catalog.json` 存在就只�
 native routing）。從 shoal 以外的目錄執行時，installer 需要在 shoal checkout 內
 （它用 `git` 讀取 HEAD）。安裝後重新啟動 OpenCode。
 
+## 模組
+
+`tools/shoal_install.py` 是安裝入口，只包住既有的 installer（Codex 的
+`install/install.py`、`tools/install_hooks.py`、`tools/install_grok.py`、OpenCode 的
+`install.sh --global`），不重寫安裝邏輯。模組清單在 `install/modules.json`。
+
+```bash
+python3 tools/shoal_install.py --list [--host codex]       # 模組、依賴、預設與已安裝狀態
+python3 tools/shoal_install.py --host codex                # dry-run（預設）：印出會執行的指令
+python3 tools/shoal_install.py --host codex --apply        # 執行既有 installer 並寫 manifest
+python3 tools/shoal_install.py --host codex --with jev-router --without codex-autoroute
+python3 tools/shoal_install.py --host claude --only core,host-claude
+```
+
+| 模組 | 內容 | 預設 |
+| --- | --- | --- |
+| `core` | 各 host 共用的來源，隨 host 模組出貨，不單獨安裝 | 永遠 |
+| `host-claude`、`host-codex`、`host-agy`、`host-grok`、`host-opencode` | 該 host 的 role、skill、政策文字 | 永遠 |
+| `dispatch-guard` | 派工守門 hook；關掉等於只有政策文字 | 新裝 on |
+| `codex-autoroute` | Codex autoroute gate | on |
+| `jev-router` | Codex 的 Jev router plugin | 新裝 off |
+| `claude-explore` | Explore agent，裝到 `~/.claude/agents/` | on |
+| 外部模組 | guard chain 成員，從自己的來源安裝，經 manifest 的 `chain` 登記 | 自選 |
+
+安裝結果記在 `${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`，`--apply` 才寫入。
+沒有 manifest 的既有機器由實際檔案推導，行為和今天一樣；`sync_global.py` 在 manifest
+有該 host 的紀錄時只同步選到的模組（codex 與 agy 沒選 `dispatch-guard` 就不跑 guard
+hooks，沒選 `jev-router` 就不補裝），沒有紀錄時完全照舊。Claude 沒有可由這裡執行的
+installer，`--apply` 只印出 `claude plugin` 指令並記錄模組。
+
+目前（S1）生效的旗標：`--host`、`--list`、dry-run、`--apply`、`--with jev-router`（Codex）。
+`--without` 與 `--only` 會驗證並記錄進 manifest，但既有 installer 還不能略過
+`dispatch-guard`、`codex-autoroute`、`claude-explore`，所以這三個仍照今天的內容安裝，
+dry-run 會明說；真正略過在 S3 才實作。
+
 ## 每日同步
 
 `tools/sync_global.py` 把 committed HEAD 同步到 Codex、Grok、agy、OpenCode 的全域
