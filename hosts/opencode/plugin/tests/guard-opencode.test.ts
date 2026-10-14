@@ -462,7 +462,7 @@ describe("OpenCode guard: chain", () => {
     expect(logLines().filter((l) => l.rule === "chain").map((l) => l.decision)).toEqual(["chain_allow", "chain_deny"]);
   });
 
-  test("a manifest record without dispatch-guard switches the guard (and its chain) off for opencode", async () => {
+  test("a manifest record without dispatch-guard runs the chain only; with no member for the host everything is off", async () => {
     configure(["deny_if", "needle-in-args"]);
     const file = process.env.SHOAL_GUARD_CHAIN_FILE as string;
     const doc = JSON.parse(readFileSync(file, "utf8"));
@@ -470,10 +470,23 @@ describe("OpenCode guard: chain", () => {
     await prompt(guard, MAIN, "msg_001", "#direct");
     writeFileSync(file, JSON.stringify({ ...doc, claude: { modules: ["core", "host-claude"] } }));
     await expect(call(guard, "bash", MAIN, { command: "echo needle-in-args" })).rejects.toThrow("m0: saw needle-in-args");
+    // chain-only: the opencode member still denies, only the built-in rules are off
     writeFileSync(file, JSON.stringify({ ...doc, opencode: { modules: ["core", "host-opencode"], version: "3.8.0" } }));
+    await expect(call(guard, "bash", MAIN, { command: "echo needle-in-args" })).rejects.toThrow("m0: saw needle-in-args");
+    // no member for opencode: everything is off
+    const other = { ...doc, chain: doc.chain.map((m: Record<string, unknown>) => ({ ...m, hosts: ["claude"] })) };
+    writeFileSync(file, JSON.stringify({ ...other, opencode: { modules: ["core", "host-opencode"], version: "3.8.0" } }));
     await call(guard, "bash", MAIN, { command: "echo needle-in-args" });
     writeFileSync(file, JSON.stringify({ ...doc, opencode: { modules: ["core", "host-opencode", "dispatch-guard"] } }));
     await expect(call(guard, "bash", MAIN, { command: "echo needle-in-args" })).rejects.toThrow("m0: saw needle-in-args");
+  });
+
+  test("numeric versions are reported", async () => {
+    configure(["report_num"]);
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN, "msg_001", "#direct");
+    await call(guard, "bash", MAIN, { command: "ls" });
+    expect(logLines().filter((l) => l.decision === "chain_report").map((l) => l.reason)).toEqual(["id=fx-num version=1"]);
   });
 
   test("a failing member never blocks", async () => {

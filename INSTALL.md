@@ -938,15 +938,18 @@ shoal 只開一個擴充點：guard chain。外部 guard 不改 shoal 的程式�
   `{"decision": "allow"}` 或沒有輸出
   都是放行。任一成員 deny 就整體 deny，host 收到的是 guard 自己 deny 用的原生輸出，理由前面加
   name 與冒號（`<name>:`）。只有 `PreToolUse` 的 deny 會擋；`Stop` 維持原本的 block；
-  其他事件（`PostToolUse`、`UserPromptSubmit`、`SessionEnd`）的 deny 只記 log。
-- shoal 自己已經 deny 或 block 時不會呼叫成員；第一個 deny 之後的成員也不會跑。
+  其他事件（`PostToolUse`、`UserPromptSubmit`、`SessionEnd`）的 deny 只記 log、不擋，
+  但同樣是第一個 deny 贏：之後的成員不會再跑（前面成員已收集的 `context` 保留）。
+- shoal 自己已經 deny 或 block 時不會呼叫成員；任何事件的第一個 deny 之後，後面的成員也不會跑。
   `SHOAL_GUARD=off` 時整條 chain 不跑，`shadow` 時 deny 只記成 `would_deny`。
 - 輸出可以多帶 `context`（字串，建議性、不會擋）：Claude 在 `PreToolUse`、`PostToolUse`、
   `UserPromptSubmit` 轉成 `hookSpecificOutput.additionalContext`，多個成員的 context 以換行串起來；
   其他 host 與事件只寫 log（`chain_context`，不含內文），不送給模型。`member`、`version` 只寫進
-  log（`chain_report`），其他不認得的欄位一律忽略。
+  log（`chain_report`），其他不認得的欄位一律忽略。`version` 可以是字串或數字
+  （如 `1`），數字會轉成字串寫進 log；其他型別忽略。
 - fail-open：非零 exit、逾時、輸出不是 JSON 或 decision 不認得，一律當作放行，log 記
-  `chain_error` 或 `chain_timeout`。每個成員逾時預設 5 秒
+  `chain_error` 或 `chain_timeout`。成員 stdout 最多讀 64 KiB，超過就終止該成員並記
+  `chain_error`（stderr 丟棄），不會把輸出整個緩衝在 guard 裡。每個成員逾時預設 5 秒
   （`SHOAL_GUARD_CHAIN_TIMEOUT_MS` 可調，上限 8000）。整條 chain 另有總時限：host 的 hook 逾時
   （10 秒）減 2 秒，從 guard 開始判斷算起（`SHOAL_GUARD_CHAIN_BUDGET_MS` 只能再縮短）；剩餘時間用完時，
   後面的成員被略過並記 `chain_budget`（fail-open）。
@@ -1163,7 +1166,7 @@ shoal 仍會註冊同一個 guard hook（同一支 `shoal_guard.py`），讓 cha
 
 ```bash
 python3 tools/shoal_install.py --chain-add my-guard \
-  --chain-command '["/usr/local/bin/my-guard","check"]' --chain-hosts claude,codex [--chain-order 10] [--apply]
+  --chain-command '["/usr/local/bin/my-guard","check"]' --chain-hosts claude,codex [--chain-events PostToolUse,SessionEnd] [--chain-order 10] [--apply]
 python3 tools/shoal_install.py --chain-remove my-guard [--apply]
 python3 tools/shoal_install.py --list          # 底部列出 chain
 ```
@@ -1171,6 +1174,9 @@ python3 tools/shoal_install.py --list          # 底部列出 chain
 `--chain-command` 必須是非空字串組成的 JSON 陣列（argv，不經 shell），`--chain-hosts` 必須是已知 host；
 和其他動作一樣預設 dry-run，加 `--apply` 才寫 manifest。同名再登記會就地取代並沿用原本的 order；
 不給 `--chain-order` 時新成員排在現有最後。
+`--chain-events` 是逗號分隔的事件（`PreToolUse`、`PostToolUse`、`UserPromptSubmit`、`SessionEnd`、
+`Stop`），不認得的名字會中止；省略時不寫 `events`（等於只收 `PreToolUse`），同名再登記而且沒給
+`--chain-events` 時沿用原本的 `events`。`--list` 會顯示每個成員的 `events`。
 
 ### 改名：`shoal-guard` 變成 `shoal-dispatch-guard`（3.8.0）
 

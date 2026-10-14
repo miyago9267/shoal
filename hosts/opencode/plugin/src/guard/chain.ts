@@ -150,6 +150,7 @@ function callMember(command: string[], raw: Buffer, env: Env, timeoutMs: number)
         ["id", body.member],
         ["version", body.version],
       ]
+        .map(([k, v]) => [k, typeof v === "number" || typeof v === "boolean" ? String(v) : v])
         .filter(([, v]) => typeof v === "string" && v !== "")
         .map(([k, v]) => `${k}=${(v as string).slice(0, 60)}`)
         .join(" ");
@@ -231,7 +232,8 @@ export async function applyChain(
       }
       if (outcome !== "deny") continue;
       // only a PreToolUse deny blocks (and a Stop block, as before); elsewhere it is logged only
-      if ((name !== "PreToolUse" && name !== "Stop") || (event.kind !== "tool" && event.kind !== "stop")) continue;
+      // first deny wins: later members do not run
+      if ((name !== "PreToolUse" && name !== "Stop") || (event.kind !== "tool" && event.kind !== "stop")) break;
       const base = event.kind === "tool" ? "deny" : "block";
       return {
         decision: mode === "enforce" ? base : `would_${base}`,

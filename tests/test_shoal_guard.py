@@ -1727,6 +1727,30 @@ class ChainCliTests(CliCase):
         print("\nfast-exit PostToolUse(Edit): %.1f ms per run, bare python %.1f ms" % (guard_ms, base_ms), file=sys.stderr)
         self.assertLess(guard_ms, base_ms + 250)
 
+    def test_member_output_over_the_cap_is_chain_error_and_stops_the_member(self) -> None:
+        env = dict(os.environ)
+        called = guard._chain_call([sys.executable, self.MEMBER, "flood"], b"{}", env, 10000)
+        self.assertEqual(called["outcome"], "chain_error")
+
+    def test_first_deny_stops_later_members_even_on_log_only_events(self) -> None:
+        record = os.path.join(self.home, "seen.txt")
+        self.configure(["deny", "no"], ["record", record])
+        manifest = Path(self.chain_env["SHOAL_GUARD_CHAIN_FILE"])
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+        for m in doc["chain"]:
+            m["events"] = ["PostToolUse"]
+        manifest.write_text(json.dumps(doc), encoding="utf-8")
+        post = self.event_payload("PostToolUse", tool_name="Edit", tool_input={"file_path": "a"})
+        self.assertEqual(self.run_guard("claude", post, **self.chain_env), "")  # log only: no block
+        self.assertFalse(os.path.exists(record))
+        self.assertEqual([r["decision"] for r in self.log_records() if r.get("rule") == "chain"], ["chain_deny"])
+
+    def test_numeric_version_is_reported_and_non_scalars_dropped(self) -> None:
+        self.configure(["report_num"])
+        self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work), **self.chain_env)
+        reports = [r for r in self.log_records() if r.get("decision") == "chain_report"]
+        self.assertEqual([r["reason"] for r in reports], ["id=fx-num version=1"])
+
     def test_no_manifest_changes_nothing(self) -> None:
         self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work)), "")
         self.assertEqual([r for r in self.log_records() if r.get("rule") == "chain"], [])

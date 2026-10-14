@@ -103,7 +103,7 @@ class RegistryTests(Base):
 class DryRunTests(Base):
     def test_dry_run_prints_commands_and_writes_nothing(self) -> None:
         for host, needle in (
-            ("codex", "install/install.py"),
+            ("codex", "install.py"),
             ("agy", "install_hooks.py"),
             ("grok", "install_grok.py"),
             ("opencode", "install.sh"),
@@ -133,7 +133,7 @@ class DryRunTests(Base):
     def test_without_modules_pass_real_skip_flags_to_the_wrapped_installers(self) -> None:
         _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard,codex-autoroute")
         self.assertNotIn("dispatch-guard,", out.splitlines()[0])
-        cmd = next(line for line in out.splitlines() if "install/install.py" in line)
+        cmd = next(line for line in out.splitlines() if "install.py" in line)
         self.assertIn("--no-guard", cmd)
         self.assertIn("--no-autoroute", cmd)
         _, out, _ = self.run_cli("--host", "codex")
@@ -250,7 +250,7 @@ class ChainOnlyTests(Base):
     def test_install_keeps_guard_hook_when_chain_has_members_for_host(self) -> None:
         self.seed("codex", ["core", "host-codex"], "codex")
         _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard")
-        self.assertNotIn("--no-guard", next(l for l in out.splitlines() if "install/install.py" in l))
+        self.assertNotIn("--no-guard", next(l for l in out.splitlines() if "install.py" in l))
         self.assertIn("chain-only", out)
         self.seed("agy", ["core", "host-agy"], "agy")
         _, out, _ = self.run_cli("--host", "agy", "--without", "dispatch-guard")
@@ -263,7 +263,7 @@ class ChainOnlyTests(Base):
         # installer 保留 guard hook（inst2）與 guard 在同一份 manifest 上只跑 chain（chain2）要同時成立。
         self.seed("codex", ["core", "host-codex"], "codex")
         _, out, _ = self.run_cli("--host", "codex", "--without", "dispatch-guard")
-        self.assertNotIn("--no-guard", next(l for l in out.splitlines() if "install/install.py" in l))
+        self.assertNotIn("--no-guard", next(l for l in out.splitlines() if "install.py" in l))
         env = {"XDG_DATA_HOME": str(self.data)}
         self.assertFalse(shoal_guard.dispatch_guard_selected("codex", env, self.home))
         guard = shoal_guard._Guard({"host": "codex"}, env, self.home)
@@ -276,6 +276,30 @@ class ChainOnlyTests(Base):
         guard = shoal_guard._Guard({"host": "codex"}, env, self.home)
         self.assertFalse(guard.chain_only)
         self.assertEqual(guard.mode, "off")
+
+    def members(self) -> list:
+        return json.loads(self.manifest.read_text(encoding="utf-8"))["chain"]
+
+    def test_chain_events_are_stored_validated_preserved_and_listed(self) -> None:
+        self.assertEqual(self.add("codex", "--chain-events", "PostToolUse,SessionEnd", "--apply")[0], 0)
+        self.assertEqual(self.members()[0]["events"], ["PostToolUse", "SessionEnd"])
+        _, out, _ = self.run_cli("--list")
+        self.assertIn("events=PostToolUse,SessionEnd", out)
+        # re-registering without --chain-events keeps the events
+        self.assertEqual(self.add("codex", "--apply")[0], 0)
+        self.assertEqual(self.members()[0]["events"], ["PostToolUse", "SessionEnd"])
+        # a bad event is refused and nothing changes
+        code, _, err = self.add("codex", "--chain-events", "PostToolUse,Bogus", "--apply")
+        self.assertNotEqual(code, 0)
+        self.assertIn("Bogus", err)
+        self.assertEqual(self.members()[0]["events"], ["PostToolUse", "SessionEnd"])
+
+    def test_chain_events_omitted_means_no_events_field(self) -> None:
+        self.assertEqual(self.add("codex", "--apply")[0], 0)
+        self.assertNotIn("events", self.members()[0])
+
+    def test_chain_event_names_match_the_guard(self) -> None:
+        self.assertEqual(tuple(shoal_install.CHAIN_EVENTS), tuple(shoal_guard.CHAIN_EVENTS))
 
     def test_chain_for_another_host_does_not_keep_the_hook(self) -> None:
         self.seed("codex", ["core", "host-codex"], "agy")
@@ -293,7 +317,7 @@ class ChainOnlyTests(Base):
         self.assertNotIn("claude plugin install shoal-dispatch-guard@shoal", out)
 
     def test_chain_add_apply_reinstalls_guard_step_for_codex_agy_grok(self) -> None:
-        for host, needle in (("codex", "install/install.py"), ("agy", "install_hooks.py"), ("grok", "install_grok.py")):
+        for host, needle in (("codex", "install.py"), ("agy", "install_hooks.py"), ("grok", "install_grok.py")):
             self.calls.clear()
             self.seed(host, ["core", f"host-{host}"])
             code, out, _ = self.add(host)  # dry-run: 只印

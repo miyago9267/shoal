@@ -4,6 +4,7 @@
 allow | deny <reason> | garbage | unknown | exit1 | sleep | deny_if <needle> | record <file> (append stdin, allow)
 context <text> (allow + advisory context) | deny_context <reason> <text> | env_context (allow + context
 "host=<SHOAL_GUARD_HOST> event=<SHOAL_GUARD_EVENT>") | report (allow, self-reported member and version)
+report_num (allow, numeric version) | flood (a deny followed by megabytes of padding on stdout and stderr)
 """
 import json
 import os
@@ -40,3 +41,8 @@ elif mode == "env_context":
         os.environ.get("SHOAL_GUARD_HOST"), os.environ.get("SHOAL_GUARD_EVENT"))}))
 elif mode == "report":
     print(json.dumps({"decision": "allow", "member": "fx-reporter", "version": "1.2.3", "ignored": {"x": 1}}))
+elif mode == "report_num":
+    print(json.dumps({"decision": "allow", "member": "fx-num", "version": 1, "extra": [1]}))
+elif mode == "flood":
+    sys.stderr.write("e" * (8 * 1024 * 1024))
+    sys.stdout.write('{"decision":"deny","reason":"flooded"}' + " " * (8 * 1024 * 1024))

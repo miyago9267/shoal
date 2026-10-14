@@ -22,8 +22,9 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   guard plugin（modular-install S4）。升級時 dotfile updater 要另外安裝
   `shoal-dispatch-guard@shoal`，規則見 [INSTALL.md](./INSTALL.md)。
 - 新增 `--chain-add NAME --chain-command '<JSON argv>'
-  --chain-hosts h1,h2 [--chain-order N]`、`--chain-remove NAME`，
-  `--list` 顯示 chain；註冊時不執行成員。
+  --chain-hosts h1,h2 [--chain-events E1,E2]
+  [--chain-order N]`、`--chain-remove NAME`，
+  `--list` 顯示 chain 與各成員的 events；註冊時不執行成員。
 - 內建 guard 的 hook 註冊改名：Codex `shoal-guard-v1`～`v5` 變成
   `shoal-dispatch-guard-v1`（群組內容與舊 v5 逐位元組相同，舊 id 原地遷移），
   agy 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。Codex 若提示 hook 需要
@@ -33,7 +34,9 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `SessionEnd`、`Stop`），只轉給有宣告的成員，只有 `PreToolUse` 的 deny 會擋；輸出可帶建議性的
   `context`（Claude 轉成 `additionalContext`，其他 host 只記 log）；成員 env 注入
   `SHOAL_GUARD_HOST`、`SHOAL_GUARD_EVENT`；整條 chain 有總時限（hook 逾時 10 秒減 2 秒），超過的成員略過並記
-  `chain_budget`，單一成員上限由 60 秒降為 8 秒；關掉 dispatch-guard 但有 chain 成員時，guard 只跑 chain。
+  `chain_budget`，單一成員上限由 60 秒降為 8 秒；任何事件的第一個 deny 之後，後面的成員不再執行；
+  成員 stdout 最多讀 64 KiB（超過視為 `chain_error`）；`version` 可為數字；
+  關掉 dispatch-guard 但有 chain 成員時，guard 只跑 chain。
   Claude guard plugin 加掛改檔工具的 `PostToolUse` 與 `SessionEnd`；Codex 註冊改為
   `shoal-dispatch-guard-v2`（`PostToolUse` matcher 加 `apply_patch`、新增 `SessionEnd`，
   `shoal-dispatch-guard-v1` 與 `shoal-guard-v5` 原地升級），Codex 要用 `/hooks` 重新核准。

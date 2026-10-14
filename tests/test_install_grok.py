@@ -573,6 +573,17 @@ class NoGuardTests(InstallGrokCase):
         self.assertEqual(self.run_cli("--apply")[0], 0)
         self.assertEqual(self.installed().get("hooks/shoal-grok/shoal_guard.py"), self.installable()["hooks/shoal-grok/shoal_guard.py"])
 
+    def test_a_guard_script_from_an_earlier_release_is_removed_on_upgrade(self) -> None:
+        self.assertEqual(self.run_cli("--apply")[0], 0)  # installs the committed (old release) guard
+        guard = self.dist / "hooks" / "shoal-grok" / "shoal_guard.py"
+        guard.write_bytes(guard.read_bytes() + b"# 3.8 guard\n")
+        run_git(self.repo, "commit", "-q", "-am", "newer release guard")
+        script = self.home / "hooks" / "shoal-grok" / "shoal_guard.py"
+        self.assertTrue(script.is_file())
+        self.assertEqual(self.run_cli("--apply", "--no-guard")[0], 0)
+        self.assertFalse(script.exists())
+        self.assertFalse([c for c in self.commands() if c.endswith("/shoal_guard.py")])
+
     def test_an_edited_guard_script_is_not_removed(self) -> None:
         self.assertEqual(self.run_cli("--apply")[0], 0)
         script = self.home / "hooks" / "shoal-grok" / "shoal_guard.py"

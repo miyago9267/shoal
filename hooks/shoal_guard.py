@@ -83,6 +83,7 @@ import re
 import shlex
 import stat
 import subprocess
+import threading
 import sys
 import time
 from datetime import datetime, timezone
@@ -2226,16 +2227,61 @@ def chain_event_name(event: Dict[str, Any]) -> Optional[str]:
 def _chain_call(command: List[str], raw: bytes, env: Dict[str, str], timeout_ms: int) -> Dict[str, Any]:
     """{"outcome": allow|deny|chain_error|chain_timeout, "reason", "context", "report"} for one member call."""
     out: Dict[str, Any] = {"outcome": "chain_error", "reason": "", "context": None, "report": None}
+    deadline = time.monotonic() + timeout_ms / 1000.0
     try:
-        proc = subprocess.run(command, input=raw, capture_output=True, timeout=timeout_ms / 1000.0, env=env, check=False)
-    except subprocess.TimeoutExpired:
-        out["outcome"] = "chain_timeout"
-        return out
+        proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
     except (OSError, ValueError):
         return out
-    if proc.returncode != 0:
+    chunks: List[bytes] = []
+    state = {"size": 0, "overflow": False}
+
+    def feed() -> None:
+        try:
+            proc.stdin.write(raw)  # type: ignore[union-attr]
+            proc.stdin.close()  # type: ignore[union-attr]
+        except (OSError, ValueError):
+            pass  # a member that never reads stdin
+
+    def drain() -> None:
+        try:
+            while True:
+                chunk = proc.stdout.read1(65536)  # type: ignore[union-attr]
+                if not chunk:
+                    return
+                state["size"] += len(chunk)
+                if state["size"] > CHAIN_MAX_OUTPUT:
+                    state["overflow"] = True
+                    proc.kill()
+                    return
+                chunks.append(chunk)
+        except (OSError, ValueError):
+            return
+
+    writer = threading.Thread(target=feed, daemon=True)
+    reader = threading.Thread(target=drain, daemon=True)
+    writer.start()
+    reader.start()
+    reader.join(max(0.0, deadline - time.monotonic()))
+    if reader.is_alive():
+        proc.kill()
+        proc.wait()
+        out["outcome"] = "chain_timeout"
         return out
-    text = proc.stdout[:CHAIN_MAX_OUTPUT].decode("utf-8", "replace").strip()
+    try:
+        returncode = proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        out["outcome"] = "chain_timeout"
+        return out
+    finally:
+        try:
+            proc.stdout.close()  # type: ignore[union-attr]
+        except OSError:
+            pass
+    if state["overflow"] or returncode != 0:
+        return out
+    text = b"".join(chunks).decode("utf-8", "replace").strip()
     if not text:
         out["outcome"] = "allow"
         return out
@@ -2255,8 +2301,13 @@ def _chain_call(command: List[str], raw: bytes, env: Dict[str, str], timeout_ms:
     context = obj.get("context")
     if isinstance(context, str) and context.strip():
         out["context"] = context.strip()[:CHAIN_MAX_CONTEXT]
-    reported = [("id", obj.get("member")), ("version", obj.get("version"))]
-    out["report"] = " ".join("%s=%s" % (k, v[:60]) for k, v in reported if isinstance(v, str) and v) or None
+    parts = []
+    for key, value in (("id", obj.get("member")), ("version", obj.get("version"))):
+        if isinstance(value, (int, float)):  # bool is an int; a JSON number or boolean is reported as its text
+            value = json.dumps(value)
+        if isinstance(value, str) and value:
+            parts.append("%s=%s" % (key, value[:60]))
+    out["report"] = " ".join(parts) or None
     return out
 
 
@@ -2300,7 +2351,7 @@ def _apply_chain(guard: "_Guard", event: Dict[str, Any], result: Dict[str, Any])
             continue
         kind = event.get("kind")
         if name not in ("PreToolUse", "Stop") or kind not in ("tool", "stop"):
-            continue  # only a PreToolUse deny blocks (and a Stop block, as before); elsewhere it is logged only
+            break  # first deny wins: later members do not run; elsewhere the deny is logged only
         base = "deny" if kind == "tool" else "block"
         return {
             "decision": base if enforce else "would_" + base,

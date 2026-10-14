@@ -16,11 +16,12 @@
           PreToolUse（matcher "*"）、SessionStart、PreInvocation 與 Stop；每個 command 結尾帶
           --event <名稱>（agy 的 payload 不含事件名稱），舊設定重跑 --apply 會原地補上
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
-          shoal-dispatch-guard-v1 projection 逐位元組相同的群組（UserPromptSubmit、Stop（完成檢查，3.4.0 起），以及 matcher
-          ^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$ 的 PreToolUse，含 commandWindows；
-          另有沒有 matcher 的 SubagentStart（確認 role 真的啟動，v4 起）與 matcher ^Bash$ 的 PostToolUse（v5 起）；
-          legacy 舊 id shoal-guard-v1（matcher 沒有 Bash）、v2（沒有 Stop）、v3（沒有 SubagentStart）、v4（沒有 PostToolUse）重跑會原地換成現行 projection（v5 與現行逐位元組相同，hooks.json 不變），
-          需要在 Codex 用 /hooks 再核准一次），
+          shoal-dispatch-guard-v2 projection 逐位元組相同的群組（UserPromptSubmit、SessionEnd（3.8.0 起，供 chain 成員訂閱）、
+          Stop（完成檢查，3.4.0 起），以及 matcher ^(apply_patch|spawn_agent|collaborationspawn_agent|Bash)$ 的 PreToolUse，
+          含 commandWindows；另有沒有 matcher 的 SubagentStart（確認 role 真的啟動）與 matcher ^(Bash|apply_patch)$ 的
+          PostToolUse（確認指令真的執行；v2 起包含 apply_patch，供 chain 成員看到編輯）；
+          舊 id shoal-dispatch-guard-v1（3.8.0 前期版本，PostToolUse 只有 Bash、沒有 SessionEnd）與 legacy shoal-guard-v1 至 v5
+          重跑會原地換成 v2 projection（groups 改變，所以需要在 Codex 用 /hooks 再核准一次），
           腳本裝到 <home>/hooks/shoal_guard.py（0600）。這是不能跑 install.py 時的窄路徑：
           不碰 shoal_autoroute_gate.py 等其他 hook，也不寫 hook trust（hooks.state），
           裝完要在互動式 Codex 用 /hooks 核准一次。install.py 之後會收編這些 entry。

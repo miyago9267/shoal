@@ -333,8 +333,12 @@ class Plan:
         self.check_rules_markers()
         self.legacy, self.legacy_foreign = find_legacy(home)
         guard_path = home / GUARD_DIST
-        if dropped_guard is not None and guard_path.is_file() and guard_path.read_bytes() == dropped_guard:
-            self.legacy[GUARD_DIST] = dropped_guard  # --no-guard：只移除與 dist 逐位元組相同（確定是 shoal 裝的）的 guard 腳本
+        if dropped_guard is not None and guard_path.is_file():
+            # --no-guard：只移除位元組等於 dist 或某個已發行版本的 guard 腳本（確定是 shoal 裝的；從舊版升級也移得掉）
+            current = guard_path.read_bytes()
+            released = released_blobs(repo, commit, f"{DIST}/{GUARD_DIST}") if repo is not None else set()
+            if current == dropped_guard or current in released:
+                self.legacy[GUARD_DIST] = current
         if repo is not None:
             renamed, renamed_foreign = find_renamed_roles(home, repo, commit)
             self.legacy.update(renamed)

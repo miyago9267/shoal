@@ -5,7 +5,7 @@
   python3 tools/shoal_install.py --list [--host H]
   python3 tools/shoal_install.py --host H [--with M,..] [--without M,..] [--only M,..]   dry-run（預設）
   python3 tools/shoal_install.py --host H [...] --apply
-  python3 tools/shoal_install.py --chain-add NAME --chain-command '["argv","..."]' --chain-hosts h1,h2 [--chain-order N] [--apply]
+  python3 tools/shoal_install.py --chain-add NAME --chain-command '["argv","..."]' --chain-hosts h1,h2 [--chain-events E1,E2] [--chain-order N] [--apply]
   python3 tools/shoal_install.py --chain-remove NAME [--apply]
 
 --without 現在對這三個模組真的生效（再跑一次不帶它們，只移除 shoal 自己的 entry）：
@@ -18,7 +18,7 @@
 預設不變：dispatch-guard 新裝與既有都是開；jev-router 新裝關、既有維持現狀。
 
 installed manifest：${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json
-  {"<host>": {"modules": [...], "version": "<VERSION>"}, "chain": [{"name","command","hosts","order"}]}
+  {"<host>": {"modules": [...], "version": "<VERSION>"}, "chain": [{"name","command","hosts","order","events"?}]}
 沒有 manifest 時由實際檔案推導（等於今天的行為）；第一次 --apply 才寫入。chain 成員只登記，註冊時不執行。
 stdlib only。
 """
@@ -37,6 +37,8 @@ from typing import Callable, Mapping, Optional
 REPO = Path(__file__).resolve().parents[1]
 REGISTRY_PATH = REPO / "install" / "modules.json"
 JEV_PLUGIN = "shoal-jev-router@shoal-codex"
+# 與 hooks/shoal_guard.py 的 CHAIN_EVENTS 相同（tests 比對）；不 import guard，installer 保持獨立。
+CHAIN_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionEnd", "Stop")
 EXPLORE_DIST = "hosts/claude/dist/agents/Explore.md"
 
 Runner = Callable[[list[str], Mapping[str, str]], int]
@@ -338,7 +340,14 @@ def parse_chain_member(args: argparse.Namespace, reg: dict, env: Mapping[str, st
     if order is None:  # 重新登記同名成員沿用原本的 order；新成員排在現有最後
         current = {m.get("name"): m.get("order", 0) for m in chain_members(env)}
         order = current[name] if name in current else (max(current.values()) + 1 if current else 0)
-    return {"name": name, "command": command, "hosts": hosts, "order": order}
+    member = {"name": name, "command": command, "hosts": hosts, "order": order}
+    if args.chain_events is not None:
+        events = _csv([args.chain_events])
+        bad = [e for e in events if e not in CHAIN_EVENTS]
+        if not events or bad:
+            raise InstallError(f"--chain-events 不認得：{', '.join(bad) or '(空)'}；可用：{', '.join(CHAIN_EVENTS)}")
+        member["events"] = events
+    return member
 
 
 def _guard_follow_up(hosts: list[str], before: dict[str, bool], args: argparse.Namespace, env: Mapping[str, str], runner: Runner) -> int:
@@ -374,10 +383,14 @@ def do_chain(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runner
     if args.chain_add is not None:
         member = parse_chain_member(args, reg, env)
         if any(m.get("name") == member["name"] for m in chain):
+            old = next(m for m in chain if m.get("name") == member["name"])
+            if "events" not in member and "events" in old:
+                member["events"] = old["events"]  # 重新登記沒帶 --chain-events：沿用原本的訂閱
             chain = [member if m.get("name") == member["name"] else m for m in chain]
         else:
             chain.append(member)
-        print(f"chain add: {member['name']}  hosts={','.join(member['hosts'])}  order={member['order']}  command={json.dumps(member['command'], ensure_ascii=False)}")
+        print(f"chain add: {member['name']}  hosts={','.join(member['hosts'])}  order={member['order']}  command={json.dumps(member['command'], ensure_ascii=False)}"
+              + (f"  events={','.join(member['events'])}" if "events" in member else ""))
     else:
         if args.chain_remove not in [m.get("name") for m in chain]:
             print(f"chain: {args.chain_remove} 不在 chain 內，沒有變更")
@@ -433,7 +446,8 @@ def do_list(host: Optional[str], reg: dict, env: Mapping[str, str], repo: Path =
     chain = chain_members(env)
     print("guard chain: " + ("(none)" if not chain else ""))
     for member in chain:
-        print(f"  [{member['order']}] {member['name']}  hosts={','.join(member['hosts'])}  command={json.dumps(member['command'], ensure_ascii=False)}")
+        print(f"  [{member['order']}] {member['name']}  hosts={','.join(member['hosts'])}  command={json.dumps(member['command'], ensure_ascii=False)}"
+              + (f"  events={','.join(member['events'])}" if isinstance(member.get("events"), list) else ""))
     return 0
 
 
@@ -488,6 +502,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--chain-add", metavar="NAME", help="登記 guard chain 成員（需要 --chain-command 與 --chain-hosts）")
     p.add_argument("--chain-command", metavar="JSON", help='成員的 argv，JSON 字串陣列，例如 \'["python3","/path/member.py"]\'')
     p.add_argument("--chain-hosts", metavar="HOSTS", help="成員適用的 host（逗號分隔）")
+    p.add_argument("--chain-events", metavar="EVENTS", help=f"成員訂閱的事件（逗號分隔，{', '.join(CHAIN_EVENTS)}）；省略＝只有 PreToolUse，重新登記時沿用原值")
     p.add_argument("--chain-order", type=_num, metavar="N", help="執行順序（升冪）；預設：同名成員沿用原值，新成員為現有最大值加 1")
     p.add_argument("--chain-remove", metavar="NAME", help="從 chain 移除成員")
     mode = p.add_mutually_exclusive_group()
