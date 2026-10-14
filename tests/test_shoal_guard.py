@@ -405,6 +405,46 @@ class ClaudeAdapterTests(CliCase):
                 guard.adapt_claude(claude_prompt(prompt=vector["prompt"]))["direct"], vector["direct"], vector["name"]
             )
 
+    def test_fast_switch_vectors(self) -> None:
+        """tests/fixtures/fast_switch_vectors.json is shared with the TypeScript mirror (raw prompt -> on/off/none)."""
+        doc = json.loads((ROOT / "tests" / "fixtures" / "fast_switch_vectors.json").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(doc["vectors"]), 30)
+        codex = {"hook_event_name": "UserPromptSubmit", "session_id": "s", "turn_id": "t"}
+        grok = {"hookEventName": "user_prompt_submit", "sessionId": "s", "promptId": "p"}
+        for vector in doc["vectors"]:
+            want = None if vector["fast"] == "none" else vector["fast"]
+            prompt = vector["prompt"]
+            self.assertEqual(guard.fast_switch(prompt), want, vector["name"])
+            self.assertEqual(guard.adapt_claude(claude_prompt(prompt=prompt))["fast"], want, vector["name"])
+            self.assertEqual(guard.adapt_codex({**codex, "prompt": prompt})["fast"], want, vector["name"])
+            self.assertEqual(guard.adapt_grok({**grok, "prompt": prompt})["fast"], want, vector["name"])
+        self.assertIsNone(guard.fast_switch(None))
+        self.assertIsNone(guard.fast_switch(7))
+
+    def test_fast_flag_from_raw_prompt_end_to_end(self) -> None:
+        """Each host: a raw prompt payload -> adapter -> state file's fast flag (set by #fast, cleared by #strict)."""
+        hosts = (
+            ("claude", "sess-1", lambda text, n: claude_prompt(cwd=self.work, prompt_id="p-%d" % n, prompt=text)),
+            ("codex", "019f-s", lambda text, n: CodexAdapterTests.prompt(cwd=self.work, turn_id="t-%d" % n, prompt=text)),
+            ("grok", "gs-main", lambda text, n: {"hookEventName": "user_prompt_submit", "sessionId": "gs-main",
+                                                 "cwd": self.work, "promptId": "gp-%d" % n, "prompt": text}),
+        )
+        for host, session, make in hosts:
+            state_file = Path(self.guard_dir, "state", session + ".json")
+
+            def fast() -> bool:
+                return json.loads(state_file.read_text(encoding="utf-8")).get("fast") is True
+
+            with self.subTest(host):
+                self.run_guard(host, make("what does `#fast` do?", 1))
+                self.assertFalse(fast())
+                self.run_guard(host, make("go #fast, please", 2))
+                self.assertTrue(fast())
+                self.run_guard(host, make("carry on", 3))
+                self.assertTrue(fast())
+                self.run_guard(host, make("#fast and #strict", 4))
+                self.assertFalse(fast())
+
     def test_quoted_direct_does_not_release_r1(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work, prompt="why does `#direct` exist?"))
         self.write_turn("sess-1", "p-1", "judgment")

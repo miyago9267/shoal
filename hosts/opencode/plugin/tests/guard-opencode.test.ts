@@ -187,6 +187,25 @@ describe("OpenCode guard: main session", () => {
     await expect(call(guard, "write", MAIN, edit("a"))).rejects.toThrow(/does not edit files itself/);
   });
 
+  test("#fast typed in a raw chat.message persists the session fast flag; #strict clears it; code spans do not count", async () => {
+    const guard = makeGuard(defaultSessions());
+    const fastFlag = () => {
+      try {
+        return JSON.parse(readFileSync(join(root, "home", "xdg-state", "shoal", "guard", "state", MAIN + ".json"), "utf8")).fast === true;
+      } catch {
+        return false;
+      }
+    };
+    await prompt(guard, MAIN, "msg_001", "what does `#fast` do?");
+    expect(fastFlag()).toBe(false);
+    await prompt(guard, MAIN, "msg_002", "please go #fast, thanks");
+    expect(fastFlag()).toBe(true);
+    await prompt(guard, MAIN, "msg_003", "carry on");
+    expect(fastFlag()).toBe(true);
+    await prompt(guard, MAIN, "msg_004", "#fast and #strict");
+    expect(fastFlag()).toBe(false);
+  });
+
   test("#direct inside inline code or glued to text is not a directive", async () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN, "msg_001", "what does `#direct` do? also foo#direct");

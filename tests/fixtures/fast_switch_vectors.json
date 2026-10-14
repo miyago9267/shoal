@@ -1,0 +1,170 @@
+{
+  "_doc": "Raw prompt text -> fast-mode switch (on = standalone #fast, off = #strict, which wins when both appear, none = no switch).  Tokens follow the #direct rules (direct_token_vectors.json): standalone, case-sensitive, code spans/fences masked.  Replayed by tests/test_shoal_guard.py (fast_switch plus the claude/codex/grok adapters) and hosts/opencode/plugin/tests/fast-switch.test.ts (fastSwitch); both must agree.",
+  "vectors": [
+    {
+      "name": "plain #fast",
+      "prompt": "#fast",
+      "fast": "on"
+    },
+    {
+      "name": "fast mid sentence",
+      "prompt": "please go #fast now",
+      "fast": "on"
+    },
+    {
+      "name": "fast at end",
+      "prompt": "ship it #fast",
+      "fast": "on"
+    },
+    {
+      "name": "plain #strict",
+      "prompt": "#strict",
+      "fast": "off"
+    },
+    {
+      "name": "strict mid",
+      "prompt": "back to #strict mode please",
+      "fast": "off"
+    },
+    {
+      "name": "both fast then strict",
+      "prompt": "#fast then #strict",
+      "fast": "off"
+    },
+    {
+      "name": "both strict then fast",
+      "prompt": "#strict then #fast",
+      "fast": "off"
+    },
+    {
+      "name": "fast in inline code",
+      "prompt": "what does `#fast` do?",
+      "fast": "none"
+    },
+    {
+      "name": "strict in inline code",
+      "prompt": "what does `#strict` do?",
+      "fast": "none"
+    },
+    {
+      "name": "fast in fenced block",
+      "prompt": "look:\n```\n#fast\n```\nthanks",
+      "fast": "none"
+    },
+    {
+      "name": "strict in fenced block",
+      "prompt": "```sh\n#strict\n```",
+      "fast": "none"
+    },
+    {
+      "name": "strict in code, fast outside",
+      "prompt": "`#strict` but #fast",
+      "fast": "on"
+    },
+    {
+      "name": "glued prefix",
+      "prompt": "x#fast",
+      "fast": "none"
+    },
+    {
+      "name": "longer word",
+      "prompt": "#fastest",
+      "fast": "none"
+    },
+    {
+      "name": "hyphen suffix",
+      "prompt": "#fast-mode",
+      "fast": "none"
+    },
+    {
+      "name": "underscore suffix",
+      "prompt": "#fast_mode",
+      "fast": "none"
+    },
+    {
+      "name": "double hash",
+      "prompt": "##fast",
+      "fast": "none"
+    },
+    {
+      "name": "space after hash",
+      "prompt": "# fast",
+      "fast": "none"
+    },
+    {
+      "name": "strict glued",
+      "prompt": "x#strict",
+      "fast": "none"
+    },
+    {
+      "name": "strict longer word",
+      "prompt": "#strictly",
+      "fast": "none"
+    },
+    {
+      "name": "fast comma",
+      "prompt": "use #fast, please",
+      "fast": "on"
+    },
+    {
+      "name": "fast parens",
+      "prompt": "(#fast)",
+      "fast": "none"
+    },
+    {
+      "name": "fast full stop",
+      "prompt": "go #fast.",
+      "fast": "on"
+    },
+    {
+      "name": "fast cjk comma",
+      "prompt": "改這個 #fast，謝謝",
+      "fast": "on"
+    },
+    {
+      "name": "fast cjk full stop",
+      "prompt": "請 #fast。",
+      "fast": "on"
+    },
+    {
+      "name": "strict question",
+      "prompt": "#strict?",
+      "fast": "off"
+    },
+    {
+      "name": "fast after newline",
+      "prompt": "line one\n#fast",
+      "fast": "on"
+    },
+    {
+      "name": "uppercase fast",
+      "prompt": "#FAST",
+      "fast": "none"
+    },
+    {
+      "name": "capitalised fast",
+      "prompt": "#Fast",
+      "fast": "none"
+    },
+    {
+      "name": "uppercase strict",
+      "prompt": "#STRICT",
+      "fast": "none"
+    },
+    {
+      "name": "no token",
+      "prompt": "just edit the file",
+      "fast": "none"
+    },
+    {
+      "name": "empty",
+      "prompt": "",
+      "fast": "none"
+    },
+    {
+      "name": "direct only",
+      "prompt": "do it #direct",
+      "fast": "none"
+    }
+  ]
+}
