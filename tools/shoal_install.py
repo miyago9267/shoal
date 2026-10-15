@@ -7,7 +7,7 @@
   python3 tools/shoal_install.py --host H [...] --apply
 
 dry-run 會呼叫底層 installer 的 dry-run 並顯示輸出；claude、codex、bun 等外部 CLI 以 shutil.which 解析，找不到時 dry-run 回報 skipped。
-agy 的 agents、skills、rules 連到 hosts/agy/dist（symlink 失敗時改複製並在 manifest 記 agy_mode: copy）。
+agy 的 agents、skills 連到 hosts/agy/dist（symlink 失敗時改複製並在 manifest 記 agy_mode: copy）。
   python3 tools/shoal_install.py --chain-add NAME --chain-command '["argv","..."]' --chain-hosts h1,h2 [--chain-events E1,E2] [--chain-order N] [--apply]
   python3 tools/shoal_install.py --chain-remove NAME [--apply]
 
@@ -469,9 +469,9 @@ def agy_mode(env: Mapping[str, str]) -> Optional[str]:
 
 
 def agy_items(repo: Path = REPO) -> list[tuple[str, Path]]:
-    """hosts/agy/dist 的 agents、skills、rules 項目：(相對 ~/.gemini/config 的路徑, 來源)。"""
+    """hosts/agy/dist 的 agents、skills 項目：(相對 ~/.gemini/config 的路徑, 來源)。"""
     items = []
-    for kind in ("agents", "skills", "rules"):
+    for kind in ("agents", "skills"):
         root = repo / "hosts" / "agy" / "dist" / kind
         if root.is_dir():
             items += [(f"{kind}/{p.name}", p) for p in sorted(root.iterdir())]
@@ -491,7 +491,7 @@ def _copy_item(src: Path, dst: Path) -> None:
 
 
 def link_agy(env: Mapping[str, str], apply: bool) -> str:
-    """agents、skills、rules 連到 hosts/agy/dist（G2）；回傳 "symlink" 或 "copy"。
+    """agents、skills 連到 hosts/agy/dist（G2）；回傳 "symlink" 或 "copy"。
 
     不覆蓋使用者自己的檔案：已存在且不是 shoal 的 symlink（copy 模式則是內容不同的非自有檔）一律保留並回報。
     os.symlink 丟 OSError（Windows 無權限）時，這個與其後的項目改為複製，並由呼叫端在 manifest 記 agy_mode: copy。
@@ -531,6 +531,49 @@ def link_agy(env: Mapping[str, str], apply: bool) -> str:
                 copy_mode = True
         _copy_item(src, dst)
     return "copy" if copy_mode else "symlink"
+
+
+AGY_BEGIN, AGY_END = "<!-- shoal-agy:begin -->", "<!-- shoal-agy:end -->"
+AGY_OWNED = "<!-- shoal-agy:installer -->"  # 入口自己寫的區塊前綴；沒有它的 shoal-agy 區塊視為外部 composer 產生
+
+
+def agy_bootstrap() -> str:
+    text = (REPO / "hosts/agy/dist/rules/shoal-agy.md").read_text(encoding="utf-8")
+    return text[text.index(AGY_BEGIN) : text.index(AGY_END) + len(AGY_END)]
+
+
+def upsert_gemini_md(env: Mapping[str, str], apply: bool) -> None:
+    """把 agy bootstrap 以標記區塊放進 ~/.gemini/GEMINI.md（agy 不讀 config/rules）。
+
+    GEMINI.md 是 symlink，或已有外部 composer 產生的 shoal-agy 區塊時不寫入（managed externally），只檢查內容；
+    永遠不寫穿 symlink。
+    """
+    dst = host_home("agy", env) / "GEMINI.md"
+    block = agy_bootstrap()
+    owned = AGY_OWNED + "\n" + block
+    if dst.is_symlink():
+        text = dst.read_text(encoding="utf-8", errors="replace") if dst.exists() else ""
+        ok = block in text
+        print(f"managed externally: {dst} 是 symlink，未寫入；shoal-agy 區塊{'內容相符' if ok else '缺少或與 repo 不符'}")
+        return
+    text = dst.read_text(encoding="utf-8") if dst.exists() else ""
+    if AGY_BEGIN in text and AGY_OWNED not in text:
+        ok = block in text
+        print(f"managed externally: {dst} 的 shoal-agy 區塊不是入口寫的，未寫入；內容{'相符' if ok else '與 repo 不符'}")
+        return
+    if AGY_OWNED in text:
+        a = text.index(AGY_OWNED)
+        b = text.index(AGY_END, a) + len(AGY_END)
+        new = text[:a] + owned + text[b:]
+    else:
+        new = text + ("\n" if text and not text.endswith("\n") else "") + ("\n" if text else "") + owned + "\n"
+    if new == text:
+        print(f"ok: {dst}")
+        return
+    print(("would write: " if not apply else "write: ") + f"{dst}（shoal-agy 區塊）")
+    if apply:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(new, encoding="utf-8")
 
 
 def install_explore(env: Mapping[str, str], apply: bool) -> None:
@@ -633,6 +676,7 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
     extra_manifest: dict = {}
     if host == "agy":
         mode = link_agy(env, args.apply)
+        upsert_gemini_md(env, args.apply)
         if args.apply and mode == "copy":
             extra_manifest["agy_mode"] = "copy"
     path = manifest_path(env)

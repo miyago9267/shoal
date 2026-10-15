@@ -216,7 +216,7 @@ class AgyLinkTests(P1Base):
     def test_apply_links_agents_skills_rules(self) -> None:  # G2
         code, _, err = self.run_cli("--host", "agy", "--apply")
         self.assertEqual(code, 0, err)
-        for kind in ("agents", "skills", "rules"):
+        for kind in ("agents", "skills"):
             for name in self.names(kind):
                 link = self.config() / kind / name
                 self.assertTrue(link.is_symlink(), link)
@@ -228,11 +228,57 @@ class AgyLinkTests(P1Base):
             (shoal_install.load_manifest(self.env) or {})["agy"].get("agy_mode")
         )
 
+    def gemini(self) -> Path:
+        return self.home / ".gemini" / "GEMINI.md"
+
+    def test_gemini_md_created_then_block_replaced_on_rerun(self) -> None:
+        self.assertEqual(self.run_cli("--host", "agy", "--apply")[0], 0)
+        text = self.gemini().read_text(encoding="utf-8")
+        self.assertEqual(text.count("<!-- shoal-agy:begin -->"), 1)
+        self.assertFalse((self.config() / "rules").exists())
+        self.gemini().write_text("# mine\n\n" + text.replace("Shoal orchestration", "STALE"), encoding="utf-8")
+        self.assertEqual(self.run_cli("--host", "agy", "--apply")[0], 0)
+        again = self.gemini().read_text(encoding="utf-8")
+        self.assertTrue(again.startswith("# mine"))
+        self.assertEqual(again.count("<!-- shoal-agy:begin -->"), 1)
+        self.assertNotIn("STALE", again)
+        self.assertIn("Shoal orchestration", again)
+
+    def test_gemini_md_plain_file_keeps_user_content(self) -> None:
+        self.gemini().parent.mkdir(parents=True)
+        self.gemini().write_text("# mine\n", encoding="utf-8")
+        self.run_cli("--host", "agy", "--apply")
+        self.assertTrue(self.gemini().read_text(encoding="utf-8").startswith("# mine\n"))
+
+    def test_gemini_md_symlink_is_never_written(self) -> None:
+        target = self.tmp / "composed.md"
+        target.write_text("composed", encoding="utf-8")
+        self.gemini().parent.mkdir(parents=True)
+        try:
+            self.gemini().symlink_to(target)
+        except OSError:
+            self.skipTest("no symlink privilege")
+        code, out, _ = self.run_cli("--host", "agy", "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(target.read_text(), "composed")
+        self.assertTrue(self.gemini().is_symlink())
+        self.assertIn("managed externally", out)
+
+    def test_gemini_md_external_block_is_not_rewritten(self) -> None:
+        self.gemini().parent.mkdir(parents=True)
+        ext = "x\n" + shoal_install.agy_bootstrap() + "\n"
+        self.gemini().write_text(ext, encoding="utf-8")
+        _, out, _ = self.run_cli("--host", "agy", "--apply")
+        self.assertEqual(self.gemini().read_text(encoding="utf-8"), ext)
+        self.assertIn("managed externally", out)
+        self.assertIn("相符", out)
+
     def test_dry_run_links_nothing(self) -> None:
         code, out, _ = self.run_cli("--host", "agy")
         self.assertEqual(code, 0)
         self.assertIn("would link", out)
         self.assertFalse(self.config().exists())
+        self.assertFalse(self.gemini().exists())
 
     def test_existing_regular_file_is_not_overwritten(self) -> None:
         name = self.names("agents")[0]
@@ -251,7 +297,7 @@ class AgyLinkTests(P1Base):
         with mock.patch("os.symlink", side_effect=OSError("privilege not held")):
             code, _, err = self.run_cli("--host", "agy", "--apply")
         self.assertEqual(code, 0, err)
-        for kind in ("agents", "skills", "rules"):
+        for kind in ("agents", "skills"):
             for name in self.names(kind):
                 copy, src = (
                     self.config() / kind / name,
