@@ -111,7 +111,8 @@ class ClaudeTests(P1Base):
                 ["plugin", "install", "shoal-dispatch-guard@shoal"],
             ],
         )
-        self.assertEqual({c[0] for c in self.calls}, {claude})
+        norm = lambda x: os.path.normcase(os.path.realpath(x))  # Windows 的 8.3 短路徑與大小寫
+        self.assertEqual({norm(c[0]) for c in self.calls}, {norm(claude)})
 
     def test_existing_marketplace_and_plugin_fall_back_to_update(self) -> None:
         self.fake_cli("claude")

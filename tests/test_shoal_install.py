@@ -35,6 +35,14 @@ class Base(unittest.TestCase):
             "OPENCODE_CONFIG_DIR": str(self.tmp / "oc"),
             "CLAUDE_CONFIG_DIR": str(self.tmp / "claude"),
         }
+        # 外部 CLI 一律用假的（CI runner 沒有 claude、codex）；PATH 只含它們
+        fake_bin = self.tmp / "fake-cli"
+        fake_bin.mkdir()
+        for cli in ("claude", "codex"):
+            fake = fake_bin / (cli + (".cmd" if sys.platform == "win32" else ""))
+            fake.write_text("@exit /b 0\n" if sys.platform == "win32" else "#!/bin/sh\nexit 0\n")
+            fake.chmod(0o755)
+        self.env["PATH"] = str(fake_bin)
         self.calls: list[list[str]] = []
         self.manifest = self.data / "shoal" / "modules.json"
 
@@ -52,7 +60,7 @@ class Base(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def tree(self) -> list[str]:
-        return sorted(str(p) for p in self.tmp.rglob("*"))
+        return sorted(str(p) for p in self.tmp.rglob("*") if "fake-cli" not in p.parts)
 
 
 class RegistryTests(Base):
