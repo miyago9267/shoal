@@ -206,7 +206,7 @@ the probe through the `commandWindows` form instead; this uses
 `uv run --no-project python` because `python` is often the Store alias stub.
 Report the gate as unenforced on any other result rather than reporting a gated
 install; see
-[the installation playbook](../INSTALL.md#prove-the-hook-can-launch).
+[the installation playbook](../docs/install/codex.md#prove-the-hook-can-launch).
 
 After the installer adds the shoal hook group, open an interactive Codex
 session and use `/hooks` to inspect and trust the group that runs

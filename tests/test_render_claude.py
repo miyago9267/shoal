@@ -78,8 +78,8 @@ class HostVersionTests(unittest.TestCase):
     def test_upstream_lock_and_readme_record_the_version(self) -> None:
         lock = tomllib.loads((ROOT / "upstream.lock").read_text(encoding="utf-8"))
         self.assertEqual(lock["claude"]["marker_version"], self.VERSION)
-        # 版本表在 README 改成產品首頁後移到 INSTALL.md。
-        readme = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        # 版本表在 README 改成產品首頁後移到 docs/reference.md。
+        readme = (ROOT / "docs" / "reference.md").read_text(encoding="utf-8")
         self.assertRegex(readme, rf"(?m)^\| claude host \| {re.escape(self.VERSION)}")
 
 

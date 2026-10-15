@@ -20,7 +20,7 @@
  * hooks and tools are not forwarded to members.
  *
  * Not attached: the turn-end completion check (E6).  The `event` hook returns void and cannot block, so
- * `session.idle` cannot hold a turn open (INSTALL.md, OpenCode section).
+ * `session.idle` cannot hold a turn open (docs/install/opencode.md).
  */
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import { homedir } from "node:os";

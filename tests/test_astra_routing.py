@@ -118,7 +118,7 @@ class AstraMainSessionContractTests(unittest.TestCase):
             for path in (
                 "templates/config.snippet.toml",
                 "README.md",
-                "INSTALL.md",
+                "docs/install/codex.md",
             )
         )
         for token in (
