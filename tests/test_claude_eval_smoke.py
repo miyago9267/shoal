@@ -1469,7 +1469,7 @@ class ReviewFindingTests(SmokeCase):
             {
                 1: {"models": [secret, "some-other-identifier"]},
                 2: {"models": ["haiku", "claude-opus-4-8[1m]"]},
-                3: {"models": ["claude-haiku-" + "x" * 40, "claude-sonnet-5-5"]},
+                3: {"models": ["claude-haiku-" + "x" * 40, "claude-haiku-4-5"]},
             }
         )
         code, report, text = self.smoke(stub)
@@ -1482,7 +1482,7 @@ class ReviewFindingTests(SmokeCase):
         self.assertEqual((rows[1]["models_observed"], rows[1]["models_unrecognized"]), (["claude-opus-4-8[1m]", "haiku"], 0))
         self.assertEqual(
             (rows[2]["models_observed"], rows[2]["models_unrecognized"]),
-            (["claude-sonnet-5-5", smoke.MODEL_PLACEHOLDER], 1),
+            (["claude-haiku-4-5", smoke.MODEL_PLACEHOLDER], 1),
         )
         self.assertEqual(rows[3]["models_observed"], ["claude-haiku-4-5-20251001", "claude-opus-5-5"])
 

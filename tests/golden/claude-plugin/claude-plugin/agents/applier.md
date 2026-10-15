@@ -1,6 +1,6 @@
 ---
 name: applier
-description: Fast executor for small, bounded changes - one file or one tightly scoped purpose: a test fix, a doc fix, a config tweak, a rename, or a repetitive edit from an explicit spec. Makes minor local judgment calls but no design decisions; runs only the checks for what it touched; time-boxed to about 10 minutes. Stops and reports when scope grows, a design decision is needed, or the change spans modules, so the orchestrator can route to executor. Give it the goal, exact scope, and done-criteria.
+description: Fast executor for small, bounded changes - one file or one tightly scoped purpose, such as a test fix, a doc fix, a config tweak, a rename, or a repetitive edit from an explicit spec. Makes minor local judgment calls but no design decisions; runs only the checks for what it touched; time-boxed to about 10 minutes. Stops and reports when scope grows, a design decision is needed, or the change spans modules, so the orchestrator can route to executor. Give it the goal, exact scope, and done-criteria.
 model: haiku
 effort: low
 disallowedTools: Agent, Workflow

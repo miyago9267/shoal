@@ -1,8 +1,9 @@
 # applier 改為快速執行器：舊條款與新條款對照（v3.9.0）
 
 Miyago 2026-10-15 決定把執行分成快速、複雜、嚴謹安全三層，`applier` 是快速層，並核准一次性
-migration。兩個 applier surface（`mechanical-executor-agent`、`claude-applier-agent`）跳過 change
-budget；`max_lines`、`max_bytes`、required fragments 與 version gate 照舊。來源是
+migration。兩個 applier surface（`mechanical-executor-agent`、
+`claude-applier-agent`）跳過 change budget；
+`max_lines`、`max_bytes`、required fragments 與 version gate 照舊。來源是
 `core/contracts/applier.toml`。
 
 | 條款 id | 舊 | 新 |
