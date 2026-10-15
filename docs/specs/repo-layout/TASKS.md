@@ -6,7 +6,7 @@
 | Phase | 狀態 | 前置 |
 | --- | --- | --- |
 | P1 可移植入口、安裝缺口、README | 未開始 | 無 |
-| P2 Codex 可移植登記（不搬檔案） | 未開始 | P1 |
+| P2 Codex 可移植登記（不搬檔案） | 完成（PR 待合併） | P1 |
 | P3 `--update`；P3b dotfile 改呼叫它 | 未開始（P3b 是 dotfile，Miyago） | P2 |
 | P4 文件拆分 | 未開始 | P1（README 衝突時 P1 先） |
 | P5 install/ 瘦身 | 未開始 | P4 |
@@ -48,23 +48,23 @@ OS 的 CI 綠。
 
 ## P2 Codex 可移植登記
 
-- [ ] 在暫存 `CODEX_HOME` live 驗證：根 `.agents/plugins/marketplace.json`
+- [x] 在暫存 `CODEX_HOME` live 驗證：根 `.agents/plugins/marketplace.json`
   指向 `./plugin/plugins/...` 是否被接受；`miyago9267/shoal@<ref>` 是否可
   用；remove 後 cache 與啟用狀態
-- [ ] 把 live 驗證結果與選擇（甲：根 manifest 加 `plugin/plugins/**`；乙：匯
+- [x] 把 live 驗證結果與選擇（甲：根 manifest 加 `plugin/plugins/**`；乙：匯
   出 `plugin/` 子樹）寫回 SPEC F1b
-- [ ] 甲案才新增 `.agents/plugins/marketplace.json` 並保留
+- [x] 甲案才新增 `.agents/plugins/marketplace.json` 並保留
   `plugin/.agents/plugins/marketplace.json` 一個 release；乙案不新增、無下架
   期
-- [ ] `install/install.py`、`tools/sync_global.py`：匯出 committed HEAD 到
+- [x] `install/install.py`、`tools/sync_global.py`：匯出 committed HEAD 到
   `${XDG_DATA_HOME:-~/.local/share}/shoal/codex-marketplace` 並登記；偵測舊
   `<repo>/plugin` 登記後 remove 再 add；已安裝判斷比對 `marketplaceSource`
   與匯出目錄
-- [ ] Git 來源只寫進 `docs/install/codex.md`（不自動選用）；
+- [x] Git 來源只寫進 `docs/install/codex.md`（不自動選用）；
   `INSTALL_PROMPT.md` 不動
-- [ ] 更新 `tests/test_install.py`、`tests/test_plugin.py`、
+- [x] 更新 `tests/test_install.py`、`tests/test_plugin.py`、
   `tests/test_jev_router.py`
-- [ ] 驗收：暫存 `CODEX_HOME`、離線（`GIT_ALLOW_PROTOCOL=none`）從舊登記升
+- [x] 驗收：暫存 `CODEX_HOME`、離線（`GIT_ALLOW_PROTOCOL=none`）從舊登記升
   級；`marketplace list --json` 的 root 是匯出目錄、無 checkout 路徑，兩個
   plugin 都列出，重跑全為 `up-to-date`；`validate_prompt_lock.py` 無旗標通
   過；`INSTALL_PROMPT.md` 無 diff

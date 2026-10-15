@@ -276,6 +276,43 @@ CODEX_INSTALL_NEW = (
 )
 
 
+def run_codex_install(ctx: Ctx, home: Path, what: str) -> None:
+    """Run install/install.py from the working tree; it must match HEAD (the committed export source)."""
+    commit = git(ctx, "rev-parse", "--verify", f"{ctx.ref}^{{commit}}").decode().strip()
+    head = git(ctx, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+    if commit != head:
+        raise SyncError(f"{what} runs install/install.py from the working tree; --ref must be HEAD")
+    dirty = git(ctx, "status", "--porcelain", "--", "install", "templates", "hooks", "plugin", ".agents").decode().strip()
+    if dirty:
+        raise SyncError(f"{what} needs install/, templates/, hooks/, plugin/ and .agents/ to match HEAD; commit or stash first")
+    done = run(
+        [sys.executable, str(ctx.repo / "install" / "install.py"), "--codex-home", str(home)],
+        ctx,
+    )
+    if done.returncode != 0:
+        raise SyncError(f"install/install.py exit {done.returncode}: {one_line(done.stderr or done.stdout)}")
+
+
+def codex_export_dir(ctx: Ctx) -> Path:
+    return ctx.abs_env("XDG_DATA_HOME", ctx.home / ".local" / "share") / "shoal" / "codex-marketplace"
+
+
+def marketplace_stale(ctx: Ctx, home: Path) -> bool:
+    """config.toml 的 shoal-codex marketplace 來源不是 shoal 匯出目錄（例如舊的 <repo>/plugin）時為 True。"""
+    try:
+        import tomllib
+        cfg = tomllib.loads((home / "config.toml").read_text())
+    except (ImportError, OSError, ValueError):
+        return False
+    entry = (cfg.get("marketplaces") or {}).get("shoal-codex")
+    source = entry.get("source") if isinstance(entry, dict) else None
+    if not isinstance(source, str):
+        return False
+    return os.path.normcase(os.path.realpath(source)) != os.path.normcase(
+        os.path.realpath(codex_export_dir(ctx))
+    )
+
+
 def migrate_codex_legacy(ctx: Ctx, home: Path) -> Optional[str]:
     """2.0.0 之前的舊名安裝：dry-run 回報計畫；--apply 先移除舊名再跑 install/install.py 以新名安裝。
 
@@ -290,19 +327,7 @@ def migrate_codex_legacy(ctx: Ctx, home: Path) -> Optional[str]:
     summary = "legacy migration: " + "; ".join(legacy.plan()) + "; install " + CODEX_INSTALL_NEW
     if not ctx.apply:
         return summary
-    commit = git(ctx, "rev-parse", "--verify", f"{ctx.ref}^{{commit}}").decode().strip()
-    head = git(ctx, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
-    if commit != head:
-        raise SyncError("legacy migration runs install/install.py from the working tree; --ref must be HEAD")
-    dirty = git(ctx, "status", "--porcelain", "--", "install", "templates", "hooks", "plugin").decode().strip()
-    if dirty:
-        raise SyncError("legacy migration needs install/, templates/, hooks/ and plugin/ to match HEAD; commit or stash first")
-    done = run(
-        [sys.executable, str(ctx.repo / "install" / "install.py"), "--codex-home", str(home)],
-        ctx,
-    )
-    if done.returncode != 0:
-        raise SyncError(f"install/install.py exit {done.returncode}: {one_line(done.stderr or done.stdout)}")
+    run_codex_install(ctx, home, "legacy migration")
     return summary
 
 
@@ -335,6 +360,10 @@ def sync_codex(ctx: Ctx) -> Result:
         parts.append(migrated)
         if not ctx.apply:
             return "updated", migrated
+    if marketplace_stale(ctx, home):
+        if ctx.apply:
+            run_codex_install(ctx, home, "marketplace migration")
+        parts.append("marketplace -> " + str(codex_export_dir(ctx)))
     if guard_selected(ctx, "codex") and installer_changes(
         "install_hooks.py", ["--host", "codex"], ctx
     ):
