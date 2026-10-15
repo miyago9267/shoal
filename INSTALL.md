@@ -1015,6 +1015,13 @@ claude --plugin-dir ./claude-plugin --plugin-dir ./claude-guard-plugin
   才 `claude plugin uninstall` 它（除非 `dispatch-guard` 被取消**且**chain 沒有 claude 成員，
   否則都要裝）。manifest
   的內容由 `tools/shoal_install.py` 維護；updater 不要自己改它。
+- 相容檔（3.8.1）：3.8.0 的拆分讓升級前就開著的 Claude session 壞掉，因為它們保留舊的 hook 設定，
+  仍指向基礎 plugin 的 `${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py`，檔案不見後每次工具呼叫都失敗。
+  所以基礎 plugin 保留 `hooks/shoal_guard.py`，但它只是一個小 shim，**沒有**註冊在 `hooks/hooks.json`：
+  用同樣的 argv 與 stdin 轉交給 guard plugin 的腳本（先找同一個 marketplace 的
+  `../claude-guard-plugin/hooks/shoal_guard.py`，再找 plugin cache 的 `shoal-dispatch-guard`），
+  找不到就以 0 結束、不輸出，永遠不會自己擋。新開的 session 用不到它；dotfile updater 不要刪它，
+  也不要把它當 guard 的安裝證據。
 - guard hook 的 command 一律是
   `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin`，
   路徑加引號，安裝路徑含空白也能跑；SessionStart 的 `emit-sessionstart.sh` 自己固定
@@ -1182,12 +1189,13 @@ python3 tools/shoal_install.py --list          # 底部列出 chain
 
 另一個獨立專案叫 `shoal-guard`，只經 chain 接入。為了不混淆，shoal 內建 guard 的 hook 註冊名稱全部改為
 `shoal-dispatch-guard`：Codex projection `shoal-guard-v1`～`v5` 變成 `shoal-dispatch-guard-v1`（群組內容
-與舊 v5 逐位元組相同）；agy 的 hooks 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。腳本檔名
+與舊 v5 逐位元組相同），同一版再升為 `shoal-dispatch-guard-v2`（`PostToolUse` 的 matcher 加 `apply_patch`，
+新增 `SessionEnd`，供 chain 成員訂閱）；agy 的 hooks 群組 `shoal-guard` 變成 `shoal-dispatch-guard`。腳本檔名
 `shoal_guard.py` 不變。agy 的舊群組只有在裡面每個 handler 都是 shoal 自己的才會遷移；含有任何外部
 handler（`shoal-guard` 也是外部專案的名字）就整組不碰，installer 印一行 notice，
 uninstall 也不移除。舊安裝重跑 installer（或 `sync_global.py`）會原地遷移，重複執行結果不變。
-Codex 因為 hooks.json 的內容沒變，通常不需要重新核准；若 Codex 提示 hook 需要核准，請在互動 session 用
-`/hooks` 核准一次。
+Codex 的群組內容因為升到 `shoal-dispatch-guard-v2` 而改變，升級後要在互動 session 用 `/hooks`
+重新核准一次。
 
 ## 每日同步
 

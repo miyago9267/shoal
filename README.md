@@ -46,6 +46,16 @@ sh hosts/opencode/plugin/install/install.sh --global --enable
 
 Gemini/agy 與不用 plugin 的 Claude Code 見 [INSTALL.md](./INSTALL.md)。
 
+## 模組
+
+只裝需要的部分：`python3 tools/shoal_install.py --host <h>` 預設只印出會執行的指令，加 `--apply` 才安裝。
+
+不要派工守門就加 `--without dispatch-guard`，`--list` 列出模組與已安裝狀態。
+
+外部 guard 經 guard chain 接入：`--chain-add` 登記，不需要改 shoal。
+
+細節見 [INSTALL.md 的模組](./INSTALL.md#模組)。
+
 ## 支援的 host
 
 | Host | 安裝方式 | guard |

@@ -46,6 +46,16 @@ sh hosts/opencode/plugin/install/install.sh --global --enable
 
 Gemini/agy, and Claude Code without the plugin, are in [INSTALL.md](../INSTALL.md).
 
+## Modules
+
+Install only what you need: `python3 tools/shoal_install.py --host <h>` prints the commands (dry run); add `--apply` to install.
+
+Skip the dispatch guard with `--without dispatch-guard`; `--list` shows the modules and what is installed.
+
+External guards plug in through the guard chain: register one with `--chain-add`, no change to shoal needed.
+
+Details: [INSTALL.md, Modules](../INSTALL.md#模組).
+
 ## Supported hosts
 
 | Host | Install | Guard |

@@ -162,8 +162,16 @@ marketplace 是否只快取子目錄需要查。GitHub release 每 host 一個 t
   - 關掉 dispatch-guard 但該 host 有 chain 成員時，guard 以「只跑 chain」執行。
 - parity：Python（`shoal_guard.py`）與 TS（OpenCode `src/guard/`）以共用 vectors
   驗證行為一致。
-- 驗收：shoal-guard 只靠設定就能接入（以 fake 外部成員測試），且 shoal 程式碼
-  不含 `shoal-guard` 字樣（grep 為 0）。
+- 命名例外：舊 guard id 的遷移程式碼（Codex `shoal-guard-v1`～`v5` 的 projection id，
+  以及舊的 agy 群組 `shoal-guard`）是「shoal 程式碼不含 `shoal-guard`」唯一的例外；
+  遷移要靠這些舊名才認得出 shoal 自己裝過的東西。
+- 驗收：外部 guard 只靠設定就能接入（以 fake 外部成員測試）；排除上述遷移程式碼後，
+  下面指令的結果為 0。
+
+  ```bash
+  grep -rniI "shoal-guard" hooks/ hosts/opencode/plugin/src/ tools/ \
+    install/ claude-plugin/ claude-guard-plugin/ templates/ plugin/
+  ```
 
 ## Non-goals
 

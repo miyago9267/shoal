@@ -5,7 +5,7 @@
  * Config: the `chain` array of the installed module manifest, `${XDG_DATA_HOME:-~/.local/share}/shoal/modules.json`
  * (SHOAL_GUARD_CHAIN_FILE overrides the path).  Entry: `{name, command (argv), hosts, order, events}`; `events`
  * (default ["PreToolUse"]) picks the events the member gets.  OpenCode forwards only PreToolUse (tool.execute.before)
- * today; the other events follow with shoal-guard M3.  After shoal's own decision, each subscribed entry whose
+ * today; the other events follow in a later release.  After shoal's own decision, each subscribed entry whose
  * `hosts` holds this host runs in ascending `order`: argv exec without a shell, the raw hook payload on stdin, env
  * inherited plus SHOAL_GUARD_HOST and SHOAL_GUARD_EVENT.  A member denies only by printing
  * `{"decision":"deny","reason":"..."}`; `{"decision":"allow"}` or no output allows; an optional `context` string is
