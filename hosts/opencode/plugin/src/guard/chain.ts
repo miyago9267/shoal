@@ -22,7 +22,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { appendLog, guardDir, resolveMode, shortHash, type Env, type GuardEvent, type GuardResult } from "./core.js";
+import { appendLog, commitChange, guardDir, resolveMode, shortHash, type Env, type GuardEvent, type GuardResult } from "./core.js";
 
 export const CHAIN_TIMEOUT_MS = 5000;
 // The hosts' hook timeout is 10 s; the chain ends before it (margin 2 s).  Mirror of the Python constants.
@@ -168,6 +168,19 @@ function callMember(command: string[], raw: Buffer, env: Env, timeoutMs: number)
  * JSON).  Never throws: any failure leaves `result` unchanged.
  */
 export async function applyChain(
+  event: GuardEvent,
+  result: GuardResult,
+  env: Env,
+  home: string,
+  rawPayload?: string,
+): Promise<GuardResult> {
+  const final = await runChain(event, result, env, home, rawPayload);
+  // a chain deny means the write never happened, so the turn stays unchanged (issue #6)
+  if (final.decision !== "deny" && final.decision !== "block") commitChange(result);
+  return final;
+}
+
+async function runChain(
   event: GuardEvent,
   result: GuardResult,
   env: Env,
