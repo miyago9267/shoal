@@ -3,6 +3,14 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.9.1
+
+2026-10-15。修正 chain 成員被 deny 後，回合仍被標成已改檔的問題。
+
+### Fixes
+
+- chain 成員 deny 後不再把回合標成改過檔，完成檢查不會多擋一次 Stop（#6）。
+
 ## v3.9.0
 
 `applier` 改為快速執行器，執行分成三層。
