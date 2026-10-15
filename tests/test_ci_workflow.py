@@ -53,6 +53,19 @@ class WorkflowStaticTests(unittest.TestCase):
         self.assertRegex(WORKFLOW, r"HEAD_COMMIT_MESSAGE: \$\{\{ github\.event\.head_commit\.message \}\}")
 
 
+class CrossPlatformSubsetTests(unittest.TestCase):
+    def test_subset_list_resolves_to_existing_modules(self) -> None:
+        lines = (ROOT / "tests" / "ci_cross_platform.txt").read_text(encoding="utf-8").splitlines()
+        modules = [line.strip() for line in lines if line.strip() and not line.startswith("#")]
+        self.assertTrue(modules)
+        for module in modules:
+            self.assertTrue((ROOT / "tests" / f"{module}.py").is_file(), module)
+        self.assertIn("tests/ci_cross_platform.txt", WORKFLOW)
+
+    def test_full_suite_runs_off_pull_request(self) -> None:
+        self.assertIn("matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'", WORKFLOW)
+
+
 @unittest.skipUnless(shutil.which("bash") and sys.platform != "win32", "需要 POSIX bash")
 class LockStepBehaviorTests(unittest.TestCase):
     """把 workflow 的 run 區塊原樣執行，python 換成只印參數的 stub。"""
