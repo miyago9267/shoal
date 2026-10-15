@@ -79,9 +79,9 @@ findings with file:line references.
 
 [roles.applier]
 description = '''
-Mechanical execution of fully-specified work: pattern-based refactors and
-renames, tests that follow existing conventions, documentation updates, bulk
-edits from an explicit spec. Needs no design decisions.
+Fast executor for small, bounded changes: a test fix, doc fix, config tweak,
+rename, or repetitive edit from an explicit spec. Minor local judgment, no
+design decisions, targeted checks only.
 '''
 
 [roles.executor]

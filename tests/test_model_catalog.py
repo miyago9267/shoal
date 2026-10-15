@@ -239,7 +239,7 @@ class CalibrationTests(unittest.TestCase):
     EXPECTED = {
         "claude": {
             "scout": "haiku",  # [roles.scout].model 的 pin，不是 tier pin
-            "applier": "sonnet",
+            "applier": "haiku",
             "executor": "sonnet",
             "plan-critic": "fable",
             "verifier": "opus",
@@ -333,8 +333,8 @@ class CliOverrideTests(unittest.TestCase):
         result = self.check()
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("host claude", result.stderr)
-        # scout pin 在 haiku，所以第一個解不出來的是 applier
-        self.assertIn("role applier", result.stderr)
+        # scout 與 applier 都 pin 在 haiku，所以第一個解不出來的是 executor
+        self.assertIn("role executor", result.stderr)
 
     def test_explain_fails_the_same_way(self) -> None:
         self.edit(self.binding, '"anthropic/opus" = "opus"\n', "")
@@ -375,15 +375,15 @@ class CliOverrideTests(unittest.TestCase):
         self.edit(
             self.binding,
             "[roles.scout]\n",
-            '[tiers]\nfast = "haiku"\n\n[roles.scout]\n',
+            '[tiers]\nstandard = "haiku"\n\n[roles.scout]\n',
         )
         self.assertEqual(self.check().returncode, 1)
         self.assertIn(
             b"\nmodel: haiku\n",
-            render.RENDERERS["claude"](self.root)["agents/scout.md"],
+            render.RENDERERS["claude"](self.root)["agents/executor.md"],
         )
         self.assertIn(
-            "手動指定 [tiers].fast", run_render("claude", self.root, "--explain").stdout
+            "手動指定 [tiers].standard", run_render("claude", self.root, "--explain").stdout
         )
 
 
@@ -405,9 +405,11 @@ class ExplainTests(unittest.TestCase):
 
     def test_claude_explain_shows_candidates_exclusions_and_result(self) -> None:
         out = self.explain("claude")
-        # scout 是手動 pin，不走規則；fast tier 的選模過程看 applier
-        mech = out.split("applier  tier=fast")[1].split("\n\n")[0]
-        self.assertIn("capability 1 低於 fast 門檻 2", mech)
+        # scout 與 applier 是手動 pin，不走規則；選模過程看 standard tier 的 executor
+        applier = out.split("applier  tier=fast")[1].split("\n\n")[0]
+        self.assertIn("結果：haiku（手動指定 [roles.applier].model）", applier)
+        mech = out.split("executor  tier=standard")[1].split("\n\n")[0]
+        self.assertIn("capability 1 低於 standard 門檻 3", mech)
         self.assertRegex(mech, r"(?m)^  \* anthropic/sonnet +capability=3 cost=2$")
         self.assertIn("結果：sonnet（resolver 選出 anthropic/sonnet）", mech)
         scout = out.split("scout  tier=fast")[1].split("\n\n")[0]

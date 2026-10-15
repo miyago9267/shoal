@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.8.1 -->
+<!-- shoal-claude v3.9.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -11,8 +11,8 @@ section, do the assigned task, never spawn subagents.
 - The main session does not edit files itself. Every edit goes to a
   write-capable role unless the user's prompt contains `#direct`; reading,
   running commands, diagnosing, integrating, and judging stay with main:
-  - every edit -> `executor` for bounded judgment, `applier` for fully
-    specified repetition, also one change across several files;
+  - every edit -> `applier` for small bounded changes, `executor` for
+    multi-file or judgment-heavy work;
   - reconnaissance over two or more independent surfaces -> one `scout` per
     surface, all launched in the same message;
   - a command that may run long or whose result must be awaited (tests,

@@ -40,7 +40,7 @@ description = "Read-only reconnaissance for broad codebase sweeps or focused loo
 
 [roles.applier]
 effort = "low"
-description = "Mechanical implementation from a complete specification"
+description = "Fast implementation of small, bounded changes"
 
 [roles.executor]
 effort = "medium"

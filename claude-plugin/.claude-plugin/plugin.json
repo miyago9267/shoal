@@ -1,6 +1,6 @@
 {
   "name": "shoal",
-  "version": "3.8.1",
+  "version": "3.9.0",
   "description": "Shoal orchestration roles, skill and policy bootstrap for Claude Code.",
   "author": {
     "name": "Miyago",

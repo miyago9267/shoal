@@ -3,6 +3,23 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.9.0
+
+`applier` 改為快速執行器，執行分成三層。
+
+### Changes
+
+- `applier` 改為快速執行器：處理小而有界的改動（一個檔或一個緊密範圍，例如測試修正、
+  文件修正、設定微調、改名、依明確 spec 的重複編輯），可做局部小判斷（命名、在明顯的
+  修法中選一個、調整 brief 描述的測試預期），不做設計決定；只跑自己改動相關的檢查，
+  不跑 full suite；約 10 分鐘 time-box，範圍擴大、需要設計決定或跨 module 時停下回報，
+  由 orchestrator 改派 `executor`。權限仍是 write，仍不能再派工。
+- Claude 上 `applier` 改用 haiku（effort 維持 low）；其他 host 的 applier 模型不變。
+- 三層：`applier` 快速、`executor` 複雜、`security-executor` 嚴謹安全。bootstrap 與
+  orchestration 的派工條款同步改成這個分法。
+- prompt lock：兩個 applier surface 使用一次性 migration `fast-applier-3-9-0`
+  （Miyago 2026-10-15 核准），只跳過這兩個 surface 的 change budget。
+
 ## v3.8.1
 
 修正升級到 v3.8.0 時，已經開著的 Claude session 全部壞掉的問題。

@@ -102,15 +102,15 @@ class OtherHostsRoleTests(unittest.TestCase):
     # 版本 marker 先換成 vX。之後有意改 policy 時連同這張表一起改。
     POLICY_SHA256 = {
         "codex": {
-            "agents-md.bootstrap.md": "05506fc776f399ac88365375e9f3cf9a2dda285929a737cd1949bdc80eb67943",
-            "agents-md.orchestration.md": "699eff90f24ff10d8aeaa627d550b02cd4f9705a7295d5eff8cdb1d0ed55323d",
+            "agents-md.bootstrap.md": "331cb05997867dd544c234c0ec8720051ba8c7fd4ebd6a0e2b9470eb067b6481",
+            "agents-md.orchestration.md": "2ff514c4d2f756adc76333b9bc4bb214b19afa7b22a96815e764ad110a118f77",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
-            "rules/shoal-agy.md": "e42a60769a8ac715394af090ba601c4ce49b91218974141ddc907ae046c1caff",
+            "rules/shoal-agy.md": "1a0bf37203e407ce873e957a6fa72c676a8369041e41cb348ad07791ea55200a",
             "skills/shoal-orchestration/SKILL.md": "d9ecd94a9d5656791edc026b5c3abd315817341f09b34a184f58f0787f90b6f2",
             "skills/shoal-orchestration/references/orchestration-policy.md":
-                "3a66e9d4b6e57b170c1cf27220b7ea38c6e339cfadc899dd9b72d4425d2a77bf",
+                "62963aca7d720f409f94d6b2d943c18a97d52d936356c6fdd93b4abaaedc1a2d",
             "skills/shoal-orchestration/references/workflow-extensions.md":
                 "354ddedd06c0dc21aa00c2182fd9784ffbdb82cfda05cf5bbe166cd400939fc1",
         },
@@ -384,7 +384,7 @@ class PolicyClauseTests(unittest.TestCase):
             self.assertEqual(len(routes), 4, nested)  # 縮排的巢狀條列，不是單一段落
             joined = " ".join(" ".join(nested).split())
             for needle in (
-                "every edit -> `executor` for bounded judgment, `applier` for fully specified repetition",
+                "every edit -> `applier` for small bounded changes, `executor` for multi-file or judgment-heavy work",
                 "one `scout` per surface, all launched in the same message",
                 "`watcher` with `run_in_background: true`; never start a background shell yourself",
                 "two `researcher` calls launched in the same message, one `arm: experiment` and one `arm: control`",

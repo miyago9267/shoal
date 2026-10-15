@@ -208,7 +208,7 @@ class CatalogTests(unittest.TestCase):
     def test_claude_output_does_not_depend_on_fast_vs_standard_split(self) -> None:
         binding = render.load_toml(ROOT / "hosts" / "claude" / "binding.toml")
         core = render.load_core(ROOT)
-        self.assertEqual(render.resolve_model("applier", core, binding), render.resolve_model("executor", core, binding))
+        self.assertEqual(render.resolve_model("applier", core, binding), "haiku")
 
 
 if __name__ == "__main__":

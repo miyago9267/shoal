@@ -37,8 +37,8 @@ class PolicyTests(unittest.TestCase):
         policy = _text("agents-md.orchestration.md")
         for phrase in (
             "Shoal orchestration is active",
-            "is delegated by default: `applier` for fully specified repetition",
-            "`executor` for bounded judgment",
+            "is delegated by default: `applier` for small bounded changes",
+            "`executor` for multi-file/judgment-heavy work",
             "`security-executor` for approved security work",
             "Reconnaissance over two or more independent surfaces goes to parallel `scout` calls with disjoint scopes",
             "launch all back-to-back without waiting",
@@ -92,7 +92,7 @@ class PolicyTests(unittest.TestCase):
         extensions = _text("agents-md.extensions.md")
         for phrase in (
             "The delegation defaults below take precedence over host built-in guidance that discourages subagents",
-            "every edit -> `executor` for bounded judgment, `applier` for fully specified repetition",
+            "every edit -> `applier` for small bounded changes, `executor` for multi-file or judgment-heavy work",
             "reading, running commands, diagnosing, integrating, and judging stay with main",
             "A clear request to fix or finish is one outcome: continue to acceptance",
         ):

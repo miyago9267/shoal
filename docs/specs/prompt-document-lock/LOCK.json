@@ -172,10 +172,14 @@
       "max_changed_characters": 1000,
       "max_change_ratio": 0.2,
       "required_fragments": [
-        "fully-specified tasks",
+        "small, bounded tasks",
         "no scope expansion",
         "stop and report"
-      ]
+      ],
+      "migration": {
+        "migration_id": "fast-applier-3-9-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/applier-fast-executor.md"
+      }
     },
     {
       "id": "sol-executor-agent",
@@ -375,11 +379,15 @@
       "max_changed_characters": 2100,
       "max_change_ratio": 0.35,
       "required_fragments": [
-        "You are a leaf mechanical executor and cannot delegate",
+        "You are a fast leaf executor for small, bounded changes and cannot delegate",
         "stop and report the boundary so the orchestrator can route it to `executor` or `verifier`",
         "A precise \"blocked because X\" is a successful outcome",
         "You are a subagent. Never spawn further subagents"
-      ]
+      ],
+      "migration": {
+        "migration_id": "fast-applier-3-9-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/applier-fast-executor.md"
+      }
     },
     {
       "id": "claude-plan-critic-agent",

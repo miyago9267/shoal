@@ -93,7 +93,7 @@ description = "Read-only reconnaissance for broad codebase sweeps or focused loo
 
 [roles.applier]
 effort = "medium"
-description = "Mechanical implementation from a complete specification: patterned refactors, convention-following tests, documentation, bulk edits, and routine verification."
+description = "Fast implementation of small, bounded changes: a test fix, doc fix, config tweak, rename, or repetitive edit from an explicit spec, with minor local judgment and targeted checks only."
 
 [roles.executor]
 effort = "high"

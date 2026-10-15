@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 616" width="960" height="616" role="img" aria-labelledby="ttl dsc" font-family='-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif'>
 <title id="ttl">Same role, the right model on every tool</title>
-<desc id="dsc">A matrix of the models actually used by six roles on five tools. Claude Code: haiku, sonnet, sonnet, opus, opus, fable for scout, applier, executor, verifier, researcher, plan-critic. Codex CLI: gpt-6-luna, gpt-6-luna, gpt-6-astra, gpt-6-sol, gpt-6-sol, gpt-6-sol. Gemini / agy: flash, flash, pro, pro, pro, pro. OpenCode: deepseek-v4-flash, deepseek-v4-flash, gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-sol, gpt-5.6-sol. Grok Build uses the main model you set yourself.</desc>
+<desc id="dsc">A matrix of the models actually used by six roles on five tools. Claude Code: haiku, haiku, sonnet, opus, opus, fable for scout, applier, executor, verifier, researcher, plan-critic. Codex CLI: gpt-6-luna, gpt-6-luna, gpt-6-astra, gpt-6-sol, gpt-6-sol, gpt-6-sol. Gemini / agy: flash, flash, pro, pro, pro, pro. OpenCode: deepseek-v4-flash, deepseek-v4-flash, gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-sol, gpt-5.6-sol. Grok Build uses the main model you set yourself.</desc>
 <style>
 .bg{fill:#f7f9fc}.fg{fill:#152238}.muted{fill:#5b6b80}.ln{stroke:#c9d4e2;fill:none;stroke-width:1.5}
 .card{fill:#fff;stroke:#c9d4e2;stroke-width:1.2}
@@ -17,7 +17,7 @@
 </style>
 <rect width="960" height="616" class="bg"/>
 <text x="40" y="52" class="t fg" text-anchor="start">Same role, the right model on every tool</text>
-<text x="40" y="80" class="st muted" text-anchor="start">Cheap models for lookups and mechanical edits, strong ones for checking and review</text>
+<text x="40" y="80" class="st muted" text-anchor="start">Cheap models for lookups and small edits, strong ones for checking and review</text>
 <text x="48" y="140.0" class="b muted" text-anchor="start">Role</text>
 <text x="272.0" y="140.0" class="h fg" text-anchor="middle">Claude Code</text>
 <text x="416.0" y="140.0" class="h fg" text-anchor="middle">Codex CLI</text>
@@ -36,9 +36,9 @@
 <rect x="637" y="167" width="134" height="48" rx="8" class="sg"/>
 <text x="704.0" y="196.0" class="xs mono bold fg" text-anchor="middle">deepseek-v4-flash</text>
 <text x="48" y="247" class="b mono bold fg" text-anchor="start">applier</text>
-<text x="48" y="266" class="sm muted" text-anchor="start">mechanical edits</text>
-<rect x="205" y="225" width="134" height="48" rx="8" class="sa"/>
-<text x="272.0" y="254.0" class="xs mono bold fg" text-anchor="middle">sonnet</text>
+<text x="48" y="266" class="sm muted" text-anchor="start">small, bounded</text>
+<rect x="205" y="225" width="134" height="48" rx="8" class="sg"/>
+<text x="272.0" y="254.0" class="xs mono bold fg" text-anchor="middle">haiku</text>
 <rect x="349" y="225" width="134" height="48" rx="8" class="sg"/>
 <text x="416.0" y="254.0" class="xs mono bold fg" text-anchor="middle">gpt-6-luna</text>
 <rect x="493" y="225" width="134" height="48" rx="8" class="sg"/>

@@ -26,9 +26,9 @@ host 中立的來源，供 `tools/render.py` 產生各 host 的輸出。
 - host 專屬 role（例如 Claude 的 `Explore`、Codex 的 `sol-executor`）
   放在該 host 的 binding，不進 core；它們在 `[extra_roles.<name>]` 自己
   宣告 `access`（與選用的 `capabilities`），權限同樣由對應表推導。
-- `applier` 是 `fast` tier：Codex 的 fast 與 standard 選到不同
-  model，`applier` 與 `executor` 因此分開；Claude 的 fast 與
-  standard 選到同一個 model，所以 Claude 的輸出不受影響。
+- `applier` 是 `fast` tier 的快速執行器（小而有界的改動）。Codex 的 fast 與
+  standard 選到不同 model，`applier` 與 `executor` 因此分開；Claude 的規則會讓兩者
+  選到同一個 model，所以 Claude 的 `applier` 在 binding 手動 pin `haiku`。
 - `watcher`（`verify`、`fast`）在背景跑指令、build、測試或追 CI 到結束，回摘要，
   不改檔；`researcher`（`read-only` 加 `web`、`strong`）查論文、外部文件與上游專案，
   回報把來源原文、推論、未驗證分開。兩者的回報都以 `status` 與 `suggested_next`

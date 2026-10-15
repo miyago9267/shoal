@@ -9,6 +9,12 @@ written.
 
 ## Unreleased
 
+## v3.9.0
+
+- `applier` is now the fast executor for small, bounded changes. Claude
+  runs it on haiku; the Codex model binding is unchanged. The bootstrap and
+  orchestration routing lines changed.
+
 ## v3.8.1
 
 - Version stamp only (the fix is in the Claude base plugin).

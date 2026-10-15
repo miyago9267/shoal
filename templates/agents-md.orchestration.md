@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.8.1 -->
+<!-- shoal-codex v3.9.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -202,8 +202,8 @@ main session and do not add an independent verifier.
   read-only clarification remains allowed.
 - Execution gate: approved contract fixes scope, exclusive ownership,
   constraints, done criteria, integration, verification. Routes: `applier`
-  for fully specified repetition, `executor` for bounded judgment,
-  `security-executor` for approved security work.
+  small bounded changes, `executor` multi-file/judgment work,
+  `security-executor` approved security work.
 
 - Send an approved, bounded implementation requiring judgment to `sol-executor` or `executor` when the deep boundary is evidenced.
 
@@ -236,7 +236,7 @@ main session and do not add an independent verifier.
   or an unavailable worker is reported to the user, not worked around.
 - Implementation with a stable execution contract (goal, scope, constraints, done
   criteria known without rediscovery) is delegated by default: `applier` for
-  fully specified repetition, `executor` for bounded judgment,
+  small bounded changes, `executor` for multi-file/judgment-heavy work,
   `security-executor` for approved security work. Main edits directly only
   under the user's `#direct`; evolving/coupled evidence or an unavailable worker
   is not a licence to edit: diagnose in main, delegate the fix, and report an

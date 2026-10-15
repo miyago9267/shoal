@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 616" width="960" height="616" role="img" aria-labelledby="ttl dsc" font-family='-apple-system, BlinkMacSystemFont, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif'>
 <title id="ttl">同一個角色，每個工具用最合適的模型</title>
-<desc id="dsc">矩陣列出 scout、applier、executor、verifier、researcher、plan-critic 六個角色在五個工具上實際使用的模型。Claude Code：haiku、sonnet、sonnet、opus、opus、fable。Codex CLI：gpt-6-luna、gpt-6-luna、gpt-6-astra、gpt-6-sol、gpt-6-sol、gpt-6-sol。Gemini / agy：flash、flash、pro、pro、pro、pro。OpenCode：deepseek-v4-flash、deepseek-v4-flash、gpt-5.6-luna、gpt-5.6-sol、gpt-5.6-sol、gpt-5.6-sol。Grok Build 沿用你自己設定的主模型。</desc>
+<desc id="dsc">矩陣列出 scout、applier、executor、verifier、researcher、plan-critic 六個角色在五個工具上實際使用的模型。Claude Code：haiku、haiku、sonnet、opus、opus、fable。Codex CLI：gpt-6-luna、gpt-6-luna、gpt-6-astra、gpt-6-sol、gpt-6-sol、gpt-6-sol。Gemini / agy：flash、flash、pro、pro、pro、pro。OpenCode：deepseek-v4-flash、deepseek-v4-flash、gpt-5.6-luna、gpt-5.6-sol、gpt-5.6-sol、gpt-5.6-sol。Grok Build 沿用你自己設定的主模型。</desc>
 <style>
 .bg{fill:#f7f9fc}.fg{fill:#152238}.muted{fill:#5b6b80}.ln{stroke:#c9d4e2;fill:none;stroke-width:1.5}
 .card{fill:#fff;stroke:#c9d4e2;stroke-width:1.2}
@@ -17,7 +17,7 @@
 </style>
 <rect width="960" height="616" class="bg"/>
 <text x="40" y="52" class="t fg" text-anchor="start">同一個角色，每個工具用最合適的模型</text>
-<text x="40" y="80" class="st muted" text-anchor="start">查找和機械修改用便宜的，驗證與審查用強的</text>
+<text x="40" y="80" class="st muted" text-anchor="start">查找和快速修改用便宜的，驗證與審查用強的</text>
 <text x="48" y="140.0" class="b muted" text-anchor="start">角色</text>
 <text x="272.0" y="140.0" class="h fg" text-anchor="middle">Claude Code</text>
 <text x="416.0" y="140.0" class="h fg" text-anchor="middle">Codex CLI</text>
@@ -36,9 +36,9 @@
 <rect x="637" y="167" width="134" height="48" rx="8" class="sg"/>
 <text x="704.0" y="196.0" class="xs mono bold fg" text-anchor="middle">deepseek-v4-flash</text>
 <text x="48" y="247" class="b mono bold fg" text-anchor="start">applier</text>
-<text x="48" y="266" class="sm muted" text-anchor="start">機械式修改</text>
-<rect x="205" y="225" width="134" height="48" rx="8" class="sa"/>
-<text x="272.0" y="254.0" class="xs mono bold fg" text-anchor="middle">sonnet</text>
+<text x="48" y="266" class="sm muted" text-anchor="start">小而有界的快速修改</text>
+<rect x="205" y="225" width="134" height="48" rx="8" class="sg"/>
+<text x="272.0" y="254.0" class="xs mono bold fg" text-anchor="middle">haiku</text>
 <rect x="349" y="225" width="134" height="48" rx="8" class="sg"/>
 <text x="416.0" y="254.0" class="xs mono bold fg" text-anchor="middle">gpt-6-luna</text>
 <rect x="493" y="225" width="134" height="48" rx="8" class="sg"/>
