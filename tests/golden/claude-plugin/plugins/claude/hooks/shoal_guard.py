@@ -42,7 +42,8 @@ def _newest(pattern):
 def find_guard(here):
     plugin_root = os.path.dirname(os.path.dirname(here))
     marketplace = os.path.dirname(plugin_root)
-    found = [os.path.join(marketplace, "claude-guard-plugin", "hooks", NAME)]
+    # 3.11.0 moved the plugins to plugins/claude{,-guard}; keep the pre-3.11 sibling name for one release.
+    found = [os.path.join(marketplace, d, "hooks", NAME) for d in ("claude-guard", "claude-guard-plugin")]
     cache = os.path.join(os.path.dirname(marketplace), "shoal-dispatch-guard", "*", "hooks", NAME)
     home = os.path.join(_config_dir(), "plugins", "cache", "*", "shoal-dispatch-guard", "*", "hooks", NAME)
     for pattern in (cache, home):

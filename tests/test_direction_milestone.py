@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLAUSES = ROOT / "docs" / "specs" / "milestone-direction-check" / "CLAUSES.md"
 SURFACES = (
     ROOT / "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md",
-    ROOT / "claude-plugin/skills/shoal-orchestration/references/workflow-extensions.md",
+    ROOT / "plugins/claude/skills/shoal-orchestration/references/workflow-extensions.md",
     ROOT / "templates/agents-md.extensions.md",
 )
 

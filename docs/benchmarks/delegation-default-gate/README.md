@@ -1,6 +1,6 @@
 # delegation-default live behaviour gate
 
-日期 2026-10-10。問題：工作樹的 plugin（`claude-plugin/`，delegation-default 條款）
+日期 2026-10-10。問題：工作樹的 plugin（`plugins/claude/`，delegation-default 條款）
 載入後，真實的 Claude Code main session 會不會照新 policy 派工。這不是 benchmark，
 是 10 次 headless run 的行為抽查。
 
@@ -9,7 +9,7 @@
 - Claude Code 2.1.296，每個 case 一次 `claude -p`，cwd 是全新的 throwaway git repo
   （小型 Python fixture，`scripts/run_tests.sh` 內含 `sleep 20`），原始 stream 放在
   repo 外，這裡只留衍生欄位。
-- 旗標：`--model opus --plugin-dir <repo>/claude-plugin --setting-sources project
+- 旗標：`--model opus --plugin-dir <repo>/plugins/claude --setting-sources project
   --strict-mcp-config --dangerously-skip-permissions --output-format stream-json
   --verbose --max-budget-usd 2`。
 - 驗證載入：init 事件列出 `shoal:*` 的 10 個 role，使用者安裝的 plugin 只有 `shoal`（init 另列出三個內建的 `cc-plugin-*`）；SessionStart

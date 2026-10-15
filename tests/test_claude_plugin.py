@@ -1,7 +1,7 @@
 """Claude plugin (generic-shoal K1, K2, K4, K5, K6): render, golden, quoting, guard `--plugin` deferral.
 
 tests/golden/claude-plugin is a copy of the render output (repo-relative paths); refresh it by
-copying `claude-plugin/`, `claude-guard-plugin/` and `.claude-plugin/marketplace.json` after `render.py --host claude-plugin --write`.
+copying `plugins/claude/`, `plugins/claude-guard/` and `.claude-plugin/marketplace.json` after `render.py --host claude-plugin --write`.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ import shoal_guard as guard  # noqa: E402
 
 GOLDEN = ROOT / "tests" / "golden" / "claude-plugin"
 GUARD = ROOT / "hooks" / "shoal_guard.py"
-PLUGIN = ROOT / "claude-plugin"
-GUARD_PLUGIN = ROOT / "claude-guard-plugin"
+PLUGIN = ROOT / "plugins" / "claude"
+GUARD_PLUGIN = ROOT / "plugins" / "claude-guard"
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
@@ -93,12 +93,12 @@ class ContentTests(unittest.TestCase):
         rendered = render.render_claude_plugin(ROOT)
         for rel, data in dist.items():
             if rel.startswith(("agents/", "skills/")):
-                self.assertEqual(rendered[f"claude-plugin/{rel}"], data, rel)
+                self.assertEqual(rendered[f"plugins/claude/{rel}"], data, rel)
         self.assertEqual(
-            rendered["claude-plugin/policy/claude-md.bootstrap.md"],
+            rendered["plugins/claude/policy/claude-md.bootstrap.md"],
             dist["claude-md.bootstrap.md"],
         )
-        self.assertNotIn("claude-plugin/settings.snippet.json", rendered)
+        self.assertNotIn("plugins/claude/settings.snippet.json", rendered)
 
     def test_versions_equal_the_product_version(self) -> None:
         plugin = json.loads(
@@ -124,7 +124,7 @@ class ContentTests(unittest.TestCase):
             (ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8")
         )
         sources = [e["source"] for e in market["plugins"]]
-        self.assertEqual(sources, ["./claude-plugin", "./claude-guard-plugin"])
+        self.assertEqual(sources, ["./plugins/claude", "./plugins/claude-guard"])
         for source in sources:
             self.assertTrue((ROOT / source / ".claude-plugin" / "plugin.json").is_file())
             self.assertNotEqual((ROOT / source).resolve(), (ROOT / "plugin").resolve())
@@ -145,7 +145,7 @@ class CompatShimTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.market = Path(tmp.name) / "market"
-        self.shim = self.market / "claude-plugin" / "hooks" / "shoal_guard.py"
+        self.shim = self.market / "plugins" / "claude" / "hooks" / "shoal_guard.py"
         self.shim.parent.mkdir(parents=True)
         shutil.copy(PLUGIN / "hooks" / "shoal_guard.py", self.shim)
         self.home = Path(tmp.name) / "home"
@@ -169,13 +169,18 @@ class CompatShimTests(unittest.TestCase):
         self.assertNotIn("shoal_guard", text)
 
     def test_shim_delegates_to_the_sibling_guard_plugin_with_argv_and_stdin(self) -> None:
-        self.write_target(self.market / "claude-guard-plugin" / "hooks" / "shoal_guard.py")
+        self.write_target(self.market / "plugins" / "claude-guard" / "hooks" / "shoal_guard.py")
         result = self.run_shim("--host", "claude", "--plugin", stdin='{"x":1}')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), 'ARGV=--host claude --plugin STDIN={"x":1}')
 
+    def test_shim_still_finds_the_pre_3_11_sibling_guard_plugin(self) -> None:
+        legacy = self.market / "plugins" / "claude-guard-plugin" / "hooks" / "shoal_guard.py"
+        self.write_target(legacy, exit_code=4)
+        self.assertEqual(self.run_shim("--host", "claude").returncode, 4)
+
     def test_shim_passes_the_target_exit_code_through(self) -> None:
-        self.write_target(self.market / "claude-guard-plugin" / "hooks" / "shoal_guard.py", exit_code=2)
+        self.write_target(self.market / "plugins" / "claude-guard" / "hooks" / "shoal_guard.py", exit_code=2)
         self.assertEqual(self.run_shim("--host", "claude").returncode, 2)
 
     def test_shim_uses_the_newest_cached_guard_plugin_when_there_is_no_sibling(self) -> None:
@@ -203,12 +208,12 @@ class CompatShimTests(unittest.TestCase):
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
     def test_shim_exits_zero_silently_when_the_target_is_a_directory(self) -> None:
-        (self.market / "claude-guard-plugin" / "hooks" / "shoal_guard.py").mkdir(parents=True)
+        (self.market / "plugins" / "claude-guard" / "hooks" / "shoal_guard.py").mkdir(parents=True)
         result = self.run_shim("--host", "claude")
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
     def test_shim_delegates_to_the_real_rendered_guard(self) -> None:
-        shutil.copytree(GUARD_PLUGIN, self.market / "claude-guard-plugin")
+        shutil.copytree(GUARD_PLUGIN, self.market / "plugins" / "claude-guard")
         result = self.run_shim("--host", "claude", "--plugin", stdin="{}")
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -331,10 +336,10 @@ class RenderCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_check_fails_when_one_byte_changes(self) -> None:
-        for rel in ("claude-guard-plugin/hooks/shoal_guard.py", "claude-plugin/hooks/hooks.json",
-                    "claude-plugin/hooks/shoal_guard.py",
-                    "claude-guard-plugin/hooks/hooks.json",
-                    ".claude-plugin/marketplace.json", "claude-plugin/agents/scout.md"):
+        for rel in ("plugins/claude-guard/hooks/shoal_guard.py", "plugins/claude/hooks/hooks.json",
+                    "plugins/claude/hooks/shoal_guard.py",
+                    "plugins/claude-guard/hooks/hooks.json",
+                    ".claude-plugin/marketplace.json", "plugins/claude/agents/scout.md"):
             target = self.root / rel
             original = target.read_bytes()
             target.write_bytes(original + b" ")
@@ -344,26 +349,26 @@ class RenderCommandTests(unittest.TestCase):
             target.write_bytes(original)
 
     def test_check_fails_on_extra_or_missing_file(self) -> None:
-        (self.root / "claude-plugin" / "agents" / "extra.md").write_text("x", encoding="utf-8")
-        (self.root / "claude-plugin" / "hooks" / "hooks.json").unlink()
+        (self.root / "plugins" / "claude" / "agents" / "extra.md").write_text("x", encoding="utf-8")
+        (self.root / "plugins" / "claude" / "hooks" / "hooks.json").unlink()
         result = run_render(self.root, "--check")
         self.assertEqual(result.returncode, 1)
-        self.assertIn("多出: claude-plugin/agents/extra.md", result.stderr)
-        self.assertIn("缺少: claude-plugin/hooks/hooks.json", result.stderr)
+        self.assertIn("多出: plugins/claude/agents/extra.md", result.stderr)
+        self.assertIn("缺少: plugins/claude/hooks/hooks.json", result.stderr)
 
     def test_changing_the_guard_source_requires_rewriting_the_copy(self) -> None:
         guard_src = self.root / "hooks" / "shoal_guard.py"
         guard_src.write_bytes(guard_src.read_bytes() + b"# changed\n")
         self.assertEqual(run_render(self.root, "--check").returncode, 1)
         self.assertEqual(run_render(self.root, "--write").returncode, 0)
-        self.assertEqual((self.root / "claude-guard-plugin" / "hooks" / "shoal_guard.py").read_bytes(), guard_src.read_bytes())
+        self.assertEqual((self.root / "plugins" / "claude-guard" / "hooks" / "shoal_guard.py").read_bytes(), guard_src.read_bytes())
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
 
     def test_changing_the_version_requires_rewriting_the_manifests(self) -> None:
         (self.root / "VERSION").write_text("9.9.9\n", encoding="utf-8")
         self.assertEqual(run_render(self.root, "--check").returncode, 1)
         run_render(self.root, "--write")
-        manifest = json.loads((self.root / "claude-plugin" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        manifest = json.loads((self.root / "plugins" / "claude" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["version"], "9.9.9")
 
     def test_bad_version_is_rejected(self) -> None:
@@ -373,10 +378,10 @@ class RenderCommandTests(unittest.TestCase):
         self.assertIn("版本格式不合法", result.stderr)
 
     def test_write_repairs_and_removes_stale_files(self) -> None:
-        (self.root / "claude-plugin" / "agents" / "stale.md").write_text("x", encoding="utf-8")
-        (self.root / "claude-guard-plugin" / "hooks" / "shoal_guard.py").write_bytes(b"broken")
+        (self.root / "plugins" / "claude" / "agents" / "stale.md").write_text("x", encoding="utf-8")
+        (self.root / "plugins" / "claude-guard" / "hooks" / "shoal_guard.py").write_bytes(b"broken")
         self.assertEqual(run_render(self.root, "--write").returncode, 0)
-        self.assertFalse((self.root / "claude-plugin" / "agents" / "stale.md").exists())
+        self.assertFalse((self.root / "plugins" / "claude" / "agents" / "stale.md").exists())
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
 
 

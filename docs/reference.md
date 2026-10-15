@@ -61,8 +61,8 @@ core/roles.toml            host 中立的 role 定義
 hosts/<host>/binding.toml  可用 model、access 對應的權限、effort
 hosts/<host>/src/          該 host 的 policy 與 skill 原文
 hosts/<host>/dist/         render 產出，已 commit（codex 產出在 templates/）
-claude-plugin/             Claude plugin shoal（role、skill、policy），render 產出（--host claude-plugin），不手改
-claude-guard-plugin/       Claude plugin shoal-dispatch-guard（guard hook），同上
+plugins/claude/            Claude plugin shoal（role、skill、policy），render 產出（--host claude-plugin），不手改
+plugins/claude-guard/      Claude plugin shoal-dispatch-guard（guard hook），同上
 .claude-plugin/            Claude marketplace manifest，同上
 tools/render.py            renderer 與 --check
 tools/install_grok.py      由 committed HEAD 安裝 grok host（預設 dry-run）
@@ -89,7 +89,7 @@ python3 tools/render.py --host claude --write
 
 `--host` 可選 `claude`、`codex`、`agy`、`grok`、`opencode`，以及 binding 設
 `renderer = "generic-md"` 的 host。另有 `--host claude-plugin`：產生 Claude plugin
-（`claude-plugin/`、`claude-guard-plugin/`、
+（`plugins/claude/`、`plugins/claude-guard/`、
 `.claude-plugin/marketplace.json`），不是第六個 host。
 修改 core 或 binding 後先 `--write`，再跑
 `python3 -m unittest discover -s tests` 確認 golden 差異是預期的。
