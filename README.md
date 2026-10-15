@@ -30,6 +30,34 @@ role 只寫 tier，不寫模型名稱；每個 host 從自己的模型目錄挑�
 
 主 session 沒派可寫 role 就改檔，或 subagent 不是 shoal 的可寫 role 卻改檔，都會被擋；出口是改派可寫的 role，或在 prompt 加 `#direct`。
 
+## 運作示範
+
+### 大型跨 module 改動
+
+大型改動先拆成 spec，再由主 session 派給各 role 分頭處理。
+
+![大型跨 module 改動示範](docs/assets/reel-big-change/out/scene.gif)
+
+[mp4](docs/assets/reel-big-change/out/scene.mp4)
+
+### 資安敏感改動走嚴謹路線
+
+涉及 auth、secret 或權限的改動，先審 Plan 再派 security role 執行。
+
+![資安敏感改動示範](docs/assets/reel-security/out/scene.gif)
+
+[mp4](docs/assets/reel-security/out/scene.mp4)
+
+### 派工 lane 與 guard
+
+每條派工 lane 有明確的 role 與權限，guard 在越界時擋下。
+
+![派工 lane 與 guard 示範](docs/assets/reel-lanes/out/scene.gif)
+
+[mp4](docs/assets/reel-lanes/out/scene.mp4)
+
+English: [big change](docs/assets/reel-big-change/out-en/scene.mp4) · [security path](docs/assets/reel-security/out-en/scene.mp4)
+
 ## 快速開始
 
 ```bash
