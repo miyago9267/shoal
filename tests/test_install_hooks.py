@@ -25,6 +25,7 @@ import guard_vectors_helper as helper  # noqa: E402
 import install_hooks  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 import install as installer  # noqa: E402
 from hook_registration import GUARD_PROJECTION_ID, TRUSTED_PROJECTIONS  # noqa: E402
 

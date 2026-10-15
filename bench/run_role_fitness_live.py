@@ -29,6 +29,7 @@ from benchmark_role_fitness import (
     validate_resource_admission,
 )
 from role_fitness_scorecard import aggregate_repeats, append_repeat_record, score_rate
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "install"))  # kept install helpers stay in install/
 from stage_smoke_home import StageError, materialize
 
 

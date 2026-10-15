@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 sys.path.insert(0, str(ROOT / "tests"))
 import hook_registration as hr  # noqa: E402
 import install as installer  # noqa: E402

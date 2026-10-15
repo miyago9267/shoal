@@ -10,7 +10,7 @@
   - docs/specs/、docs/benchmarks/、docs/plans/ 的歷史紀錄、tests/golden/（由 render 產生）
   - CHANGELOG.md 與 hosts/codex/CHANGELOG.md 在 v2.0.0 以前的段落
   - LICENSE、ATTRIBUTION.md、upstream.lock、README「來源與致謝」一節
-  - 歷史 benchmark 工具 install/evaluate_pilotfish_value_matrix.py、上游原文 fixture
+  - 歷史 benchmark 工具 bench/evaluate_pilotfish_value_matrix.py、上游原文 fixture
   - 遷移用的舊名清單：LEGACY_ 常數所在的行（Python 的整個 LEGACY_ 賦值陳述式），以及
     tests/fixtures/legacy_install/ 的舊名安裝 fixture
   - 上游的真實名稱與網址，以及指向保留的歷史文件的路徑（tools/check_rename.py 的
@@ -49,7 +49,7 @@ EXEMPT_FILES = frozenset(
         "LICENSE",
         "ATTRIBUTION.md",
         "upstream.lock",
-        "install/evaluate_" + "pilot" + "fish_value_matrix.py",
+        "bench/evaluate_" + "pilot" + "fish_value_matrix.py",
         "tests/fixtures/grok/rules." + "pilot" + "fish-grok.upstream-v1.0.6.txt",
     }
 )

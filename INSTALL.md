@@ -1307,6 +1307,9 @@ claude-guard-plugin/       Claude plugin shoal-dispatch-guard（guard hook），
 tools/render.py            renderer 與 --check
 tools/install_grok.py      由 committed HEAD 安裝 grok host（預設 dry-run）
 tools/check_links.py       文件相對連結檢查
+install/                   安裝器與其依賴（install.sh、install.py、AGENT-INSTALL.md 等）
+bench/                     benchmark 與評測腳本（不參與安裝）
+tests/fixtures/install-history/previous/  舊版 role 位元組，供升級測試當 fixture
 tests/golden/<host>/       各 host 的逐位元組基準
 upstream.lock              各 host 對應的上游與版本
 ```

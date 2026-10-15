@@ -98,9 +98,9 @@ LEGACY_SAMPLES = [
         "docs/specs/hybrid-pilotfish-runtime/SPEC.md",
     ),
     (
-        "install/evaluate_pilotfish_value_matrix.py",
+        "bench/evaluate_pilotfish_value_matrix.py",
         None,
-        "install/evaluate_pilotfish_value_matrix.py",
+        "bench/evaluate_pilotfish_value_matrix.py",
     ),
 ]
 LEGACY_PATH_SAMPLES = [

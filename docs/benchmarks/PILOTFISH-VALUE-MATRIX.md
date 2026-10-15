@@ -46,4 +46,4 @@ cohort 中維持 Sol 的觀察品質並降低 token 使用量。
 3. Pilotfish 尚不能宣稱「統計上已證明比 Luna 品質好」；目前最穩固的 production value 是「品質不降的前提下，避免 Sol 全程執行而省錢」。
 
 機器可讀結果：[role-fitness-v1-pilotfish-value-matrix.json](role-fitness-v1-pilotfish-value-matrix.json)。
-產生器：[evaluate_pilotfish_value_matrix.py](../../install/evaluate_pilotfish_value_matrix.py)。
+產生器：[evaluate_pilotfish_value_matrix.py](../../bench/evaluate_pilotfish_value_matrix.py)。

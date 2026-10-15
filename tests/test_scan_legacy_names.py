@@ -105,7 +105,7 @@ class ScanRepoTests(unittest.TestCase):
             "tests/fixtures/legacy_install/codex/state.json",
             "LICENSE",
             "upstream.lock",
-            "install/evaluate_" + LEGACY_WORD + "_value_matrix.py",
+            "bench/evaluate_" + LEGACY_WORD + "_value_matrix.py",
             "tests/fixtures/grok/rules." + LEGACY_WORD + "-grok.upstream-v1.0.6.txt",
         ):
             self.put(rel, dirty)

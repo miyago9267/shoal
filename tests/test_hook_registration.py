@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 import hook_registration as hr  # noqa: E402
 
 SOURCE = (ROOT / "templates" / "hooks.json").read_bytes()

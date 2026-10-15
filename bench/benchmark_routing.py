@@ -19,6 +19,7 @@ import signal
 import shutil
 import statistics
 import stat
+import sys
 import subprocess
 import tempfile
 import time
@@ -28,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "install"))
 from routing_contract import build_routing_context, validate_routing_context
 
 
@@ -1266,7 +1268,7 @@ def run_manifest_acceptance(
 
     command = shlex.split(str(case["acceptance_command"]))
     env = _sanitized_env(workspace)
-    env["PYTHONPATH"] = str(ROOT / "install")
+    env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "bench"), str(ROOT / "install")])
     try:
         completed = subprocess.run(
             command,

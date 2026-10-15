@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for ``install/claude_live_probe.py`` (claude-eval-parity AC-CE-018).
+"""Offline tests for ``bench/claude_live_probe.py`` (claude-eval-parity AC-CE-018).
 
 Nothing here starts ``claude`` or touches the user's real config: the child
 process is a stub, the user config is a temporary directory reached through the
@@ -25,6 +25,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 import claude_live_probe as probe  # noqa: E402
 import role_fitness_claude as claude  # noqa: E402
 from role_fitness_fixtures import BenchmarkContractError  # noqa: E402
@@ -34,7 +35,7 @@ from role_fitness_stage import (  # noqa: E402
     StageSetupError,
 )
 
-SCRIPT = ROOT / "install" / "claude_live_probe.py"
+SCRIPT = ROOT / "bench" / "claude_live_probe.py"
 SAMPLES = ROOT / "tests" / "fixtures" / "claude_stream"
 FAKE_TOKEN = "placeholder-probe-token-for-offline-tests"
 TOKEN_ENV = claude.SUBSCRIPTION_TOKEN_ENV

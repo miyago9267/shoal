@@ -15,6 +15,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 sys.path.insert(0, str(ROOT / "tests"))
 import benchmark_role_fitness as runner  # noqa: E402
 import role_fitness_scorecard as scorecard  # noqa: E402
