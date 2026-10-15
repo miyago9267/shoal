@@ -107,6 +107,7 @@ def worktree_repo(dst: Path) -> Path:
         "templates",
         "hooks",
         "plugin",
+        ".agents",
         "core",
         "hosts/grok/dist",
         "hosts/agy/dist",

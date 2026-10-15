@@ -126,7 +126,13 @@ class CodexMigrationTests(MigrationCase):
             '#!/bin/sh\n'
             f'[ "$1" = "--version" ] && {{ echo "{FAKE_CODEX_VERSION}"; exit 0; }}\n'
             f'echo "$@" >> "{self.codex_log}"\n'
-            f'[ "$1 $2" = "plugin add" ] && mkdir -p "{cache}"\nexit 0\n'
+            f'[ "$1 $2" = "plugin add" ] && mkdir -p "{cache}"\n'
+            # marketplace add 把 config.toml 的 source 改成新登記的路徑，和真的 codex 一樣
+            '[ "$2 $3" = "marketplace add" ] && python3 -c \'import pathlib,re,sys;'
+            'p=pathlib.Path(sys.argv[1]);t=p.read_text();'
+            'p.write_text(re.sub(r"(\\[marketplaces\\.shoal-codex\\][^\\[]*?source = )\\"[^\\"]*\\"",'
+            'lambda m:m.group(1)+chr(34)+sys.argv[2]+chr(34),t,flags=re.S))\' '
+            '"$CODEX_HOME/config.toml" "$4"\nexit 0\n'
         )
         fake.chmod(0o755)
         self.fake_bin = bindir
