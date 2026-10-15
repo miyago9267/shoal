@@ -6,6 +6,8 @@ import hashlib
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -640,62 +642,143 @@ class NativeInstallTests(unittest.TestCase):
             self.assertIn(b"### Shoal always-on bootstrap", installed)
             self.assertNotIn(b"#### Native typed spawn policy", installed)
 
-    def test_plugin_adapter_uses_codex_marketplace_contract(self) -> None:
+    def _export_fixture(self, root: Path) -> Path:
+        """A throwaway git repo carrying the committed plugin tree and root manifest."""
+        repo = root / "checkout"
+        for relative in (".agents/plugins/marketplace.json", "plugin/plugins"):
+            source = ROOT / relative
+            target = repo / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, target)
+            else:
+                shutil.copy2(source, target)
+        (repo / "README.md").write_text("not exported\n")
+        for argv in (
+            ["init", "-q"], ["add", "-A"],
+            ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"],
+        ):
+            subprocess.run(["git", "-C", str(repo), *argv], check=True, capture_output=True)
+        return repo
+
+    def test_codex_export_dir_follows_xdg_data_home(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
+            with mock.patch.dict(os.environ, {"XDG_DATA_HOME": directory}):
+                self.assertEqual(
+                    installer._codex_export_dir(),
+                    Path(directory) / "shoal" / "codex-marketplace",
+                )
+            with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+                installer.Path, "home", return_value=Path(directory),
+            ):
+                self.assertEqual(
+                    installer._codex_export_dir(),
+                    Path(directory) / ".local" / "share" / "shoal" / "codex-marketplace",
+                )
+
+    def test_export_writes_committed_head_without_checkout_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = self._export_fixture(root)
+            (repo / "plugin" / "plugins" / "uncommitted.txt").write_text("wip")
+            target = root / "data" / "shoal" / "codex-marketplace"
+            (target).mkdir(parents=True)
+            (target / "stale.txt").write_text("old")
+            installer._export_codex_marketplace(repo, target)
+            self.assertFalse((target / "stale.txt").exists())
+            self.assertFalse((target / "README.md").exists())
+            self.assertFalse((target / "plugin" / "plugins" / "uncommitted.txt").exists())
+            manifest = json.loads((target / ".agents/plugins/marketplace.json").read_text())
+            self.assertEqual(manifest["name"], "shoal-codex")
+            names = []
+            for entry in manifest["plugins"]:
+                path = entry["source"]["path"]
+                self.assertTrue(path.startswith("./plugin/plugins/"))
+                self.assertTrue((target / path / ".codex-plugin" / "plugin.json").is_file())
+                names.append(entry["name"])
+            self.assertEqual(names, ["shoal-codex", "shoal-jev-router"])
+            self.assertNotIn(str(repo), (target / ".agents/plugins/marketplace.json").read_text())
+
+    def _market_list(self, source: Path | None) -> mock.Mock:
+        rows = []
+        if source is not None:
+            rows.append({
+                "name": "shoal-codex", "root": str(source),
+                "marketplaceSource": {"sourceType": "local", "source": str(source)},
+            })
+        return mock.Mock(returncode=0, stdout=json.dumps({"marketplaces": rows}), stderr="")
+
+    def _installed_list(self, source: Path) -> mock.Mock:
+        return mock.Mock(returncode=0, stdout=json.dumps({"installed": [{
+            "name": "shoal-codex", "marketplaceName": "shoal-codex",
+            "version": installer.SHOAL_PLUGIN_VERSION, "enabled": True,
+            "marketplaceSource": {"sourceType": "local", "source": str(source)},
+        }]}), stderr="")
+
+    def test_plugin_adapter_registers_exported_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root / "home"
+            export = root / "data" / "shoal" / "codex-marketplace"
+            ok = mock.Mock(returncode=0, stdout="{}", stderr="")
             completed = [
-                mock.Mock(returncode=0, stdout="{}", stderr=""),
-                mock.Mock(
-                    returncode=0,
-                    stdout=json.dumps({
-                        "marketplaces": [{
-                            "name": "shoal-codex",
-                            "root": str(ROOT / "plugin"),
-                        }]
-                    }),
-                    stderr="",
-                ),
-                mock.Mock(
-                    returncode=0,
-                    stdout="{}",
-                    stderr="",
-                ),
-                mock.Mock(
-                    returncode=0,
-                    stdout=json.dumps({
-                        "installed": [{
-                            "name": "shoal-codex",
-                            "marketplaceName": "shoal-codex",
-                            "version": installer.SHOAL_PLUGIN_VERSION,
-                            "enabled": True,
-                            "marketplaceSource": {"source": str(ROOT / "plugin")},
-                        }]
-                    }),
-                    stderr="",
-                ),
+                self._market_list(None), ok, self._market_list(export), ok,
+                self._installed_list(export),
             ]
-            with mock.patch.object(installer.subprocess, "run", side_effect=completed) as run:
+            with mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(root / "data")}), \
+                    mock.patch.object(installer, "_export_codex_marketplace") as exported, \
+                    mock.patch.object(installer.subprocess, "run", side_effect=completed) as run:
                 result = installer._install_plugin(
-                    source_root=ROOT,
-                    codex_home=home,
-                    dry_run=False,
-                    enabled=True,
+                    source_root=ROOT, codex_home=home, dry_run=False, enabled=True,
+                )
+            exported.assert_called_once_with(ROOT, export)
+            self.assertEqual(result["status"], "installed")
+            commands = [call.args[0] for call in run.call_args_list]
+            self.assertEqual(commands[0], ["codex", "plugin", "marketplace", "list", "--json"])
+            self.assertEqual(commands[1][0:4], ["codex", "plugin", "marketplace", "add"])
+            self.assertEqual(commands[1][4], str(export))
+            self.assertEqual(commands[3][0:4], ["codex", "plugin", "add", "shoal-codex@shoal-codex"])
+            self.assertEqual(run.call_args_list[0].kwargs["env"]["CODEX_HOME"], str(home))
+            self.assertNotIn(str(ROOT / "plugin"), json.dumps(commands))
+
+    def test_plugin_adapter_migrates_old_checkout_registration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            export = root / "data" / "shoal" / "codex-marketplace"
+            ok = mock.Mock(returncode=0, stdout="{}", stderr="")
+            completed = [
+                self._market_list(ROOT / "plugin"), ok, ok, self._market_list(export), ok,
+                self._installed_list(export),
+            ]
+            with mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(root / "data")}), \
+                    mock.patch.object(installer, "_export_codex_marketplace"), \
+                    mock.patch.object(installer.subprocess, "run", side_effect=completed) as run:
+                result = installer._install_plugin(
+                    source_root=ROOT, codex_home=root / "home", dry_run=False, enabled=True,
                 )
             self.assertEqual(result["status"], "installed")
-            self.assertEqual(run.call_count, 4)
-            self.assertEqual(run.call_args_list[0].args[0][0:4], [
-                "codex", "plugin", "marketplace", "add",
-            ])
-            self.assertEqual(run.call_args_list[1].args[0], [
-                "codex", "plugin", "marketplace", "list", "--json",
-            ])
-            self.assertEqual(run.call_args_list[2].args[0][0:4], [
-                "codex", "plugin", "add", "shoal-codex@shoal-codex",
-            ])
-            self.assertEqual(run.call_args_list[3].args[0], [
-                "codex", "plugin", "list", "--json",
-            ])
-            self.assertEqual(run.call_args_list[0].kwargs["env"]["CODEX_HOME"], str(home))
+            commands = [call.args[0] for call in run.call_args_list]
+            self.assertEqual(
+                commands[1], ["codex", "plugin", "marketplace", "remove", "shoal-codex"],
+            )
+            self.assertEqual(commands[2][4], str(export))
+
+    def test_plugin_installed_check_requires_exported_dir_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            export = root / "data" / "shoal" / "codex-marketplace"
+            with mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(root / "data")}):
+                with mock.patch.object(
+                    installer, "_installed_plugin_rows",
+                    return_value=json.loads(self._installed_list(export).stdout)["installed"],
+                ):
+                    self.assertTrue(installer._plugin_is_installed(source_root=ROOT, codex_home=root))
+                with mock.patch.object(
+                    installer, "_installed_plugin_rows",
+                    return_value=json.loads(
+                        self._installed_list(ROOT / "plugin").stdout)["installed"],
+                ):
+                    self.assertFalse(installer._plugin_is_installed(source_root=ROOT, codex_home=root))
 
     def test_plugin_unavailable_commits_native_fallback_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

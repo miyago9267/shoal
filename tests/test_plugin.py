@@ -52,6 +52,24 @@ class PluginPackageTests(unittest.TestCase):
                 f"SKILL.md does not point at references/{reference.name}",
             )
 
+    def test_root_marketplace_mirrors_legacy_one_under_plugin_prefix(self) -> None:
+        """The exported root manifest (R12) lists the same plugins, paths relocated."""
+        legacy = json.loads(
+            (ROOT / "plugin" / ".agents" / "plugins" / "marketplace.json").read_text()
+        )
+        root = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text())
+        self.assertEqual(root["name"], legacy["name"])
+        self.assertEqual(
+            [p["name"] for p in root["plugins"]], [p["name"] for p in legacy["plugins"]]
+        )
+        for new, old in zip(root["plugins"], legacy["plugins"]):
+            self.assertEqual(
+                new["source"]["path"], old["source"]["path"].replace("./", "./plugin/", 1)
+            )
+            self.assertEqual(new["policy"], old["policy"])
+            manifest = new["source"]["path"] + "/.codex-plugin/plugin.json"
+            self.assertTrue((ROOT / manifest).is_file(), manifest)
+
     def test_optional_jev_plugin_manifest_matches_marketplace_entry(self) -> None:
         marketplace = json.loads(
             (ROOT / "plugin" / ".agents" / "plugins" / "marketplace.json").read_text()

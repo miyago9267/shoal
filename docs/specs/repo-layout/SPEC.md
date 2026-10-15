@@ -91,6 +91,17 @@ Miyago 2026-10-15：「專案目錄和安裝方式有點醜」。他選了兩件
   的下架期。已安裝判斷改為比對 `marketplaceSource` 與匯出目錄。
   `INSTALL_PROMPT.md` 是鎖定 surface，不更動。
 
+  **P2 live 驗證結果（2026-10-15，codex-cli 0.160.1，暫存 `CODEX_HOME` 與
+  `XDG_DATA_HOME`）：選甲。** (1) 匯出目錄只含根 `.agents/plugins/marketplace.json`
+  （`source.path` 為 `./plugin/plugins/<name>`）與 `plugin/plugins/**`，
+  `marketplace add <匯出目錄> --json` 接受，兩個 plugin 都能 `plugin add`，
+  `marketplaceSource.source` 與 `root` 都是匯出目錄。(2) `marketplace remove
+  shoal-codex` 只取消登記，installed 清單歸零；同名重新登記後兩個 plugin 回到
+  `installed: true, enabled: true`，cache 與啟用狀態保留。(3) `marketplace add
+  miyago9267/shoal@main` 可用（clone 到 `$CODEX_HOME/.tmp/marketplaces/shoal`，
+  marketplace 名稱 `shoal`，需網路），所以只當文件中的替代方式。(4) 匯出以
+  `git archive HEAD` 取 committed 內容，無 git 歷史的 checkout 退回複製工作樹。
+
 ### F2. 要不要根目錄 shim
 
 建議不加。理由：入口仍要 `python3`，shim（`./shoal` 或 `install.sh`）只省下

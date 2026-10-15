@@ -222,6 +222,21 @@ class CodexTests(Base):
         self.sync("--host", "codex", "--apply", env=env)
         self.assertEqual(len(self.jev_calls()), 1)
 
+    def test_checkout_path_marketplace_is_reported_for_migration(self) -> None:
+        (self.agents / "a.toml").write_text("v1\n")
+        (self.codex / "config.toml").write_text(
+            '[marketplaces.shoal-codex]\nsource_type = "local"\nsource = "/somewhere/shoal/plugin"\n'
+        )
+        line = self.codex_sync()[0]
+        self.assertIn("marketplace -> ", line)
+        self.assertIn("shoal/codex-marketplace", line)
+        export = self.tmp / "data" / "shoal" / "codex-marketplace"
+        (self.codex / "config.toml").write_text(
+            f'[marketplaces.shoal-codex]\nsource_type = "local"\nsource = "{export}"\n'
+        )
+        _, lines = self.sync("--host", "codex", env=self.env(XDG_DATA_HOME=str(self.tmp / "data")))
+        self.assertNotIn("marketplace ->", lines[0])
+
     def test_jev_router_present_not_invoked(self) -> None:
         env = self.jev_env(self.jev_setup())
         self.jev_cache.mkdir(parents=True)

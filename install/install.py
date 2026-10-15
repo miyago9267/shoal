@@ -13,6 +13,7 @@ import base64
 import copy
 from dataclasses import dataclass
 import hashlib
+import io
 import json
 import os
 import re
@@ -20,6 +21,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
 from datetime import datetime
@@ -560,6 +562,56 @@ def _same_path(left: Path, right: Path) -> bool:
     )
 
 
+CODEX_EXPORT_PATHS = (".agents/plugins/marketplace.json", "plugin/plugins")
+
+
+def _codex_export_dir() -> Path:
+    """shoal-owned marketplace root Codex registers; never a path inside the checkout."""
+    configured = os.environ.get("XDG_DATA_HOME", "")
+    base = Path(configured) if configured and os.path.isabs(configured) else (
+        Path.home() / ".local" / "share"
+    )
+    return base / "shoal" / "codex-marketplace"
+
+
+def _export_codex_marketplace(source_root: Path, target: Path) -> None:
+    """Replace `target` with the committed HEAD of the marketplace files.
+
+    A checkout without git history falls back to the working tree. The swap keeps the
+    previous export until the new one is fully written.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".codex-marketplace-", dir=target.parent))
+    try:
+        archived = subprocess.run(
+            ["git", "-C", str(source_root), "archive", "--format=tar", "HEAD",
+             *CODEX_EXPORT_PATHS],
+            capture_output=True, check=False,
+        )
+        if archived.returncode == 0:
+            with tarfile.open(fileobj=io.BytesIO(archived.stdout)) as archive:
+                archive.extractall(staging, filter="data")
+        else:
+            for relative in CODEX_EXPORT_PATHS:
+                source = source_root / relative
+                destination = staging / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if source.is_dir():
+                    shutil.copytree(source, destination)
+                else:
+                    shutil.copy2(source, destination)
+        if not (staging / CODEX_EXPORT_PATHS[0]).is_file():
+            raise OSError("marketplace manifest missing from export")
+        retired = target.with_name(target.name + ".old")
+        shutil.rmtree(retired, ignore_errors=True)
+        if target.exists():
+            target.rename(retired)
+        staging.rename(target)
+        shutil.rmtree(retired, ignore_errors=True)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def _plugin_descriptor(source_root: Path, status: str) -> dict[str, str]:
     plugin_root = source_root / "plugin"
     return {
@@ -628,7 +680,7 @@ def _assert_plugin_not_newer(
 
 
 def _plugin_is_installed(*, source_root: Path, codex_home: Path) -> bool:
-    plugin_root = source_root / "plugin"
+    export_dir = _codex_export_dir()
     installed_plugins = _installed_plugin_rows(codex_home)
     if installed_plugins is None:
         return False
@@ -639,7 +691,7 @@ def _plugin_is_installed(*, source_root: Path, codex_home: Path) -> bool:
         and item.get("version") == SHOAL_PLUGIN_VERSION
         and item.get("enabled") is True
         and isinstance(item.get("marketplaceSource"), dict)
-        and _same_path(Path(str(item["marketplaceSource"].get("source", ""))), plugin_root)
+        and _same_path(Path(str(item["marketplaceSource"].get("source", ""))), export_dir)
         for item in installed_plugins
     )
 
@@ -652,6 +704,21 @@ def _probe_plugin(*, source_root: Path, codex_home: Path, enabled: bool) -> dict
         "installed" if _plugin_is_installed(source_root=source_root, codex_home=codex_home)
         else "unavailable",
     )
+
+
+def _marketplace_registered_elsewhere(listing: str, export_dir: Path) -> bool:
+    """True when `shoal-codex` is registered from any source other than `export_dir`."""
+    try:
+        rows = json.loads(listing).get("marketplaces", [])
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    for item in rows if isinstance(rows, list) else []:
+        if not isinstance(item, dict) or item.get("name") != SHOAL_PLUGIN_NAME:
+            continue
+        source = item.get("marketplaceSource")
+        registered = source.get("source") if isinstance(source, dict) else item.get("root")
+        return not _same_path(Path(str(registered or "")), export_dir)
+    return False
 
 
 def _install_plugin(
@@ -674,9 +741,23 @@ def _install_plugin(
         return result
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(codex_home)
+    export_dir = _codex_export_dir()
     try:
-        marketplace = subprocess.run(
-            [_codex_cli(), "plugin", "marketplace", "add", str(plugin_root), "--json"],
+        _export_codex_marketplace(source_root, export_dir)
+        registered = subprocess.run(
+            [_codex_cli(), "plugin", "marketplace", "list", "--json"],
+            capture_output=True, text=True, check=False, env=environment,
+        )
+        if registered.returncode == 0 and _marketplace_registered_elsewhere(
+            registered.stdout, export_dir,
+        ):
+            # Registered from a checkout path: drop it so the shoal-owned dir takes over.
+            subprocess.run(
+                [_codex_cli(), "plugin", "marketplace", "remove", SHOAL_PLUGIN_NAME],
+                capture_output=True, text=True, check=False, env=environment,
+            )
+        subprocess.run(
+            [_codex_cli(), "plugin", "marketplace", "add", str(export_dir), "--json"],
             capture_output=True, text=True, check=False, env=environment,
         )
         marketplaces = subprocess.run(
@@ -690,7 +771,7 @@ def _install_plugin(
         marketplace_available = any(
             isinstance(item, dict)
             and item.get("name") == SHOAL_PLUGIN_NAME
-            and _same_path(Path(str(item.get("root", ""))), plugin_root)
+            and _same_path(Path(str(item.get("root", ""))), export_dir)
             for item in marketplace_rows
         )
         if marketplaces.returncode != 0 or not marketplace_available:
@@ -699,7 +780,7 @@ def _install_plugin(
             [_codex_cli(), "plugin", "add", f"{SHOAL_PLUGIN_NAME}@{SHOAL_PLUGIN_NAME}", "--json"],
             capture_output=True, text=True, check=False, env=environment,
         )
-    except OSError:
+    except (OSError, tarfile.TarError):
         return result
     if installed.returncode == 0 and _plugin_is_installed(
         source_root=source_root, codex_home=codex_home
