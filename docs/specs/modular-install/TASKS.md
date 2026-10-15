@@ -7,7 +7,7 @@
 | S1 模組清單與安裝入口 | 完成 | `41d3630`、`c017c42` |
 | S2 guard chain 擴充點 | 完成 | `ef30603` |
 | S3 `--without` 實作、chain 註冊、改名 | 完成 | `05bf86b`、`ac957e4` |
-| S4 Claude 拆成兩個 plugin | 實作完成，live 待補 | `9533ea1`、`0cba2da` |
+| S4 Claude 拆成兩個 plugin | 完成，live 已驗 | `9533ea1`、`0cba2da` |
 | S5 README、INSTALL.md 的模組說明 | 完成 | 見下方 docs commit |
 | issue #3 的成員介面 | 完成 | `40c95a1`、`641e1d1`、`bd568b1`、`296ac44` |
 | PR #4 review 與 CI | 完成 | `d8af852`、`6ce52c3` |

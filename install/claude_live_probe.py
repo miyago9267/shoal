@@ -1746,16 +1746,17 @@ def run_plugin_split(options: argparse.Namespace) -> tuple[dict[str, Any], Path]
         unchanged = None
     _remove_split_repo(repo)
     agents = shown.get("agents")
+    expected_version = "3.8.1"
     checks = {
         "plugins_enabled": _check(
             PASS
             if all(
                 plugins.get(name, {}).get("enabled")
-                and plugins[name].get("version") == "3.8.1"
+                and plugins[name].get("version") == expected_version
                 for name in SPLIT_PLUGINS
             )
             else FAIL,
-            "both_enabled_at_3_8_0",
+            f"both_enabled_at_{expected_version.replace('.', '_')}",
         ),
         "r1_denied": _check(
             UNDETERMINED

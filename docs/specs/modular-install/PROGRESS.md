@@ -10,7 +10,7 @@
 | S1 | `41d3630`、`c017c42` | 模組清單、`--list`、dry-run；推導改用 `install_hooks` |
 | S2 | `ef30603` | guard chain 擴充點 |
 | S3 | `05bf86b`、`ac957e4` | `--without` 生效、chain 註冊、guard 改名 `shoal-dispatch-guard` |
-| S4 | `9533ea1`、`0cba2da` | Claude 拆成 `shoal` 與 `shoal-dispatch-guard`；live 待補 |
+| S4 | `9533ea1`、`0cba2da` | Claude 拆成 `shoal` 與 `shoal-dispatch-guard`；live 已驗 |
 | S5 | 本次 docs commit | README、INSTALL.md 的模組說明、SPEC 命名例外、本檔 |
 | issue #3 | `40c95a1`、`641e1d1`、`bd568b1`、`296ac44` | chain 成員介面 |
 | PR #4 | `d8af852`、`6ce52c3` | CI 與 review 意見 |
@@ -73,7 +73,7 @@ repo 內沒有保存 verifier 的原文，下面依 fix commit 的標題與內�
 
 ## 沒有驗證的項目
 
-- S4 的 live：未跑（見下方）。
+- S4 的 live：已跑 1 次（見下方）。
 - 相容檔沒有在真實的 Claude session 驗證，只以假腳本與真實 guard 的 unit test 驗證。
 - plugin cache 的實際目錄結構。
 - agy 與 Grok 的實機 `--without dispatch-guard` 流程。
@@ -84,4 +84,11 @@ PR #4 在 `d8af852` 全部通過。
 
 ## S4 live
 
-S4 live：待補
+S4 live：2026-10-15 以 `install/claude_live_probe.py --case plugin-split` 跑 1 次
+（經 `agent-secret run claude-eval`，haiku，約 0.004 美元）。
+隔離設定中 `shoal@shoal` 與 `shoal-dispatch-guard@shoal` 皆為 3.8.1 且啟用；
+main 直接改 README 被 guard 擋下（規則 STRICT），README 未變；
+`shoal:executor`、`shoal:applier` 等 10 個 role 都列出；
+暫存目錄已移除。結果檔記錄在 scratchpad，不入 repo。
+另記：`agent-secret` 不允許以 `python3` 當指令，
+必須直接執行腳本路徑。
