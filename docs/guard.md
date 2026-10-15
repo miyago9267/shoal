@@ -155,6 +155,23 @@ hooks once with `/hooks` in an interactive Codex session. A later
 them; once its state records the guard, `--uninstall` here refuses and the
 installer must be used.
 
+## Claude Code 與 Gemini/agy 的 dispatch guard
+
+Claude Code 與 Gemini/agy 沒有自己的 shoal installer，dispatch guard 由
+`tools/install_hooks.py` 安裝（Python 3.9 以上，需要 `git`）。和 `install_grok.py`
+一樣，沒有 `--apply` 一律是 dry-run。
+
+- 腳本取自 committed `HEAD` 的 `hooks/shoal_guard.py`（`git show`，不吃工作樹；HEAD
+  沒有就中止），安裝到 `${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py`
+  （0755）。
+
+- 只有 command 含 `shoal_guard.py --host` 的 handler 算 shoal 的；其他 hook、其他 key、
+  key 順序與 2 空格縮排都原樣保留。重複執行不會改變結果，也不會產生新備份。
+
+- 寫入前把原檔備份到 `${XDG_STATE_HOME:-~/.local/state}/shoal/install-hooks/backups/`
+  （目錄 0700、檔案 0600），寫入後重新讀檔驗證：shoal handler 數量、其餘內容未被改動、
+  腳本與 `HEAD` 相同；不符 exit 1。設定檔不是合法 JSON 或結構不符預期時 exit 2，不寫入。
+
 ## Claude 上 guard 的行為（3.0.0 起）
 
 [`docs/specs/delegation-default`](./specs/delegation-default/SPEC.md)

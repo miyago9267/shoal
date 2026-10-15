@@ -105,9 +105,9 @@ python3 tools/render.py --host claude --write
 | Host | 目前的安裝方式 |
 | --- | --- |
 | Codex CLI | 本檔前半的 Codex 章節，腳本在 `install/install.sh` |
-| Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [本檔](./install/agy.md#claude-code-與-geminiagy-的-dispatch-guard) |
+| Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Claude Code plugin | `claude plugin marketplace add miyago9267/shoal#v<版本>` 再 `claude plugin install shoal@shoal`（釘 tag；與全域 guard 同時存在時只判斷一次；state 與 log 在 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`，uninstall 不刪），見 [本檔](./install/claude.md#claude-code-plugin) |
-| Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結；dispatch guard：`python3 tools/install_hooks.py --host agy`，見 [本檔](./install/agy.md#claude-code-與-geminiagy-的-dispatch-guard) |
+| Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結；dispatch guard：`python3 tools/install_hooks.py --host agy`，見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Grok Build | `python3 tools/install_grok.py`（預設 dry-run，`--apply` 才寫入），見 [本檔](./install/grok.md#grok-build) |
 | OpenCode | 專案：`hosts/opencode/plugin/install/install.sh --target DIR --enable`；全域：`install.sh --global --enable`，見 [本檔](./install/opencode.md#opencode) |
 

@@ -100,3 +100,32 @@ rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/shoal/guard"
 
 目錄會在下次事件重建。這個目錄與全域安裝共用，清除前先確認沒有進行中的 session
 要保留 guard 的 turn 狀態。
+
+## Claude Code 的 dispatch guard
+
+共用說明（Claude Code 與 Gemini/agy）見 [dispatch guard](../guard.md)。
+
+```bash
+# 1. Dry-run：列出腳本與 settings 的變更，不寫入。
+python3 tools/install_hooks.py --host claude
+
+# 2. 使用者核准 dry-run 後安裝。
+python3 tools/install_hooks.py --host claude --apply
+
+# 只移除 shoal 的 entry（腳本留著，claude 與 agy 共用）。
+python3 tools/install_hooks.py --host claude --uninstall --apply
+```
+
+- `--host claude` 改 `settings.json`（`--home`，其次 `CLAUDE_CONFIG_DIR`，預設
+  `~/.claude`）：`UserPromptSubmit`，以及 matcher 為
+  `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash` 的 `PreToolUse`（`Bash`
+  是 3.0.0 起為 G4 加的，舊安裝重跑一次就會換成這個 matcher），以及沒有 matcher 的
+  `SubagentStart`（3.3.1 起，M11），以及沒有 matcher 的 `Stop`（3.4.0 起，
+  完成檢查），以及 matcher 為 `Bash` 的 `PostToolUse`（3.6.0 起，完成檢查只算
+  真的執行的指令）；舊的
+  settings 重跑 `--apply` 會原地補上，你自己的 `Stop` 與其他 entry 不動。
+  `settings.json` 若是 symlink（dotfile 管理）
+  就寫進它指向的檔案，權限不變。Claude 預設 enforce。
+- `~/.grok` 會讀 `~/.claude/settings.json` 的 hooks（Claude 相容掃描），所以 Claude 的
+  entry 也會在 grok session 觸發；guard 的 Claude adapter 看到 grok 的 camelCase payload
+  就放行，由 grok 自己的註冊處理。
