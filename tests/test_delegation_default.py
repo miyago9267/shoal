@@ -372,7 +372,7 @@ class PolicyClauseTests(unittest.TestCase):
 
     def test_bootstrap_carries_the_delegation_routes_for_headless_sessions(self) -> None:
         # 第一輪 live gate：headless session 只拿到 bootstrap，所以派工路徑必須寫在常駐的 bootstrap 裡。
-        for text in (self.bootstrap, (ROOT / "claude-plugin" / "policy" / "claude-md.bootstrap.md").read_text(encoding="utf-8")):
+        for text in (self.bootstrap, (ROOT / "plugins" / "claude" / "policy" / "claude-md.bootstrap.md").read_text(encoding="utf-8")):
             lines = text.splitlines()
             flat = " ".join(text.split())
             at = next(i for i, line in enumerate(lines) if line.startswith("- The main session does not edit files itself."))

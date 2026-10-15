@@ -32,7 +32,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-PLUGIN = REPO / "claude-plugin"
+PLUGIN = REPO / "plugins" / "claude"
 MAX_RUNS = 10
 BUDGET_USD = "2"
 CASES = ["A", "B", "C", "D1", "D2", "E1", "E2", "F", "G", "H"]

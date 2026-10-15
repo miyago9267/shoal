@@ -220,8 +220,8 @@ class UpdateFlowTests(UpdateBase):
                 "HEAD",
                 "--",
                 ".claude-plugin",
-                "claude-plugin",
-                "claude-guard-plugin",
+                "plugins/claude",
+                "plugins/claude-guard",
             ],
             text=True,
         ).split()

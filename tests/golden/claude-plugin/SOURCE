@@ -1,5 +1,5 @@
 repo: shoal
 ref: shoal@573fecc
 commit: 573fecc1b289041e2928b0cec8be66cd8b58adc7
-path: claude-plugin claude-guard-plugin .claude-plugin/marketplace.json
+path: plugins/claude plugins/claude-guard .claude-plugin/marketplace.json
 dirty: true
