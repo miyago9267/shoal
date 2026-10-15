@@ -1954,6 +1954,22 @@ class PluginSplitTests(ProbeCase):
         probe._remove_split_repo(self.repo)
         self.assertFalse(self.repo.exists())
 
+    def test_scratch_removal_ignores_paths_that_vanish(self) -> None:
+        probe._reset_split_repo(self.repo)
+        lock = self.repo / "maintenance.lock"
+        lock.write_text("x", encoding="utf-8")
+        real_unlink = os.unlink
+
+        def racing_unlink(path: Any, *args: Any, **kwargs: Any) -> None:
+            if os.path.basename(str(path)) == "maintenance.lock":
+                real_unlink(path, *args, **kwargs)
+                raise PermissionError("vanished")
+            real_unlink(path, *args, **kwargs)
+
+        with patch("os.unlink", racing_unlink):
+            probe._remove_split_repo(self.repo)
+        self.assertFalse(self.repo.exists())
+
     def test_split_repo_path_is_unique_per_run(self) -> None:
         patch.stopall()
         self.assertNotEqual(probe._split_repo(), probe._split_repo())

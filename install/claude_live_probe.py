@@ -1536,9 +1536,13 @@ def _remove_split_repo(repo: Path) -> None:
         return
     def clear_and_retry(func: Any, path: str, _exc: Any) -> None:
         # Windows git objects are read-only; POSIX needs a writable parent.
-        os.chmod(os.path.dirname(path), stat.S_IRWXU)
-        os.chmod(path, stat.S_IRWXU)
-        func(path)
+        # A path that vanished mid-removal (git background maintenance) is done.
+        try:
+            os.chmod(os.path.dirname(path), stat.S_IRWXU)
+            os.chmod(path, stat.S_IRWXU)
+            func(path)
+        except FileNotFoundError:
+            return
 
     try:
         if sys.version_info >= (3, 12):
@@ -1556,10 +1560,20 @@ def _reset_split_repo(repo: Path) -> None:
     repo.mkdir(parents=True)
     (repo / SPLIT_OWNER_MARKER).write_text(SPLIT_OWNER_ID, encoding="utf-8")
     (repo / "README.md").write_text("# claude-s4\n", encoding="utf-8")
-    git = ["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
+    git = [
+        "git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
+        "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+    ]
     for step in (["init", "-q"], ["add", "README.md"], ["commit", "-q", "-m", "init"]):
         done = subprocess.run(
             [*git, *step], cwd=str(repo), capture_output=True, text=True, check=False
+        )
+        if done.returncode != 0:
+            raise StageSetupError("scratch repo could not be created")
+    for key, value in (("maintenance.auto", "false"), ("gc.auto", "0")):
+        done = subprocess.run(
+            ["git", "config", key, value],
+            cwd=str(repo), capture_output=True, text=True, check=False,
         )
         if done.returncode != 0:
             raise StageSetupError("scratch repo could not be created")
