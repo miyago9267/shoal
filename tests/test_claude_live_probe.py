@@ -1853,7 +1853,7 @@ class PluginSplitTests(ProbeCase):
             self.calls.append({"argv": list(argv), **kwargs})
             if argv[1:3] == ["plugin", "list"]:
                 listing = [
-                    {"id": name, "version": "3.9.0", "enabled": enabled}
+                    {"id": name, "version": "3.9.1", "enabled": enabled}
                     for name in probe.SPLIT_PLUGINS
                 ]
                 return subprocess.CompletedProcess(argv, 0, json.dumps(listing), "")
