@@ -161,10 +161,11 @@ class GrokDocsTests(unittest.TestCase):
         self.assertRegex(version, r"^\d+\.\d+\.\d+$")
 
     def test_readme_and_install_describe_the_grok_installer(self) -> None:  # AC-GW-052
-        readme, install = self.read("README.md"), self.read("INSTALL.md")
+        readme = self.read("README.md")
+        install = self.read("docs/install/grok.md") + self.read("docs/reference.md")
         self.assertIn("https://github.com/Nanako0129/pilotfish-grok", readme)
         self.assertIn("tools/install_grok.py", readme)
-        # 版本表在 README 改成產品首頁後移到 INSTALL.md。
+        # 版本表在 README 改成產品首頁後移到 docs/reference.md。
         self.assertIn((ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip(), install)
         self.assertIn("## Grok Build", install)
         for flag in ("--apply", "--fix-toggles", "--restore", "--uninstall"):
