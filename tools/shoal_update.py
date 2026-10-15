@@ -124,7 +124,9 @@ class Updater:
 
     # ---- git ----
     def git(self, *args: str) -> bytes:
-        cmd = ["git", "-c", "core.autocrlf=false", "-C", str(self.repo), *args]
+        # Windows 上 subprocess 不會找 .cmd shim，要先用 which 解析
+        git = si.which("git", self.env) or "git"
+        cmd = [git, "-c", "core.autocrlf=false", "-C", str(self.repo), *args]
         try:
             proc = subprocess.run(
                 cmd, env=dict(self.env), capture_output=True, timeout=120

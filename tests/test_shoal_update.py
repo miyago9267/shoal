@@ -264,7 +264,8 @@ class UpdateFlowTests(UpdateBase):
 
     def test_installed_guard_hash_mismatch_is_failed(self) -> None:
         self.update("--apply")
-        guard = next(self.mp.rglob("shoal_guard.py"))
+        # base plugin 也有同名的 shim；rglob 順序依平台而異，直接指定 guard plugin 的那份
+        guard = self.mp / "plugins" / "claude-guard" / "hooks" / "shoal_guard.py"
         guard.write_text("tampered")
         up = shoal_update.Updater(self.env, True)
         out = io.StringIO()
