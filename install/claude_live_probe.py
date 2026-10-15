@@ -1534,7 +1534,19 @@ def _remove_split_repo(repo: Path) -> None:
             return
     except OSError:
         return
-    shutil.rmtree(repo, ignore_errors=True)
+    def clear_and_retry(func: Any, path: str, _exc: Any) -> None:
+        # Windows git objects are read-only; POSIX needs a writable parent.
+        os.chmod(os.path.dirname(path), stat.S_IRWXU)
+        os.chmod(path, stat.S_IRWXU)
+        func(path)
+
+    try:
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(repo, onexc=clear_and_retry)
+        else:
+            shutil.rmtree(repo, onerror=lambda f, p, e: clear_and_retry(f, p, e))
+    except OSError as error:
+        raise StageSetupError("scratch repo could not be removed") from error
 
 
 def _reset_split_repo(repo: Path) -> None:

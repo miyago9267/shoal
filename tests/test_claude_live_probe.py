@@ -13,6 +13,7 @@ import io
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1937,6 +1938,19 @@ class PluginSplitTests(ProbeCase):
         self.assertTrue((stranger / "f").exists())
         probe._reset_split_repo(self.repo)
         self.assertTrue((self.repo / probe.SPLIT_OWNER_MARKER).is_file())
+        probe._remove_split_repo(self.repo)
+        self.assertFalse(self.repo.exists())
+
+    def test_scratch_removal_clears_read_only_entries(self) -> None:
+        probe._reset_split_repo(self.repo)
+        sub = self.repo / "objects"
+        sub.mkdir()
+        ro = sub / "obj"
+        ro.write_text("x", encoding="utf-8")
+        os.chmod(ro, stat.S_IREAD)
+        if os.name != "nt":
+            os.chmod(sub, stat.S_IRUSR | stat.S_IXUSR)
+        self.addCleanup(lambda: os.path.exists(sub) and os.chmod(sub, stat.S_IRWXU))
         probe._remove_split_repo(self.repo)
         self.assertFalse(self.repo.exists())
 
