@@ -26,6 +26,7 @@ from role_fitness_scorecard import (
     score_architecture,
     stage_key,
 )
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "install"))  # kept install helpers stay in install/
 from validate_agents import ROLES, validate_agent
 from verify_dispatch import validate_receipt
 

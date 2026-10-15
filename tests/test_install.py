@@ -16,6 +16,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 import install as installer  # noqa: E402
 import hook_registration  # noqa: E402
 import stage_smoke_home  # noqa: E402
@@ -421,7 +422,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(data["agents"]["max_concurrent_threads_per_session"], 3)
 
     def test_legacy_v2_migration_allows_canonical_security_reviewer_upgrade(self) -> None:
-        previous = ROOT / "install" / "previous" / "v1.3.0" / "agents" / "security-reviewer.toml"
+        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.0" / "agents" / "security-reviewer.toml"
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             state_path = self._legacy_home(home)
@@ -1797,7 +1798,7 @@ class NativeInstallTests(unittest.TestCase):
             self.assertFalse(home.with_name(f"{home.name}.shoal-install-state.json").exists())
 
     def test_release_pinned_v130_roles_upgrade_but_custom_bytes_abort(self) -> None:
-        previous = ROOT / "install" / "previous" / "v1.3.0" / "agents"
+        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.0" / "agents"
         expected = installer.CANONICAL_ROLE_UPGRADE_DIGESTS
         for role in ("security-reviewer",):
             payload = (previous / f"{role}.toml").read_bytes()
@@ -1860,7 +1861,7 @@ class NativeInstallTests(unittest.TestCase):
             )
 
     def test_dry_run_names_canonical_role_upgrades_without_writes(self) -> None:
-        previous = ROOT / "install" / "previous" / "v1.3.0" / "agents"
+        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.0" / "agents"
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             agents = home / "agents"
@@ -1911,7 +1912,7 @@ class NativeInstallTests(unittest.TestCase):
                 install(source_root=ROOT, codex_home=home, dry_run=True, check_codex=False)
 
     def test_release_pinned_v131_roles_upgrade_but_custom_bytes_abort(self) -> None:
-        previous = ROOT / "install" / "previous" / "v1.3.1" / "agents"
+        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.1" / "agents"
         for role in ("verifier",):
             digest = hashlib.sha256((previous / f"{role}.toml").read_bytes()).hexdigest()
             self.assertIn(digest, installer.CANONICAL_ROLE_UPGRADE_DIGESTS[role])
@@ -1955,7 +1956,9 @@ class NativeInstallTests(unittest.TestCase):
     def test_release_pinned_v132_security_executor_upgrades(self) -> None:
         previous = (
             ROOT
-            / "install"
+            / "tests"
+            / "fixtures"
+            / "install-history"
             / "previous"
             / "v1.3.2"
             / "agents"
@@ -2006,7 +2009,7 @@ class NativeInstallTests(unittest.TestCase):
                 self.run_install(home)
 
     def test_release_pinned_v133_routing_roles_upgrade(self) -> None:
-        previous = ROOT / "install" / "previous" / "v1.3.3" / "agents"
+        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.3" / "agents"
         roles = ("verifier",)
         for role in roles:
             digest = hashlib.sha256((previous / f"{role}.toml").read_bytes()).hexdigest()

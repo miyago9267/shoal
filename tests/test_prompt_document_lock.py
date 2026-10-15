@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 
 from validate_prompt_lock import (  # noqa: E402
     PromptLockError,

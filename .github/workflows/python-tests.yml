@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "install/**"
+      - "bench/**"
       - "hooks/**"
       - "templates/**"
       - "plugin/**"
@@ -26,6 +27,7 @@ on:
       - main
     paths:
       - "install/**"
+      - "bench/**"
       - "hooks/**"
       - "templates/**"
       - "plugin/**"
@@ -72,7 +74,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Check Python syntax
-        run: python -m py_compile tools/shoal_install.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py install/evaluate_dispatch.py install/validate_prompt_lock.py
+        run: python -m py_compile tools/shoal_install.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py bench/evaluate_dispatch.py install/validate_prompt_lock.py
 
       # Renewal 綠燈路徑：只有 PR 帶 label lock-renewal，或 push 到 main 的 head
       # commit message 含一行 "Lock-Renewal: approved"，才放寬 LOCK.json 的變動。

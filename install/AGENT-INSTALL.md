@@ -247,9 +247,11 @@ obtain separate approval, restore only that target, and then rerun the dry-run.
 Do not restore a whole Codex home or copy a backup over unrelated runtime state.
 
 The only retired role eligible for cleanup is lowercase `explore.toml`, after
-separate approval, when its bytes exactly match
-`install/retired/v1.0.0/explore.toml` or `install/retired/v1.0.1/explore.toml`
-and their recorded SHA-256 values. Customized `explore.toml`, uppercase
+separate approval, when its bytes exactly match the retired v1.0.0 or v1.0.1
+file, identified by SHA-256 only:
+`9bfdcbc3c032c084dcc0ee77e4fa74de3b30f0e1dfd1e87e180545052a85b59b` (v1.0.0) or
+`d90b4735917afe9d5525c2f0429406c6bffa8d539d664b27760ed4680449a9a4` (v1.0.1).
+Customized `explore.toml`, uppercase
 `Explore.toml`, and every other extra role remain in place and block the staged
 manifest. This runbook does not authorize deleting residual adapter files.
 

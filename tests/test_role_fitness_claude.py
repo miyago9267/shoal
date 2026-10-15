@@ -27,6 +27,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 import role_fitness_claude as claude  # noqa: E402
 import role_fitness_fixtures as fixtures  # noqa: E402
 import run_role_fitness_content as content  # noqa: E402
@@ -1378,7 +1379,7 @@ class TokenTests(ClaudeStageCase):
         self.assertNotIn(FAKE_TOKEN, str(error))
 
     def test_token_variable_is_named_in_exactly_one_place(self) -> None:
-        source = (ROOT / "install" / "role_fitness_claude.py").read_text(
+        source = (ROOT / "bench" / "role_fitness_claude.py").read_text(
             encoding="utf-8"
         )
         self.assertEqual(source.count(f'"{TOKEN_ENV}"'), 1)

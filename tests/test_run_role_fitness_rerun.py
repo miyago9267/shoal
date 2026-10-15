@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 sys.path.insert(0, str(ROOT / "tests"))
 import role_fitness_fixtures as fixtures  # noqa: E402
 import role_fitness_scorecard as scorecard  # noqa: E402
@@ -117,7 +118,7 @@ class RerunFieldTests(unittest.TestCase):
             self.assertNotIn("attempt", call.kwargs)
 
     def test_runner_has_no_retry_path(self) -> None:
-        source = (ROOT / "install" / "run_role_fitness_content.py").read_text(encoding="utf-8")
+        source = (ROOT / "bench" / "run_role_fitness_content.py").read_text(encoding="utf-8")
         # The only code that reads the rerun fields is the operator-facing stamp.
         self.assertEqual(source.count("rerun_of="), 0)
         self.assertEqual(source.count("attempt="), 0)

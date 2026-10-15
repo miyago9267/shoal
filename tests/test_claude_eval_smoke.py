@@ -26,6 +26,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 sys.path.insert(0, str(ROOT / "tests"))
 import claude_eval_smoke as smoke  # noqa: E402
 import role_fitness_claude as claude  # noqa: E402
@@ -36,7 +37,7 @@ import test_role_fitness_claude as base  # noqa: E402
 import test_run_role_fitness_stage_characterization as recorded  # noqa: E402
 from role_fitness_stage import StageEvidenceError, StageSetupError  # noqa: E402
 
-SCRIPT = ROOT / "install" / "claude_eval_smoke.py"
+SCRIPT = ROOT / "bench" / "claude_eval_smoke.py"
 FAKE_TOKEN = base.FAKE_TOKEN
 SENTINEL = "SENTINEL-MODEL-TEXT"
 PLAN_RISK, PLAN_CLEAN = "plan-review-05", "plan-review-01"

@@ -18,6 +18,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 import install as installer  # noqa: E402
 from install import InstallAbort, install, install_roles  # noqa: E402
 

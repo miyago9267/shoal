@@ -28,6 +28,7 @@ from run_role_fitness_content import (
     run_review_case,
     _write_report,
 )
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "install"))  # kept install helpers stay in install/
 from stage_smoke_home import StageError, materialize
 import verify_dispatch as dispatch
 

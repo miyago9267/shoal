@@ -9,6 +9,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
+sys.path.insert(0, str(ROOT / "bench"))
 
 import benchmark_routing as benchmark  # noqa: E402
 import benchmark_role_fitness as fitness  # noqa: E402

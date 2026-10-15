@@ -3,7 +3,7 @@
 **形狀依 2026-10-05 的 live 報告校正，值為 synthetic。**
 
 事件序列與每種事件的 key 集合來自 claude-eval-parity AC-CE-018 的 live probe
-（`install/claude_live_probe.py`；init 事件回報的 `claude_code_version` 為
+（`bench/claude_live_probe.py`；init 事件回報的 `claude_code_version` 為
 `2.1.289`）。2026-10-05 共五次：前三次只跑 `auth` stage，第四、五次跑
 `auth,dispatch`（parent 為 `claude-haiku-4-5-20251001`，scout 為
 `claude-sonnet-5-5`）。live 報告只含形狀與數字，所以這些 `.jsonl` 的值全部是
@@ -76,5 +76,5 @@
 - `plugins`、`tasks`、`tool_use_result`、`caller` 等巢狀內容的形狀。
 - 超出 `--max-budget-usd` 時的結果事件（`budget` stage 尚未 live 執行）。
 
-`install/role_fitness_claude.py` 的解析器遇到不認得的事件型別或形狀一律
+`bench/role_fitness_claude.py` 的解析器遇到不認得的事件型別或形狀一律
 fail closed。

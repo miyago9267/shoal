@@ -7,7 +7,7 @@ pilot. It contains six `routine` cases routed to `mech-executor` and six
 The harness is offline by default:
 
 ```sh
-python3 install/benchmark_routing.py --dry-run
+python3 bench/benchmark_routing.py --dry-run
 ```
 
 Live execution requires both `--yes` and `--benchmark-yes`; it is refused in CI.
