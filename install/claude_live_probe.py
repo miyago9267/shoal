@@ -1722,7 +1722,7 @@ def run_plugin_split(options: argparse.Namespace) -> tuple[dict[str, Any], Path]
             PASS
             if all(
                 plugins.get(name, {}).get("enabled")
-                and plugins[name].get("version") == "3.8.0"
+                and plugins[name].get("version") == "3.8.1"
                 for name in SPLIT_PLUGINS
             )
             else FAIL,

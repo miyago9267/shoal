@@ -3,6 +3,23 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.8.1
+
+修正升級到 v3.8.0 時，已經開著的 Claude session 全部壞掉的問題。
+
+### Fixes
+
+- 事故：v3.8.0 把 guard hook 從基礎 plugin `shoal` 拆到 `shoal-dispatch-guard`，
+  基礎 plugin 不再有 `hooks/shoal_guard.py`。升級前就開著的 Claude session 仍保留
+  舊的 hook 設定，指向 `${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py`，結果每次
+  Bash、Agent、Edit、Write 呼叫都因為「can't open file」失敗，直到手動補回檔案。
+- 修正：基礎 plugin 保留一個相容檔 `claude-plugin/hooks/shoal_guard.py`
+  （來源 `hosts/claude/plugin-src/shoal_guard_compat.py`）。它用相同的 argv 與 stdin，
+  轉交給 guard plugin 的 `shoal_guard.py`（先找同一個 marketplace 的
+  `../claude-guard-plugin/hooks/`，再找 plugin cache 的 `shoal-dispatch-guard`），
+  找不到就以 0 結束、不輸出（fail-open）。它不會註冊在 `hooks.json`，
+  新開的 session 不會用到它；已開著的 session 重開後也不再需要。
+
 ## v3.8.0
 
 模組可選、guard chain 註冊與內建 guard 改名

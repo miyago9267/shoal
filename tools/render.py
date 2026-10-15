@@ -1313,6 +1313,12 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
     except OSError as exc:
         raise RenderError(f"無法讀取 {src}: {exc}") from exc
     out[f"{CLAUDE_PLUGIN}/hooks/hooks.json"] = _json_bytes(_plugin_hooks())
+    # 3.8.1: compatibility shim for sessions that were running before the 3.8.0 split; never in hooks.json.
+    shim = root / CLAUDE_PLUGIN_SRC / "shoal_guard_compat.py"
+    try:
+        out[f"{CLAUDE_PLUGIN}/hooks/shoal_guard.py"] = shim.read_bytes()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {shim}: {exc}") from exc
     out[f"{CLAUDE_GUARD_PLUGIN}/hooks/shoal_guard.py"] = _guard_script(root)
     out[f"{CLAUDE_GUARD_PLUGIN}/hooks/hooks.json"] = _json_bytes(_guard_plugin_hooks())
     out[f"{CLAUDE_GUARD_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({

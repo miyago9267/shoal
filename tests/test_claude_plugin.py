@@ -61,7 +61,7 @@ def golden_files() -> dict[str, bytes]:
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
-        self.assertEqual(len(golden), 21)
+        self.assertEqual(len(golden), 22)
         rendered = render.render_claude_plugin(ROOT)
         self.assertEqual(sorted(rendered), sorted(golden))
         for rel, data in golden.items():
@@ -81,7 +81,12 @@ class ContentTests(unittest.TestCase):
         self.assertEqual(
             (GUARD_PLUGIN / "hooks" / "shoal_guard.py").read_bytes(), GUARD.read_bytes()
         )
-        self.assertFalse((PLUGIN / "hooks" / "shoal_guard.py").exists())  # S4: the base plugin carries no guard
+        # S4: the base plugin carries no guard; 3.8.1 keeps only the compatibility shim (not the guard)
+        self.assertNotEqual((PLUGIN / "hooks" / "shoal_guard.py").read_bytes(), GUARD.read_bytes())
+        self.assertEqual(
+            (PLUGIN / "hooks" / "shoal_guard.py").read_bytes(),
+            (ROOT / "hosts" / "claude" / "plugin-src" / "shoal_guard_compat.py").read_bytes(),
+        )
 
     def test_agents_skills_and_policy_come_from_the_claude_dist(self) -> None:
         dist = render.RENDERERS["claude"](ROOT)
@@ -131,6 +136,66 @@ class BaseHooksTests(unittest.TestCase):
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
         self.assertEqual(list(hooks), ["SessionStart"])
         self.assertNotIn("shoal_guard", (PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+
+
+class CompatShimTests(unittest.TestCase):
+    """3.8.1: sessions started before the 3.8.0 split still call the base plugin's hooks/shoal_guard.py."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.market = Path(tmp.name) / "market"
+        self.shim = self.market / "claude-plugin" / "hooks" / "shoal_guard.py"
+        self.shim.parent.mkdir(parents=True)
+        shutil.copy(PLUGIN / "hooks" / "shoal_guard.py", self.shim)
+        self.home = Path(tmp.name) / "home"
+        self.home.mkdir()
+
+    def run_shim(self, *args: str, stdin: str = "{}") -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(self.shim), *args], input=stdin, capture_output=True, text=True,
+            env={**os.environ, "HOME": str(self.home)},
+        )
+
+    def write_target(self, path: Path, exit_code: int = 0) -> None:
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            "import sys\nprint('ARGV=' + ' '.join(sys.argv[1:]) + ' STDIN=' + sys.stdin.read())\n"
+            f"sys.exit({exit_code})\n", encoding="utf-8")
+
+    def test_shim_is_not_registered_in_the_base_hooks(self) -> None:
+        text = (PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        self.assertNotIn("shoal_guard", text)
+
+    def test_shim_delegates_to_the_sibling_guard_plugin_with_argv_and_stdin(self) -> None:
+        self.write_target(self.market / "claude-guard-plugin" / "hooks" / "shoal_guard.py")
+        result = self.run_shim("--host", "claude", "--plugin", stdin='{"x":1}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), 'ARGV=--host claude --plugin STDIN={"x":1}')
+
+    def test_shim_passes_the_target_exit_code_through(self) -> None:
+        self.write_target(self.market / "claude-guard-plugin" / "hooks" / "shoal_guard.py", exit_code=2)
+        self.assertEqual(self.run_shim("--host", "claude").returncode, 2)
+
+    def test_shim_uses_the_newest_cached_guard_plugin_when_there_is_no_sibling(self) -> None:
+        cache = self.home / ".claude" / "plugins" / "cache" / "shoal" / "shoal-dispatch-guard"
+        self.write_target(cache / "3.8.1" / "hooks" / "shoal_guard.py", exit_code=0)
+        self.write_target(cache / "3.10.0" / "hooks" / "shoal_guard.py", exit_code=7)
+        self.assertEqual(self.run_shim("--host", "claude").returncode, 7)
+
+    def test_shim_exits_zero_silently_when_no_guard_plugin_is_found(self) -> None:
+        result = self.run_shim("--host", "claude", "--plugin")
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+
+    def test_shim_exits_zero_silently_when_the_target_is_a_directory(self) -> None:
+        (self.market / "claude-guard-plugin" / "hooks" / "shoal_guard.py").mkdir(parents=True)
+        result = self.run_shim("--host", "claude")
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+
+    def test_shim_delegates_to_the_real_rendered_guard(self) -> None:
+        shutil.copytree(GUARD_PLUGIN, self.market / "claude-guard-plugin")
+        result = self.run_shim("--host", "claude", "--plugin", stdin="{}")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class HooksJsonTests(unittest.TestCase):
@@ -252,6 +317,7 @@ class RenderCommandTests(unittest.TestCase):
 
     def test_check_fails_when_one_byte_changes(self) -> None:
         for rel in ("claude-guard-plugin/hooks/shoal_guard.py", "claude-plugin/hooks/hooks.json",
+                    "claude-plugin/hooks/shoal_guard.py",
                     "claude-guard-plugin/hooks/hooks.json",
                     ".claude-plugin/marketplace.json", "claude-plugin/agents/scout.md"):
             target = self.root / rel

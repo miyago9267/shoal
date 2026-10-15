@@ -9,6 +9,10 @@ written.
 
 ## Unreleased
 
+## v3.8.1
+
+- Version stamp only (the fix is in the Claude base plugin).
+
 ## v3.8.0
 
 - The guard registration is renamed from `shoal-guard-v1`..`v5` to
