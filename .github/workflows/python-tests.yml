@@ -25,6 +25,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
     paths:
       - "install/**"
       - "bench/**"
@@ -44,10 +46,19 @@ on:
       - "docs/specs/dispatch-verification/**"
       - "docs/specs/prompt-document-lock/**"
       - ".github/workflows/python-tests.yml"
+  # tag 與 nightly 不套 paths：版本發佈前與每天都完整跑一次三平台。
   workflow_dispatch:
+  schedule:
+    - cron: "17 19 * * *"
 
 permissions:
   contents: read
+
+# 同一個 PR 的新 push 取消舊的 run；push main / tag / nightly 不取消，
+# 否則 lock 檢查與完整三平台驗證可能被後來的 run 吃掉。
+concurrency:
+  group: python-tests-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -70,8 +81,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run unit tests
+      # PR：ubuntu 跑完整套件，macOS / Windows 只跑跨平台敏感子集（清單集中在
+      # tests/ci_cross_platform.txt）。push main、tag、nightly 三平台都跑完整套件。
+      - name: Run unit tests (full)
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         run: python -m unittest discover -s tests -v
+
+      - name: Run unit tests (cross-platform subset)
+        if: matrix.os != 'ubuntu-latest' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PYTHONPATH: tests
+        run: python -m unittest -v $(grep -v '^#' tests/ci_cross_platform.txt | tr -d '\r')
 
       - name: Entrypoint dry-run for all hosts (temp HOME)
         shell: python
@@ -105,6 +126,7 @@ jobs:
       # --no-migration，遇到會生效的 migration 標記直接失敗。
       # commit message 是不可信輸入，只經環境變數傳入，不插進指令字串。
       - name: Enforce prompt document lock
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch')
         shell: bash
         env:
           PROMPT_LOCK_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}

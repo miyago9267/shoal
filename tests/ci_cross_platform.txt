@@ -1,0 +1,18 @@
+# macOS / Windows 的 PR 只跑這份清單（跨平台敏感：install、update、sync、guard、
+# hook 與路徑處理）。完整套件在 ubuntu 的 PR，以及 push main / tag / nightly 的三平台跑。
+# 每行一個 unittest module（tests/ 目錄內，不含 .py）；# 開頭為註解。
+test_install
+test_install_entrypoints
+test_install_grok
+test_install_hooks
+test_install_opencode_global
+test_install_renamed_roles
+test_shoal_install
+test_shoal_install_p1
+test_shoal_update
+test_sync_global
+test_shoal_guard
+test_autoroute_hook
+test_grok_hooks
+test_hook_registration
+test_stage_smoke_home
