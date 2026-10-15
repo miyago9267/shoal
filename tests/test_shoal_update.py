@@ -81,6 +81,8 @@ def sh_wrapper(path: Path, argv: list[str]) -> None:
         path.chmod(0o755)
 
 
+# Windows 暫時跳過：測試用的 .cmd git 包裝會被 cmd.exe 吃掉 `^`，加上暫存路徑問題（Miyago 2026-10-15：先別管 Windows）。
+@unittest.skipIf(sys.platform == "win32", "test_shoal_update 的 Windows 夾具待修")
 class UpdateBase(unittest.TestCase):
     with_codex = False
 
@@ -264,7 +266,8 @@ class UpdateFlowTests(UpdateBase):
 
     def test_installed_guard_hash_mismatch_is_failed(self) -> None:
         self.update("--apply")
-        guard = next(self.mp.rglob("shoal_guard.py"))
+        # base plugin 也有同名的 shim；rglob 順序依平台而異，直接指定 guard plugin 的那份
+        guard = self.mp / "plugins" / "claude-guard" / "hooks" / "shoal_guard.py"
         guard.write_text("tampered")
         up = shoal_update.Updater(self.env, True)
         out = io.StringIO()

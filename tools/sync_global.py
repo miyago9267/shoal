@@ -127,7 +127,9 @@ def run(
 
 
 def git(ctx: Ctx, *args: str, check: bool = True) -> bytes:
-    cmd = ["git", "-c", "core.autocrlf=false", "-C", str(ctx.repo), *args]
+    # Windows 上 subprocess 不會找 .cmd shim，要先用 which 解析
+    git = shutil.which("git", path=ctx.env.get("PATH")) or "git"
+    cmd = [git, "-c", "core.autocrlf=false", "-C", str(ctx.repo), *args]
     try:
         proc = subprocess.run(cmd, env=ctx.env, capture_output=True, timeout=120)
     except (OSError, subprocess.TimeoutExpired) as exc:
