@@ -5,6 +5,9 @@
   python3 tools/shoal_install.py --list [--host H]
   python3 tools/shoal_install.py --host H [--with M,..] [--without M,..] [--only M,..]   dry-run（預設）
   python3 tools/shoal_install.py --host H [...] --apply
+
+dry-run 會呼叫底層 installer 的 dry-run 並顯示輸出；claude、codex、bun 等外部 CLI 以 shutil.which 解析，找不到時 dry-run 回報 skipped。
+agy 的 agents、skills 連到 hosts/agy/dist（symlink 失敗時改複製並在 manifest 記 agy_mode: copy）。
   python3 tools/shoal_install.py --chain-add NAME --chain-command '["argv","..."]' --chain-hosts h1,h2 [--chain-events E1,E2] [--chain-order N] [--apply]
   python3 tools/shoal_install.py --chain-remove NAME [--apply]
 
@@ -26,8 +29,10 @@ stdlib only。
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -42,6 +47,7 @@ CHAIN_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionEnd", "
 EXPLORE_DIST = "hosts/claude/dist/agents/Explore.md"
 
 Runner = Callable[[list[str], Mapping[str, str]], int]
+Previewer = Callable[[list[str], Mapping[str, str]], tuple[int, str]]
 
 
 class InstallError(Exception):
@@ -53,7 +59,22 @@ def load_registry() -> dict:
 
 
 def default_runner(cmd: list[str], env: Mapping[str, str]) -> int:
+    sys.stdout.flush()  # 子程序直接寫 stdout，先送出我們已印的行，輸出順序才對
     return subprocess.run(cmd, env=dict(env), cwd=REPO).returncode
+
+
+def default_previewer(cmd: list[str], env: Mapping[str, str]) -> tuple[int, str]:
+    """跑底層 installer 的 dry-run 並回傳 (exit code, 輸出)；無法啟動時 exit code 為 127。"""
+    try:
+        proc = subprocess.run(cmd, env=dict(env), cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 127, f"{exc}\n"
+    return proc.returncode, proc.stdout + proc.stderr
+
+
+def which(name: str, env: Mapping[str, str]) -> Optional[str]:
+    """外部 CLI 一律用 shutil.which 解析（Windows 上的 .cmd shim 才找得到）；找不到回傳 None。"""
+    return shutil.which(name, path=env.get("PATH"))
 
 
 # ---- manifest ----
@@ -93,10 +114,10 @@ def manifest_modules(env: Mapping[str, str], host: str) -> Optional[list[str]]:
     return list(mods) if isinstance(mods, list) else None
 
 
-def write_manifest(env: Mapping[str, str], host: str, modules: list[str]) -> Path:
+def write_manifest(env: Mapping[str, str], host: str, modules: list[str], extra: Optional[dict] = None) -> Path:
     data = load_manifest(env) or {}
     version = (REPO / "VERSION").read_text().strip() if (REPO / "VERSION").is_file() else ""
-    data[host] = {"modules": modules, "version": version}
+    data[host] = {"modules": modules, "version": version, **(extra or {})}
     return _save_manifest(env, data)
 
 
@@ -269,7 +290,7 @@ def resolve(
 
 # ---- wrapped commands ----
 def wrapped_commands(host: str, mods: list[str], env: Mapping[str, str]) -> list[list[str]]:
-    """--apply 會執行的既有 installer 指令；claude 沒有可由這裡執行的 installer，回傳空。"""
+    """--apply 會執行的 installer 指令（Python 腳本或外部 CLI）；claude 的 CLI 步驟見 claude_steps。"""
     py = sys.executable
     home = host_home(host, env)
     if host == "codex":
@@ -288,7 +309,7 @@ def wrapped_commands(host: str, mods: list[str], env: Mapping[str, str]) -> list
         cmd = [py, str(REPO / "tools/install_grok.py"), "--grok-home", str(home), "--apply"]
         return [cmd if guard_wanted(mods, env, host) else [*cmd, "--no-guard"]]
     if host == "opencode":
-        cmd = ["sh", str(REPO / "hosts/opencode/plugin/install/install.sh"), "--global"]
+        cmd = [py, str(REPO / "tools/opencode_global.py")]
         if env.get("OPENCODE_CONFIG_DIR"):
             cmd += ["--config-dir", str(home)]
         return [[*cmd, "--enable"]]
@@ -416,11 +437,169 @@ def _preview_follow_up(data: dict, chain: list, before: dict[str, bool], args: a
 CLAUDE_GUARD_PLUGIN = "shoal-dispatch-guard@shoal"
 
 
-def claude_steps(mods: list[str], env: Mapping[str, str]) -> list[str]:
-    steps = ["claude plugin marketplace add miyago9267/shoal", "claude plugin install shoal@shoal"]
+def claude_steps(mods: list[str], env: Mapping[str, str]) -> list[tuple[list[str], Optional[list[str]]]]:
+    """(顯示用 argv, 失敗時的備援 argv)。marketplace 或 plugin 已存在時 add、install 會失敗，改走 update。"""
+    steps: list[tuple[list[str], Optional[list[str]]]] = [
+        (["claude", "plugin", "marketplace", "add", "miyago9267/shoal"], ["claude", "plugin", "marketplace", "update", "shoal"]),
+        (["claude", "plugin", "install", "shoal@shoal"], ["claude", "plugin", "update", "shoal@shoal"]),
+    ]
     if guard_wanted(mods, env, "claude"):
-        steps.append(f"claude plugin install {CLAUDE_GUARD_PLUGIN}")
+        steps.append((["claude", "plugin", "install", CLAUDE_GUARD_PLUGIN], ["claude", "plugin", "update", CLAUDE_GUARD_PLUGIN]))
     return steps
+
+
+def _digest_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def tree_digest(path: Path) -> str:
+    """檔案或目錄樹的內容 sha256（目錄含相對路徑）；copy 模式用它比對 hosts/agy/dist。"""
+    if path.is_file():
+        return _digest_file(path)
+    h = hashlib.sha256()
+    for item in sorted(p for p in path.rglob("*") if p.is_file()):
+        h.update(item.relative_to(path).as_posix().encode("utf-8") + b"\0")
+        h.update(_digest_file(item).encode("ascii"))
+    return h.hexdigest()
+
+
+def agy_mode(env: Mapping[str, str]) -> Optional[str]:
+    entry = (load_manifest(env) or {}).get("agy")
+    return entry.get("agy_mode") if isinstance(entry, dict) else None
+
+
+def agy_items(repo: Path = REPO) -> list[tuple[str, Path]]:
+    """hosts/agy/dist 的 agents、skills 項目：(相對 ~/.gemini/config 的路徑, 來源)。"""
+    items = []
+    for kind in ("agents", "skills"):
+        root = repo / "hosts" / "agy" / "dist" / kind
+        if root.is_dir():
+            items += [(f"{kind}/{p.name}", p) for p in sorted(root.iterdir())]
+    return items
+
+
+def _copy_item(src: Path, dst: Path) -> None:
+    if dst.is_dir() and not dst.is_symlink():
+        shutil.rmtree(dst)
+    elif dst.exists() or dst.is_symlink():
+        dst.unlink()
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.is_dir():
+        shutil.copytree(src, dst)
+    else:
+        shutil.copy2(src, dst)
+
+
+def link_agy(env: Mapping[str, str], apply: bool) -> str:
+    """agents、skills 連到 hosts/agy/dist（G2）；回傳 "symlink" 或 "copy"。
+
+    不覆蓋使用者自己的檔案：已存在且不是 shoal 的 symlink（copy 模式則是內容不同的非自有檔）一律保留並回報。
+    os.symlink 丟 OSError（Windows 無權限）時，這個與其後的項目改為複製，並由呼叫端在 manifest 記 agy_mode: copy。
+    """
+    config = host_home("agy", env) / "config"
+    copy_mode = agy_mode(env) == "copy"
+    for rel, src in agy_items():
+        dst = config / rel
+        want = os.path.realpath(src)
+        if dst.is_symlink():
+            if os.path.realpath(dst) == want:
+                print(f"ok: {dst}")
+            else:
+                print(f"kept: {dst} 是指向別處的 symlink，未動")
+            continue
+        if dst.exists():
+            if tree_digest(dst) == tree_digest(src):
+                print(f"ok: {dst}")
+            elif copy_mode:  # 上次由 shoal 複製的，內容過期就更新
+                print(("would update copy: " if not apply else "update copy: ") + str(dst))
+                if apply:
+                    _copy_item(src, dst)
+            else:
+                print(f"kept: {dst} 已存在且不是 shoal 的 symlink，未動")
+            continue
+        verb = "copy" if copy_mode else "link"
+        print(f"would {verb}: {dst} -> {src}" if not apply else f"{verb}: {dst} -> {src}")
+        if not apply:
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if not copy_mode:
+            try:
+                os.symlink(src, dst, target_is_directory=src.is_dir())
+                continue
+            except OSError as exc:
+                print(f"note: symlink 失敗（{exc}），agy 改用複製模式")
+                copy_mode = True
+        _copy_item(src, dst)
+    return "copy" if copy_mode else "symlink"
+
+
+AGY_BEGIN, AGY_END = "<!-- shoal-agy:begin -->", "<!-- shoal-agy:end -->"
+AGY_OWNED = "<!-- shoal-agy:installer -->"  # 入口自己寫的區塊前綴；沒有它的 shoal-agy 區塊視為外部 composer 產生
+
+
+def agy_bootstrap() -> str:
+    text = (REPO / "hosts/agy/dist/rules/shoal-agy.md").read_text(encoding="utf-8")
+    return text[text.index(AGY_BEGIN) : text.index(AGY_END) + len(AGY_END)]
+
+
+def upsert_gemini_md(env: Mapping[str, str], apply: bool) -> None:
+    """把 agy bootstrap 以標記區塊放進 ~/.gemini/GEMINI.md（agy 不讀 config/rules）。
+
+    GEMINI.md 是 symlink，或已有外部 composer 產生的 shoal-agy 區塊時不寫入（managed externally），只檢查內容；
+    永遠不寫穿 symlink。
+    """
+    dst = host_home("agy", env) / "GEMINI.md"
+    block = agy_bootstrap()
+    owned = AGY_OWNED + "\n" + block
+    if dst.is_symlink():
+        text = dst.read_text(encoding="utf-8", errors="replace") if dst.exists() else ""
+        ok = block in text
+        print(f"managed externally: {dst} 是 symlink，未寫入；shoal-agy 區塊{'內容相符' if ok else '缺少或與 repo 不符'}")
+        return
+    text = dst.read_text(encoding="utf-8") if dst.exists() else ""
+    if AGY_BEGIN in text and AGY_OWNED not in text:
+        ok = block in text
+        print(f"managed externally: {dst} 的 shoal-agy 區塊不是入口寫的，未寫入；內容{'相符' if ok else '與 repo 不符'}")
+        return
+    if AGY_OWNED in text:
+        a = text.index(AGY_OWNED)
+        b = text.index(AGY_END, a) + len(AGY_END)
+        new = text[:a] + owned + text[b:]
+    else:
+        new = text + ("\n" if text and not text.endswith("\n") else "") + ("\n" if text else "") + owned + "\n"
+    if new == text:
+        print(f"ok: {dst}")
+        return
+    print(("would write: " if not apply else "write: ") + f"{dst}（shoal-agy 區塊）")
+    if apply:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(new, encoding="utf-8")
+
+
+def install_explore(env: Mapping[str, str], apply: bool) -> None:
+    """claude-explore 選中時把 repo 的 Explore.md 裝進 ~/.claude/agents；使用者自己的同名檔不覆蓋。"""
+    src, dst = REPO / EXPLORE_DIST, host_home("claude", env) / "agents" / "Explore.md"
+    if dst.is_file() and dst.read_bytes() == src.read_bytes():
+        print(f"ok: {dst}")
+    elif dst.exists():
+        print(f"kept: {dst} 已存在且內容與 repo 的 dist 不同，未動")
+    else:
+        print(("would install: " if not apply else "install: ") + str(dst))
+        if apply:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+
+
+def preview_command(cmd: list[str]) -> Optional[list[str]]:
+    """把 --apply 的指令轉成底層 installer 的 dry-run 形式；外部 CLI 沒有預覽，回傳 None。"""
+    if cmd[0] != sys.executable:
+        return None
+    name = Path(cmd[1]).name
+    if name == "install.py":
+        return [*cmd, "--dry-run"]
+    if name == "opencode_global.py":
+        return [*cmd, "--dry-run"]
+    return [c for c in cmd if c != "--apply"]  # install_hooks.py、install_grok.py 沒有 --apply 就是 dry-run
 
 
 # ---- commands ----
@@ -451,19 +630,37 @@ def do_list(host: Optional[str], reg: dict, env: Mapping[str, str], repo: Path =
     return 0
 
 
-def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runner: Runner) -> int:
+def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runner: Runner, previewer: Previewer = default_previewer) -> int:
     host = args.host
     mods, source = resolve(host, reg, env, _csv(args.with_), _csv(args.without), _csv(args.only))
     print(f"host: {host}  modules: {', '.join(mods)}  (base: {source})")
     cmds = wrapped_commands(host, mods, env)
     removals = explore_removal(host, mods, env)
+    # 外部 CLI（codex plugin add、claude plugin ...）以 shutil.which 解析；找不到：dry-run 回報 skipped，--apply 失敗。
+    missing: list[str] = []
+    resolved: list[list[str]] = []
+    for cmd in cmds:
+        if cmd[0] == sys.executable:
+            resolved.append(cmd)
+        elif (exe := which(cmd[0], env)) is not None:
+            resolved.append([exe, *cmd[1:]])
+        else:
+            missing.append(cmd[0])
+    if host == "codex" and which("codex", env) is None:  # install.py 自己要呼叫 codex --version
+        missing.append("codex")
     for cmd in cmds:
         print("would run:" if not args.apply else "run:", " ".join(cmd))
     if host == "claude":
-        for step in claude_steps(mods, env):
-            print(("would print: " if not args.apply else "run manually: ") + step)
+        claude_exe = which("claude", env)
+        for shown, _ in claude_steps(mods, env):
+            print(("would run: " if not args.apply else "run: ") + " ".join(shown))
+        if claude_exe is None:
+            missing.append("claude")
         if "claude-explore" in mods:
-            print("note: Explore.md 由 dotfile updater 裝進 ~/.claude/agents/")
+            install_explore(env, args.apply)
+    for name in dict.fromkeys(missing):
+        extra = "；改用 claude plugin marketplace add miyago9267/shoal（見 README）" if name == "claude" else ""
+        print(f"skipped: {name} not found on PATH{extra}")
     chain_only = "dispatch-guard" not in mods and chain_hosts(env, host)
     if chain_only and host in ("codex", "agy", "grok", "claude"):
         print(f"note: dispatch-guard 關閉但 chain 在 {host} 有成員：仍註冊 shoal hook（chain-only 模式），讓 chain 能執行")
@@ -476,18 +673,46 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
         )
     for path in removals:
         print(("would remove: " if not args.apply else "remove: ") + str(path))
+    extra_manifest: dict = {}
+    if host == "agy":
+        mode = link_agy(env, args.apply)
+        upsert_gemini_md(env, args.apply)
+        if args.apply and mode == "copy":
+            extra_manifest["agy_mode"] = "copy"
     path = manifest_path(env)
     if not args.apply:
+        failed_preview = False
+        for cmd in cmds:
+            pcmd = preview_command(cmd)
+            if pcmd is None or (host == "codex" and "codex" in missing):
+                continue
+            code, text = previewer(pcmd, env)
+            print(f"preview（{' '.join(pcmd[1:])}）:")
+            for line in text.rstrip().splitlines():
+                print(f"  {line}")
+            if code != 0:
+                print(f"preview failed: exit {code}", file=sys.stderr)
+                failed_preview = True
         print(f"dry-run：未寫入任何檔案；--apply 會寫 {path}")
-        return 0
-    for cmd in cmds:
+        return 1 if failed_preview else 0
+    if missing:
+        raise InstallError(f"{', '.join(dict.fromkeys(missing))} not found on PATH，無法 --apply")
+    for cmd in resolved:
         code = runner(cmd, env)
         if code != 0:
             print(f"failed: {' '.join(cmd)} exit {code}；manifest 未更新", file=sys.stderr)
             return 1
+    if host == "claude":
+        for shown, fallback in claude_steps(mods, env):
+            code = runner([claude_exe, *shown[1:]], env)
+            if code != 0 and fallback:
+                code = runner([claude_exe, *fallback[1:]], env)
+            if code != 0:
+                print(f"failed: {' '.join(shown)} exit {code}；manifest 未更新", file=sys.stderr)
+                return 1
     for path in removals:
         path.unlink(missing_ok=True)
-    print(f"manifest: {write_manifest(env, host, mods)}")
+    print(f"manifest: {write_manifest(env, host, mods, extra_manifest)}")
     return 0
 
 
@@ -511,7 +736,12 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None, env: Optional[Mapping[str, str]] = None, runner: Runner = default_runner) -> int:
+def main(
+    argv: Optional[list[str]] = None,
+    env: Optional[Mapping[str, str]] = None,
+    runner: Runner = default_runner,
+    previewer: Previewer = default_previewer,
+) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     env = os.environ if env is None else env
@@ -529,7 +759,7 @@ def main(argv: Optional[list[str]] = None, env: Optional[Mapping[str, str]] = No
     if not args.host:
         parser.error("需要 --host 或 --list")
     try:
-        return do_install(args, reg, env, runner)
+        return do_install(args, reg, env, runner, previewer)
     except InstallError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

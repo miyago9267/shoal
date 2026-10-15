@@ -61,18 +61,22 @@ English: [big change](docs/assets/reel-big-change/out-en/scene.mp4) · [security
 ## 快速開始
 
 ```bash
-# Codex CLI
-bash install/install.sh --codex-home "${CODEX_HOME:-$HOME/.codex}"
-# Claude Code（plugin，裝最新穩定版）
-claude plugin marketplace add miyago9267/shoal
-claude plugin install shoal@shoal
-# Grok Build（不加 --apply 是 dry-run）
-python3 tools/install_grok.py
-# OpenCode（全域）
-sh hosts/opencode/plugin/install/install.sh --global --enable
+# 先看會做什麼（dry-run，不寫入）
+python3 tools/shoal_install.py --host codex
+# 安裝：--host 可換成 claude、codex、grok、opencode、agy
+python3 tools/shoal_install.py --host codex --apply
 ```
 
-Gemini/agy 與不用 plugin 的 Claude Code 見 [INSTALL.md](./INSTALL.md)。
+只靠 `python3`（stdlib），macOS、Linux、Windows 相同。不帶 `--apply` 是 dry-run，會顯示底層 installer 的預覽；`claude`、`codex`、`bun` 這類外部 CLI 找不到時，dry-run 回報 `skipped`。opencode 需要 `bun` 才能 `--apply`。
+
+Claude Code 另有 plugin marketplace 的替代方式（裝最新穩定版）：
+
+```bash
+claude plugin marketplace add miyago9267/shoal
+claude plugin install shoal@shoal
+```
+
+每個 host 的細節與不用 plugin 的 Claude Code 見 [INSTALL.md](./INSTALL.md)。
 
 ## 模組
 

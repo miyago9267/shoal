@@ -35,6 +35,14 @@ class Base(unittest.TestCase):
             "OPENCODE_CONFIG_DIR": str(self.tmp / "oc"),
             "CLAUDE_CONFIG_DIR": str(self.tmp / "claude"),
         }
+        # 外部 CLI 一律用假的（CI runner 沒有 claude、codex）；PATH 只含它們
+        fake_bin = self.tmp / "fake-cli"
+        fake_bin.mkdir()
+        for cli in ("claude", "codex"):
+            fake = fake_bin / (cli + (".cmd" if sys.platform == "win32" else ""))
+            fake.write_text("@exit /b 0\n" if sys.platform == "win32" else "#!/bin/sh\nexit 0\n")
+            fake.chmod(0o755)
+        self.env["PATH"] = str(fake_bin)
         self.calls: list[list[str]] = []
         self.manifest = self.data / "shoal" / "modules.json"
 
@@ -46,13 +54,13 @@ class Base(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             try:
-                code = shoal_install.main(list(argv), self.env, runner or self.runner)
+                code = shoal_install.main(list(argv), self.env, runner or self.runner, lambda cmd, env: (0, ""))
             except SystemExit as exc:
                 code = exc.code
         return code, out.getvalue(), err.getvalue()
 
     def tree(self) -> list[str]:
-        return sorted(str(p) for p in self.tmp.rglob("*"))
+        return sorted(str(p) for p in self.tmp.rglob("*") if "fake-cli" not in p.parts)
 
 
 class RegistryTests(Base):
@@ -106,7 +114,7 @@ class DryRunTests(Base):
             ("codex", "install.py"),
             ("agy", "install_hooks.py"),
             ("grok", "install_grok.py"),
-            ("opencode", "install.sh"),
+            ("opencode", "opencode_global.py"),
         ):
             code, out, _ = self.run_cli("--host", host)
             self.assertEqual(code, 0, host)
@@ -208,9 +216,15 @@ class ApplyTests(Base):
         self.assertEqual(code, 1)
         self.assertFalse(self.manifest.exists())
 
-    def test_claude_apply_records_manifest_without_running_anything(self) -> None:
+    def test_claude_apply_runs_plugin_commands_and_records_manifest(self) -> None:
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        name = "claude.cmd" if sys.platform == "win32" else "claude"
+        (bin_dir / name).write_text("@exit /b 0\n" if sys.platform == "win32" else "#!/bin/sh\n")
+        (bin_dir / name).chmod(0o755)
+        self.env["PATH"] = str(bin_dir)
         self.assertEqual(self.run_cli("--host", "claude", "--apply")[0], 0)
-        self.assertEqual(self.calls, [])
+        self.assertEqual(len(self.calls), 3)  # marketplace add、shoal、guard（細節見 test_shoal_install_p1）
         self.assertIn("claude", json.loads(self.manifest.read_text()))
 
     def test_xdg_default_under_home(self) -> None:

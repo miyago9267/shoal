@@ -400,9 +400,8 @@ class OpenCodeTests(Base):
     def install(self, bundle: str = "// bundle A") -> None:
         subprocess.run(
             [
-                "sh",
+                sys.executable,
                 str(self.repo / sync_global.OPENCODE_INSTALL),
-                "--global",
                 "--config-dir",
                 str(self.config),
                 "--enable",
@@ -466,7 +465,7 @@ class OpenCodeTests(Base):
         plugin.write_text("// user edit\n")
         code, lines = self.sync("--host", "opencode", "--apply", "--strict")
         self.assertEqual(code, 1)
-        self.assertTrue(lines[0].startswith("opencode: failed (install.sh --disable"))
+        self.assertTrue(lines[0].startswith("opencode: failed (opencode_global --disable"))
         self.assertEqual(plugin.read_text(), "// user edit\n")
 
 

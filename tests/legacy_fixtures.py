@@ -106,6 +106,7 @@ def worktree_repo(dst: Path) -> Path:
         "install",
         "templates",
         "hooks",
+        "tools",
         "plugin",
         ".agents",
         "core",
