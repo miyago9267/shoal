@@ -90,10 +90,14 @@ jobs:
               print("::endgroup::", flush=True)
               if code != 0:
                   failed.append(host)
+          print("::group::update", flush=True)
+          if subprocess.run([sys.executable, "tools/shoal_install.py", "--update"], env=env).returncode != 0:
+              failed.append("update")
+          print("::endgroup::", flush=True)
           sys.exit("dry-run failed: " + ", ".join(failed) if failed else 0)
 
       - name: Check Python syntax
-        run: python -m py_compile tools/shoal_install.py tools/opencode_global.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py bench/evaluate_dispatch.py install/validate_prompt_lock.py
+        run: python -m py_compile tools/shoal_install.py tools/shoal_update.py tools/opencode_global.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py bench/evaluate_dispatch.py install/validate_prompt_lock.py
 
       # Renewal 綠燈路徑：只有 PR 帶 label lock-renewal，或 push 到 main 的 head
       # commit message 含一行 "Lock-Renewal: approved"，才放寬 LOCK.json 的變動。

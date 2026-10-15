@@ -10,6 +10,7 @@ dry-run 會呼叫底層 installer 的 dry-run 並顯示輸出；claude、codex�
 agy 的 agents、skills 連到 hosts/agy/dist（symlink 失敗時改複製並在 manifest 記 agy_mode: copy）。
   python3 tools/shoal_install.py --chain-add NAME --chain-command '["argv","..."]' --chain-hosts h1,h2 [--chain-events E1,E2] [--chain-order N] [--apply]
   python3 tools/shoal_install.py --chain-remove NAME [--apply]
+  python3 tools/shoal_install.py --update [--apply]    把本機 checkout 的 committed HEAD 同步到各 host（不 git pull；見 tools/shoal_update.py）
 
 --without 現在對這三個模組真的生效（再跑一次不帶它們，只移除 shoal 自己的 entry）：
   dispatch-guard   codex：install.py --no-guard；agy：install_hooks --uninstall；grok：install_grok --no-guard；
@@ -730,6 +731,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--chain-events", metavar="EVENTS", help=f"成員訂閱的事件（逗號分隔，{', '.join(CHAIN_EVENTS)}）；省略＝只有 PreToolUse，重新登記時沿用原值")
     p.add_argument("--chain-order", type=_num, metavar="N", help="執行順序（升冪）；預設：同名成員沿用原值，新成員為現有最大值加 1")
     p.add_argument("--chain-remove", metavar="NAME", help="從 chain 移除成員")
+    p.add_argument("--update", action="store_true", help="匯出 committed HEAD、刷新 Claude／Codex marketplace、同步各 host、sha256 檢查；預設 dry-run")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="預設；印出指令不寫入")
     mode.add_argument("--apply", action="store_true", help="執行既有 installer 並寫 manifest")
@@ -746,6 +748,12 @@ def main(
     args = parser.parse_args(argv)
     env = os.environ if env is None else env
     reg = load_registry()
+    if args.update:
+        if args.host or args.list or args.chain_add is not None or args.chain_remove is not None or args.with_ or args.without or args.only:
+            parser.error("--update 不能和 --host、--list、--chain-*、--with、--without、--only 一起用")
+        import shoal_update
+
+        return shoal_update.run_update(env, args.apply)
     if args.list:
         return do_list(args.host, reg, env)
     if args.chain_add is not None or args.chain_remove is not None:

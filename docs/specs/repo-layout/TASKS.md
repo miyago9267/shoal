@@ -7,7 +7,7 @@
 | --- | --- | --- |
 | P1 可移植入口、安裝缺口、README | 進行中（PR 待 CI） | 無 |
 | P2 Codex 可移植登記（不搬檔案） | 完成（PR 待合併） | P1 |
-| P3 `--update`；P3b dotfile 改呼叫它 | 未開始（P3b 是 dotfile，Miyago） | P2 |
+| P3 `--update`；P3b dotfile 改呼叫它 | P3 完成（待合併，疊在 P1 PR 上）；P3b 是 dotfile，補丁已備好待 Miyago 套用 | P2 |
 | P4 文件拆分 | 未開始 | P1（README 衝突時 P1 先） |
 | P5 install/ 瘦身 | 未開始 | P4 |
 | P6 Claude plugin 搬到 plugins/ | 未開始 | P3b、P5 |
@@ -74,27 +74,27 @@ OS 的 CI 綠。
 
 ## P3 `--update`
 
-- [ ] 先寫 failing tests（暫存 `HOME`，假的 `claude`、`codex` 可執行檔，全部
+- [x] 先寫 failing tests（暫存 `HOME`，假的 `claude`、`codex` 可執行檔，全部
   在 `windows-latest` 跑）：模組停用、hash 不符、CLI 不存在、第二次全為
   `up-to-date`
-- [ ] 交換案例 (a)：假的 `claude` 第 2 次呼叫 exit 1 → 輸出含 `failed`、
+- [x] 交換案例 (a)：假的 `claude` 第 2 次呼叫 exit 1 → 輸出含 `failed`、
   marketplace sha256 不變、沒有殘留 `.old`
-- [ ] 交換案例 (b)：預先放殘留 `.old` 與暫存目錄，可重跑且被清掉
-- [ ] 匯出 committed HEAD（`git archive` 加 Python `tarfile`）到同一 data
+- [x] 交換案例 (b)：預先放殘留 `.old` 與暫存目錄，可重跑且被清掉
+- [x] 匯出 committed HEAD（`git archive` 加 Python `tarfile`）到同一 data
   dir 的暫存目錄，逐檔 sha256 比對現有 marketplace，相同則 `up-to-date` 不交
   換
-- [ ] 交換為兩次 rename（舊→`.old`、暫存→正式），不用 rmtree 加複製；後續
+- [x] 交換為兩次 rename（舊→`.old`、暫存→正式），不用 rmtree 加複製；後續
   `claude` 步驟失敗時還原並回報 `failed`，成功才刪 `.old`；啟動時清殘留
-- [ ] `Explore.md` 安裝（依模組清單）
-- [ ] `claude plugin marketplace add|update`、`plugin install|update`（guard
+- [x] `Explore.md` 安裝（依模組清單）
+- [x] `claude plugin marketplace add|update`、`plugin install|update`（guard
   依模組清單與 chain）
-- [ ] Codex plugin 匯出登記
-- [ ] 各 host 同步沿用 `sync_global.py` 邏輯
-- [ ] hash 檢查：sha256 逐位元組比對，不符為 `failed`
-- [ ] 逐步輸出 `<step>: up-to-date | updated | skipped | failed`；dry-run 只
+- [x] Codex plugin 匯出登記
+- [x] 各 host 同步沿用 `sync_global.py` 邏輯
+- [x] hash 檢查：sha256 逐位元組比對，不符為 `failed`
+- [x] 逐步輸出 `<step>: up-to-date | updated | skipped | failed`；dry-run 只
   回報
-- [ ] `python-tests.yml`：加 `--update` dry-run（含 Windows）
-- [ ] 驗收：與今天 `update_shoal` 加 `sync_global.py --apply` 的結果一致
+- [x] `python-tests.yml`：加 `--update` dry-run（含 Windows）
+- [x] 驗收：與今天 `update_shoal` 加 `sync_global.py --apply` 的結果一致
 
 停止條件：上述一致性驗收通過。
 
