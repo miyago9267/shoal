@@ -1177,6 +1177,7 @@ class _Guard:
             self.mode = resolve_mode(self.host, env)
         self.r1 = resolve_r1(self.host, env)
         self.fast_state = False  # the session's fast flag as persisted by this prompt event
+        self.pending_change: Optional[Path] = None  # state file of an allowed write not yet counted as a change
         self._dir: Optional[Path] = None
         self._dir_tried = False
 
@@ -1908,20 +1909,20 @@ class _Guard:
                 return self.result("state", "declare", note=log_reason(reason))
         target = self.shell_write_target()
         if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
-            self._shell_wrote(state, state_path, target)
+            self._shell_wrote(state_path, target)
             return self.result("allow", "direct", file=target)
         if state["dispatched"]:
-            self._shell_wrote(state, state_path, target)
+            self._shell_wrote(state_path, target)
             return self.result("allow", "dispatched", file=target)
         if self.r1 == "strict":
             return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "STRICT"))
         if self.r1 == "declare":
             if self._declared(state, guard):
-                self._shell_wrote(state, state_path, target)
+                self._shell_wrote(state_path, target)
                 return self.result("allow", "declared", file=target)
             return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "DECLARE"))
         if self._classified(state, guard) is None:
-            self._shell_wrote(state, state_path, target)
+            self._shell_wrote(state_path, target)
             return self.result("allow", "uncounted", file=target)
         return self._shell_r1(state, state_path, target, _text(self.env, "R1"))
 
@@ -1929,15 +1930,25 @@ class _Guard:
         """R1 on a shell write: enforce denies (nothing was written); shadow lets it through and logs it."""
         if self.mode == "enforce":
             return self.result("deny", "R1", reason=reason, file=target)
-        self._shell_wrote(state, state_path, target)
+        self._shell_wrote(state_path, target)
         return self.result("would_deny", "R1", reason=reason, file=target)
 
-    def _shell_wrote(self, state: Dict[str, Any], state_path: Path, target: Optional[str]) -> None:
-        """B2: an allowed shell write counts as a change.  Best effort: a failed write only loses the record."""
-        if target is None:
+    def _shell_wrote(self, state_path: Path, target: Optional[str]) -> None:
+        """B2: an allowed shell write counts as a change once the chain has allowed it too (commit_change)."""
+        if target is not None:
+            self.pending_change = state_path
+
+    def commit_change(self) -> None:
+        """B2: count the allowed write as a change.  evaluate() calls it only when the final decision, chain
+        included, lets the write through (issue #6).  Best effort: a failed write only loses the record."""
+        path, self.pending_change = self.pending_change, None
+        if path is None:
             return
-        _mark_changed(state)
-        _write_json(state_path, state)
+        with _state_lock(path.with_suffix(".lock")) as lock_skip:
+            if lock_skip is None:
+                state = _read_json(path)
+                _mark_changed(state)
+                _write_json(path, state)
 
     def _turn_role(self, state: Dict[str, Any], guard: Path) -> Optional[str]:
         """The role in this turn's classification file, or None (no, stale or unreadable file)."""
@@ -2017,7 +2028,7 @@ class _Guard:
                 file=raw_paths[0],
             )
         state["edited"] = edited
-        _mark_changed(state)  # B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
+        self.pending_change = state_path  # B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
         notify = (
             advise_rule is not None
             and not state["advised"]
@@ -2089,9 +2100,12 @@ def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str
     guard = _Guard(event, env, home)
     result = _decide(guard, event)
     try:
-        return _apply_chain(guard, event, result)
+        result = _apply_chain(guard, event, result)
     except BaseException:
-        return result
+        pass  # fail open: shoal's own decision stands
+    if result["decision"] not in ("deny", "block"):
+        guard.commit_change()  # a chain deny means the write never happened, so the turn stays unchanged
+    return result
 
 
 # ---------------------------------------------------------------------------

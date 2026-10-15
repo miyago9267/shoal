@@ -837,6 +837,8 @@ class Guard {
   private dirTried = false;
   private fast: boolean;
   private fastState = false; // the session's fast flag as persisted by this prompt event
+  /** State file of an allowed write not yet counted as a change (see commitChange). */
+  pendingChange: string | null = null;
   private readonly env: Env;
 
   constructor(
@@ -1598,23 +1600,23 @@ class Guard {
     }
     const file = this.shellWriteTarget() ?? undefined;
     if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) {
-      this.shellWrote(state, statePath, file);
+      this.shellWrote(statePath, file);
       return this.result("allow", { rule: "direct", file });
     }
     if (state.dispatched) {
-      this.shellWrote(state, statePath, file);
+      this.shellWrote(statePath, file);
       return this.result("allow", { rule: "dispatched", file });
     }
     if (this.r1 === "strict") return this.shellR1(state, statePath, file, exitText(this.env, this.host, "STRICT"));
     if (this.r1 === "declare") {
       if (this.declared(state, dir)) {
-        this.shellWrote(state, statePath, file);
+        this.shellWrote(statePath, file);
         return this.result("allow", { rule: "declared", file });
       }
       return this.shellR1(state, statePath, file, exitText(this.env, this.host, "DECLARE"));
     }
     if (this.classified(state, dir) === null) {
-      this.shellWrote(state, statePath, file);
+      this.shellWrote(statePath, file);
       return this.result("allow", { rule: "uncounted", file });
     }
     return this.shellR1(state, statePath, file, text(this.env, "R1"));
@@ -1623,15 +1625,13 @@ class Guard {
   /** R1 on a shell write: enforce denies (nothing was written); shadow lets it through and logs it. */
   private shellR1(state: StateFile, statePath: string, file: string | undefined, reason: string): GuardResult {
     if (this.mode === "enforce") return this.result("deny", { rule: "R1", reason, file });
-    this.shellWrote(state, statePath, file);
+    this.shellWrote(statePath, file);
     return this.result("would_deny", { rule: "R1", reason, file });
   }
 
-  /** B2: an allowed shell write counts as a change.  Best effort: a failed write only loses the record. */
-  private shellWrote(state: StateFile, statePath: string, file: string | undefined): void {
-    if (file === undefined) return;
-    markChanged(state);
-    writeJson(statePath, state);
+  /** B2: an allowed shell write counts as a change once the chain has allowed it too (commitChange). */
+  private shellWrote(statePath: string, file: string | undefined): void {
+    if (file !== undefined) this.pendingChange = statePath;
   }
 
   /** The role in this turn's classification file, or null (no, stale or unreadable file). */
@@ -1703,7 +1703,7 @@ class Guard {
       return this.result("deny", { rule: "R1", reason: strict || declare ? exitText(this.env, this.host, strict ? "STRICT" : "DECLARE") : text(this.env, "R1"), file: rawPaths[0] });
     }
     state.edited = edited;
-    markChanged(state); // B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
+    this.pendingChange = statePath; // B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
     const notify =
       adviseRule !== null && !state.advised && this.mode === "enforce" && ADVISE_OUTPUT_HOSTS.has(this.host);
     if (notify) state.advised = true; // the one reminder of this turn is spent
@@ -1722,9 +1722,38 @@ class Guard {
   }
 }
 
+/** Allowed writes whose "the turn changed" mark waits for the chain's verdict, keyed by shoal's own result. */
+const pendingChanges = new WeakMap<GuardResult, string>();
+
+/**
+ * B2: count the write `result` allowed as a change.  applyChain calls it only when the final decision, chain
+ * included, lets the write through (issue #6).  Best effort: a failed write only loses the record.
+ */
+export function commitChange(result: GuardResult): void {
+  const statePath = pendingChanges.get(result);
+  if (statePath === undefined) return;
+  pendingChanges.delete(result);
+  withStateLock(
+    statePath.replace(/\.json$/, ".tslock"),
+    () => {
+      const state = readJson(statePath) as StateFile;
+      markChanged(state);
+      writeJson(statePath, state);
+      return result;
+    },
+    () => result,
+  );
+}
+
 /** Decide on a normalized event.  Throws only on programming/OS errors (caller fails open). */
 export function evaluate(event: GuardEvent, env: Env, home: string): GuardResult {
   const guard = new Guard(event, env, home);
+  const result = decide(guard, event);
+  if (guard.pendingChange !== null) pendingChanges.set(result, guard.pendingChange);
+  return result;
+}
+
+function decide(guard: Guard, event: GuardEvent): GuardResult {
   if (guard.mode === "off") return none("off");
   if (event.kind === "post_tool" || event.kind === "session_end") return none(guard.mode); // chain-only events
   if (CONVERSATION_HOSTS.has(guard.host)) {
