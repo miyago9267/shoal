@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.9.1 -->
+<!-- shoal-codex v3.10.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -226,21 +226,19 @@ main session and do not add an independent verifier.
   facts; main reconciles evidence and writes Plan.
 - Stable same-shape multi-file mechanical repetition defaults to one
   `applier` with complete one-shot brief, exclusive ownership, independent
-  items, per-item acceptance. Foreground unless possible long command requires
-  background.
+  items, per-item acceptance. Foreground unless a long command needs background.
 - Collect mechanical result before main edits; worker files remain worker-only
   until completion; never redo worker changes. Main retains per-item triage,
   exceptions, integration, acceptance.
-- Direct main execution of qualifying mechanical work exists only under the
-  user's `#direct`. Evolving/coupled evidence, ownership/integration conflict,
-  or an unavailable worker is reported to the user, not worked around.
+- Direct main execution of mechanical work needs `#direct`. Evolving/coupled
+  evidence, ownership/integration conflict, or an unavailable worker is reported
+  to the user, not worked around.
 - Implementation with a stable execution contract (goal, scope, constraints, done
   criteria known without rediscovery) is delegated by default: `applier` for
   small bounded changes, `executor` for multi-file/judgment-heavy work,
-  `security-executor` for approved security work. Main edits directly only
-  under the user's `#direct`; evolving/coupled evidence or an unavailable worker
-  is not a licence to edit: diagnose in main, delegate the fix, and report an
-  unavailable worker to the user.
+  `security-executor` for approved security work. Main edits only under the
+  user's `#direct`; otherwise diagnose in main, delegate the fix, and report an
+  unavailable worker.
 
 Weigh lower cost or quota use, preservation of scarce main-session context, true
 parallelism, isolated ownership, and fresh-context independence against context
@@ -436,20 +434,20 @@ Final report separates confirmed/fixed/deferred/regraded findings
 
 - Schedule by dependency, not eventual need. When selecting 2+ independent
   agents, launch all back-to-back without waiting (`wait_agent` collects later) before
-  remaining main work; keep scopes disjoint; allow no interleaved duplicate
+  remaining main work; allow no interleaved duplicate
   reconnaissance; collect all results before dependent work/final answer.
   Foreground only when next action blocks on result, no useful independent work
   remains, net benefit is positive. Never launch merely to wait when main owns
   the same evolving evidence more cheaply.
-- Size each dispatch so one role finishes it quickly; split larger work by file
-  ownership. Dispatches with disjoint ownership launch together, writers each in
+- Before dispatching, list independent slices; one brief, one purpose, sized
+  so the cheapest capable role finishes it quickly; split larger work by file
+  ownership. Disjoint slices launch together in one message, writers each in
   their own worktree; shared files (versions, generated output, locks) change
-  once, in a separate integration step. Parallel workers run only the checks for
-  their own files; the full suite runs once, at integration. - Commands that may run long or whose result must be awaited (test suites, builds,
+  once, in a separate integration step. Workers check only their
+  own files; the full suite runs once, at integration. - Commands that may run long or whose result must be awaited (test suites, builds,
   CI, measurements) go to `watcher` through spawn_agent
   without waiting (`wait_agent` collects later); `watcher` runs them and waits. Main never
-  starts a background shell itself and never ends a turn waiting on one. State in
-  the brief how long the command is expected to take when you know. Leaf unable to finish bounded foreground work returns exact command, absolute
+  starts a background shell itself and never ends a turn waiting on one. The brief states expected duration when known. Leaf unable to finish bounded foreground work returns exact command, absolute
   working/worktree directory, environment, input paths; main dispatches `watcher` without waiting (`wait_agent` collects later)
   in that context, then resumes role with captured
   output. Liveness comes from tracked task state/output, never

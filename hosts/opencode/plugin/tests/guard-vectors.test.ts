@@ -14,7 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { applyChain } from "../src/guard/chain.ts";
 import {
@@ -40,12 +40,28 @@ const TOOL_NAME_BY_KIND: Record<string, string> = {
 
 const doc = JSON.parse(readFileSync(VECTORS_PATH, "utf8")) as Json;
 
-/** A directory for temp HOMEs that is not itself under an exempt /tmp root. */
+/** Not under an exempt /tmp root and no `.git` in any ancestor, so the guard's repo-under-test walk ends
+ * at the vector's own cwd on every machine. */
+function usableBase(raw: string): boolean {
+  let base: string;
+  try {
+    base = realpathSync(raw);
+  } catch {
+    return false;
+  }
+  if (base === "/tmp" || base.startsWith("/tmp/") || base.startsWith("/private/tmp")) return false;
+  for (let cursor = base; ; cursor = dirname(cursor)) {
+    if (existsSync(join(cursor, ".git"))) return false;
+    if (dirname(cursor) === cursor) return true;
+  }
+}
+
+/** A directory for temp HOMEs that is neither exempt (/tmp) nor inside a git repository. */
 function scratchBase(): string {
-  const base = realpathSync(tmpdir());
-  return base === "/tmp" || base.startsWith("/tmp/") || base.startsWith("/private/tmp")
-    ? PLUGIN_ROOT
-    : base;
+  for (const base of [tmpdir(), "/var/tmp", "/dev/shm", homedir()]) {
+    if (usableBase(base)) return realpathSync(base);
+  }
+  throw new Error("no scratch directory outside /tmp and outside any git repository");
 }
 
 class Sandbox {

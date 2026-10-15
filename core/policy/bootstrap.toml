@@ -96,8 +96,11 @@ id = "bootstrap-kind-label"
 kind = "dispatch"
 sep = "newline"
 text = '''
-- Start the `{{label_param}}` of every write-capable call with `fix:`, `feat:`,
-  `refactor:`, `test:`, or `docs:`.'''
+- Start the `{{label_param}}` of every write-capable call with its lane:
+  `[fast]` (`applier`: mechanical or small bounded changes), `[complex]`
+  (`executor`: judgment that cannot split further), `[rigorous]`
+  (`security-executor`); then `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`.
+  The guard rejects a missing or mismatched lane.'''
 
 [[clause]]
 id = "bootstrap-collect"

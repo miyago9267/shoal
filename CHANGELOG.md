@@ -3,6 +3,20 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.10.0
+
+2026-10-15 發布。派工加上 lane 標籤，並改善切片平行派工。
+
+### Changes
+
+- 派工 lane 標籤：`[fast]` 給 `applier`，
+  `[complex]` 給 `executor`／`sol-executor`，
+  `[rigorous]` 給 `security-executor`。
+  guard 會 deny 缺少或與角色不符的標籤；
+  由 `SHOAL_GUARD_LANES` 控制（預設 on）。
+- 共用 policy 改為：先列出獨立切片，互不相交的切片一起派出。
+- verify 角色（`verifier`、`watcher`）可在被測 repo 以外用 shell 寫入。
+
 ## v3.9.1
 
 2026-10-15。修正 chain 成員被 deny 後，回合仍被標成已改檔的問題。

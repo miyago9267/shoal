@@ -242,6 +242,7 @@ export function createOpenCodeGuard(
             tool_name: tool,
             tool_kind: "dispatch",
             dispatched_role: str(args.subagent_type),
+            dispatch_desc: str(args.description),
           });
         }
         // The chain's raw payload: the hook's own input and args, as JSON (OpenCode has no stdin payload).

@@ -24,12 +24,29 @@ def load_vectors() -> Dict[str, Any]:
     return json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
 
 
+def _usable_base(base: str) -> bool:
+    """Not under an exempt /tmp root and no `.git` in any ancestor, so the guard's repo-under-test walk
+    ends at the vector's own cwd on every machine."""
+    base = os.path.realpath(base)
+    if not os.path.isdir(base) or base == "/tmp" or base.startswith(("/tmp/", "/private/tmp")):
+        return False
+    cursor = base
+    while True:
+        if os.path.exists(os.path.join(cursor, ".git")):
+            return False
+        parent = os.path.dirname(cursor)
+        if parent == cursor:
+            return True
+        cursor = parent
+
+
 def scratch_base() -> str:
-    """A directory for temp HOMEs that is not itself under an exempt /tmp root."""
-    base = os.path.realpath(tempfile.gettempdir())
-    if base == "/tmp" or base.startswith("/tmp/") or base.startswith("/private/tmp"):
-        return str(ROOT)
-    return base
+    """A directory for temp HOMEs that is neither exempt (/tmp) nor inside a git repository (the repo
+    checkout itself, or a home that is a repo, would change what the shell vectors resolve as 'the repo')."""
+    for base in (tempfile.gettempdir(), "/var/tmp", "/dev/shm", os.path.expanduser("~")):
+        if _usable_base(base):
+            return os.path.realpath(base)
+    raise RuntimeError("no scratch directory outside /tmp and outside any git repository")
 
 
 class Sandbox:

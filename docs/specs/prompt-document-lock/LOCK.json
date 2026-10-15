@@ -545,8 +545,8 @@
         "**CONFIRMED**, **REFUTED**, or **INCONCLUSIVE**"
       ],
       "migration": {
-        "migration_id": "delegation-default-3-0-0",
-        "equivalence": "docs/specs/delegation-default/RENAME.md"
+        "migration_id": "dispatch-lanes-3-10-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/dispatch-lanes.md"
       }
     },
     {

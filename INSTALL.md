@@ -1363,7 +1363,9 @@ VERIFY_EDIT 會擋。五個 host 上（預設 `strict`；agy 沒有 `#direct`）
 仍只提醒。`SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：
 只在外部分類來源標出實作工作時擋）、`off`。`SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的
 subagent 改檔（五個 host 預設 `on`；Claude、Codex、Grok、OpenCode 上啟動該工作的 prompt 帶
-`#direct` 可放行，agy 沒有 `#direct`，其餘出口見 INSTALL.md）。分類檔是公開的選用介面，見
+`#direct` 可放行，agy 沒有 `#direct`，其餘出口見 INSTALL.md）。
+`SHOAL_GUARD_LANES=off` 關閉派工 lane 標籤檢查（預設 `on`；
+缺少或與角色不符的 `[fast]`／`[complex]`／`[rigorous]` 會被 deny）。分類檔是公開的選用介面，見
 [本檔](#claude-上-guard-的行為300-起)。Codex 的 hook 註冊在 3.2.1 升到
 `shoal-guard-v2`（matcher 加 `Bash`），3.4.0 升到 `shoal-guard-v3`（加 `Stop` 群組），之後升到
 `shoal-guard-v4`（加 `SubagentStart` 群組），3.6.0 升到 `shoal-guard-v5`（加
@@ -1388,12 +1390,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.9.1 |
-| codex host | 3.9.1（`hosts/codex/VERSION`） |
-| claude host | 3.9.1（`hosts/claude/VERSION`） |
-| agy host | 3.9.1（`hosts/agy/VERSION`） |
-| grok host | 3.9.1（`hosts/grok/VERSION`） |
-| opencode host | 3.9.1（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.10.0 |
+| codex host | 3.10.0（`hosts/codex/VERSION`） |
+| claude host | 3.10.0（`hosts/claude/VERSION`） |
+| agy host | 3.10.0（`hosts/agy/VERSION`） |
+| grok host | 3.10.0（`hosts/grok/VERSION`） |
+| opencode host | 3.10.0（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。

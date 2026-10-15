@@ -195,8 +195,7 @@ class PolicyTests(unittest.TestCase):
             "it reports delegation unavailable",
             "main still does not edit files itself",
             "except under the user's `#direct` or a `#fast` session",
-            "an unavailable worker is not a licence to edit",
-            "report an unavailable worker to the user",
+            "Main edits only under the user's `#direct`; otherwise diagnose in main, delegate the fix, and report an unavailable worker",
         ):
             self.assertIn(phrase, policy)
         # Intended change: the legacy local-edit escape hatches are gone.
@@ -210,7 +209,7 @@ class PolicyTests(unittest.TestCase):
             "Stable same-shape multi-file mechanical repetition defaults to one `applier` with complete one-shot brief, exclusive ownership, independent items, per-item acceptance",
             "worker files remain worker-only until completion; never redo worker changes",
             "Main retains per-item triage, exceptions, integration, acceptance",
-            "Direct main execution of qualifying mechanical work exists only under the user's `#direct`",
+            "Direct main execution of mechanical work needs `#direct`",
             "Evolving/coupled evidence, ownership/integration conflict, or an unavailable worker is reported to the user, not worked around",
         ):
             self.assertIn(phrase, policy)
@@ -303,7 +302,6 @@ class PolicyTests(unittest.TestCase):
             "Schedule by dependency, not eventual need",
             "When selecting 2+ independent agents, launch all back-to-back without waiting",
             "exclusive file ownership",
-            "keep scopes disjoint",
             "collect all results before dependent work/final answer",
             "writers each in their own worktree",
         ):

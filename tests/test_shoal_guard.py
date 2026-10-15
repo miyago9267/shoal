@@ -192,7 +192,8 @@ class CliCase(unittest.TestCase):
     def env(self, **extra: str) -> dict:
         # The v3.1.0 tests run in `classified` mode; the declare tests pass SHOAL_GUARD_R1="declare", the strict tests "" (host default).
         env = {"HOME": self.home, "XDG_STATE_HOME": self.state, "TMPDIR": self.sandbox.tmpdir,
-               "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "SHOAL_GUARD_R1": "classified"}
+               "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "SHOAL_GUARD_R1": "classified",
+               "SHOAL_GUARD_LANES": "off"}  # LaneAdapterTests switches the dispatch-lane rule on
         env.update(extra)
         return env
 
@@ -1810,6 +1811,49 @@ class RobustnessTests(CliCase):
         self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "shadow"}), "shadow")
         self.assertEqual(guard.resolve_mode("agy", {"SHOAL_GUARD": "off"}), "off")
         self.assertEqual(guard.resolve_mode("claude", {"SHOAL_GUARD": "shadow"}), "shadow")
+
+
+class LaneAdapterTests(CliCase):
+    """Dispatch lanes: where each host's adapter reads the label, and the real script's deny, per host payload shape."""
+
+    def test_adapters_read_the_label_text(self) -> None:
+        claude = guard.adapt_claude(claude_tool("Agent", {"subagent_type": "executor", "description": "[complex] fix: x"}, cwd=self.work))
+        self.assertEqual(claude["dispatch_desc"], "[complex] fix: x")
+        self.assertIsNone(guard.adapt_claude(claude_tool("Workflow", {"description": "[fast] x"}, cwd=self.work))["dispatch_desc"])
+        codex = guard.adapt_codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor", "task_name": "t", "message": "[complex] do"}))
+        self.assertEqual(codex["dispatch_desc"], "[complex] do")  # task_name has no label: message is read
+        codex = guard.adapt_codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "applier", "task_name": "[fast] t", "message": "m"}))
+        self.assertEqual(codex["dispatch_desc"], "[fast] t")
+        codex = guard.adapt_codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "applier", "task_name": "t", "message": "m"}))
+        self.assertEqual(codex["dispatch_desc"], "t")
+        grok = guard.adapt_grok(GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x", "prompt": "p"}))
+        self.assertEqual(grok["dispatch_desc"], "[fast] x")
+        agy = guard.adapt_agy({"conversationId": "c1", "toolCall": {"name": "invoke_subagent", "args": {"Subagents": [
+            {"TypeName": "executor", "Role": "[complex] a"}, {"TypeName": "applier"}]}}}, "PreToolUse")
+        self.assertEqual((agy["dispatched_roles"], agy["dispatch_descs"]), (["executor", "applier"], ["[complex] a", None]))
+
+    def lane(self, host, payload, **env):
+        return self.run_guard(host, payload, **{"SHOAL_GUARD": "enforce", "SHOAL_GUARD_LANES": "on", "SHOAL_GUARD_R1": "", **env})
+
+    def test_claude_denies_missing_and_mismatched_labels_with_the_mapping(self) -> None:
+        out = self.lane("claude", claude_tool("Agent", {"subagent_type": "executor", "description": "fix: x"}, cwd=self.work))
+        reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+        for word in ("[fast]", "[complex]", "[rigorous]", "applier", "executor", "security-executor"):
+            self.assertIn(word, reason)
+        out = self.lane("claude", claude_tool("Agent", {"subagent_type": "executor", "description": "[fast] fix: x"}, cwd=self.work))
+        self.assertIn("Dispatch applier for [fast]", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
+        ok = self.lane("claude", claude_tool("Agent", {"subagent_type": "executor", "description": "[complex] fix: x"}, cwd=self.work))
+        self.assertEqual(ok, "")
+        self.assertEqual(self.lane("claude", claude_tool("Agent", {"subagent_type": "scout", "description": "look"}, cwd=self.work)), "")
+        self.assertEqual(self.lane("claude", claude_tool("Agent", {"subagent_type": "executor", "description": "x"}, cwd=self.work),
+                                   SHOAL_GUARD_LANES="off"), "")
+
+    def test_codex_and_grok_deny_without_a_label(self) -> None:
+        out = self.lane("codex", CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor", "task_name": "t", "message": "m"}, cwd=self.work))
+        self.assertIn("lane label", out)
+        out = self.lane("codex", CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor", "task_name": "t", "message": "[complex] m"}, cwd=self.work))
+        self.assertEqual(out, "")
+        self.assertEqual(self.lane("grok", GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x"}, cwd=self.work)), "")
 
 
 if __name__ == "__main__":

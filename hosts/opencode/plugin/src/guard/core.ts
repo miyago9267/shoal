@@ -12,6 +12,7 @@
 import {
   closeSync,
   constants,
+  existsSync,
   fchmodSync,
   fstatSync,
   lstatSync,
@@ -67,6 +68,9 @@ export type GuardEvent = {
   /** agy: the conversation's workspace paths, joined; every listed subagent's role name on `invoke_subagent`; the host's raw `fullyIdle`. */
   workspace?: string | null;
   dispatched_roles?: string[] | null;
+  /** dispatch events: the short description the lane label is read from (agy: `dispatch_descs`, each Subagents[] entry's Role field). */
+  dispatch_desc?: string | null;
+  dispatch_descs?: Array<string | null> | null;
   fully_idle?: unknown;
   /** agy, set by the guard: the access class of the subagent conversation the event belongs to. */
   conv_class?: string | null;
@@ -251,6 +255,14 @@ function roleAccess(role: string | null | undefined): string | null {
   return name !== null && Object.hasOwn(ROLE_ACCESS, name) ? ROLE_ACCESS[name] : null;
 }
 
+// Dispatch lanes (SHOAL_GUARD_LANES, default on): keep in sync with LANE_ROLES in hooks/shoal_guard.py.
+const LANE_ROLES: Record<string, string[]> = {
+  fast: ["applier"],
+  complex: ["executor", "sol-executor"],
+  rigorous: ["security-executor"],
+};
+const LANE_RE = /^\s*\[(fast|complex|rigorous)\]/;
+
 const CLASSIFIED_ROLE: Record<string, string> = {
   judgment: "executor",
   mechanical: "applier",
@@ -296,6 +308,14 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "write-capable role (executor or applier), or declare direct work first by running " +
       'exactly : shoal-direct "<reason>" as its own shell command, or set SHOAL_GUARD_DIRECT=1 ' +
       "(this host has no prompt marker for it).",
+    LANE_MISSING:
+      "Shoal dispatch guard: a write-role dispatch ({role}) must start its description with a lane label: " +
+      "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor " +
+      "(e.g. `[complex] fix: ...`). Add the label, or set SHOAL_GUARD_LANES=off.",
+    LANE_MISMATCH:
+      "Shoal dispatch guard: lane label [{label}] does not match role {role}. " +
+      "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor. " +
+      "Dispatch {expected} for [{label}], or change the label to match {role}.",
     E1:
       "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. " +
       "Dispatch a shoal write-capable role (executor or applier), add this agent type to " +
@@ -345,6 +365,14 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。" +
       "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct 或 #fast、" +
       "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
+    LANE_MISSING:
+      "Shoal dispatch guard：派 write role（{role}）時，description 開頭必須有 lane 標籤：" +
+      "[fast] -> applier、[complex] -> executor、[rigorous] -> security-executor" +
+      "（例如 `[complex] fix: ...`）。請補上標籤，或設定 SHOAL_GUARD_LANES=off。",
+    LANE_MISMATCH:
+      "Shoal dispatch guard：lane 標籤 [{label}] 與 role {role} 不符。" +
+      "[fast] -> applier、[complex] -> executor、[rigorous] -> security-executor。" +
+      "[{label}] 請改派 {expected}，或把標籤改成符合 {role}。",
     STOP:
       "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。" +
       "請現在做一次驗證（測試、verifier 或 watcher role），或在回報中明確寫出這次修改尚未驗證。",
@@ -658,6 +686,26 @@ const AGENTS_MAX = 32;
 /** The state file remembers this many most recent turn ids that carried `#direct`. */
 const DIRECT_TURNS_MAX = 16;
 
+/** SHOAL_GUARD_LANES: `off` disables the dispatch-lane rule only; any other value (or none) leaves it on. */
+export function lanesEnabled(env: Env): boolean {
+  return env.SHOAL_GUARD_LANES !== "off";
+}
+
+/** The lane label a dispatch description starts with, else null. */
+export function laneLabel(desc: unknown): string | null {
+  return typeof desc === "string" ? (LANE_RE.exec(desc)?.[1] ?? null) : null;
+}
+
+/** [message key, format args] when dispatching `role` with `desc` breaks the lane rule; null otherwise. */
+function laneViolation(role: string | null | undefined, desc: unknown): [string, Record<string, string>] | null {
+  const bare = normalizeRole(role);
+  if (bare === null || roleAccess(role) !== "write") return null;
+  const label = laneLabel(desc);
+  if (label === null) return ["LANE_MISSING", { role: bare }];
+  if (LANE_ROLES[label].includes(bare)) return null;
+  return ["LANE_MISMATCH", { label, role: bare, expected: LANE_ROLES[label][0] }];
+}
+
 /** SHOAL_GUARD_SUBAGENT_WRITE: `on` enables E1, `off` disables it; unset (or any other value) follows the host default. */
 export function subagentWriteEnabled(host: string, env: Env): boolean {
   const raw = env.SHOAL_GUARD_SUBAGENT_WRITE;
@@ -771,6 +819,21 @@ export function resolvePath(path: string, cwd: string): string {
 function under(path: string, root: string): boolean {
   const trimmed = root.replace(/\/+$/, "");
   return trimmed !== "" && (path === trimmed || path.startsWith(trimmed + "/"));
+}
+
+/**
+ * Root of the repository under test: the nearest ancestor of `cwd` holding `.git` (a directory or a worktree
+ * file); `cwd` itself (resolved) when there is none.
+ */
+export function repoUnderTest(cwd: string): string {
+  const start = lenientRealpath(cwd || process.cwd());
+  let cursor = start;
+  for (;;) {
+    if (existsSync(join(cursor, ".git"))) return cursor;
+    const parent = dirname(cursor);
+    if (parent === cursor) return start;
+    cursor = parent;
+  }
 }
 
 /** `path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, claude transcripts. */
@@ -894,6 +957,26 @@ class Guard {
   }
 
   // -- subagent backstop (spec R6) ------------------------------------------
+  /** Lane rule for a main session's dispatch: a deny / would_deny result when it breaks the rule, else null. */
+  laneRule(): GuardResult | null {
+    const event = this.event;
+    const listed = CONVERSATION_HOSTS.has(this.host) ? event.dispatched_roles : null;
+    const descs = event.dispatch_descs ?? [];
+    const pairs: Array<[string | null | undefined, unknown]> = listed
+      ? listed.map((r, i): [string, unknown] => [r, descs[i]])
+      : [[event.dispatched_role, event.dispatch_desc]];
+    for (const [role, desc] of pairs) {
+      const violation = laneViolation(role, desc);
+      if (violation !== null) {
+        return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
+          rule: "LANE",
+          reason: text(this.env, violation[0], violation[1]),
+        });
+      }
+    }
+    return null;
+  }
+
   subagent(): GuardResult {
     const { role, tool_kind: toolKind } = this.event;
     if (AGENT_KEYED_HOSTS.has(this.host) && roleAccess(role) === "write" && (toolKind === "edit" || toolKind === "shell")) {
@@ -905,7 +988,7 @@ class Guard {
     if (rule === null && subagentWriteEnabled(this.host, this.env)) rule = this.subagentWriteRule(role, toolKind);
     if (rule === null) return none(this.mode);
     let file: string | undefined = this.event.paths?.[0];
-    if ((rule === "E1" || rule === "E1_UNKNOWN") && toolKind === "shell") file = this.shellWriteTarget() ?? undefined;
+    if ((rule === "E1" || rule === "E1_UNKNOWN") && toolKind === "shell") file = this.shellWriteTarget(roleAccess(role) === "verify") ?? undefined;
     if (rule === "E1_UNKNOWN") return this.result("skip", { rule: "E1", skip: "would_deny_unknown_class", file }); // role not established: only logged
     return this.result(this.mode === "enforce" ? "deny" : "would_deny", {
       rule,
@@ -923,7 +1006,7 @@ class Guard {
       const cwd = this.event.cwd || process.cwd();
       writes = (this.event.paths ?? []).some((p) => !isExempt(resolvePath(p, cwd), this.host, this.env, this.home));
     } else if (toolKind === "shell") {
-      writes = this.shellWriteTarget() !== null;
+      writes = this.shellWriteTarget(roleAccess(role) === "verify") !== null;
     } else {
       return null;
     }
@@ -1549,15 +1632,18 @@ class Guard {
    * when its value is not known), or null.  `/dev/...`, exempt paths and nothing else are skipped;
    * the check reads no state.
    */
-  private shellWriteTarget(): string | null {
+  private shellWriteTarget(outsideRepoOk = false): string | null {
     const command = this.event.command;
     if (typeof command !== "string" || command === "") return null;
     const cwd = this.event.cwd || process.cwd();
+    const repo = outsideRepoOk ? repoUnderTest(cwd) : null; // verify roles (E1): a target outside the repo under test is free
     for (const raw of shellWriteTargets(command)) {
       const target = this.expandTarget(raw);
       if (target === null) return raw; // `$var`, `$(...)`, backticks: a redirect to a non-/dev target
       if (target === "/dev" || target.startsWith("/dev/")) continue;
-      if (isExempt(resolvePath(target, cwd), this.host, this.env, this.home)) continue;
+      const resolved = resolvePath(target, cwd);
+      if (isExempt(resolved, this.host, this.env, this.home)) continue;
+      if (repo !== null && !under(resolved, repo)) continue;
       return raw;
     }
     return null;
@@ -1748,14 +1834,18 @@ export function commitChange(result: GuardResult): void {
 /** Decide on a normalized event.  Throws only on programming/OS errors (caller fails open). */
 export function evaluate(event: GuardEvent, env: Env, home: string): GuardResult {
   const guard = new Guard(event, env, home);
-  const result = decide(guard, event);
+  const result = decide(guard, event, env);
   if (guard.pendingChange !== null) pendingChanges.set(result, guard.pendingChange);
   return result;
 }
 
-function decide(guard: Guard, event: GuardEvent): GuardResult {
+function decide(guard: Guard, event: GuardEvent, env: Env): GuardResult {
   if (guard.mode === "off") return none("off");
   if (event.kind === "post_tool" || event.kind === "session_end") return none(guard.mode); // chain-only events
+  if (event.kind === "tool" && event.tool_kind === "dispatch" && !event.is_subagent && lanesEnabled(env)) {
+    const lane = guard.laneRule();
+    if (lane !== null) return lane;
+  }
   if (CONVERSATION_HOSTS.has(guard.host)) {
     const routed = guard.agyRoute();
     if (routed !== null) return routed;

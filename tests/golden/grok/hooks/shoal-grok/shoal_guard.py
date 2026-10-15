@@ -257,6 +257,15 @@ ROLE_ACCESS = {
     "watcher": "verify",
 }
 
+# Dispatch lanes (SHOAL_GUARD_LANES, default on): a main dispatch of a write role must carry a lane label at the start
+# of the dispatch's short description, and the label must match the role.  `#direct` / `#fast` do not release it.
+LANE_ROLES = {
+    "fast": ("applier",),
+    "complex": ("executor", "sol-executor"),
+    "rigorous": ("security-executor",),
+}
+LANE_RE = re.compile(r"^\s*\[(fast|complex|rigorous)\]")
+
 CLASSIFIED_ROLE = {"judgment": "executor", "mechanical": "applier"}
 DISPATCH_NAME = {
     "claude": "Agent",
@@ -324,6 +333,16 @@ MESSAGES = {
             'exactly : shoal-direct "<reason>" as its own shell command, or set SHOAL_GUARD_DIRECT=1 '
             "(this host has no prompt marker for it)."
         ),
+        "LANE_MISSING": (
+            "Shoal dispatch guard: a write-role dispatch ({role}) must start its description with a lane label: "
+            "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor "
+            "(e.g. `[complex] fix: ...`). Add the label, or set SHOAL_GUARD_LANES=off."
+        ),
+        "LANE_MISMATCH": (
+            "Shoal dispatch guard: lane label [{label}] does not match role {role}. "
+            "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor. "
+            "Dispatch {expected} for [{label}], or change the label to match {role}."
+        ),
         "E1": (
             "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. "
             "Dispatch a shoal write-capable role (executor or applier), add this agent type to "
@@ -384,6 +403,16 @@ MESSAGES = {
             "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。"
             "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct 或 #fast、"
             "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"
+        ),
+        "LANE_MISSING": (
+            "Shoal dispatch guard：派 write role（{role}）時，description 開頭必須有 lane 標籤："
+            "[fast] -> applier、[complex] -> executor、[rigorous] -> security-executor"
+            "（例如 `[complex] fix: ...`）。請補上標籤，或設定 SHOAL_GUARD_LANES=off。"
+        ),
+        "LANE_MISMATCH": (
+            "Shoal dispatch guard：lane 標籤 [{label}] 與 role {role} 不符。"
+            "[fast] -> applier、[complex] -> executor、[rigorous] -> security-executor。"
+            "[{label}] 請改派 {expected}，或把標籤改成符合 {role}。"
         ),
         "STOP": (
             "Shoal completion check：本回合改過檔案，之後沒有跑過任何檢查。"
@@ -653,6 +682,31 @@ def write_agent_allowed(role: Any, env: Dict[str, str]) -> bool:
     return role in wanted or normalize_role(role) in wanted
 
 
+def lanes_enabled(env: Dict[str, str]) -> bool:
+    """SHOAL_GUARD_LANES: `off` disables the dispatch-lane rule only; any other value (or none) leaves it on."""
+    return env.get("SHOAL_GUARD_LANES") != "off"
+
+
+def lane_label(desc: Any) -> Optional[str]:
+    """The lane label a dispatch description starts with (`[fast]`, `[complex]`, `[rigorous]`), else None."""
+    match = LANE_RE.match(desc) if isinstance(desc, str) else None
+    return match.group(1) if match else None
+
+
+def lane_violation(role: Any, desc: Any) -> Optional[Tuple[str, Dict[str, str]]]:
+    """(message key, format args) when dispatching `role` with `desc` breaks the lane rule; None otherwise.
+    Only write roles are subject to it."""
+    bare = normalize_role(role)
+    if role_access(role) != "write" or bare is None:
+        return None
+    label = lane_label(desc)
+    if label is None:
+        return "LANE_MISSING", {"role": bare}
+    if bare in LANE_ROLES[label]:
+        return None
+    return "LANE_MISMATCH", {"label": label, "role": bare, "expected": LANE_ROLES[label][0]}
+
+
 def stop_enabled(host: str, env: Dict[str, str]) -> bool:
     """SHOAL_GUARD_STOP: `off` disables the completion check on claude, codex, grok and agy; any other value (or none)
     keeps it on (grok: logging only, see stop_blocks).  No effect on a host outside STOP_HOSTS."""
@@ -806,6 +860,20 @@ def resolve_path(path: str, cwd: str) -> str:
 def _under(path: str, root: str) -> bool:
     root = root.rstrip("/")
     return bool(root) and (path == root or path.startswith(root + "/"))
+
+
+def repo_under_test(cwd: str) -> str:
+    """Root of the repository under test: the nearest ancestor of `cwd` holding `.git` (a directory or a
+    worktree file); `cwd` itself (resolved) when there is none."""
+    start = os.path.realpath(cwd or os.getcwd())
+    cursor = start
+    while True:
+        if os.path.exists(os.path.join(cursor, ".git")):
+            return cursor
+        parent = os.path.dirname(cursor)
+        if parent == cursor:
+            return start
+        cursor = parent
 
 
 def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
@@ -1252,11 +1320,29 @@ class _Guard:
         decision = "deny" if self.mode == "enforce" else "would_deny"
         file = paths[0] if paths else None
         if rule in ("E1", "E1_UNKNOWN") and tool_kind == "shell":
-            file = self.shell_write_target()
+            file = self.shell_write_target(role_access(role) == "verify")
         if rule == "E1_UNKNOWN":  # the role cannot be established: never denied, only logged
             return self.result("skip", "E1", skip="would_deny_unknown_class", file=file)
         key = "E1D" if rule == "E1" and self.host in SUBAGENT_DIRECT_HOSTS else rule
         return self.result(decision, rule, reason=_text(self.env, key), file=file)
+
+    def lane_rule(self) -> Optional[Dict[str, Any]]:
+        """Lane rule for a main session's dispatch: a result when it breaks the rule (deny, or would_deny in
+        shadow), else None.  agy judges every Subagents[] entry (role = TypeName, label from its Role field)."""
+        event = self.event
+        listed = event.get("dispatched_roles") if self.host in CONVERSATION_HOSTS else None
+        if listed is not None:
+            descs = event.get("dispatch_descs") or []
+            pairs = [(r, descs[i] if i < len(descs) else None) for i, r in enumerate(listed)]
+        else:
+            pairs = [(event.get("dispatched_role"), event.get("dispatch_desc"))]
+        for role, desc in pairs:
+            violation = lane_violation(role, desc)
+            if violation is not None:
+                key, fmt = violation
+                decision = "deny" if self.mode == "enforce" else "would_deny"
+                return self.result(decision, "LANE", reason=_text(self.env, key, **fmt))
+        return None
 
     def _subagent_write_rule(self, role: Any, tool_kind: Any) -> Optional[str]:
         """E1: "E1" when this subagent call writes a non-exempt file and nothing releases it, else None.
@@ -1271,7 +1357,7 @@ class _Guard:
                 for p in self.event.get("paths") or []
             )
         elif tool_kind == "shell":
-            writes = self.shell_write_target() is not None
+            writes = self.shell_write_target(role_access(role) == "verify") is not None
         else:
             return None
         if not writes:
@@ -1865,21 +1951,26 @@ class _Guard:
             "deny" if self.mode == "enforce" else "would_deny", "G4", reason=_text(self.env, "G4")
         )
 
-    def shell_write_target(self) -> Optional[str]:
+    def shell_write_target(self, outside_repo_ok: bool = False) -> Optional[str]:
         """G5: the first non-exempt file that main's shell command writes (UNKNOWN_TARGET or the
         raw text when its value is not known), or None.  `/dev/...`, exempt paths and nothing
-        else are skipped; the check reads no state."""
+        else are skipped; the check reads no state.  `outside_repo_ok` (verify roles, E1) also skips a
+        target that resolves outside the repository under test (`repo_under_test(cwd)`)."""
         command = self.event.get("command")
         if not isinstance(command, str) or not command:
             return None
         cwd = self.event.get("cwd") or os.getcwd()
+        repo = repo_under_test(cwd) if outside_repo_ok else None
         for raw in shell_write_targets(command):
             target = self._expand_target(raw)
             if target is None:
                 return raw  # `$var`, `$(...)`, backticks: a redirect to a non-/dev target
             if target == "/dev" or target.startswith("/dev/"):
                 continue
-            if is_exempt(resolve_path(target, cwd), self.host, self.env, self.home):
+            resolved = resolve_path(target, cwd)
+            if is_exempt(resolved, self.host, self.env, self.home):
+                continue
+            if repo is not None and not _under(resolved, repo):
                 continue
             return raw
         return None
@@ -2073,6 +2164,15 @@ def _decide(guard: "_Guard", event: Dict[str, Any]) -> Dict[str, Any]:
             "reason": None,
             "mode": "off",
         }
+    if (
+        event.get("kind") == "tool"
+        and event.get("tool_kind") == "dispatch"
+        and not event.get("is_subagent")
+        and lanes_enabled(guard.env)
+    ):
+        lane = guard.lane_rule()
+        if lane is not None:
+            return lane
     if guard.host in CONVERSATION_HOSTS:
         routed = guard.agy_route()
         if routed is not None:
@@ -2417,6 +2517,8 @@ def _event(
     dispatched_roles: Optional[List[str]] = None,
     fully_idle: Any = None,
     fast: Optional[str] = None,
+    dispatch_desc: Any = None,
+    dispatch_descs: Optional[List[Optional[str]]] = None,
 ) -> Dict[str, Any]:
     return {
         "host": host,
@@ -2438,6 +2540,8 @@ def _event(
         "workspace": _str(workspace),  # agy only: the conversation's workspace paths, joined
         "dispatched_roles": dispatched_roles,  # agy only: every listed subagent's role name ("" when unnamed)
         "fully_idle": fully_idle,  # agy `stop` only: the host's raw value
+        "dispatch_desc": _str(dispatch_desc),  # dispatch events: the short description the lane label is read from
+        "dispatch_descs": dispatch_descs,  # agy only: each Subagents[] entry's Role field, parallel to dispatched_roles
     }
 
 
@@ -2508,6 +2612,7 @@ def _adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             tool=tool,
             tool_kind="dispatch",
             dispatched_role=tin.get("subagent_type") if tool == "Agent" else None,
+            dispatch_desc=tin.get("description") if tool == "Agent" else None,
         )
     return _event("claude", "tool", *base, tool=tool, tool_kind="other")
 
@@ -2518,6 +2623,13 @@ def patch_paths(command: Any) -> List[str]:
     if not isinstance(command, str):
         return []
     return PATCH_HEADER_RE.findall(command)
+
+
+def _codex_lane_text(tin: Dict[str, Any]) -> Optional[str]:
+    """Codex spawn_agent's input has no description (tests/fixtures/codex_subagent_tool_shapes.json: agent_type, message,
+    task_name): the lane label is read from the start of `task_name`, else of `message`."""
+    texts = [t for t in (tin.get("task_name"), tin.get("message")) if isinstance(t, str)]
+    return next((t for t in texts if lane_label(t)), texts[0] if texts else None)
 
 
 def adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -2581,6 +2693,7 @@ def _adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             tool=tool,
             tool_kind="dispatch",
             dispatched_role=tin.get("agent_type"),
+            dispatch_desc=_codex_lane_text(tin),
         )
     return _event("codex", "tool", *base, tool=tool, tool_kind="other")
 
@@ -2635,6 +2748,7 @@ def adapt_grok(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             tool=tool,
             tool_kind="dispatch",
             dispatched_role=tin.get("subagent_type"),
+            dispatch_desc=tin.get("description"),
         )
     return _event("grok", "tool", *base, tool=tool, tool_kind="other")
 
@@ -2657,6 +2771,12 @@ def _agy_dispatched_role(args: Dict[str, Any]) -> Optional[str]:
         if role_access(role) != "write":
             return role or None
     return roles[0]
+
+
+def _agy_lane_descs(args: Dict[str, Any]) -> List[Optional[str]]:
+    """Each Subagents[] entry's `Role` field (the free-text role description), where the lane label is read."""
+    listed = args.get("Subagents")
+    return [_str(_dict(i).get("Role")) for i in listed] if isinstance(listed, list) else []
 
 
 def _agy_workspace(payload: Dict[str, Any]) -> Optional[str]:
@@ -2707,7 +2827,7 @@ def adapt_agy(payload: Dict[str, Any], event_name: Any = None) -> Optional[Dict[
     if tool == "invoke_subagent":
         return _event("agy", "tool", *base, tool=tool, tool_kind="dispatch",
                       dispatched_role=_agy_dispatched_role(args), workspace=workspace,
-                      dispatched_roles=_agy_dispatched_roles(args))
+                      dispatched_roles=_agy_dispatched_roles(args), dispatch_descs=_agy_lane_descs(args))
     if tool == "run_command" and isinstance(args.get("CommandLine"), str):
         return _event("agy", "tool", cid, None, _str(args.get("Cwd")) or cwd, False, None, tool=tool,
                       tool_kind="shell", command=args["CommandLine"], workspace=workspace)

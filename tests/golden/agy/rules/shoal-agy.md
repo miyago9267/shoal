@@ -1,4 +1,4 @@
-<!-- shoal-agy v3.9.1 -->
+<!-- shoal-agy v3.10.0 -->
 <!-- shoal-agy:begin -->
 ## Shoal orchestration (agy only)
 
@@ -35,8 +35,11 @@ section, do the assigned task, never spawn subagents.
 - Security work: `security-reviewer` -> approved Plan -> `security-executor`.
 - Omit `Model` for named roles. State scope, stop, and a time budget in
   every brief; a role that reaches its budget returns what it has.
-- Start the `Role` of every write-capable call with `fix:`, `feat:`,
-  `refactor:`, `test:`, or `docs:`.
+- Start the `Role` of every write-capable call with its lane:
+  `[fast]` (`applier`: mechanical or small bounded changes), `[complex]`
+  (`executor`: judgment that cannot split further), `[rigorous]`
+  (`security-executor`); then `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`.
+  The guard rejects a missing or mismatched lane.
 - When a background role reports, collect first: one line saying which role did
   what with what result. Under AUTO dispatch the follow-up yourself; under ASK
   report and stop.

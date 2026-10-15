@@ -103,14 +103,14 @@ class OtherHostsRoleTests(unittest.TestCase):
     POLICY_SHA256 = {
         "codex": {
             "agents-md.bootstrap.md": "331cb05997867dd544c234c0ec8720051ba8c7fd4ebd6a0e2b9470eb067b6481",
-            "agents-md.orchestration.md": "2ff514c4d2f756adc76333b9bc4bb214b19afa7b22a96815e764ad110a118f77",
+            "agents-md.orchestration.md": "84adb21cad7a4c65c7956f4af4720827954517d406380209319e7571c6a869ec",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
-            "rules/shoal-agy.md": "1a0bf37203e407ce873e957a6fa72c676a8369041e41cb348ad07791ea55200a",
+            "rules/shoal-agy.md": "5764d10bd44a3a67acf6bdd37098c973b008a7bb33c7b180f4f0bb3638601ccf",
             "skills/shoal-orchestration/SKILL.md": "d9ecd94a9d5656791edc026b5c3abd315817341f09b34a184f58f0787f90b6f2",
             "skills/shoal-orchestration/references/orchestration-policy.md":
-                "62963aca7d720f409f94d6b2d943c18a97d52d936356c6fdd93b4abaaedc1a2d",
+                "f8deeeb0b04e8bad693274a9e4c8f7c43729a3dc49206440f0443ce5ab374598",
             "skills/shoal-orchestration/references/workflow-extensions.md":
                 "354ddedd06c0dc21aa00c2182fd9784ffbdb82cfda05cf5bbe166cd400939fc1",
         },
@@ -293,8 +293,9 @@ class PolicyClauseTests(unittest.TestCase):
     def test_label_clause_uses_the_description_parameter(self) -> None:
         flat = " ".join(self.policy.split())
         self.assertIn(
-            "Every Agent call to a write-capable role (`executor`, `applier`, `security-executor`) "
-            "starts its `description` with the work kind and a colon: `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`.",
+            "Every Agent call to a write-capable role starts its `description` with `[fast]` (`applier`: installs, version bumps, test expectations, docs, data fetching), "
+            "`[complex]` (`executor`), or `[rigorous]` (`security-executor`), then `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`. "
+            "The guard rejects a missing or mismatched lane.",
             flat,
         )
 
@@ -348,8 +349,8 @@ class PolicyClauseTests(unittest.TestCase):
         for needle in (
             "main still does not edit files itself: every edit goes to a write-capable role, "
             "except under the user's `#direct` or a `#fast` session.",
-            "Direct main execution of qualifying mechanical work exists only under the user's `#direct`.",
-            "is not a licence to edit: diagnose in main, delegate the fix, and report an unavailable worker to the user.",
+            "Direct main execution of mechanical work needs `#direct`.",
+            "Main edits only under the user's `#direct`; otherwise diagnose in main, delegate the fix, and report an unavailable worker.",
             "Reconnaissance over two or more independent surfaces goes to parallel `scout` calls",
             "Implementation with a stable execution contract",
             "is delegated by default",
@@ -430,7 +431,7 @@ class PolicyClauseTests(unittest.TestCase):
         ids = [c.id for c in render.load_core(ROOT)["policy"]["docs"]["orchestration"]]
         self.assertEqual(ids[ids.index("parallel-launch") + 1], "small-parallel-units")
         flat = " ".join(self.policy.split())
-        self.assertIn("- Size each dispatch so one role finishes it quickly; split larger work by file ownership.", flat)
+        self.assertIn("- Before dispatching, list independent slices; one brief, one purpose, sized so the cheapest capable role finishes it quickly; split larger work by file ownership. Disjoint slices launch together in one message", flat)
         self.assertIn("shared files (versions, generated output, locks) change once, in a separate integration step", flat)
         self.assertIn("rationale, file ownership, time budget.", flat)
         self.assertIn("the full suite runs once, at integration", flat)
@@ -469,7 +470,7 @@ class PolicyClauseTests(unittest.TestCase):
         text = " ".join(
             self.files["skills/shoal-orchestration/references/orchestration-policy.md"].decode("utf-8").split()
         )
-        self.assertIn("State in the brief how long the command is expected to take when you know.", text)
+        self.assertIn("The brief states expected duration when known.", text)
 
     def test_core_policy_and_contract_clauses_name_no_model_and_no_number_threshold(self) -> None:
         core = render.load_core(ROOT)

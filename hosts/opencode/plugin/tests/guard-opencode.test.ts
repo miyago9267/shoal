@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { createOpenCodeGuard, editPaths } from "../src/guard/opencode.ts";
 
 const PLUGIN_ROOT = resolve(import.meta.dir, "..");
-const ENV_KEYS = ["HOME", "XDG_STATE_HOME", "TMPDIR", "SHOAL_GUARD", "SHOAL_GUARD_DIRECT", "SHOAL_GUARD_LANG", "SHOAL_GUARD_MAX_FILES", "SHOAL_GUARD_R1", "SHOAL_GUARD_WRITE_AGENTS", "SHOAL_GUARD_SUBAGENT_WRITE", "SHOAL_GUARD_CHAIN_FILE", "SHOAL_GUARD_CHAIN_TIMEOUT_MS", "PATH"];
+const ENV_KEYS = ["HOME", "XDG_STATE_HOME", "TMPDIR", "SHOAL_GUARD", "SHOAL_GUARD_DIRECT", "SHOAL_GUARD_LANG", "SHOAL_GUARD_MAX_FILES", "SHOAL_GUARD_R1", "SHOAL_GUARD_WRITE_AGENTS", "SHOAL_GUARD_SUBAGENT_WRITE", "SHOAL_GUARD_LANES", "SHOAL_GUARD_CHAIN_FILE", "SHOAL_GUARD_CHAIN_TIMEOUT_MS", "PATH"];
 
 type Sessions = Record<string, { id: string; parentID?: string | null; agent?: string }>;
 
@@ -116,7 +116,7 @@ describe("OpenCode guard: main session", () => {
   test("a write-role task call alone does not unlock; the child session.created does (E3)", async () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
-    await call(guard, "task", MAIN, { subagent_type: "executor", prompt: "x" });
+    await call(guard, "task", MAIN, { subagent_type: "executor", description: "[complex] x", prompt: "x" });
     expect(logLines().at(-1)).toMatchObject({ decision: "allow", rule: "dispatch_pending" });
     await expect(call(guard, "write", MAIN, edit("d"))).rejects.toThrow(/does not edit files itself/);
     await created(guard, CHILD, MAIN, "executor");
@@ -129,7 +129,7 @@ describe("OpenCode guard: main session", () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
     await call(guard, "task", MAIN, { subagent_type: "no-such-role-xyz", prompt: "x" });
-    await call(guard, "task", MAIN, { subagent_type: "executor", prompt: "x" }); // announced, then the host fails it
+    await call(guard, "task", MAIN, { subagent_type: "executor", description: "[complex] x", prompt: "x" }); // announced, then the host fails it
     await expect(call(guard, "write", MAIN, edit("a"))).rejects.toThrow(/does not edit files itself/);
     await expect(call(guard, "bash", MAIN, { command: "echo x > out.txt" })).rejects.toThrow(/does not edit files itself/);
   });
@@ -145,7 +145,7 @@ describe("OpenCode guard: main session", () => {
   test("a new chat.message (messageID) starts a new turn and locks again", async () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN, "msg_001");
-    await call(guard, "task", MAIN, { subagent_type: "applier" });
+    await call(guard, "task", MAIN, { subagent_type: "applier", description: "[fast] x" });
     await created(guard, CHILD, MAIN, "applier");
     await call(guard, "write", MAIN, edit("a"));
     await prompt(guard, MAIN, "msg_002");
@@ -165,7 +165,7 @@ describe("OpenCode guard: main session", () => {
   test("main bash write passes after a write role started", async () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
-    await call(guard, "task", MAIN, { subagent_type: "executor" });
+    await call(guard, "task", MAIN, { subagent_type: "executor", description: "[complex] x" });
     await created(guard, CHILD, MAIN, "executor");
     await call(guard, "bash", MAIN, { command: "echo hi > notes.txt" });
   });
@@ -347,7 +347,7 @@ describe("OpenCode guard: subagents", () => {
   test("the fallback lookup of a write-role child also counts as its start", async () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
-    await call(guard, "task", MAIN, { subagent_type: "executor" });
+    await call(guard, "task", MAIN, { subagent_type: "executor", description: "[complex] x" });
     await call(guard, "write", CHILD, edit("a")); // child's first tool call, session.created never seen
     await call(guard, "write", MAIN, edit("m"));
     expect(logLines().at(-1)).toMatchObject({ decision: "allow", rule: "dispatched" });
@@ -495,5 +495,23 @@ describe("OpenCode guard: chain", () => {
     await prompt(guard, MAIN, "msg_001", "#direct");
     await call(guard, "bash", MAIN, { command: "ls" });
     expect(logLines().filter((l) => l.rule === "chain").map((l) => l.decision)).toEqual(["chain_error", "chain_error"]);
+  });
+});
+
+describe("OpenCode guard: dispatch lanes", () => {
+  test("task description carries the label: missing or mismatched is denied, a match passes", async () => {
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN);
+    await expect(call(guard, "task", MAIN, { subagent_type: "executor", prompt: "x" })).rejects.toThrow(/lane label/);
+    await expect(call(guard, "task", MAIN, { subagent_type: "executor", description: "[fast] x" })).rejects.toThrow(/Dispatch applier/);
+    await call(guard, "task", MAIN, { subagent_type: "executor", description: "[complex] x" });
+    await call(guard, "task", MAIN, { subagent_type: "scout", description: "look" });
+  });
+
+  test("SHOAL_GUARD_LANES=off disables only this rule", async () => {
+    process.env.SHOAL_GUARD_LANES = "off";
+    const guard = makeGuard(defaultSessions());
+    await prompt(guard, MAIN);
+    await call(guard, "task", MAIN, { subagent_type: "executor", prompt: "x" });
   });
 });

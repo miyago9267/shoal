@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.9.1 -->
+<!-- shoal-claude v3.10.0 -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -36,8 +36,11 @@ section, do the assigned task, never spawn subagents.
   `verifier` and `plan-critic`, `high` for `security-reviewer`).
 - Omit `model` for named roles. State scope, stop, and a time budget in
   every brief; a role that reaches its budget returns what it has.
-- Start the `description` of every write-capable call with `fix:`, `feat:`,
-  `refactor:`, `test:`, or `docs:`.
+- Start the `description` of every write-capable call with its lane:
+  `[fast]` (`applier`: mechanical or small bounded changes), `[complex]`
+  (`executor`: judgment that cannot split further), `[rigorous]`
+  (`security-executor`); then `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`.
+  The guard rejects a missing or mismatched lane.
 - When a background role reports, collect first: one line saying which role did
   what with what result. Under AUTO dispatch the follow-up yourself; under ASK
   report and stop.
