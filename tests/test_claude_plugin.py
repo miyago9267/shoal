@@ -154,7 +154,8 @@ class CompatShimTests(unittest.TestCase):
     def run_shim(self, *args: str, stdin: str = "{}") -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, str(self.shim), *args], input=stdin, capture_output=True, text=True,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home),
+                 "CLAUDE_CONFIG_DIR": str(self.home / ".claude")},
         )
 
     def write_target(self, path: Path, exit_code: int = 0) -> None:
@@ -182,6 +183,20 @@ class CompatShimTests(unittest.TestCase):
         self.write_target(cache / "3.8.1" / "hooks" / "shoal_guard.py", exit_code=0)
         self.write_target(cache / "3.10.0" / "hooks" / "shoal_guard.py", exit_code=7)
         self.assertEqual(self.run_shim("--host", "claude").returncode, 7)
+
+    def test_shim_orders_by_version_not_plugin_name_and_ignores_non_version_dirs(self) -> None:
+        cache = self.home / ".claude" / "plugins" / "cache" / "shoal" / "shoal-dispatch-guard"
+        self.write_target(cache / "3.8.1" / "hooks" / "shoal_guard.py", exit_code=1)
+        self.write_target(cache / "3.10.0" / "hooks" / "shoal_guard.py", exit_code=7)
+        self.write_target(cache / "latest" / "hooks" / "shoal_guard.py", exit_code=9)
+        self.assertEqual(self.run_shim("--host", "claude").returncode, 7)
+
+    def test_shim_honours_claude_config_dir_over_the_home_directory(self) -> None:
+        config = self.home / "elsewhere"
+        self.write_target(config / "plugins" / "cache" / "shoal" / "shoal-dispatch-guard" / "3.8.1" / "hooks" / "shoal_guard.py", exit_code=5)
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home), "CLAUDE_CONFIG_DIR": str(config)}
+        done = subprocess.run([sys.executable, str(self.shim)], input="{}", capture_output=True, text=True, env=env)
+        self.assertEqual(done.returncode, 5)
 
     def test_shim_exits_zero_silently_when_no_guard_plugin_is_found(self) -> None:
         result = self.run_shim("--host", "claude", "--plugin")

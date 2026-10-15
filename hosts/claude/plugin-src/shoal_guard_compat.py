@@ -18,8 +18,25 @@ NAME = "shoal_guard.py"
 
 
 def _version_key(path):
-    ver = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(path))))
-    return [int(p) if p.isdigit() else 0 for p in ver.split(".")]
+    """Numeric key of the `<version>` directory in `.../<version>/hooks/<NAME>`, or None."""
+    ver = os.path.basename(os.path.dirname(os.path.dirname(path)))
+    parts = ver.split(".")
+    if all(p.isdigit() for p in parts):
+        return [int(p) for p in parts]
+    return None
+
+
+def _config_dir():
+    """Where Claude Code keeps its plugin cache: CLAUDE_CONFIG_DIR, else ~/.claude."""
+    configured = os.environ.get("CLAUDE_CONFIG_DIR")
+    if configured and os.path.isabs(configured):
+        return configured
+    return os.path.join(os.path.expanduser("~"), ".claude")
+
+
+def _newest(pattern):
+    keyed = [(_version_key(p), p) for p in glob.glob(pattern)]
+    return [p for k, p in sorted((i for i in keyed if i[0] is not None), reverse=True)]
 
 
 def find_guard(here):
@@ -27,9 +44,9 @@ def find_guard(here):
     marketplace = os.path.dirname(plugin_root)
     found = [os.path.join(marketplace, "claude-guard-plugin", "hooks", NAME)]
     cache = os.path.join(os.path.dirname(marketplace), "shoal-dispatch-guard", "*", "hooks", NAME)
-    home = os.path.join(os.path.expanduser("~"), ".claude", "plugins", "cache", "*", "shoal-dispatch-guard", "*", "hooks", NAME)
+    home = os.path.join(_config_dir(), "plugins", "cache", "*", "shoal-dispatch-guard", "*", "hooks", NAME)
     for pattern in (cache, home):
-        found += sorted(glob.glob(pattern), key=_version_key, reverse=True)
+        found += _newest(pattern)
     for path in found:
         if os.path.isfile(path) and os.path.realpath(path) != os.path.realpath(here):
             return path

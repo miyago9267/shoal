@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -1516,17 +1517,32 @@ GUARD_RULES = (
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
 
+SPLIT_OWNER_MARKER = ".shoal-probe-owned"
+SPLIT_OWNER_ID = "shoal-claude-live-probe plugin-split"
+
+
 def _split_repo() -> Path:
-    return claude._account_home().joinpath(*SPLIT_REPO)
+    """A fresh per-run directory, so concurrent runs and old content never collide."""
+    return claude._account_home().joinpath(*SPLIT_REPO, "run-" + uuid.uuid4().hex[:12])
+
+
+def _remove_split_repo(repo: Path) -> None:
+    """Delete a scratch repo only when it carries this probe's own marker."""
+    marker = repo / SPLIT_OWNER_MARKER
+    try:
+        if repo.is_symlink() or marker.read_text(encoding="utf-8") != SPLIT_OWNER_ID:
+            return
+    except OSError:
+        return
+    shutil.rmtree(repo, ignore_errors=True)
 
 
 def _reset_split_repo(repo: Path) -> None:
-    """A fresh git repo with one committed README.md at exactly the fixed path."""
-    if repo.is_symlink() or (repo.exists() and not repo.is_dir()):
-        raise StageSetupError("scratch repo path is not a plain directory")
-    if repo.exists():
-        shutil.rmtree(repo)
+    """A fresh git repo with one committed README.md; refuses a path that already exists."""
+    if repo.is_symlink() or repo.exists():
+        raise StageSetupError("scratch repo path already exists")
     repo.mkdir(parents=True)
+    (repo / SPLIT_OWNER_MARKER).write_text(SPLIT_OWNER_ID, encoding="utf-8")
     (repo / "README.md").write_text("# claude-s4\n", encoding="utf-8")
     git = ["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
     for step in (["init", "-q"], ["add", "README.md"], ["commit", "-q", "-m", "init"]):
@@ -1716,6 +1732,7 @@ def run_plugin_split(options: argparse.Namespace) -> tuple[dict[str, Any], Path]
         unchanged: bool | None = readme == "# claude-s4\n"
     except OSError:
         unchanged = None
+    _remove_split_repo(repo)
     agents = shown.get("agents")
     checks = {
         "plugins_enabled": _check(
@@ -1732,7 +1749,7 @@ def run_plugin_split(options: argparse.Namespace) -> tuple[dict[str, Any], Path]
             UNDETERMINED
             if not shown
             else PASS
-            if shown["denied_by_guard"] and unchanged
+            if shown["rule"] in ("R1", "STRICT") and unchanged
             else FAIL,
             "guard_denied_direct_edit",
         ),

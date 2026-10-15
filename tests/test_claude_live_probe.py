@@ -1911,6 +1911,39 @@ class PluginSplitTests(ProbeCase):
         self.assertEqual(code, 1)
         self.assertEqual(report["checks"]["r1_denied"]["status"], "fail")
 
+    def test_non_r1_guard_denial_fails(self) -> None:
+        verify = self.stream().replace(
+            "does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct.",
+            "VERIFY_EDIT: verify the change first.",
+        )
+        code, report, _ = self.split(self.host(verify))
+        self.assertEqual(code, 1)
+        self.assertEqual(report["checks"]["r1_denied"]["status"], "fail")
+        self.assertIsNone(report["turn"]["rule"])
+
+    def test_existing_scratch_dir_is_refused_and_not_deleted(self) -> None:
+        self.repo.mkdir(parents=True)
+        keep = self.repo / "precious.txt"
+        keep.write_text("mine", encoding="utf-8")
+        with self.assertRaises(probe.StageSetupError):
+            probe._reset_split_repo(self.repo)
+        self.assertEqual(keep.read_text(encoding="utf-8"), "mine")
+
+    def test_scratch_removal_requires_the_probe_marker(self) -> None:
+        stranger = self.root / "stranger"
+        stranger.mkdir()
+        (stranger / "f").write_text("x", encoding="utf-8")
+        probe._remove_split_repo(stranger)
+        self.assertTrue((stranger / "f").exists())
+        probe._reset_split_repo(self.repo)
+        self.assertTrue((self.repo / probe.SPLIT_OWNER_MARKER).is_file())
+        probe._remove_split_repo(self.repo)
+        self.assertFalse(self.repo.exists())
+
+    def test_split_repo_path_is_unique_per_run(self) -> None:
+        patch.stopall()
+        self.assertNotEqual(probe._split_repo(), probe._split_repo())
+
     def test_missing_write_role_fails(self) -> None:
         code, report, _ = self.split(self.host(self.stream(agents=["shoal:scout"])))
         self.assertEqual(code, 1)
