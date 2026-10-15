@@ -5,12 +5,12 @@
 
 繁體中文 · [English](docs/README.en.md) · [简体中文](docs/README.zh-CN.md)
 
-## 它解決什麼
+## 適用場景
 
-- 一份 role 定義，五個 host 各自拿到合適的模型、權限和 prompt。
+- 定義一份 role，讓五種以上的 agent host 各自拿到合適的模型、權限和 prompt進行工作。
 - 主 session 負責判斷與整合，改檔和長指令派給對應的 role。
-- 派工規則由 guard 在每個 host 強制執行，不靠模型自覺。
-- 要支援新工具，填設定就好，不用寫程式。
+- 派工規則由 guard 於各個 host 強制執行，不靠模型自覺。
+- 要支援新工具，僅需填寫設定即可，不需撰寫寫程式。
 
 ## 運作方式
 
@@ -109,7 +109,7 @@ shoal 衍生自 [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish)�
 | 強制範圍 | hook 只擋硬規則（leaf 不再派工、verifier 不改檔） | 另擋 main 直接改檔、非 shoal agent 改檔、role 未啟動、改完沒檢查就結束 |
 | 證據 | 每個決定都附 benchmark 與量測 | 以 payload 擷取與各 host 實測為主，量測較少 |
 
-shoal 不取代 pilotfish，也不是它的上位版本：它把 role 與條款擴到多個廠牌並加上強制執行，代價是比較重、比較嚴。若只用 Claude Code、想要輕量且有量測支撐的 policy，用 [pilotfish](https://github.com/Nanako0129/pilotfish)；要是同時使用多個 agent 工具、想要一份定義和一致的強制規則，用 shoal。
+shoal 並不平替 pilotfish，亦非上位版本：策略為將 role 與條款擴到多個廠牌並加上強制執行，代價是較重且較嚴格。若只用 Claude Code、想要輕量且有量測支撐的 policy，用 [pilotfish](https://github.com/Nanako0129/pilotfish)即可；要是同時使用多個 agent 工具、想要一份定義和一致的強制規則，用 shoal 會更符合您的工作流。
 
 ## 延伸閱讀
 
