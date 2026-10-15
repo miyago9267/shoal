@@ -33,18 +33,22 @@ If the main session edits a file without dispatching a writable role, or a subag
 ## Quick start
 
 ```bash
-# Codex CLI
-bash install/install.sh --codex-home "${CODEX_HOME:-$HOME/.codex}"
-# Claude Code (plugin, latest stable)
-claude plugin marketplace add miyago9267/shoal
-claude plugin install shoal@shoal
-# Grok Build (without --apply it is a dry run)
-python3 tools/install_grok.py
-# OpenCode (global)
-sh hosts/opencode/plugin/install/install.sh --global --enable
+# preview first (dry run, writes nothing)
+python3 tools/shoal_install.py --host codex
+# install; --host can be claude、codex、grok、opencode、agy
+python3 tools/shoal_install.py --host codex --apply
 ```
 
-Gemini/agy, and Claude Code without the plugin, are in [INSTALL.md](../INSTALL.md).
+It needs only `python3` (stdlib) and behaves the same on macOS, Linux and Windows. Without `--apply` it is a dry run that shows the underlying installer's preview; when an external CLI such as `claude`, `codex` or `bun` is missing, the dry run reports `skipped`. opencode needs `bun` for `--apply`.
+
+Claude Code also has the plugin marketplace route (latest stable):
+
+```bash
+claude plugin marketplace add miyago9267/shoal
+claude plugin install shoal@shoal
+```
+
+Per-host details, and Claude Code without the plugin, are in [INSTALL.md](../INSTALL.md).
 
 ## Modules
 

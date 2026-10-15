@@ -73,8 +73,27 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Entrypoint dry-run for all hosts (temp HOME)
+        shell: python
+        run: |
+          import os, subprocess, sys, tempfile
+          home = tempfile.mkdtemp(prefix="shoal-ci-home-")
+          env = dict(os.environ, HOME=home, USERPROFILE=home)
+          for key, sub in (("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state"), ("CODEX_HOME", "codex"),
+                           ("GROK_HOME", "grok"), ("OPENCODE_CONFIG_DIR", "opencode"), ("CLAUDE_CONFIG_DIR", "claude")):
+              env[key] = os.path.join(home, sub)
+          os.makedirs(env["OPENCODE_CONFIG_DIR"])
+          failed = []
+          for host in ("claude", "codex", "grok", "opencode", "agy"):
+              print("::group::" + host, flush=True)
+              code = subprocess.run([sys.executable, "tools/shoal_install.py", "--host", host], env=env).returncode
+              print("::endgroup::", flush=True)
+              if code != 0:
+                  failed.append(host)
+          sys.exit("dry-run failed: " + ", ".join(failed) if failed else 0)
+
       - name: Check Python syntax
-        run: python -m py_compile tools/shoal_install.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py bench/evaluate_dispatch.py install/validate_prompt_lock.py
+        run: python -m py_compile tools/shoal_install.py tools/opencode_global.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py bench/evaluate_dispatch.py install/validate_prompt_lock.py
 
       # Renewal 綠燈路徑：只有 PR 帶 label lock-renewal，或 push 到 main 的 head
       # commit message 含一行 "Lock-Renewal: approved"，才放寬 LOCK.json 的變動。

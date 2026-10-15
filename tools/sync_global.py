@@ -64,10 +64,11 @@ from typing import Callable, Mapping, Optional
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "install"))
 import legacy_codex  # noqa: E402
+import opencode_global  # noqa: E402
 import shoal_install  # noqa: E402
 HOSTS = ("codex", "grok", "agy", "opencode")
 ROLE_DIR = "templates/agents"
-OPENCODE_INSTALL = "hosts/opencode/plugin/install/install.sh"
+OPENCODE_INSTALL = "tools/opencode_global.py"
 DEFAULT_HARNESS = Path("dotfile/config/opencode-harness/plugins/shoal-opencode.js")
 
 # ---- LEGACY_: names shoal installed before 2.0.0 (docs/specs/shoal-rebrand N5) ----
@@ -418,6 +419,8 @@ def sync_grok(ctx: Ctx) -> Result:
 def agy_link_problems(ctx: Ctx) -> list[str]:
     config = ctx.home / ".gemini" / "config"
     problems: list[str] = []
+    # Windows 無 symlink 權限時入口改複製並記 agy_mode: copy；此時改比對內容 sha256（docs/specs/repo-layout G2）
+    copy_mode = (shoal_install.load_manifest(ctx.env) or {}).get("agy", {}).get("agy_mode") == "copy"
     for kind in ("agents", "skills"):
         listing = (
             git(ctx, "ls-tree", "--name-only", ctx.ref, f"hosts/agy/dist/{kind}/")
@@ -428,7 +431,12 @@ def agy_link_problems(ctx: Ctx) -> list[str]:
             name = Path(path).name
             link = config / kind / name
             expected = os.path.realpath(ctx.repo / path)
-            if not link.is_symlink():
+            if copy_mode:
+                if not link.exists():
+                    problems.append(f"{kind}/{name} 不存在")
+                elif shoal_install.tree_digest(link) != shoal_install.tree_digest(ctx.repo / path):
+                    problems.append(f"{kind}/{name} 內容與 hosts/agy/dist 不同")
+            elif not link.is_symlink():
                 problems.append(f"{kind}/{name} 不是 symlink")
             elif os.path.realpath(link) != expected:
                 problems.append(f"{kind}/{name} 沒指向 hosts/agy/dist")
@@ -585,62 +593,11 @@ def legacy_opencode_entries(manifest: Path) -> list[str]:
 
 
 def build_opencode(ctx: Ctx, work: Path, bun: str) -> dict[str, Path]:
-    """與 install_global.sh 相同：git archive HEAD 的 hosts/opencode，bun install、bun build。"""
-    archive = subprocess.run(
-        ["git", "-C", str(ctx.repo), "archive", ctx.ref, "hosts/opencode"],
-        env=ctx.env,
-        capture_output=True,
-        timeout=120,
-    )
-    if archive.returncode != 0:
-        raise SyncError(
-            "git archive hosts/opencode 失敗: "
-            + one_line(archive.stderr.decode("utf-8", "replace"))
-        )
-    untar = subprocess.run(
-        ["tar", "-x", "-C", str(work)],
-        input=archive.stdout,
-        capture_output=True,
-        timeout=120,
-    )
-    if untar.returncode != 0:
-        raise SyncError("解開 hosts/opencode 失敗")
-    src = work / "hosts" / "opencode"
-    dist = src / "dist"
-    if not (dist / "roles").is_dir():
-        raise SyncError("HEAD 沒有 hosts/opencode/dist/roles")
-    bundle = work / "shoal-opencode.js"
-    plugin = src / "plugin"
-    for step in (
-        [bun, "install", "--frozen-lockfile"],
-        [
-            bun,
-            "build",
-            "src/plugin/shoal-opencode.ts",
-            "--bundle",
-            "--format",
-            "esm",
-            "--target",
-            "bun",
-            "--outfile",
-            str(bundle),
-        ],
-    ):
-        proc = run(step, ctx, cwd=plugin)
-        if proc.returncode != 0:
-            raise SyncError(
-                f"bun {step[1]} 失敗: {one_line(proc.stderr or proc.stdout)}"
-            )
-    if not bundle.is_file() or bundle.stat().st_size == 0:
-        raise SyncError("plugin build 沒有輸出")
-    expected = {"plugins/shoal-opencode.js": bundle}
-    for role in sorted((dist / "roles").glob("*.md")):
-        expected[f"agents/{role.name}"] = role
-    for name in ("catalog.json", "routing.json"):
-        if not (dist / name).is_file():
-            raise SyncError(f"HEAD 沒有 hosts/opencode/dist/{name}")
-        expected[f"shoal/{name}"] = dist / name
-    return expected
+    """與 tools/opencode_global.py 相同：git archive 的 hosts/opencode，bun install、bun build（不用 tar）。"""
+    try:
+        return opencode_global.build_plan(ctx.repo, ctx.ref, work, ctx.env, bun)
+    except opencode_global.OpenCodeError as exc:
+        raise SyncError(one_line(str(exc))) from exc
 
 
 def digest(path: Path) -> Optional[str]:
@@ -683,17 +640,17 @@ def sync_opencode(ctx: Ctx) -> Result:
         if legacy:
             what = f"legacy migration: remove {', '.join(legacy)}; install {what}"
         if ctx.apply:
-            base = ["sh", str(install_sh), "--global", "--config-dir", str(config)]
+            base = [sys.executable, str(install_sh), "--config-dir", str(config)]
             for action in ("--disable", "--enable"):
                 proc = run(base + [action], ctx)
                 if proc.returncode != 0:
                     tail = (
-                        "；已停用，需手動 install.sh --global --enable"
+                        "；已停用，需手動 python3 tools/opencode_global.py --enable"
                         if action == "--enable"
                         else ""
                     )
                     raise SyncError(
-                        f"install.sh {action} 失敗: {one_line(proc.stderr or proc.stdout)}{tail}"
+                        f"opencode_global {action} 失敗: {one_line(proc.stderr or proc.stdout)}{tail}"
                     )
             left = opencode_diffs(config, expected)
             if left:

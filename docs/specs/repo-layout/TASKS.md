@@ -5,7 +5,7 @@
 
 | Phase | 狀態 | 前置 |
 | --- | --- | --- |
-| P1 可移植入口、安裝缺口、README | 未開始 | 無 |
+| P1 可移植入口、安裝缺口、README | 進行中（PR 待 CI） | 無 |
 | P2 Codex 可移植登記（不搬檔案） | 完成（PR 待合併） | P1 |
 | P3 `--update`；P3b dotfile 改呼叫它 | 未開始（P3b 是 dotfile，Miyago） | P2 |
 | P4 文件拆分 | 未開始 | P1（README 衝突時 P1 先） |
@@ -18,30 +18,31 @@
 
 ## P1 可移植入口、安裝缺口、README
 
-- [ ] 查證 G4：全新 clone、沒有 `bun` 時 opencode 的行為
-- [ ] 先寫 failing tests：G1（claude `--apply` 呼叫 `claude plugin ...`，已
+- [x] 查證 G4：全新 clone、沒有 `bun` 時 opencode 的行為
+- [x] 先寫 failing tests：G1（claude `--apply` 呼叫 `claude plugin ...`，已
   存在則 update）、G2（agy 建 agents、skills、rules 連結，不覆蓋非 symlink；
   Windows 無 symlink 權限時的退路寫在 tests）、G3（dry-run 呼叫底層
   dry-run）、G5（核心路徑不呼叫 `sh`、`bash`、`tar`）、G6（CLI 不存在時
   dry-run 為 `skipped`）
-- [ ] G1：claude `--apply` 執行 marketplace add、plugin install；
+- [x] G1：claude `--apply` 執行 marketplace add、plugin install；
   `claude-explore` 選中時安裝 `Explore.md`
-- [ ] G2：agy 補 agents、skills、rules 連結；`os.symlink` 丟 `OSError` 時改
+- [x] G2：agy 補 agents、skills、rules 連結；`os.symlink` 丟 `OSError` 時改
   複製並在 `modules.json` 記 `agy_mode: copy`；
   `tools/sync_global.py:402-403` 在 copy 模式改比對內容 sha256
-- [ ] G2 測試（含 `windows-latest`）：monkeypatch `os.symlink` 丟
+- [x] G2 測試（含 `windows-latest`）：monkeypatch `os.symlink` 丟
   `OSError`，`--host agy --apply` 後檔案等於 `hosts/agy/dist`；`--update`
   dry-run 回報 agy `up-to-date`
-- [ ] G3：dry-run 轉呼叫底層 installer 的 dry-run 並顯示輸出
-- [ ] G5（D9）：opencode 安裝步驟 Python 化，與 `sync_global.py` 共用
-- [ ] G6：外部 CLI 一律 `shutil.which`
-- [ ] `README.md` 快速開始改為
+- [x] G3：dry-run 轉呼叫底層 installer 的 dry-run 並顯示輸出
+- [x] G5（D9）：opencode 安裝步驟 Python 化，與 `sync_global.py` 共用
+- [x] G6：外部 CLI 一律 `shutil.which`
+- [x] `README.md` 快速開始改為
   `python3 tools/shoal_install.py --host <h> --apply`，Claude marketplace 兩
   行放在「替代方式」
-- [ ] `docs/README.en.md`、`docs/README.zh-CN.md` 同步
-- [ ] `python-tests.yml`：每個 OS 對五個 host 跑入口 dry-run（暫存 `HOME`）
-- [ ] 驗收：unittest、`check_links.py`、markdownlint；
-  `validate_prompt_lock.py` 通過；Windows job 綠
+- [x] `docs/README.en.md`、`docs/README.zh-CN.md` 同步
+- [x] `python-tests.yml`：每個 OS 對五個 host 跑入口 dry-run（暫存 `HOME`）
+- [x] 驗收：unittest、`check_links.py`、markdownlint；
+  `validate_prompt_lock.py` 通過
+- [ ] Windows job 綠（待 PR CI）
 
 停止條件：五個 host 在暫存 `HOME` 下 dry-run 與 `--apply` 都符合預期，三個
 OS 的 CI 綠。

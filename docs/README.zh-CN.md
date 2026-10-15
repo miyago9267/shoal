@@ -33,18 +33,22 @@ role 只写 tier，不写模型名称；每个 host 从自己的模型目录里�
 ## 快速开始
 
 ```bash
-# Codex CLI
-bash install/install.sh --codex-home "${CODEX_HOME:-$HOME/.codex}"
-# Claude Code（plugin，装最新稳定版）
-claude plugin marketplace add miyago9267/shoal
-claude plugin install shoal@shoal
-# Grok Build（不加 --apply 是 dry-run）
-python3 tools/install_grok.py
-# OpenCode（全局）
-sh hosts/opencode/plugin/install/install.sh --global --enable
+# 先看会做什么（dry-run，不写入）
+python3 tools/shoal_install.py --host codex
+# 安装：--host 可换成 claude、codex、grok、opencode、agy
+python3 tools/shoal_install.py --host codex --apply
 ```
 
-Gemini/agy 与不用 plugin 的 Claude Code 见 [INSTALL.md](../INSTALL.md)。
+只靠 `python3`（stdlib），macOS、Linux、Windows 相同。不带 `--apply` 是 dry-run，会显示底层 installer 的预览；`claude`、`codex`、`bun` 这类外部 CLI 找不到时，dry-run 报告 `skipped`。opencode 需要 `bun` 才能 `--apply`。
+
+Claude Code 另有 plugin marketplace 的替代方式（装最新稳定版）：
+
+```bash
+claude plugin marketplace add miyago9267/shoal
+claude plugin install shoal@shoal
+```
+
+每个 host 的细节与不用 plugin 的 Claude Code 见 [INSTALL.md](../INSTALL.md)。
 
 ## 模块
 

@@ -665,17 +665,16 @@ class OpenCodeMigrationTests(MigrationCase):
         code, lines = self.sync("--host", "opencode", "--apply", "--strict", env=env)
         self.assertEqual(code, 1)
         self.assertTrue(
-            lines[0].startswith("opencode: failed (install.sh --disable"), lines
+            lines[0].startswith("opencode: failed (opencode_global --disable"), lines
         )
         self.assertEqual((lf.tree(self.config), self.manifest.read_bytes()), before)
 
-    def test_install_sh_enable_migrates_an_old_global_manifest_by_itself(self) -> None:
+    def test_opencode_global_enable_migrates_an_old_global_manifest_by_itself(self) -> None:
         script = self.repo / sync_global.OPENCODE_INSTALL
         done = subprocess.run(
             [
-                "sh",
+                sys.executable,
                 str(script),
-                "--global",
                 "--config-dir",
                 str(self.config),
                 "--enable",
