@@ -97,6 +97,33 @@ uninstall 也不移除。舊安裝重跑 installer（或 `sync_global.py`）會�
 Codex 的群組內容因為升到 `shoal-dispatch-guard-v2` 而改變，升級後要在互動 session 用 `/hooks`
 重新核准一次。
 
+## 更新（`--update`）
+
+一個指令把本機 checkout 的 committed HEAD 同步到各 host，不依賴 dotfile，macOS、Linux、
+Windows 行為相同（只用 Python stdlib，不用 bash、`tar`、`timeout`）。不含 `git pull`：
+要最新的內容請先自己 pull；未 commit 的 WIP 不會被安裝。
+
+```bash
+python3 tools/shoal_install.py --update           # dry-run：只回報會做什麼
+python3 tools/shoal_install.py --update --apply    # 實際更新
+```
+
+每步一行 `<step>: up-to-date | updated | skipped | failed`（dry-run 的 `updated` 行尾有
+`[dry-run]`），任何一步 `failed` 則 exit 1。步驟依序為：
+
+| 步驟 | 做什麼 |
+| --- | --- |
+| `cleanup` | 清掉上次殘留的 `claude-marketplace.old` 與暫存目錄；正式目錄不見（交換被中斷）時改為還原 `.old` |
+| `marketplace` | 依 HEAD 的 `.claude-plugin/marketplace.json` 匯出 Claude marketplace 到 `${XDG_DATA_HOME:-~/.local/share}/shoal/` 的暫存目錄，與現有 `claude-marketplace` 逐檔比對 sha256；相同回報 `up-to-date`，不同才兩次 rename 交換（現有 -> `.old`、暫存 -> 正式） |
+| `claude marketplace`、`claude plugin <id>` | `claude plugin marketplace add\|update`、`plugin install\|update`（`shoal@shoal`，以及依模組清單與 chain 決定的 `shoal-dispatch-guard@shoal`）。任何一步失敗，`.old` 改名還原並回報 `failed`，全部成功才刪 `.old` |
+| `explore` | `claude-explore` 模組未被停用時，把 `Explore.md` 裝進 `~/.claude/agents/` |
+| `codex marketplace` | 沿用 `install/install.py` 的匯出與登記，登記 `${XDG_DATA_HOME:-~/.local/share}/shoal/codex-marketplace`；內容與註冊都相同時 `up-to-date` |
+| `sync <host>` | 呼叫 `tools/sync_global.py`（見下一節（每日同步）），逐 host 一行 |
+| `verify <what>` | 已安裝的 marketplace、guard（`hooks/shoal_guard.py`）與 repo 逐位元組比對 sha256，不符為 `failed` |
+
+`claude` 或 `codex` 不在 PATH 時該 host 的步驟回報 `skipped`，不失敗。Claude `settings.json`
+的 `~` 還原，以及其他工具（remora、calico）的更新不屬於 shoal，留在 dotfile。
+
 ## 每日同步
 
 `tools/sync_global.py` 把 committed HEAD 同步到 Codex、Grok、agy、OpenCode 的全域
