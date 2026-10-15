@@ -1,6 +1,6 @@
 {
   "name": "shoal-dispatch-guard",
-  "version": "3.10.0",
+  "version": "3.11.0",
   "description": "Optional dispatch guard for the shoal Claude Code plugin (hooks only).",
   "author": {
     "name": "Miyago",

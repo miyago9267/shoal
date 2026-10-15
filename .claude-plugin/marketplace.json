@@ -9,7 +9,7 @@
     {
       "name": "shoal",
       "source": "./plugins/claude",
-      "version": "3.10.0",
+      "version": "3.11.0",
       "description": "Shoal orchestration roles, skill and policy bootstrap.",
       "category": "productivity",
       "tags": [
@@ -21,7 +21,7 @@
     {
       "name": "shoal-dispatch-guard",
       "source": "./plugins/claude-guard",
-      "version": "3.10.0",
+      "version": "3.11.0",
       "description": "Optional dispatch guard hooks for the shoal plugin.",
       "category": "productivity",
       "tags": [

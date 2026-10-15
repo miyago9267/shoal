@@ -3,6 +3,24 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.11.0
+
+2026-10-15 發布。安裝與更新改為可攜入口，目錄依 host 重新整理。
+
+### Changes
+
+- 新增單一可攜入口 `tools/shoal_install.py --host X [--apply]`，
+  支援 macOS、Linux 與 Windows。
+- `--update` 取代外部的 updater，並提供 swap 與 rollback。
+- Codex 改為登錄 shoal 自己的 export 目錄，不再寫入絕對 repo 路徑。
+- INSTALL.md 拆成 `docs/install/<host>.md`、guard、modules 與 reference。
+- bench 腳本移到 `bench/`，Claude plugin 移到 `plugins/claude` 與
+  `plugins/claude-guard`。
+
+### Upgrade
+
+- 既有安裝直接執行 `python3 tools/shoal_install.py --update --apply`。
+
 ## v3.10.0
 
 2026-10-15 發布。派工加上 lane 標籤，並改善切片平行派工。

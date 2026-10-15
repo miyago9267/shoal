@@ -1,6 +1,6 @@
 {
   "name": "shoal-codex",
-  "version": "3.10.0",
+  "version": "3.11.0",
   "description": "Hybrid shoal orchestration with an always-on policy bootstrap and detailed workflow Skill.",
   "author": {
     "name": "Miyago"
