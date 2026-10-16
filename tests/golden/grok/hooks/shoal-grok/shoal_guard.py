@@ -22,8 +22,8 @@ host.  Main-session rules: R2 (file count) only advises, on claude/codex in enfo
 one-per-turn `additionalContext` reminder.  G4 (claude only) denies main's background shell (`Bash`
 with run_in_background); it is released for one turn by a standalone `#direct` token in the user's
 prompt, or for good by SHOAL_GUARD_DIRECT=1.
-Fast mode (a standalone `#fast` in the prompt until `#strict`, or SHOAL_GUARD_FAST=1) counts every turn as `#direct`;
-LEAF, VERIFY_EDIT and the completion check are unchanged.
+Fast mode (a standalone `#fast` in the prompt until `#strict`, or SHOAL_GUARD_FAST=1) only marks the session as the light
+lane (recorded in state and the log); it does not release main edits, only `#direct` does.
 
 The main-session edit rule (R1 for edit tools, G5 for a foreground `Bash` that literally writes a
 file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-declared-direct):
@@ -310,7 +310,7 @@ MESSAGES = {
         "R1": (
             "Shoal dispatch guard: this turn is classified as implementation work and no write "
             "role has been dispatched. Dispatch executor or applier, or add #direct to your "
-            "prompt (or #fast for the whole session) to edit directly."
+            "prompt to edit directly."
         ),
         "G4": (
             "Shoal dispatch guard: the main session does not start background shells. Dispatch "
@@ -318,7 +318,7 @@ MESSAGES = {
         ),
         "STRICT": (
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
-            "write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt."
+            "write-capable role (executor or applier), or ask the user to add #direct to the prompt."
         ),
         "STRICT_ND": (
             "Shoal dispatch guard: the main session does not edit files itself. Dispatch a "
@@ -349,7 +349,7 @@ MESSAGES = {
         "E1D": (
             "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. "
             "Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that "
-            "started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
+            "started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."
         ),
         "STOP": (
             "Shoal completion check: this turn changed files and no check ran afterwards. Run a "
@@ -360,7 +360,7 @@ MESSAGES = {
             "Shoal dispatch guard: the main session delegates edits by default. Dispatch a "
             "write-capable role (executor or applier), or declare direct work first by running "
             'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add '
-            "#direct (or #fast for the whole session) to the prompt."
+            "#direct to the prompt."
         ),
     },
     "zh-TW": {
@@ -373,7 +373,7 @@ MESSAGES = {
         "VERIFY_EDIT": "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
         "R1": (
             "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。"
-            "請派給 executor 或 applier，或在 prompt 加上 #direct（單輪）或 #fast（整個 session）以直接修改。"
+            "請派給 executor 或 applier，或在 prompt 加上 #direct以直接修改。"
         ),
         "G4": (
             "Shoal dispatch guard：main session 不自己開背景 shell。"
@@ -381,7 +381,7 @@ MESSAGES = {
         ),
         "STRICT": (
             "Shoal dispatch guard：main session 不自己改檔。"
-            "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。"
+            "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"
         ),
         "STRICT_ND": (
             "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier）並等它啟動、"
@@ -399,7 +399,7 @@ MESSAGES = {
         ),
         "E1D": (
             "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。"
-            "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct 或 #fast、"
+            "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct、"
             "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。"
         ),
         "LANE_MISSING": (
@@ -419,7 +419,7 @@ MESSAGES = {
         "DECLARE": (
             "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
             "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
-            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。'
+            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。'
         ),
     },
 }
@@ -1228,9 +1228,9 @@ class _Guard:
 
     def __init__(self, event: Dict[str, Any], env: Dict[str, str], home: Path) -> None:
         self.event = event
-        # Fast mode (SHOAL_GUARD_FAST=1) is `#direct` for every turn: reuse the SHOAL_GUARD_DIRECT release paths.
+        # Fast mode (SHOAL_GUARD_FAST=1) marks the light lane only; it does not release main edits.
         self.fast = env.get("SHOAL_GUARD_FAST") == "1"
-        self.env = dict(env, SHOAL_GUARD_DIRECT="1") if self.fast else env
+        self.env = env
         self.home = home
         self.host = str(event.get("host") or "")
         self.started = time.monotonic()  # the chain's budget counts from here
@@ -1389,7 +1389,7 @@ class _Guard:
             if guard is None:
                 return False
             state = _read_json(guard / "state" / (sid + ".json"))
-            return tid in _direct_turns(state) or state.get("fast") is True
+            return tid in _direct_turns(state)
         except Exception:
             return False
 
@@ -1745,12 +1745,12 @@ class _Guard:
 
     def _prompt_direct(self, prior: Dict[str, Any]) -> bool:
         """Prompt event: update the session's fast flag (`#fast` on, `#strict` off, otherwise unchanged) and return
-        whether this turn counts as `#direct` (its own token, or fast mode on)."""
+        whether this turn counts as `#direct` (its own token only; fast mode does not release edits)."""
         switch = self.event.get("fast")
         self.fast_state = switch == "on" or (prior.get("fast") is True and switch != "off")
         if self.fast_state:
             self.fast = True
-        return self.event.get("direct") is True or self.fast_state
+        return self.event.get("direct") is True
 
     def _locked(
         self, is_boundary: bool, keep: bool, tid: Optional[str], state_path: Path, guard: Path

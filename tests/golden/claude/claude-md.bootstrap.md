@@ -31,9 +31,11 @@ section, do the assigned task, never spawn subagents.
   approval and one fresh `verifier` after implementation.
 - Security work: `security-reviewer` -> approved Plan -> `security-executor`.
 - Explicit instruction: on every named-role Agent call pass
-  `effort` (role default; lower if trivial or fully specified, higher if
-  ambiguous or high-stakes; a user-stated effort wins; never below `medium` for
-  `verifier` and `plan-critic`, `high` for `security-reviewer`).
+  `effort` (role default; lower if trivial, higher if ambiguous or
+  high-stakes; user-stated wins; never below `medium` for `verifier`,
+  `plan-critic`; `high` for `security-reviewer`). `#fast`: simple work ->
+  `[fast]` `applier`, effort `low`, brief = goal, files, done-criteria; no
+  plan-critic or verifier.
 - Omit `model` for named roles. State scope, stop, and a time budget in
   every brief; a role that reaches its budget returns what it has.
 - Start the `description` of every write-capable call with its lane:

@@ -194,7 +194,7 @@ class PolicyTests(unittest.TestCase):
             "must not silently substitute an untyped child",
             "it reports delegation unavailable",
             "main still does not edit files itself",
-            "except under the user's `#direct` or a `#fast` session",
+            "except under the user's `#direct`. A `#fast` session is the light lane",
             "Main edits only under the user's `#direct`; otherwise diagnose in main, delegate the fix, and report an unavailable worker",
         ):
             self.assertIn(phrase, policy)

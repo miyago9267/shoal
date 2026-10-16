@@ -38,9 +38,12 @@ fresh-context review.
   separate verifier or paid live run. Rigorous: risk trigger or user request.
   Name the lane at start.
 - Without a risk trigger, main still does not edit files itself: every edit
-  goes to a write-capable role, except under the user's `#direct` or a `#fast`
-  session. Reading, running commands, diagnosis, integration, and judgment
-  stay with main. Otherwise use phase-aware lifecycle below.
+  goes to a write-capable role, except under the user's `#direct`. A `#fast`
+  session is the light lane: simple work (single purpose, named scope, no risk
+  trigger, ~10 min) goes to `[fast]` `applier`, effort `low`, brief of goal,
+  files, done-criteria; no plan-critic or verifier; the role checks only what
+  it touched. Reading, running commands, diagnosis, integration, and
+  judgment stay with main. Otherwise use phase-aware lifecycle below.
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
   may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.

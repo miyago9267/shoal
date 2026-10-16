@@ -85,9 +85,12 @@ kind = "routing"
 sep = "newline"
 text = '''
 - Without a risk trigger, main still does not edit files itself: every edit
-  goes to a write-capable role, except under the user's `#direct` or a `#fast`
-  session. Reading, running commands, diagnosis, integration, and judgment
-  stay with main. Otherwise use phase-aware lifecycle below.'''
+  goes to a write-capable role, except under the user's `#direct`. A `#fast`
+  session is the light lane: simple work (single purpose, named scope, no risk
+  trigger, ~10 min) goes to `[fast]` `applier`, effort `low`, brief of goal,
+  files, done-criteria; no plan-critic or verifier; the role checks only what
+  it touched. Reading, running commands, diagnosis, integration, and
+  judgment stay with main. Otherwise use phase-aware lifecycle below.'''
 
 [[clause]]
 id = "discovery-gate"
@@ -354,12 +357,9 @@ kind = "dispatch"
 sep = "newline"
 text = '''
 - Explicit instruction: on every named-role {{dispatch_tool}} call, pass
-  `{{effort_param}}`. The role's frontmatter effort is the default; choose per call
-  from task difficulty, ambiguity, and risk: lower for fully specified or trivial
-  work, higher for ambiguous, coupled, or high-stakes work. A user-stated effort,
-  for one call or a stated scope, overrides both this choice and the default for
-  that scope. When choosing yourself, never go below `medium` for `verifier` and
-  `plan-critic`, or below `high` for `security-reviewer`.'''
+  `{{effort_param}}`. Role default; lower if trivial, higher if ambiguous,
+  coupled, or high-stakes; a user-stated effort wins. Never go below `medium`
+  for `verifier` and `plan-critic`, or below `high` for `security-reviewer`.'''
 
 [[clause]]
 id = "dispatch-kind-label"

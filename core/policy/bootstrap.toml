@@ -79,9 +79,11 @@ kind = "dispatch"
 sep = "newline"
 text = '''
 - Explicit instruction: on every named-role {{dispatch_tool}} call pass
-  `{{effort_param}}` (role default; lower if trivial or fully specified, higher if
-  ambiguous or high-stakes; a user-stated effort wins; never below `medium` for
-  `verifier` and `plan-critic`, `high` for `security-reviewer`).'''
+  `{{effort_param}}` (role default; lower if trivial, higher if ambiguous or
+  high-stakes; user-stated wins; never below `medium` for `verifier`,
+  `plan-critic`; `high` for `security-reviewer`). `#fast`: simple work ->
+  `[fast]` `applier`, effort `low`, brief = goal, files, done-criteria; no
+  plan-critic or verifier.'''
 
 [[clause]]
 id = "bootstrap-dispatch-brake"

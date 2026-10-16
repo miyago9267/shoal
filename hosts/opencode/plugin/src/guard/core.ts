@@ -292,13 +292,13 @@ const MESSAGES: Record<string, Record<string, string>> = {
     R1:
       "Shoal dispatch guard: this turn is classified as implementation work and no write " +
       "role has been dispatched. Dispatch executor or applier, or add #direct to your " +
-      "prompt (or #fast for the whole session) to edit directly.",
+      "prompt to edit directly.",
     G4:
       "Shoal dispatch guard: the main session does not start background shells. Dispatch " +
       "watcher in the background instead, or add #direct to your prompt.",
     STRICT:
       "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
-      "write-capable role (executor or applier), or ask the user to add #direct (or #fast for the whole session) to the prompt.",
+      "write-capable role (executor or applier), or ask the user to add #direct to the prompt.",
     STRICT_ND:
       "Shoal dispatch guard: the main session does not edit files itself. Dispatch a " +
       "write-capable role (executor or applier) and wait until it has started, add the role to " +
@@ -323,7 +323,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
     E1D:
       "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. " +
       "Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that " +
-      "started this work (or #fast for the whole session), add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1.",
+      "started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1.",
     STOP:
       "Shoal completion check: this turn changed files and no check ran afterwards. Run a " +
       "verification now (tests, a verifier or watcher role), or say explicitly in your report " +
@@ -332,7 +332,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Shoal dispatch guard: the main session delegates edits by default. Dispatch a " +
       "write-capable role (executor or applier), or declare direct work first by running " +
       'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add ' +
-      "#direct (or #fast for the whole session) to the prompt.",
+      "#direct to the prompt.",
   },
   "zh-TW": {
     ADVISE:
@@ -343,13 +343,13 @@ const MESSAGES: Record<string, Record<string, string>> = {
     VERIFY_EDIT: "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
     R1:
       "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。" +
-      "請派給 executor 或 applier，或在 prompt 加上 #direct（單輪）或 #fast（整個 session）以直接修改。",
+      "請派給 executor 或 applier，或在 prompt 加上 #direct以直接修改。",
     G4:
       "Shoal dispatch guard：main session 不自己開背景 shell。" +
       "請改在背景派出 watcher，或在 prompt 加上 #direct。",
     STRICT:
       "Shoal dispatch guard：main session 不自己改檔。" +
-      "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct 或 #fast。",
+      "請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。",
     STRICT_ND:
       "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier）並等它啟動、" +
       "把 role 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1（這個 host 沒有 prompt 標記可用）。",
@@ -363,7 +363,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
     E1D:
       "Shoal dispatch guard：不是 shoal 可寫 role 的 subagent 不改檔。" +
-      "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct 或 #fast、" +
+      "請派出 shoal 可寫的 role（executor 或 applier）、請使用者在啟動這項工作的 prompt 加上 #direct、" +
       "把這個 agent type 加進 SHOAL_GUARD_WRITE_AGENTS，或設定 SHOAL_GUARD_DIRECT=1。",
     LANE_MISSING:
       "Shoal dispatch guard：派 write role（{role}）時，description 開頭必須有 lane 標籤：" +
@@ -379,7 +379,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
     DECLARE:
       "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
       "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
-      ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct 或 #fast。',
+      ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。',
   },
 };
 
@@ -909,9 +909,9 @@ class Guard {
     env: Env,
     private readonly home: string,
   ) {
-    // Fast mode (SHOAL_GUARD_FAST=1) is `#direct` for every turn: reuse the SHOAL_GUARD_DIRECT release paths.
+    // Fast mode (SHOAL_GUARD_FAST=1) marks the light lane only; it does not release main edits.
     this.fast = env.SHOAL_GUARD_FAST === "1";
-    this.env = this.fast ? { ...env, SHOAL_GUARD_DIRECT: "1" } : env;
+    this.env = env;
     this.host = String(event.host || "");
     this.mode = resolveMode(this.host, env, home);
     this.r1 = resolveR1(this.host, env);
@@ -1040,7 +1040,7 @@ class Guard {
       const dir = this.guardDirectory;
       if (dir === null) return false;
       const state = readJson(join(dir, "state", sid + ".json"));
-      return directTurns(state).includes(tid as string) || state.fast === true;
+      return directTurns(state).includes(tid as string);
     } catch {
       return false;
     }
@@ -1403,13 +1403,13 @@ class Guard {
 
   /**
    * Prompt event: update the session's fast flag (`#fast` on, `#strict` off, otherwise unchanged) and return whether
-   * this turn counts as `#direct` (its own token, or fast mode on).
+   * this turn counts as `#direct` (its own token only; fast mode does not release edits).
    */
   private promptDirect(prior: Record<string, unknown>): boolean {
     const sw = this.event.fast;
     this.fastState = sw === "on" || (prior.fast === true && sw !== "off");
     if (this.fastState) this.fast = true;
-    return this.event.direct === true || this.fastState;
+    return this.event.direct === true;
   }
 
   /** The state read-modify-write; the caller holds the per-session lock. */

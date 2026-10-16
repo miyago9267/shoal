@@ -9,7 +9,7 @@
    契約與停止條件。executor 在 brief 之外做的設計決定，視為未審查，main 逐項
    接受或退回。
 2. **派工不以數字門檻強制**。改檔一律由可寫的 role 執行，除非使用者以
-   `#direct` 授權 main 直接改（或 session 處於 `#fast`）；互不相干的偵察與長指令預設派工。讀檔、診斷、
+   `#direct` 授權 main 直接改；互不相干的偵察與長指令預設派工。讀檔、診斷、
    整合與判斷由 main 直接做。
 3. **hook 強制硬規則**：leaf 不再派 subagent、verifier 類 role 不改檔、main
    以背景方式開 shell、main 未派工就改檔（`#direct` 可放行），以及非 shoal

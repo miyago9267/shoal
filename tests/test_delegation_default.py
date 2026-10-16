@@ -103,14 +103,14 @@ class OtherHostsRoleTests(unittest.TestCase):
     POLICY_SHA256 = {
         "codex": {
             "agents-md.bootstrap.md": "331cb05997867dd544c234c0ec8720051ba8c7fd4ebd6a0e2b9470eb067b6481",
-            "agents-md.orchestration.md": "84adb21cad7a4c65c7956f4af4720827954517d406380209319e7571c6a869ec",
+            "agents-md.orchestration.md": "1b739020e807d88288495dc73cc798c10430f7405babf6a96ad4f75b1680faee",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
             "rules/shoal-agy.md": "5764d10bd44a3a67acf6bdd37098c973b008a7bb33c7b180f4f0bb3638601ccf",
             "skills/shoal-orchestration/SKILL.md": "d9ecd94a9d5656791edc026b5c3abd315817341f09b34a184f58f0787f90b6f2",
             "skills/shoal-orchestration/references/orchestration-policy.md":
-                "f8deeeb0b04e8bad693274a9e4c8f7c43729a3dc49206440f0443ce5ab374598",
+                "d63a6531779aab8a1518a3e474d8da64192c1d3a602af585e45ce0107d9082cb",
             "skills/shoal-orchestration/references/workflow-extensions.md":
                 "354ddedd06c0dc21aa00c2182fd9784ffbdb82cfda05cf5bbe166cd400939fc1",
         },
@@ -273,11 +273,11 @@ class PolicyClauseTests(unittest.TestCase):
         at = lines.index(starts[0])
         self.assertTrue(lines[at - 1].endswith("main-session model accidentally."), lines[at - 1])
         self.assertTrue(lines[at - 3].startswith("- Named-role model routing lives in agent definitions."))
-        self.assertTrue(lines[at + 7].startswith("- Every Agent call to a write-capable role"), lines[at + 7])
+        self.assertTrue(lines[at + 4].startswith("- Every Agent call to a write-capable role"), lines[at + 4])
         flat = " ".join(self.policy.split())
         self.assertIn("Explicit instruction: on every named-role Agent call, pass `effort`.", flat)
         self.assertNotIn("main-session model accidentally. Explicit instruction", flat)
-        self.assertIn("never go below `medium` for `verifier` and `plan-critic`, or below `high` for `security-reviewer`", flat)
+        self.assertIn("Never go below `medium` for `verifier` and `plan-critic`, or below `high` for `security-reviewer`", flat)
 
     def test_effort_and_label_follow_model_routing(self) -> None:
         ids = [c.id for c in render.load_core(ROOT)["policy"]["docs"]["orchestration"]]
@@ -348,7 +348,7 @@ class PolicyClauseTests(unittest.TestCase):
         flat = " ".join(self.policy.split())
         for needle in (
             "main still does not edit files itself: every edit goes to a write-capable role, "
-            "except under the user's `#direct` or a `#fast` session.",
+            "except under the user's `#direct`. A `#fast` session is the light lane:",
             "Direct main execution of mechanical work needs `#direct`.",
             "Main edits only under the user's `#direct`; otherwise diagnose in main, delegate the fix, and report an unavailable worker.",
             "Reconnaissance over two or more independent surfaces goes to parallel `scout` calls",
@@ -494,7 +494,7 @@ class DesignInvariantsTests(unittest.TestCase):
 
         text = squash((ROOT / "docs" / "DESIGN-INVARIANTS.md").read_text(encoding="utf-8"))
         for wanted in (
-            "派工不以數字門檻強制。改檔一律由可寫的 role 執行，除非使用者以 `#direct` 授權 main 直接改（或 session 處於 `#fast`）；"
+            "派工不以數字門檻強制。改檔一律由可寫的 role 執行，除非使用者以 `#direct` 授權 main 直接改；"
             "互不相干的偵察與長指令預設派工。讀檔、診斷、整合與判斷由 main 直接做。",
             "hook 強制硬規則：leaf 不再派 subagent、verifier 類 role 不改檔、main 以背景方式開 shell、main 未派工"
             "就改檔（`#direct` 可放行），以及非 shoal 可寫 role 的 subagent 改檔（`#direct`、"
