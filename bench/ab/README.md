@@ -45,7 +45,8 @@ python3 bench/ab/run_ab.py --summarize bench/ab/results/ab.json
   - 環境有 `CLAUDE_CODE_OAUTH_TOKEN` -> `token` mode：全新 `CLAUDE_CONFIG_DIR`、`HOME`、
     `TMPDIR`，只傳 `PATH`/locale，完全碰不到 `~/.claude`。
   - 否則 -> `keychain` mode：沿用使用者的 keychain login，靠 `--setting-sources project`
-    擋掉 user settings（hooks、enabledPlugins、output style），`--strict-mcp-config` 擋 MCP，
+    擋掉 user settings（hooks、enabledPlugins、output style），
+    `--strict-mcp-config` 擋 MCP，
     並清掉 `CLAUDE_CODE_*` / `ANTHROPIC_*` 環境變數。
   - macOS 上只設 temp `CLAUDE_CONFIG_DIR` 會讀不到 keychain login（實測回
     `Not logged in`），所以 token mode 一定要有 token。
