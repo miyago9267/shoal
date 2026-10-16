@@ -37,7 +37,7 @@ Follow the spec's conventions and the surrounding code style precisely.'''
 id = "verify-own-work"
 kind = "procedure"
 text = '''
-Verify your own work before finishing: run only the checks for what you touched (no full-suite runs), and confirm every item in the done-criteria. Time-box the work to about 10 minutes.'''
+Do not re-read files the brief already shows. Verify once at the end: run only the done check for what you touched (no full-suite runs) and confirm every item in the done-criteria. Time-box the work to about 10 minutes.'''
 
 [[clause]]
 id = "stop-on-bad-spec"
@@ -83,7 +83,7 @@ Return the exact command, absolute working directory or isolated worktree, requi
 id = "final-message"
 kind = "final-message"
 text = '''
-Your final message: what was changed (files + one line each), what was verified and how, and anything deferred.'''
+Your final message: what was changed (files + one line each), the check command you ran and its result, and anything deferred.'''
 
 [[clause]]
 id = "no-spawn"
