@@ -3,6 +3,22 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.11.1
+
+2026-10-16。修正 `--update` 的跨平台問題，CI 瘦身。
+
+### Fixes
+
+- `--update` 與 `sync_global.py` 先用 `which` 解析 `git`，Windows 上的
+  `.cmd` shim 才找得到（#19）。
+- guard 竄改測試改為直接指定 guard plugin 的檔案，不再依賴 `rglob` 順序。
+- `test_shoal_update` 在 Windows 暫時跳過，原因記在 #20。
+
+### CI
+
+- PR 只在 ubuntu 跑全套，macOS 與 Windows 跑跨平台子集；push 到 main、
+  tag 與每日排程照舊跑三平台全套（#18）。
+
 ## v3.11.0
 
 2026-10-15 發布。安裝與更新改為可攜入口，目錄依 host 重新整理。
