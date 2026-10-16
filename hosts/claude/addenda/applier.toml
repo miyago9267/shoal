@@ -1,4 +1,4 @@
-# Claude 專屬：Agent / Workflow 工具停用、Bash timeout 參數（毫秒）與 run_in_background。
+# Claude 專屬：Agent / Workflow 工具停用、用 Write/Edit 改檔、Bash timeout 參數（毫秒），以及取代 no-detach、併入 run_in_background 的精簡版。
 
 [[addendum]]
 id = "tools-disabled"
@@ -12,14 +12,14 @@ id = "timeout-param"
 at = "after:foreground-timeout"
 sep = "space"
 text = '''
-In Claude Code, set the Bash `timeout` parameter explicitly, in milliseconds, to at most 600000.'''
+Set the Bash `timeout` parameter in milliseconds, at most 600000.'''
 
 [[addendum]]
 id = "background-note"
-at = "after:no-detach"
+at = "replace:no-detach"
 sep = "space"
 text = '''
-In Claude Code this includes the Bash `run_in_background` option: a detached command has no task id, no captured output, and no completion notification, so its result is orphaned and nobody collects it.'''
+Never detach (nohup, setsid, a trailing ampersand, a background shell, or the Bash `run_in_background` option): detached work escapes task tracking and its result is never collected.'''
 
 [[addendum]]
 id = "mechanical-not-tool-heavy"
@@ -27,3 +27,10 @@ at = "after:route-judgment"
 join = "space"
 text = '''
 A fully specified mechanical change is not tool-heavy work, however many files it touches.'''
+
+[[addendum]]
+id = "write-tools"
+at = "after:follow-conventions"
+sep = "space"
+text = '''
+Create and edit files with Write/Edit, not shell redirects.'''

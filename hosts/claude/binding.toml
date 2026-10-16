@@ -70,6 +70,8 @@ description = "Read-only reconnaissance. Use for any search, lookup, or \"where/
 
 [roles.applier]
 effort = "low"
+# allowlist 取代 write 的 denylist：只載入這些工具的 schema，啟動 context 約少三成；不含 Agent / Workflow，仍不能派工。
+tools = ["Read", "Write", "Edit", "MultiEdit", "Bash", "Grep", "Glob"]
 # pin：fast tier 的規則選 sonnet；applier 改為快速執行器，Miyago 決定在 Claude 用 haiku（2026-10-15）。
 model = "haiku"
 description = "Fast executor for small, bounded changes - one file or one tightly scoped purpose, such as a test fix, a doc fix, a config tweak, a rename, or a repetitive edit from an explicit spec. Makes minor local judgment calls but no design decisions; runs only the checks for what it touched; time-boxed to about 10 minutes. Stops and reports when scope grows, a design decision is needed, or the change spans modules, so the orchestrator can route to executor. Give it the goal, exact scope, and done-criteria."

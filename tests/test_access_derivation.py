@@ -14,7 +14,8 @@ from render_helpers import ROOT, render, run_render
 HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 # 目前 binding 裡保留的 role 層級權限覆寫；新增或移除都要在這裡明確改，並說明原因（見 SPEC）。
 EXPECTED_OVERRIDES = {
-    "claude": {},
+    # applier 用 tools allowlist 取代 write 的 denylist，縮小啟動時載入的工具 schema。
+    "claude": {"applier": ["tools"]},
     "codex": {},
     "agy": {},
     "grok": {},
@@ -257,7 +258,11 @@ class ShippedBindingTests(unittest.TestCase):
             {"tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]},
         )
         self.assertEqual(perms["executor"], {"disallowedTools": ["Agent", "Workflow"]})
-        self.assertEqual(perms["security-executor"], perms["applier"])
+        self.assertEqual(perms["security-executor"], perms["executor"])
+        self.assertEqual(
+            perms["applier"],
+            {"tools": ["Read", "Write", "Edit", "MultiEdit", "Bash", "Grep", "Glob"]},
+        )
         self.assertEqual(
             perms["verifier"],
             {"disallowedTools": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]},
@@ -576,7 +581,6 @@ class MutationTests(TempRoot):
         self.assertEqual(
             self.changed("claude"),
             {
-                "agents/applier.md",
                 "agents/executor.md",
                 "agents/security-executor.md",
             },
