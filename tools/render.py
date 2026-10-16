@@ -1241,7 +1241,8 @@ CLAUDE_PLUGIN_AUTHOR = {"name": "Miyago", "url": "https://github.com/miyago9267"
 CLAUDE_PLUGIN_REPO = "https://github.com/miyago9267/shoal"
 # 與 tools/install_hooks.py 的 CLAUDE_MATCHER 相同；全域安裝與 plugin 的 guard 要看到同一批工具。
 CLAUDE_PLUGIN_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
-CLAUDE_PLUGIN_GUARD = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
+# hooks/run.sh starts the guard with the interpreter recorded at install/update (tools/shoal_update.py).
+CLAUDE_PLUGIN_GUARD = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
 CLAUDE_PLUGIN_SESSIONSTART = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/emit-sessionstart.sh"'
 CLAUDE_PLUGIN_TIMEOUT = 10
 PRODUCT_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
@@ -1320,6 +1321,11 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
     except OSError as exc:
         raise RenderError(f"無法讀取 {shim}: {exc}") from exc
     out[f"{CLAUDE_GUARD_PLUGIN}/hooks/shoal_guard.py"] = _guard_script(root)
+    launcher = root / CLAUDE_PLUGIN_SRC / "run.sh"
+    try:
+        out[f"{CLAUDE_GUARD_PLUGIN}/hooks/run.sh"] = launcher.read_bytes()
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {launcher}: {exc}") from exc
     out[f"{CLAUDE_GUARD_PLUGIN}/hooks/hooks.json"] = _json_bytes(_guard_plugin_hooks())
     out[f"{CLAUDE_GUARD_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
         "name": "shoal-dispatch-guard",

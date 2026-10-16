@@ -5,6 +5,7 @@
 
 每步輸出一行 `<step>: up-to-date | updated | skipped | failed`（dry-run 的 updated 行尾加 [dry-run]）：
   cleanup               清掉上次殘留的 `.old` 與暫存目錄（`.old` 只在正式目錄不存在時才還原，否則刪除）
+  interpreter           把 PATH 上 python3 的真實路徑寫到 ${XDG_DATA_HOME:-~/.local/share}/shoal/python（guard hook 用）
   marketplace           匯出 HEAD 的 Claude marketplace，與現有目錄逐檔比對 sha256，有差異才兩次 rename 交換
   claude marketplace    claude plugin marketplace add|update
   claude plugin <id>    claude plugin install|update（guard plugin 依模組清單與 chain）
@@ -452,6 +453,14 @@ class Updater:
                 "codex marketplace", "failed", f"plugin status {result.get('status')}"
             )
 
+    # ---- interpreter（Claude guard plugin 的 hooks/run.sh 讀這個路徑）----
+    def record_interpreter(self) -> None:
+        if not self.apply:
+            self.emit("interpreter", "updated", str(si.interpreter_path(self.env)))
+            return
+        real = si.record_interpreter(self.env)
+        self.emit("interpreter", "updated" if real else "skipped", real or "python3 not resolved")
+
     # ---- host sync（沿用 sync_global.py）----
     def sync_hosts(self) -> None:
         cmd = [
@@ -551,7 +560,7 @@ def run_update(env: Mapping[str, str], apply: bool) -> int:
     except UpdateError as exc:
         up.emit("head", "failed", f"沒有 committed HEAD（{exc}）")
         return 1
-    steps = (up.cleanup, up.update_claude, up.update_codex, up.sync_hosts, up.verify)
+    steps = (up.cleanup, up.record_interpreter, up.update_claude, up.update_codex, up.sync_hosts, up.verify)
     for step in steps:
         try:
             step()

@@ -82,8 +82,6 @@ import os
 import re
 import shlex
 import stat
-import subprocess
-import threading
 import sys
 import time
 from datetime import datetime, timezone
@@ -2340,6 +2338,9 @@ def chain_event_name(event: Dict[str, Any]) -> Optional[str]:
 
 def _chain_call(command: List[str], raw: bytes, env: Dict[str, str], timeout_ms: int) -> Dict[str, Any]:
     """{"outcome": allow|deny|chain_error|chain_timeout, "reason", "context", "report"} for one member call."""
+    import subprocess  # lazy: only a chain member call needs these (hook start-up cost, lean-default D5)
+    import threading
+
     out: Dict[str, Any] = {"outcome": "chain_error", "reason": "", "context": None, "report": None}
     deadline = time.monotonic() + timeout_ms / 1000.0
     try:
