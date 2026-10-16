@@ -32,6 +32,8 @@ role 只写 tier，不写模型名称；每个 host 从自己的模型目录里�
 
 ## 快速开始
 
+shoal 目前是 beta：beta 的 minor 版本可能有破坏性变更，正式版从 1.0.0 开始（[版本 channel](./reference.md#版本-channel)）。
+
 ```bash
 # 先看会做什么（dry-run，不写入）
 python3 tools/shoal_install.py --host codex

@@ -60,6 +60,8 @@ English: [big change](./assets/reel-big-change/out-en/scene.mp4) · [security pa
 
 ## 快速開始
 
+shoal 目前是 beta：beta 的 minor 版本可能有破壞性變更，正式版從 1.0.0 開始（[版本 channel](./reference.md#版本-channel)）。
+
 ```bash
 # 先看會做什麼（dry-run，不寫入）
 python3 tools/shoal_install.py --host codex

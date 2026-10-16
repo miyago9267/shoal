@@ -34,6 +34,9 @@ from typing import Iterator, Mapping, Optional
 
 import shoal_install as si
 
+sys.path.insert(0, str(si.REPO / "install"))
+import shoal_version as sv  # noqa: E402
+
 REPO = si.REPO
 MARKETPLACE_MANIFEST = ".claude-plugin/marketplace.json"
 MARKETPLACE_NAME = "shoal"
@@ -147,6 +150,13 @@ class Updater:
 
     def blob(self, path: str) -> bytes:
         return self.git("show", f"HEAD:{path}")
+
+    def source_stable(self) -> bool:
+        """HEAD 有 CHANNEL 檔且寫 stable 才是 stable epoch；沒有檔案就是 beta。"""
+        try:
+            return sv.stable_marker(self.blob(sv.CHANNEL_FILE).decode("utf-8", "replace"))
+        except UpdateError:
+            return False
 
     def marketplace_info(self) -> tuple[list[str], dict[str, dict]]:
         """(要匯出的路徑, {plugin 名稱: {"source": 相對路徑, "version": ...}})，全由 HEAD 的 marketplace.json 決定。"""
@@ -288,8 +298,16 @@ class Updater:
                 out.append((step, "skipped", skip))
                 continue
             row = installed.get(pid)
+            source = plugins[name]["version"]
             if row is None:
                 verb = "install"
+            elif (
+                isinstance(row.get("version"), str)
+                and isinstance(source, str)
+                and sv.is_channel_switch(row["version"], source, source_stable=self.source_stable())
+            ):
+                # beta -> stable：plugin manager 用純 SemVer，會把 stable 當成較舊，先移除再裝。
+                verb = "reinstall"
             elif changed or (
                 row.get("version")
                 and plugins[name]["version"]
@@ -300,9 +318,10 @@ class Updater:
                 out.append((step, "up-to-date", ""))
                 continue
             if self.apply:
-                code, text = self.claude(exe, "plugin", verb, pid)
-                if code != 0:
-                    return out, f"claude plugin {verb} {pid} exit {code}: {_last(text)}"
+                for sub in ("uninstall", "install") if verb == "reinstall" else (verb,):
+                    code, text = self.claude(exe, "plugin", sub, pid)
+                    if code != 0:
+                        return out, f"claude plugin {sub} {pid} exit {code}: {_last(text)}"
             out.append((step, "updated", verb))
         return out, None
 
@@ -437,11 +456,22 @@ class Updater:
                 export_dir
             ) == si.tree_digest(fresh)
             installed = mod._plugin_is_installed(source_root=self.repo, codex_home=home)
-            if current and installed:
+            switch = any(
+                isinstance(row.get("version"), str)
+                and row.get("name") == mod.SHOAL_PLUGIN_NAME
+                and sv.is_channel_switch(
+                    row["version"], mod.SHOAL_PLUGIN_VERSION, source_stable=self.source_stable()
+                )
+                for row in mod._installed_plugin_rows(home) or []
+            )
+            if current and installed and not switch:
                 self.emit("codex marketplace", "up-to-date")
                 return
             if not self.apply:
                 self.emit("codex marketplace", "updated", str(export_dir))
+                return
+            if switch and not mod._remove_plugin(codex_home=home):
+                self.emit("codex marketplace", "failed", "plugin remove failed before channel switch")
                 return
             result = mod._install_plugin(
                 source_root=self.repo, codex_home=home, dry_run=False, enabled=True

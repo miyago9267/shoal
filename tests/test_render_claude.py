@@ -61,7 +61,7 @@ class HostVersionTests(unittest.TestCase):
     SKILL = "skills/shoal-orchestration/SKILL.md"
 
     def test_version_file_format(self) -> None:
-        self.assertRegex(self.VERSION, r"^\d+\.\d+\.\d+$")
+        self.assertRegex(self.VERSION, r"^\d+\.\d+\.\d+(?:-beta)?$")
 
     def test_skill_marker_equals_version_in_src_dist_and_golden(self) -> None:
         marker = f"<!-- shoal-claude v{self.VERSION} -->"
