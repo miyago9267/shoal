@@ -107,6 +107,8 @@ type StateFile = {
   /** B2: after the latest change a verify-level role was dispatched or started, or main ran a plain foreground shell call. */
   checked: boolean;
   post_seen?: boolean; // claude, codex: this session has seen a PostToolUse of a main-session shell call
+  /** B2: the latest change is a write-level role's own edit, so its own plain shell call may check it. */
+  role_changed?: boolean;
   /** B3: this turn's one completion block has been spent. */
   stop_blocked: boolean;
   /** E1: the last DIRECT_TURNS_MAX turn ids whose prompt carried `#direct` (omitted when empty). */
@@ -550,10 +552,11 @@ function pendingCount(state: Record<string, unknown>): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
 }
 
-/** B2: a change after a check puts the turn back to "unchecked". */
+/** B2: a change after a check puts the turn back to "unchecked"; a write role's own check no longer covers it. */
 function markChanged(state: StateFile): void {
   state.changed = true;
   state.checked = false;
+  delete state.role_changed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -986,7 +989,10 @@ class Guard {
     if (toolKind === "dispatch") rule = "LEAF";
     else if (toolKind === "edit" && roleAccess(role) === "verify") rule = "VERIFY_EDIT";
     if (rule === null && subagentWriteEnabled(this.host, this.env)) rule = this.subagentWriteRule(role, toolKind);
-    if (rule === null) return none(this.mode);
+    if (rule === null) {
+      if (roleAccess(role) === "write" && (toolKind === "edit" || toolKind === "shell")) this.noteRoleCall(toolKind);
+      return none(this.mode);
+    }
     let file: string | undefined = this.event.paths?.[0];
     if ((rule === "E1" || rule === "E1_UNKNOWN") && toolKind === "shell") file = this.shellWriteTarget(roleAccess(role) === "verify") ?? undefined;
     if (rule === "E1_UNKNOWN") return this.result("skip", { rule: "E1", skip: "would_deny_unknown_class", file }); // role not established: only logged
@@ -1244,7 +1250,7 @@ class Guard {
    * once; otherwise one unlocked read of the state file, and the lock and the write only happen when the turn is
    * changed and not yet checked.  Never logs.
    */
-  private noteCheck(ran = false, counts = true): void {
+  private noteCheck(ran = false, counts = true, role = false): void {
     if (!stopEnabled(this.host, this.env)) return;
     const tid = this.event.turn_id;
     const paths = this.checkPaths(tid);
@@ -1253,6 +1259,7 @@ class Guard {
     const pendingCheck = (state: Record<string, unknown>): boolean => {
       if (!counts) return false; // a write or declaration: not a check itself, but its PostToolUse still proves the hook fires
       if (!ran && POST_HOSTS.has(this.host) && state.post_seen === true) return false;
+      if (role && state.role_changed !== true) return false; // a write role's call checks only its own edit
       return state.changed === true && state.checked !== true && (tid == null || state.turn_id === tid);
     };
     const needsWrite = (state: Record<string, unknown>): boolean =>
@@ -1265,6 +1272,45 @@ class Guard {
         if (needsWrite(state)) {
           if (ran) state.post_seen = true;
           if (pendingCheck(state)) state.checked = true;
+          writeJson(paths.statePath, state);
+        }
+        return none(this.mode);
+      },
+      () => none(this.mode),
+    );
+  }
+
+  /**
+   * B2 for a write-level role's own allowed call: its edit or shell write (non-exempt) puts the turn back to
+   * unchecked; a plain foreground shell call after it counts as the check, like main's (see hooks/shoal_guard.py).
+   */
+  private noteRoleCall(toolKind: string): void {
+    if (toolKind === "edit") {
+      const cwd = this.event.cwd || process.cwd();
+      if ((this.event.paths ?? []).some((p) => !isExempt(resolvePath(p, cwd), this.host, this.env, this.home))) this.noteRoleChange();
+    } else if (this.shellWriteTarget() !== null) {
+      this.noteRoleChange();
+    } else if (parseDeclaration(this.event.command) === null) {
+      this.noteCheck(false, true, true);
+    }
+  }
+
+  /** A write-level role edited: the turn is unchecked and its own later plain shell call may check it. */
+  private noteRoleChange(): void {
+    if (!stopEnabled(this.host, this.env)) return;
+    const tid = this.event.turn_id;
+    const paths = this.checkPaths(tid);
+    if (paths === null) return;
+    const due = (state: Record<string, unknown>): boolean =>
+      state.changed === true && (state.checked === true || state.role_changed !== true) && (tid == null || state.turn_id === tid);
+    if (!due(readJson(paths.statePath))) return;
+    withStateLock(
+      paths.lockPath,
+      () => {
+        const state = readJson(paths.statePath);
+        if (due(state)) {
+          state.checked = false;
+          state.role_changed = true;
           writeJson(paths.statePath, state);
         }
         return none(this.mode);
@@ -1336,10 +1382,10 @@ class Guard {
    * call (neither a declaration nor a file write) marks the turn checked; any such event records `post_seen`.
    * It never decides anything.
    */
-  private postShell(): GuardResult {
+  postShell(): GuardResult {
     if (POST_HOSTS.has(this.host)) {
       const plain = parseDeclaration(this.event.command) === null && this.shellWriteTarget() === null;
-      this.noteCheck(true, plain);
+      this.noteCheck(true, plain, this.event.is_subagent === true);
     }
     return none(this.mode);
   }
@@ -1483,6 +1529,7 @@ class Guard {
       checked: prior.checked === true, // B2: a check after the latest change
       stop_blocked: prior.stop_blocked === true, // B3: this turn's one block is spent
     };
+    if (state.changed && priorState.role_changed === true) state.role_changed = true; // B2: see noteRoleChange
     if (keptTurns.length > 0) state.direct_turns = keptTurns; // E1: turns that carried #direct
     if (priorState.fast === true) {
       state.fast = true; // fast mode lasts for the session (set by #fast, cleared by #strict)
@@ -1856,6 +1903,7 @@ function decide(guard: Guard, event: GuardEvent, env: Env): GuardResult {
   }
   if (event.is_subagent) {
     if (ROLE_AWARE_HOSTS.has(guard.host) && event.kind === "tool") return guard.subagent();
+    if (event.kind === "post_shell" && roleAccess(event.role) === "write") return guard.postShell(); // B2: the role's own check
     return none(guard.mode);
   }
   return guard.main();

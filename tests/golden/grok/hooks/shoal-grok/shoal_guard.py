@@ -63,8 +63,9 @@ record is still judged by its role, never released by `#direct`.  Verify-level r
 
 Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
 shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
-`checked` (after the latest change, a verify-level role was dispatched or started, or main ran a foreground shell
-call that is neither a file write nor a declaration; on claude and codex that call counts at its PostToolUse, i.e. when
+`checked` (after the latest change, a verify-level role was dispatched or started, or main or a write-level role
+ran a foreground shell call that is neither a file write nor a declaration; that role's own edit or shell write
+unchecks the turn again; on claude and codex that call counts at its PostToolUse, i.e. when
 it really ran, and its PreToolUse counts only until the session has seen its first PostToolUse, see POST_HOSTS).  On claude and codex the `Stop` event is blocked once per
 turn when `changed` is set, `checked` is not, `stop_hook_active` is exactly false, the mode is enforce and
 SHOAL_GUARD_STOP is not `off`; everything else (other turn, bad payload, unreadable state, shadow, off) fails
@@ -1208,9 +1209,10 @@ def _pending(state: Dict[str, Any]) -> int:
 
 
 def _mark_changed(state: Dict[str, Any]) -> None:
-    """B2: a change after a check puts the turn back to "unchecked"."""
+    """B2: a change after a check puts the turn back to "unchecked"; a write role's own check no longer covers it."""
     state["changed"] = True
     state["checked"] = False
+    state.pop("role_changed", None)
 
 
 def _text(env: Dict[str, str], key: str, **fmt: Any) -> str:
@@ -1307,6 +1309,8 @@ class _Guard:
         if rule is None and subagent_write_enabled(self.host, self.env):
             rule = self._subagent_write_rule(role, tool_kind)
         if rule is None:
+            if role_access(role) == "write" and tool_kind in ("edit", "shell"):
+                self.note_role_call(tool_kind)
             return {
                 "decision": "none",
                 "rule": None,
@@ -1563,8 +1567,11 @@ class _Guard:
             return None
         return guard / "state" / (str(sid) + ".json"), guard / "state" / (str(sid) + ".lock")
 
-    def note_check(self, ran: bool = False, counts: bool = True) -> None:
+    def note_check(self, ran: bool = False, counts: bool = True, role: bool = False) -> None:
         """B2: main ran a plain foreground shell call.  When the turn is changed and unchecked, mark it checked.
+
+        `role` is True for a write-level role's own call: it counts only while that role's edit is the latest
+        change (`role_changed`, see note_role_change), so a subagent never checks main's own edit.
 
         `ran` is True for the PostToolUse of that call (claude, codex): it also records `post_seen`, which turns the
         PreToolUse path off for the rest of the session.  A PreToolUse call (`ran` False) on a POST_HOSTS host
@@ -1586,6 +1593,8 @@ class _Guard:
                 return False  # a write or declaration: not a check itself, but its PostToolUse still proves the hook fires
             if not ran and self.host in POST_HOSTS and state.get("post_seen") is True:
                 return False  # the PostToolUse path owns the check on this session
+            if role and state.get("role_changed") is not True:
+                return False  # the latest change is not this role's edit
             return (
                 state.get("changed") is True
                 and state.get("checked") is not True
@@ -1607,6 +1616,48 @@ class _Guard:
                 state["post_seen"] = True
             if pending_check(state):
                 state["checked"] = True
+            _write_json(state_path, state)
+
+    def note_role_call(self, tool_kind: str) -> None:
+        """B2 for a write-level role's own allowed call: its edit or shell write (non-exempt) puts the turn back
+        to unchecked; a plain foreground shell call after it counts as the check, exactly like main's (on claude
+        and codex at its PostToolUse once the session has seen one, see route)."""
+        if tool_kind == "edit":
+            cwd = self.event.get("cwd") or os.getcwd()
+            if any(not is_exempt(resolve_path(p, cwd), self.host, self.env, self.home)
+                   for p in self.event.get("paths") or []):
+                self.note_role_change()
+        elif self.shell_write_target() is not None:
+            self.note_role_change()
+        elif parse_declaration(self.event.get("command")) is None:
+            self.note_check(role=True)
+
+    def note_role_change(self) -> None:
+        """A write-level role edited: the turn (already changed by the role's start) is unchecked, and the role's own
+        later plain shell call may count as the check (`role_changed`; any main-side change clears it)."""
+        if not stop_enabled(self.host, self.env):
+            return
+        tid = self.event.get("turn_id")
+        paths = self._check_state_path(tid)
+        if paths is None:
+            return
+        state_path, lock_path = paths
+
+        def due(state: Dict[str, Any]) -> bool:
+            return (state.get("changed") is True
+                    and (state.get("checked") is True or state.get("role_changed") is not True)
+                    and (tid is None or state.get("turn_id") == tid))
+
+        if not due(_read_json(state_path)):
+            return
+        with _state_lock(lock_path) as lock_skip:
+            if lock_skip is not None:
+                return
+            state = _read_json(state_path)
+            if not due(state):
+                return
+            state["checked"] = False
+            state["role_changed"] = True
             _write_json(state_path, state)
 
     def note_verify_started(self) -> None:
@@ -1680,7 +1731,7 @@ class _Guard:
         event also records `post_seen`.  It never decides anything, so the result is always "none"."""
         if self.host in POST_HOSTS:
             plain = parse_declaration(self.event.get("command")) is None and self.shell_write_target() is None
-            self.note_check(ran=True, counts=plain)
+            self.note_check(ran=True, counts=plain, role=self.event.get("is_subagent") is True)
         return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
 
     # -- main session -------------------------------------------------------
@@ -1814,6 +1865,8 @@ class _Guard:
             "checked": state.get("checked") is True,  # B2: a check after the latest change
             "stop_blocked": state.get("stop_blocked") is True,  # B3: this turn's one block is spent
         }
+        if state["changed"] and prior_state.get("role_changed") is True:
+            state["role_changed"] = True  # B2: the latest change is a write role's own edit (note_role_change)
         if kept_turns:
             state["direct_turns"] = kept_turns  # E1: turns that carried #direct, kept across turns
         if prior_state.get("fast") is True:
@@ -2182,6 +2235,8 @@ def _decide(guard: "_Guard", event: Dict[str, Any]) -> Dict[str, Any]:
     if event.get("is_subagent"):
         if guard.host in ROLE_AWARE_HOSTS and event.get("kind") == "tool":
             return guard.subagent()
+        if event.get("kind") == "post_shell" and role_access(event.get("role")) == "write":
+            return guard.post_shell()  # B2: a write-level role's own check, after its edit, counts like main's
         return {
             "decision": "none",
             "rule": None,

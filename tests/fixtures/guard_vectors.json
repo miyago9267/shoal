@@ -3340,6 +3340,44 @@
    ]
   },
   {
+   "name": "stop_claude_write_role_edit_then_its_own_shell_does_not_block",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "executor", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "is_subagent": true, "role": "executor", "command": "cat src/a"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "post_shell", "turn_id": "t1", "is_subagent": true, "role": "executor", "command": "cat src/a"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "none"}}
+   ]
+  },
+  {
+   "name": "stop_claude_write_role_edit_without_a_check_blocks",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "executor", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "block", "rule": "STOP", "reason": "Shoal completion check: this turn changed files and no check ran afterwards. Run a verification now (tests, a verifier or watcher role), or say explicitly in your report that the change is unverified."}}
+   ]
+  },
+  {
+   "name": "stop_claude_write_role_edit_after_its_own_check_blocks_again",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
+    {"event": {"kind": "subagent_start", "role": "executor", "turn_id": "t1"}, "expect": {"decision": "state", "rule": "dispatch_started"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "executor", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "is_subagent": true, "role": "executor", "command": "cat src/a"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "post_shell", "turn_id": "t1", "is_subagent": true, "role": "executor", "command": "cat src/a"}, "expect": {"decision": "none"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "is_subagent": true, "role": "executor", "paths": ["$WORK/src/a"]}, "expect": {"decision": "none"}},
+    {"event": {"kind": "stop", "turn_id": "t1", "stop_hook_active": false}, "expect": {"decision": "block", "rule": "STOP", "reason": "Shoal completion check: this turn changed files and no check ran afterwards. Run a verification now (tests, a verifier or watcher role), or say explicitly in your report that the change is unverified."}}
+   ]
+  },
+  {
    "name": "stop_claude_second_write_role_after_a_check_blocks_again",
    "env": {"SHOAL_GUARD_R1": null},
    "steps": [
