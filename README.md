@@ -50,6 +50,8 @@ Changes to auth, secrets or permissions get a reviewed Plan first, then a securi
 
 ## Quick start
 
+shoal is in beta: a beta minor release may break things, and stable starts at 1.0.0 ([Versioning](docs/reference.md#版本-channel)).
+
 ```bash
 # preview first (dry run, writes nothing)
 python3 tools/shoal_install.py --host codex

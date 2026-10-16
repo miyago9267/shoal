@@ -49,9 +49,12 @@ if name == "claude":
     elif rest[:3] == ["plugin", "marketplace", "add"]:
         data["marketplaces"].append("shoal")
     elif rest[:2] == ["plugin", "list"]:
-        out = [{"id": p} for p in data["plugins"]]
+        cv = (state / "claude.version").read_text().strip() if (state / "claude.version").exists() else ""
+        out = [{"id": p, **({"version": cv} if cv else {})} for p in data["plugins"]]
     elif rest[:2] == ["plugin", "install"]:
         data["plugins"].append(rest[2])
+    elif rest[:2] == ["plugin", "uninstall"]:
+        data["plugins"] = [p for p in data["plugins"] if p != rest[2]]
 else:
     if rest[:3] == ["plugin", "marketplace", "list"]:
         out = {"marketplaces": [{"name": "shoal-codex", "root": s, "marketplaceSource": {"source": s}} for s in data["marketplaces"]]}
@@ -64,6 +67,8 @@ else:
                               "marketplaceSource": {"source": s}} for s in data["marketplaces"] if data["plugins"]]}
     elif rest[:2] == ["plugin", "add"]:
         data["plugins"] = ["shoal-codex"]
+    elif rest[:2] == ["plugin", "remove"]:
+        data["plugins"] = []
 db.write_text(json.dumps(data))
 if out is not None:
     print(json.dumps(out))
@@ -292,6 +297,50 @@ class UpdateFlowTests(UpdateBase):
         ):
             code, _, _ = self.update(*extra)
             self.assertEqual(code, 2, extra)
+
+
+class ChannelSwitchTests(UpdateBase):
+    """已裝 beta、來源 stable：plugin manager 用純 SemVer，所以要先移除再裝，不走 update。"""
+
+    def test_beta_to_stable_reinstalls_claude_plugins(self) -> None:
+        code, out, err = self.update("--apply")
+        self.assertEqual(code, 0, out + err)
+        (self.state / "claude.version").write_text("3.11.1")  # 舊版、沒有後綴＝beta
+        (self.state / "claude.log").unlink()
+        with mock.patch.object(shoal_update.Updater, "source_stable", return_value=True):
+            code, out, err = self.update("--apply")
+        self.assertEqual(code, 0, out + err)
+        calls = self.calls()
+        for pid in ("shoal@shoal", "shoal-dispatch-guard@shoal"):
+            self.assertIn(f"plugin uninstall {pid}", calls)
+            self.assertLess(calls.index(f"plugin uninstall {pid}"), calls.index(f"plugin install {pid}"))
+            self.assertNotIn(f"plugin update {pid}", calls)
+        self.assertEqual(self.statuses(out)["claude plugin shoal@shoal"], "updated")
+
+    def test_same_channel_does_not_reinstall(self) -> None:
+        self.update("--apply")
+        (self.state / "claude.version").write_text("3.11.1")
+        (self.state / "claude.log").unlink()
+        code, out, err = self.update("--apply")
+        self.assertEqual(code, 0, out + err)
+        self.assertFalse(any("uninstall" in c for c in self.calls()), self.calls())
+
+
+class CodexChannelSwitchTests(UpdateBase):
+    with_codex = True
+
+    def test_beta_to_stable_removes_then_adds_codex_plugin(self) -> None:
+        code, out, err = self.update("--apply")
+        self.assertEqual(code, 0, out + err)
+        (self.state / "codex.log").unlink()
+        with mock.patch.object(shoal_update.Updater, "source_stable", return_value=True):
+            code, out, err = self.update("--apply")
+        self.assertEqual(code, 0, out + err)
+        calls = self.calls("codex")
+        remove = "plugin remove shoal-codex@shoal-codex --json"
+        self.assertIn(remove, calls)
+        self.assertLess(calls.index(remove), calls.index("plugin add shoal-codex@shoal-codex --json"))
+        self.assertEqual(self.statuses(out)["codex marketplace"], "updated")
 
 
 class SwapContractTests(UpdateBase):

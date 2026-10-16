@@ -158,7 +158,7 @@ class GrokDocsTests(unittest.TestCase):
         version = self.read("VERSION").strip()
         top = re.search(r"(?m)^## v(\S+)$", self.read("CHANGELOG.md"))
         self.assertEqual(top.group(1), version)
-        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+        self.assertRegex(version, r"^\d+\.\d+\.\d+(?:-beta)?$")
 
     def test_readme_and_install_describe_the_grok_installer(self) -> None:  # AC-GW-052
         readme = self.read("README.md")

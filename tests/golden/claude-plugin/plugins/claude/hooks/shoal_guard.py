@@ -17,13 +17,23 @@ import sys
 NAME = "shoal_guard.py"
 
 
+LEGACY_BETA_MAX = (3, 11, 1)  # same rule as install/shoal_version.py; this file must stay self-contained
+
+
 def _version_key(path):
-    """Numeric key of the `<version>` directory in `.../<version>/hooks/<NAME>`, or None."""
+    """Key of the `<version>` directory in `.../<version>/hooks/<NAME>`, or None.
+
+    Channel first (beta < stable), then the numbers: `X.Y.Z-beta` and bare legacy
+    versions up to LEGACY_BETA_MAX are beta, any other bare version is stable.
+    """
     ver = os.path.basename(os.path.dirname(os.path.dirname(path)))
-    parts = ver.split(".")
-    if all(p.isdigit() for p in parts):
-        return [int(p) for p in parts]
-    return None
+    base, sep, suffix = ver.partition("-")
+    parts = base.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts) or (sep and suffix != "beta"):
+        return None
+    nums = tuple(int(p) for p in parts)
+    stable = not sep and nums > LEGACY_BETA_MAX
+    return (1 if stable else 0,) + nums
 
 
 def _config_dir():

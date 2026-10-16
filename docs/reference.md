@@ -163,6 +163,19 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。
 
+### 版本 channel
+
+shoal 目前是 beta。beta 的 minor 版本可能有破壞性變更；正式版（stable）從
+1.0.0 開始，而且正式版一律比任何 beta 新。
+
+- beta：`X.Y.Z-beta`，以及沒有後綴、不超過 3.11.1 的舊版本。
+- stable：沒有後綴的 `X.Y.Z`。repo 頂層有 `CHANNEL` 檔且內容是 `stable` 才算
+  stable；沒有這個檔就是 beta。
+- 比較時先比 channel（beta < stable）再比數字，所以
+  1.0.0 > 3.12.0-beta > 3.11.1 > 3.0.0。規則在 `install/shoal_version.py`。
+- `--update` 從 beta 換到 stable 時，Claude 與 Codex plugin 會先移除再重裝：
+  兩邊的 plugin manager 用純 SemVer，會把 1.0.0 當成比 3.12.0-beta 舊。
+
 ### 驗證
 
 ```bash

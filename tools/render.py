@@ -1245,7 +1245,8 @@ CLAUDE_PLUGIN_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
 CLAUDE_PLUGIN_GUARD = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
 CLAUDE_PLUGIN_SESSIONSTART = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/emit-sessionstart.sh"'
 CLAUDE_PLUGIN_TIMEOUT = 10
-PRODUCT_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+# beta 版本帶 -beta 後綴，stable 不帶（install/shoal_version.py）。
+PRODUCT_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-beta)?$")
 
 
 def product_version(root: Path) -> str:

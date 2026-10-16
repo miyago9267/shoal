@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import legacy_codex
+import shoal_version
 from hook_registration import (
     CURRENT_PROJECTION_ID,
     GUARD_PROJECTION_IDS,
@@ -154,38 +155,9 @@ def parse_codex_version(output: str) -> tuple[int, int, int] | None:
     return tuple(int(part) for part in token.split("-", 1)[0].split("."))  # type: ignore[return-value]
 
 
-_PLUGIN_VERSION_RE = re.compile(
-    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-    r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
-    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
-)
-
-
-def _plugin_version_key(
-    value: str,
-) -> tuple[int, int, int, int, tuple[tuple[int, int, str], ...]] | None:
-    """Return a comparable SemVer precedence key for plugin versions."""
-    match = _PLUGIN_VERSION_RE.fullmatch(value)
-    if match is None:
-        return None
-    prerelease = match.group(4)
-    if prerelease is None:
-        return (int(match.group(1)), int(match.group(2)), int(match.group(3)), 1, ())
-    identifiers: list[tuple[int, int, str]] = []
-    for identifier in prerelease.split("."):
-        if identifier.isdigit():
-            if len(identifier) > 1 and identifier.startswith("0"):
-                return None
-            identifiers.append((0, int(identifier), ""))
-        else:
-            identifiers.append((1, 0, identifier))
-    return (
-        int(match.group(1)),
-        int(match.group(2)),
-        int(match.group(3)),
-        0,
-        tuple(identifiers),
-    )
+def _plugin_version_key(value: str, *, stable_epoch: bool = False) -> shoal_version.Key | None:
+    """Comparable shoal plugin version key: channel first (beta < stable), then SemVer."""
+    return shoal_version.key(value, stable_epoch=stable_epoch)
 
 
 def is_parseable_codex_output(output: str) -> bool:
@@ -658,7 +630,9 @@ def _assert_plugin_not_newer(
     rows = _installed_plugin_rows(codex_home)
     if rows is None:
         return
-    source_version = _plugin_version_key(SHOAL_PLUGIN_VERSION)
+    source_version = _plugin_version_key(
+        SHOAL_PLUGIN_VERSION, stable_epoch=shoal_version.repo_is_stable(source_root)
+    )
     if source_version is None:
         raise InstallAbort("source plugin version is malformed")
     for row in rows:
