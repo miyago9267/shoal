@@ -90,6 +90,34 @@ def manifest_path(env: Mapping[str, str]) -> Path:
     return base / "shoal" / "modules.json"
 
 
+def interpreter_path(env: Mapping[str, str]) -> Path:
+    """The Claude guard plugin's hooks/run.sh reads the interpreter recorded here."""
+    return manifest_path(env).parent / "python"
+
+
+def record_interpreter(env: Mapping[str, str]) -> Optional[str]:
+    """Resolve python3 on PATH to its real executable (a pyenv shim costs ~100 ms per hook) and record it.
+
+    None when python3 is missing or does not answer; the launcher then falls back to python3."""
+    exe = which("python3", env)
+    if exe is None:
+        return None
+    try:
+        proc = subprocess.run([exe, "-I", "-c", "import sys; print(sys.executable)"], env=dict(env),
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    real = proc.stdout.strip()
+    if proc.returncode != 0 or not os.path.isabs(real) or not os.access(real, os.X_OK):
+        return None
+    path = interpreter_path(env)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(real + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+    return real
+
+
 def load_manifest(env: Mapping[str, str]) -> Optional[dict]:
     """manifest 不存在或不可解析時回傳 None（等同沒有 manifest，走推導）。"""
     try:
@@ -713,6 +741,8 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
                 return 1
     for path in removals:
         path.unlink(missing_ok=True)
+    if host == "claude":
+        print(f"interpreter: {record_interpreter(env) or 'not recorded (hooks fall back to python3)'}")
     print(f"manifest: {write_manifest(env, host, mods, extra_manifest)}")
     return 0
 

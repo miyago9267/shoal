@@ -61,7 +61,7 @@ def golden_files() -> dict[str, bytes]:
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
-        self.assertEqual(len(golden), 22)
+        self.assertEqual(len(golden), 23)
         rendered = render.render_claude_plugin(ROOT)
         self.assertEqual(sorted(rendered), sorted(golden))
         for rel, data in golden.items():
@@ -262,7 +262,8 @@ class HooksJsonTests(unittest.TestCase):
         self.assertEqual(self.hooks["Stop"][0].get("matcher"), None)
 
     def test_every_command_quotes_the_plugin_root(self) -> None:
-        guard_cmd = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
+        guard_cmd = ('/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py"'
+                     ' --host claude --plugin')
         for event in ("UserPromptSubmit", "PreToolUse", "SubagentStart", "Stop", "PostToolUse", "PostToolUseFailure", "SessionEnd"):
             for group in self.hooks[event]:
                 (handler,) = group["hooks"]
@@ -315,6 +316,49 @@ class HooksJsonTests(unittest.TestCase):
             self.assertEqual(
                 proc.stdout, (PLUGIN / "policy" / "claude-md.bootstrap.md").read_bytes()
             )
+
+
+@unittest.skipIf(os.name == "nt", "POSIX shell")
+class LauncherTests(unittest.TestCase):
+    """lean-default D5(c): hooks/run.sh runs the guard with the interpreter recorded at install/update."""
+
+    def run_launcher(self, data: Path, stdin: str) -> subprocess.CompletedProcess:
+        probe = Path(data.parent, "probe.py")
+        probe.write_text("import sys\ndef main(argv):\n    print(sys.executable, *argv, sys.stdin.read())\n    return 3\n")
+        env = {**os.environ, "XDG_DATA_HOME": str(data), "XDG_CACHE_HOME": str(Path(data.parent, "cache"))}
+        return subprocess.run(["/bin/sh", str(GUARD_PLUGIN / "hooks" / "run.sh"), str(probe), "--host", "claude"],
+                              input=stdin, capture_output=True, text=True, env=env, cwd=data.parent)
+
+    def test_uses_the_recorded_interpreter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp, "data")
+            (data / "shoal").mkdir(parents=True)
+            (data / "shoal" / "python").write_text(sys.executable + "\n")
+            result = self.run_launcher(data, "{}")
+            self.assertEqual(result.returncode, 3, result.stderr)  # main()'s return value is the exit code
+            self.assertEqual(result.stdout.split(), [sys.executable, "--host", "claude", "{}"])
+            self.assertFalse(Path(tmp, "__pycache__").exists())  # bytecode goes to the cache dir
+
+    def test_falls_back_to_python3_without_a_usable_record(self) -> None:
+        for record in (None, "/nonexistent/python3\n"):
+            with tempfile.TemporaryDirectory() as tmp:
+                data = Path(tmp, "data")
+                (data / "shoal").mkdir(parents=True)
+                if record:
+                    (data / "shoal" / "python").write_text(record)
+                result = self.run_launcher(data, "x")
+                self.assertEqual(result.returncode, 3, result.stderr)
+                self.assertEqual(result.stdout.split()[1:], ["--host", "claude", "x"])
+
+    def test_install_records_the_real_interpreter(self) -> None:
+        import shoal_install
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "XDG_DATA_HOME": tmp}
+            real = shoal_install.record_interpreter(env)
+            self.assertIsNotNone(real)
+            self.assertEqual((Path(tmp) / "shoal" / "python").read_text().strip(), real)
+            self.assertTrue(os.path.isabs(real) and os.access(real, os.X_OK))
+            self.assertIsNone(shoal_install.record_interpreter({**env, "PATH": tmp}))  # no python3 on PATH
 
 
 class RenderCommandTests(unittest.TestCase):
