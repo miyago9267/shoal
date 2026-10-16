@@ -1,127 +1,117 @@
 <!-- markdownlint-disable MD013 -->
 # shoal
 
-只需定義一次 agent role，shoal 就能依照各廠牌 agent 配好模型、權限與 prompt，自動 orchestration；毋需撰寫任何程式。
+Define agent roles once. shoal resolves the model, permissions and prompt for each agent tool; adding a new tool is configuration, not code.
 
-繁體中文 · [English](docs/README.en.md) · [简体中文](docs/README.zh-CN.md)
+English · [繁體中文](docs/README.zh-TW.md) · [简体中文](docs/README.zh-CN.md)
 
-## 適用場景
+## What it does
 
-- 定義一份 role，讓五種以上的 agent host 各自拿到合適的模型、權限和 prompt進行工作。
-- 主 session 負責判斷與整合，改檔和長指令派給對應的 role。
-- 派工規則由 guard 於各個 host 強制執行，不靠模型自覺。
-- 要支援新工具，僅需填寫設定即可，不需撰寫寫程式。
+- One role definition gives each of the five hosts a fitting model, permissions and prompt.
+- The main session judges and integrates; edits and long commands go to the matching role.
+- A guard enforces the delegation rules on every host, so they do not depend on the model remembering them.
+- Supporting a new tool means filling in configuration, not writing code.
 
-## 運作方式
+## How it works
 
-![分層：core、binding、各 host](docs/assets/shoal-overview-zh-TW.svg)
+![Layers: core, binding, and each host](docs/assets/shoal-overview-en.svg)
 
-role 寫在 core，每個 host 用 binding 說明自己的模型與權限，再由 `render.py` 產出安裝檔。
+Roles live in core. Each host's binding says which models and permissions it has, and `render.py` produces the files to install.
 
-![路由：一個 role 在各 host 選到哪個模型](docs/assets/shoal-routing-zh-TW.svg)
+![Routing: which model one role gets on each host](docs/assets/shoal-routing-en.svg)
 
-role 只寫 tier，不寫模型名稱；每個 host 從自己的模型目錄挑出符合的那一個。
+A role names a tier, not a model. Each host picks the matching model from its own catalog.
 
-![orchestration：一個回合怎麼分工](docs/assets/shoal-orchestration-zh-TW.svg)
+![Orchestration: how one turn is divided](docs/assets/shoal-orchestration-en.svg)
 
-主 session 先看工作的形狀和風險，再決定自己做、派給哪個 role，或走完整的審查流程。
+The main session looks at the shape and risk of the work, then does it itself, hands it to a role, or runs the full review flow.
 
-![guard：哪些事會被擋、出口是什麼](docs/assets/shoal-guard-zh-TW.svg)
+![Guard: what gets blocked and how to get through](docs/assets/shoal-guard-en.svg)
 
-主 session 沒派可寫 role 就改檔，或 subagent 不是 shoal 的可寫 role 卻改檔，都會被擋；出口是改派可寫的 role，或在 prompt 加 `#direct`。
+If the main session edits a file without dispatching a writable role, or a subagent that is not a shoal writable role edits one, the guard blocks it. The way out is to dispatch a writable role or add `#direct` to the prompt.
 
-## 運作示範
+## Demos
 
-### 大型跨 module 改動
+### A large cross-module change
 
-大型改動先拆成 spec，再由主 session 派給各 role 分頭處理。
+The main session turns a big change into a spec, then hands the slices to roles in parallel.
 
-![大型跨 module 改動示範](docs/assets/reel-big-change/out/scene.gif)
+![Large cross-module change demo](docs/assets/reel-big-change/out-en/scene.gif)
 
-[mp4](docs/assets/reel-big-change/out/scene.mp4)
+[mp4](docs/assets/reel-big-change/out-en/scene.mp4)
 
-### 資安敏感改動走嚴謹路線
+### A security-sensitive change takes the rigorous path
 
-涉及 auth、secret 或權限的改動，先審 Plan 再派 security role 執行。
+Changes to auth, secrets or permissions get a reviewed Plan first, then a security role carries it out.
 
-![資安敏感改動示範](docs/assets/reel-security/out/scene.gif)
+![Security-sensitive change demo](docs/assets/reel-security/out-en/scene.gif)
 
-[mp4](docs/assets/reel-security/out/scene.mp4)
+[mp4](docs/assets/reel-security/out-en/scene.mp4)
 
-### 派工 lane 與 guard
-
-每條派工 lane 有明確的 role 與權限，guard 在越界時擋下。
-
-![派工 lane 與 guard 示範](docs/assets/reel-lanes/out/scene.gif)
-
-[mp4](docs/assets/reel-lanes/out/scene.mp4)
-
-English: [big change](docs/assets/reel-big-change/out-en/scene.mp4) · [security path](docs/assets/reel-security/out-en/scene.mp4)
-
-## 快速開始
+## Quick start
 
 ```bash
-# 先看會做什麼（dry-run，不寫入）
+# preview first (dry run, writes nothing)
 python3 tools/shoal_install.py --host codex
-# 安裝：--host 可換成 claude、codex、grok、opencode、agy
+# install; --host can be claude、codex、grok、opencode、agy
 python3 tools/shoal_install.py --host codex --apply
 ```
 
-只靠 `python3`（stdlib），macOS、Linux、Windows 相同。不帶 `--apply` 是 dry-run，會顯示底層 installer 的預覽；`claude`、`codex`、`bun` 這類外部 CLI 找不到時，dry-run 回報 `skipped`。opencode 需要 `bun` 才能 `--apply`。
+It needs only `python3` (stdlib). macOS and Linux are supported; Windows is experimental. Without `--apply` it is a dry run that shows the underlying installer's preview; when an external CLI such as `claude`, `codex` or `bun` is missing, the dry run reports `skipped`. opencode needs `bun` for `--apply`.
 
-Claude Code 另有 plugin marketplace 的替代方式（裝最新穩定版）：
+Claude Code also has the plugin marketplace route (latest stable):
 
 ```bash
 claude plugin marketplace add miyago9267/shoal
 claude plugin install shoal@shoal
 ```
 
-每個 host 的細節與不用 plugin 的 Claude Code 見 [INSTALL.md](./INSTALL.md)。
+Per-host details, and Claude Code without the plugin, are in [INSTALL.md](./INSTALL.md).
 
-## 模組
+## Modules
 
-只裝需要的部分：`python3 tools/shoal_install.py --host <h>` 預設只印出會執行的指令，加 `--apply` 才安裝。
+Install only what you need: `python3 tools/shoal_install.py --host <h>` prints the commands (dry run); add `--apply` to install.
 
-不要派工守門就加 `--without dispatch-guard`，`--list` 列出模組與已安裝狀態。
+Skip the dispatch guard with `--without dispatch-guard`; `--list` shows the modules and what is installed.
 
-外部 guard 經 guard chain 接入：`--chain-add` 登記，不需要改 shoal。
+External guards plug in through the guard chain: register one with `--chain-add`, no change to shoal needed.
 
-細節見 [INSTALL.md 的模組](./INSTALL.md#模組)。
+Details: [INSTALL.md, Modules](./INSTALL.md#模組).
 
-## 支援的 host
+## Supported hosts
 
-| Host | 安裝方式 | guard |
+| Host | Install | Guard |
 | --- | --- | --- |
-| Claude Code | plugin，或 `tools/install_hooks.py` | hook，預設擋 |
-| Codex CLI | `install/install.sh` | hook，需在 `/hooks` 核准一次 |
-| Gemini/agy | `hosts/agy/dist` 加 `tools/install_hooks.py` | hook，預設擋，沒有 `#direct` |
-| Grok Build | `tools/install_grok.py` | 原生 hooks |
-| OpenCode | `install.sh --enable` | plugin 內建 |
+| Claude Code | plugin, or `tools/install_hooks.py` | hook, blocks by default |
+| Codex CLI | `install/install.sh` | hook, approve once in `/hooks` |
+| Gemini/agy | `hosts/agy/dist` plus `tools/install_hooks.py` | hook, blocks by default, no `#direct` |
+| Grok Build | `tools/install_grok.py` | native hooks |
+| OpenCode | `install.sh --enable` | built into the plugin |
 
-## 快速與嚴謹
+## Fast and rigorous
 
-預設走快速路徑：讀檔、診斷和整合由主 session 直接做，改檔派給可寫的 role。遇到風險或大型工作才走嚴謹路徑：計畫審查、核准，完成後再驗證。想讓主 session 自己改檔，可在 prompt 加 `#direct`。若要整個 session 都走快，可在 prompt 加 `#fast`：主 session 可以直接改檔，硬規則（role 不再派工、審查 role 不改檔）和結束前的檢查照舊。可用 `#strict` 關閉；沒有 prompt 文字的工具（agy）則設 `SHOAL_GUARD_FAST=1`。
+The default path is fast: the main session reads, diagnoses and integrates by itself, and hands edits to a writable role. Risky or large work takes the rigorous path: plan review, approval, then verification when it is done. To let the main session edit directly, you can add `#direct` to the prompt. To run a whole session fast, you can add `#fast` to a prompt: the main session may edit directly, while the hard rules (roles do not dispatch further, reviewers do not edit) and the end-of-turn check stay. You can turn it off with `#strict`; for tools without prompt text (agy), set `SHOAL_GUARD_FAST=1` instead.
 
-## 和 pilotfish 的關係
+## shoal and pilotfish
 
-shoal 衍生自 [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish)，Claude 端以 pilotfish v1.4.2 為分岔基準。pilotfish 目前是 v1.5.0（2026-10-10），是 Claude Code 的多模型 orchestration policy，Plugin 已脫離 beta；其他工具各有姊妹專案（pilotfish-grok、pilotfish-codex、remora）。
+shoal derives from [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish); on the Claude side it forked from pilotfish v1.4.2. pilotfish is now v1.5.0 (2026-10-10), a multi-model orchestration policy for Claude Code whose plugin is out of beta. Other tools have sister projects (pilotfish-grok, pilotfish-codex, remora).
 
-| 面向 | pilotfish | shoal |
+| Aspect | pilotfish | shoal |
 | --- | --- | --- |
-| 支援範圍 | Claude Code 為主，其他工具各一個專案 | 一份 role 定義 render 成 5 個 host |
-| 派工判斷 | main 依淨效益判斷，小而局部的工作自己做 | 改檔一律交給可寫 role（`#direct` 例外） |
-| 強制範圍 | hook 只擋硬規則（leaf 不再派工、verifier 不改檔） | 另擋 main 直接改檔、非 shoal agent 改檔、role 未啟動、改完沒檢查就結束 |
-| 證據 | 每個決定都附 benchmark 與量測 | 以 payload 擷取與各 host 實測為主，量測較少 |
+| Scope | Mainly Claude Code, one project per other tool | One role definition rendered to 5 hosts |
+| Delegation | The main session judges net benefit and does small, local work itself | Edits always go to a writable role (`#direct` is the exception) |
+| Enforcement | Hooks block only hard rules (a leaf cannot dispatch, a verifier cannot edit) | Also blocks the main session editing directly, non-shoal agents editing, roles that never started, and ending a turn after edits with no check |
+| Evidence | Each decision comes with benchmarks and measurements | Mostly payload captures and per-host live tests, with fewer measurements |
 
-shoal 並不平替 pilotfish，亦非上位版本：策略為將 role 與條款擴到多個廠牌並加上強制執行，代價是較重且較嚴格。若只用 Claude Code、想要輕量且有量測支撐的 policy，用 [pilotfish](https://github.com/Nanako0129/pilotfish)即可；要是同時使用多個 agent 工具、想要一份定義和一致的強制規則，用 shoal 會更符合您的工作流。
+shoal does not replace pilotfish, and it is not simply a newer version of it. It extends the roles and rules to several vendors and adds enforcement, at the cost of being heavier and stricter. If you only use Claude Code and want a light policy backed by measurements, use [pilotfish](https://github.com/Nanako0129/pilotfish); if you use several agent tools and want one definition with consistent enforcement, use shoal.
 
-## 延伸閱讀
+## Further reading
 
-- [INSTALL.md](./INSTALL.md)：完整安裝、guard 規則與環境變數。
-- [docs/DESIGN-INVARIANTS.md](./docs/DESIGN-INVARIANTS.md)：不能改的設計原則。
-- [docs/new-host.md](./docs/new-host.md)：新增 host 的步驟。
-- [CHANGELOG.md](./CHANGELOG.md)：版本紀錄。
+- [INSTALL.md](./INSTALL.md): full install steps, guard rules and environment variables.
+- [docs/DESIGN-INVARIANTS.md](./docs/DESIGN-INVARIANTS.md): the design rules that do not change.
+- [docs/new-host.md](./docs/new-host.md): how to add a host.
+- [CHANGELOG.md](./CHANGELOG.md): release history.
 
-## 來源與致謝
+## Credits
 
-shoal 衍生自 [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish)。grok host 的 orchestration rules 與 agent 原文取自 [Nanako0129/pilotfish-grok](https://github.com/Nanako0129/pilotfish-grok) v1.0.6，shoal 加上 core 條款、原生 hooks 與 installer；`upstream.lock` 記錄版本。codex host 原本是 `miyago9267/pilotfish-codex`，v1.0.0 起併入本 repo；v1.0.0 之前的 pinned ref 仍在 [pilotfish-codex](https://github.com/miyago9267/pilotfish-codex)。上游 Pilotfish 的著作權與授權聲明沿用，見 `LICENSE`。
+shoal derives from [Nanako0129/pilotfish](https://github.com/Nanako0129/pilotfish). The grok host's orchestration rules and agent text come from [Nanako0129/pilotfish-grok](https://github.com/Nanako0129/pilotfish-grok) v1.0.6; shoal adds core rules, native hooks and an installer, and `upstream.lock` records the version. The codex host was originally `miyago9267/pilotfish-codex` and has lived in this repo since v1.0.0; refs pinned before v1.0.0 remain in [pilotfish-codex](https://github.com/miyago9267/pilotfish-codex). Upstream Pilotfish's copyright and license terms carry over; see `LICENSE`.

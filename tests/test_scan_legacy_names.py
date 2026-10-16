@@ -79,7 +79,7 @@ class ScanFileTests(unittest.TestCase):
 
     def test_readme_credit_section_is_skipped(self) -> None:
         text = f"# shoal\nbody {LEGACY_WORD}\n\n## 來源與致謝\n\ncredit {LEGACY_WORD}\n\n## 已知限制\n\nafter {LEGACY_WORD}\n"
-        self.assertEqual(self.hits("README.md", text), [2, 10])
+        self.assertEqual(self.hits("docs/README.zh-TW.md", text), [2, 10])
         self.assertEqual(self.hits("docs/other.md", text), [2, 6, 10])
 
 

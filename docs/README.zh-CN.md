@@ -3,7 +3,7 @@
 
 只需定义一次 agent role，shoal 就能根据各厂牌 agent 配好模型、权限与 prompt，自动 orchestration；无需编写任何代码。
 
-[繁體中文](../README.md) · [English](./README.en.md) · 简体中文
+[English](../README.md) · [繁體中文](./README.zh-TW.md) · 简体中文
 
 ## 它解决什么
 
@@ -39,7 +39,7 @@ python3 tools/shoal_install.py --host codex
 python3 tools/shoal_install.py --host codex --apply
 ```
 
-只靠 `python3`（stdlib），macOS、Linux、Windows 相同。不带 `--apply` 是 dry-run，会显示底层 installer 的预览；`claude`、`codex`、`bun` 这类外部 CLI 找不到时，dry-run 报告 `skipped`。opencode 需要 `bun` 才能 `--apply`。
+只靠 `python3`（stdlib）。支持 macOS 与 Linux，Windows 为实验性支持。不带 `--apply` 是 dry-run，会显示底层 installer 的预览；`claude`、`codex`、`bun` 这类外部 CLI 找不到时，dry-run 报告 `skipped`。opencode 需要 `bun` 才能 `--apply`。
 
 Claude Code 另有 plugin marketplace 的替代方式（装最新稳定版）：
 

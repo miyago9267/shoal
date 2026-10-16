@@ -56,9 +56,9 @@ EXEMPT_FILES = frozenset(
 HISTORICAL_CHANGELOGS = frozenset({"CHANGELOG.md", "hosts/codex/CHANGELOG.md"})
 # 致謝與上游關係的章節：標題起到下一個 `## ` 之間不掃。
 CREDIT_SECTIONS = {
-    "README.md": ("## 來源與致謝", "## 和 pilot" "fish 的關係"),
+    "docs/README.zh-TW.md": ("## 來源與致謝", "## 和 pilot" "fish 的關係"),
     "docs/README.zh-CN.md": ("## 来源与致谢", "## 与 pilot" "fish 的关系"),
-    "docs/README.en.md": ("## Credits", "## shoal and pilot" "fish"),
+    "README.md": ("## Credits", "## shoal and pilot" "fish"),
 }
 
 _PROTECTED = [re.compile(p) for p in LEGACY_PROTECTED]
