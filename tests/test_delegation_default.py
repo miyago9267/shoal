@@ -103,14 +103,14 @@ class OtherHostsRoleTests(unittest.TestCase):
     POLICY_SHA256 = {
         "codex": {
             "agents-md.bootstrap.md": "331cb05997867dd544c234c0ec8720051ba8c7fd4ebd6a0e2b9470eb067b6481",
-            "agents-md.orchestration.md": "1b739020e807d88288495dc73cc798c10430f7405babf6a96ad4f75b1680faee",
+            "agents-md.orchestration.md": "5f08b7cef8735556879d9d84d655dc28a464d0c16f10fbbac47b01cf9539bce5",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
             "rules/shoal-agy.md": "5764d10bd44a3a67acf6bdd37098c973b008a7bb33c7b180f4f0bb3638601ccf",
             "skills/shoal-orchestration/SKILL.md": "d9ecd94a9d5656791edc026b5c3abd315817341f09b34a184f58f0787f90b6f2",
             "skills/shoal-orchestration/references/orchestration-policy.md":
-                "d63a6531779aab8a1518a3e474d8da64192c1d3a602af585e45ce0107d9082cb",
+                "c1acd983203887f586565e002145b716acbc7ca6a6ef8dd0dc1cf4e4c68756a0",
             "skills/shoal-orchestration/references/workflow-extensions.md":
                 "354ddedd06c0dc21aa00c2182fd9784ffbdb82cfda05cf5bbe166cd400939fc1",
         },

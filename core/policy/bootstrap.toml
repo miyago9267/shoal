@@ -82,8 +82,10 @@ text = '''
   `{{effort_param}}` (role default; lower if trivial, higher if ambiguous or
   high-stakes; user-stated wins; never below `medium` for `verifier`,
   `plan-critic`; `high` for `security-reviewer`). `#fast`: simple work ->
-  `[fast]` `applier`, effort `low`, brief = goal, files, done-criteria; no
-  plan-critic or verifier.'''
+  `[fast]` `applier`, effort `low`, brief = goal, files, exact edits (file,
+  old -> new, or full content) for targets main has read, done check; no
+  plan-critic or verifier. A passing check quoted in the hand-back is the
+  verification main reports; rerun only if ambiguous.'''
 
 [[clause]]
 id = "bootstrap-dispatch-brake"

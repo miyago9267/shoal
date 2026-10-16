@@ -34,8 +34,10 @@ section, do the assigned task, never spawn subagents.
   `effort` (role default; lower if trivial, higher if ambiguous or
   high-stakes; user-stated wins; never below `medium` for `verifier`,
   `plan-critic`; `high` for `security-reviewer`). `#fast`: simple work ->
-  `[fast]` `applier`, effort `low`, brief = goal, files, done-criteria; no
-  plan-critic or verifier.
+  `[fast]` `applier`, effort `low`, brief = goal, files, exact edits (file,
+  old -> new, or full content) for targets main has read, done check; no
+  plan-critic or verifier. A passing check quoted in the hand-back is the
+  verification main reports; rerun only if ambiguous.
 - Omit `model` for named roles. State scope, stop, and a time budget in
   every brief; a role that reaches its budget returns what it has.
 - Start the `description` of every write-capable call with its lane:

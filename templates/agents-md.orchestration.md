@@ -183,11 +183,12 @@ main session and do not add an independent verifier.
 
 - Without a risk trigger, main still does not edit files itself: every edit
   goes to a write-capable role, except under the user's `#direct`. A `#fast`
-  session is the light lane: simple work (single purpose, named scope, no risk
-  trigger, ~10 min) goes to `[fast]` `applier`, effort `low`, brief of goal,
-  files, done-criteria; no plan-critic or verifier; the role checks only what
-  it touched. Reading, running commands, diagnosis, integration, and
-  judgment stay with main. Otherwise use phase-aware lifecycle below.
+  session is the light lane: one-purpose work (~10 min) goes to `[fast]`
+  `applier`, effort `low`; brief = goal, files, exact edits (old -> new or
+  whole file) for files main read, done check. No plan-critic or verifier; a
+  passing check quoted in the hand-back is main's verification unless
+  ambiguous. Main keeps reads, diagnosis, integration. Else see
+  lifecycle below.
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
   may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.

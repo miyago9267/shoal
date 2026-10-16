@@ -33,4 +33,4 @@ id = "write-tools"
 at = "after:follow-conventions"
 sep = "space"
 text = '''
-Create and edit files with Write/Edit, not shell redirects.'''
+Create and edit files with Write/Edit, not shell redirects; one Edit per file for all its hunks, or Write the whole file.'''
