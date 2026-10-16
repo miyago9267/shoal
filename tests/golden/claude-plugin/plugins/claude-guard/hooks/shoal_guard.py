@@ -67,11 +67,14 @@ shell write was allowed and is not exempt, or a write-level role counts as dispa
 ran a foreground shell call that is neither a file write nor a declaration; that role's own edit or shell write
 unchecks the turn again; on claude and codex that call counts at its PostToolUse, i.e. when
 it really ran, and its PreToolUse counts only until the session has seen its first PostToolUse, see POST_HOSTS).  On claude and codex the `Stop` event is blocked once per
-turn when `changed` is set, `checked` is not, `stop_hook_active` is exactly false, the mode is enforce and
-SHOAL_GUARD_STOP is not `off`; everything else (other turn, bad payload, unreadable state, shadow, off) fails
+turn when `changed` is set, `checked` is not, no write role of this turn may still be running (`role_running`,
+below), `stop_hook_active` is exactly false, the mode is enforce and SHOAL_GUARD_STOP is not `off`; everything else (other turn, bad payload, unreadable state, shadow, off) fails
 open.  Grok's `stop` event (only `reason == end_turn`) is attached, but its `{"decision": "block"}` output has not been
 exercised on the real host: it logs `would_block` and blocks only with SHOAL_GUARD_STOP=enforce (in enforce mode).
 Other hosts never block: their adapters receive no end-of-turn event that carries a verified payload.
+Running role (`role_running`, claude only): no registered event reports a role's hand-back, so the conservative variant applies: a
+write role's start sets the flag, the first Stop after it skips the block once and clears it, and any observed edit
+(main's or the role's) clears it too, so the next Stop after the hand-back is judged by the normal rule.
 """
 
 from __future__ import annotations
@@ -122,6 +125,8 @@ STOP_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
 # fallback until the first PostToolUse of the session arrives (state `post_seen`), because the guard cannot read whether
 # the user has approved the new hook (Codex) or restarted onto the new registration (Claude).
 POST_HOSTS = frozenset({"claude", "codex"})
+# B3: hosts whose write dispatch returns at once while the role runs (claude's async Agent); see `role_running`.
+ROLE_RUNNING_HOSTS = frozenset({"claude"})
 STOP_SHADOW_DEFAULT_HOSTS = frozenset({"grok", "agy"})
 # agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its OWN
 # conversation (new conversationId, announced by a `SessionStart`).  The guard infers main vs subagent from the order of
@@ -1211,6 +1216,7 @@ def _pending(state: Dict[str, Any]) -> int:
 def _mark_changed(state: Dict[str, Any]) -> None:
     """B2: a change after a check puts the turn back to "unchecked"; a write role's own check no longer covers it."""
     state["changed"] = True
+    state.pop("role_running", None)
     state["checked"] = False
     state.pop("role_changed", None)
 
@@ -1658,6 +1664,7 @@ class _Guard:
                 return
             state["checked"] = False
             state["role_changed"] = True
+            state.pop("role_running", None)  # the role's edit is observed: no longer only a pending start
             _write_json(state_path, state)
 
     def note_verify_started(self) -> None:
@@ -1718,6 +1725,10 @@ class _Guard:
             state = _read_json(state_path)
             if not due(state):
                 return self._none()
+            if state.get("role_running") is True:  # a write role started this turn and may still be running
+                state.pop("role_running", None)  # one skip only: the next Stop after the hand-back is judged
+                _write_json(state_path, state)
+                return self.result("skip", skip="role_running")
             if self.mode != "enforce" or not stop_blocks(self.host, self.env):
                 return self.result("would_block", "STOP", note="unverified_change")
             state["stop_blocked"] = True
@@ -1867,6 +1878,8 @@ class _Guard:
         }
         if state["changed"] and prior_state.get("role_changed") is True:
             state["role_changed"] = True  # B2: the latest change is a write role's own edit (note_role_change)
+        if state["changed"] and prior_state.get("role_running") is True:
+            state["role_running"] = True  # B3: the latest change is a write role's start, no edit seen yet
         if kept_turns:
             state["direct_turns"] = kept_turns  # E1: turns that carried #direct, kept across turns
         if prior_state.get("fast") is True:
@@ -1951,6 +1964,8 @@ class _Guard:
             state["pending"] = _pending(state) - 1
             state["dispatched"] = True
             _mark_changed(state)  # B2: the write role has started, so the turn counts as changed
+            if self.host in ROLE_RUNNING_HOSTS:
+                state["role_running"] = True  # B3: until an edit or the next Stop (see the module docstring)
             if keyed:
                 state["started_agents"] = (started + [agent])[-AGENTS_MAX:]
             if not _write_json(state_path, state):

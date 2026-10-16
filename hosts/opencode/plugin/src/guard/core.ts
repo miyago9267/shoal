@@ -109,6 +109,8 @@ type StateFile = {
   post_seen?: boolean; // claude, codex: this session has seen a PostToolUse of a main-session shell call
   /** B2: the latest change is a write-level role's own edit, so its own plain shell call may check it. */
   role_changed?: boolean;
+  /** B3: the latest change is a write role's start with no edit seen yet; the next Stop skips once (see hooks/shoal_guard.py). */
+  role_running?: boolean;
   /** B3: this turn's one completion block has been spent. */
   stop_blocked: boolean;
   /** E1: the last DIRECT_TURNS_MAX turn ids whose prompt carried `#direct` (omitted when empty). */
@@ -139,6 +141,8 @@ const STOP_HOSTS = new Set(["claude", "codex", "grok", "agy"]);
 // Hosts whose registration carries PostToolUse for the shell tool: there `checked` is set by a shell call that really
 // ran (kind `post_shell`); PreToolUse counts only until the session has seen its first PostToolUse (state `post_seen`).
 const POST_HOSTS = new Set(["claude", "codex"]);
+// B3: hosts whose write dispatch returns at once while the role runs (claude's async Agent); see `role_running`.
+const ROLE_RUNNING_HOSTS = new Set(["claude"]);
 const STOP_SHADOW_DEFAULT_HOSTS = new Set(["grok", "agy"]);
 // agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its
 // OWN conversation (announced by a `SessionStart`).  The guard infers main vs subagent from the order of events and keeps
@@ -557,6 +561,7 @@ function markChanged(state: StateFile): void {
   state.changed = true;
   state.checked = false;
   delete state.role_changed;
+  delete state.role_running;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1311,6 +1316,7 @@ class Guard {
         if (due(state)) {
           state.checked = false;
           state.role_changed = true;
+          delete state.role_running; // the role's edit is observed: no longer only a pending start
           writeJson(paths.statePath, state);
         }
         return none(this.mode);
@@ -1365,6 +1371,12 @@ class Guard {
       () => {
         const state = readJson(statePath);
         if (!due(state)) return none(this.mode);
+        if (state.role_running === true) {
+          // a write role started this turn and may still be running: one skip, the next Stop is judged
+          delete state.role_running;
+          writeJson(statePath, state);
+          return this.result("skip", { skip: "role_running" });
+        }
         if (this.mode !== "enforce" || !stopBlocks(this.host, this.env)) {
           return this.result("would_block", { rule: "STOP", note: "unverified_change" });
         }
@@ -1530,6 +1542,7 @@ class Guard {
       stop_blocked: prior.stop_blocked === true, // B3: this turn's one block is spent
     };
     if (state.changed && priorState.role_changed === true) state.role_changed = true; // B2: see noteRoleChange
+    if (state.changed && priorState.role_running === true) state.role_running = true; // B3: see stop
     if (keptTurns.length > 0) state.direct_turns = keptTurns; // E1: turns that carried #direct
     if (priorState.fast === true) {
       state.fast = true; // fast mode lasts for the session (set by #fast, cleared by #strict)
@@ -1611,6 +1624,7 @@ class Guard {
         state.dispatched = true;
         state.changed = true; // B2: the write role has started, so the turn counts as changed
         state.checked = false;
+        if (ROLE_RUNNING_HOSTS.has(this.host)) state.role_running = true; // B3: until an edit or the next Stop
         if (keyed) state.started_agents = [...started, agent as string].slice(-AGENTS_MAX);
         if (!writeJson(statePath, state)) return this.result("skip", { skip: "state_write_failed" });
         return this.result("state", { rule: "dispatch_started", skip: mismatch ? "prompt_id_mismatch" : undefined });
