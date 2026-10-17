@@ -13,6 +13,9 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   （只跳過 POSIX 權限位元的兩個 vector）。
 - `install.py::_same_path` 忽略 Codex 回報的 `\\?\` 長路徑前綴，`--update` 在 Windows 不再把已裝好的
   Codex plugin 誤報為 `failed`。
+- `sync agy`：`~/.gemini/config` 下沒有任何 agents、skills 時回報 `roles not installed`，
+  不再把沒裝 agy role 的機器報成 symlink drift。
+
 ## v3.12.0-beta
 
 2026-10-18。版本 channel、`#fast` 輕量 lane 與派工開銷優化。
