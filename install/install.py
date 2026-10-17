@@ -529,9 +529,14 @@ def _codex_cli() -> str:
 
 
 def _same_path(left: Path, right: Path) -> bool:
-    return os.path.normcase(os.path.realpath(os.path.abspath(str(left)))) == os.path.normcase(
-        os.path.realpath(os.path.abspath(str(right)))
-    )
+    return _path_key(left) == _path_key(right)
+
+
+def _path_key(path: Path) -> str:
+    text = str(path)
+    if os.name == "nt" and text.startswith("\\\\?\\"):  # Codex reports extended-length paths
+        text = text[4:]
+    return os.path.normcase(os.path.realpath(os.path.abspath(text)))
 
 
 CODEX_EXPORT_PATHS = (".agents/plugins/marketplace.json", "plugin/plugins")

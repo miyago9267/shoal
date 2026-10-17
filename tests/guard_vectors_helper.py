@@ -30,6 +30,11 @@ def _usable_base(base: str) -> bool:
     base = os.path.realpath(base)
     if not os.path.isdir(base) or base == "/tmp" or base.startswith(("/tmp/", "/private/tmp")):
         return False
+    if os.name == "nt":  # the guard maps Git Bash /tmp to the Windows temp dir and exempts it
+        temp = os.path.normcase(os.path.realpath(tempfile.gettempdir()))
+        folded = os.path.normcase(base)
+        if folded == temp or folded.startswith(temp + os.sep):
+            return False
     cursor = base
     while True:
         if os.path.exists(os.path.join(cursor, ".git")):
@@ -79,7 +84,10 @@ class Sandbox:
 
     def sub(self, value: Any, state: Optional[str] = None) -> Any:
         if isinstance(value, str):
-            value = value.replace("$HOME", self.home).replace("$WORK", self.work).replace("$TMPDIR", self.tmpdir).replace("$REPO", str(ROOT))
+            # `/` separators on Windows: the values land in shell commands and JSON text, where `\` escapes
+            fwd = (lambda s: s.replace("\\", "/")) if os.name == "nt" else (lambda s: s)
+            value = (value.replace("$HOME", fwd(self.home)).replace("$WORK", fwd(self.work))
+                     .replace("$TMPDIR", fwd(self.tmpdir)).replace("$REPO", fwd(str(ROOT))))
             return value.replace("$STATE", state) if state else value
         if isinstance(value, list):
             return [self.sub(v, state) for v in value]
@@ -159,10 +167,10 @@ def write_turn(guard: Path, turn: Dict[str, Any], id_key: str = "turn_id") -> No
 def foreign_owner(module: Any, targets: List[str]) -> Iterator[None]:
     """Make _open_private see the given files as owned by another uid."""
     original, real_uid = module._open_private, module._uid
-    wanted = set(targets)
+    wanted = {os.path.normpath(t) for t in targets}
 
     def wrapped(path: Any, flags: int) -> Optional[int]:
-        if str(path) not in wanted:
+        if os.path.normpath(str(path)) not in wanted:
             return original(path, flags)
         module._uid = lambda: real_uid() + 1
         try:
