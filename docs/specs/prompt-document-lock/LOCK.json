@@ -385,8 +385,8 @@
         "You are a subagent. Never spawn further subagents"
       ],
       "migration": {
-        "migration_id": "fast-applier-3-9-0",
-        "equivalence": "docs/specs/prompt-document-lock/equivalence/applier-fast-executor.md"
+        "migration_id": "lean-fast-lane-3-12-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/lean-fast-lane.md"
       }
     },
     {
