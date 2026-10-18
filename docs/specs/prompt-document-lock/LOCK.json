@@ -49,7 +49,7 @@
     },
     {
       "id": "packaged-orchestration-policy",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
+      "path": "plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 700,
       "max_bytes": 43000,
@@ -85,7 +85,7 @@
     },
     {
       "id": "packaged-workflow-extensions",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md",
+      "path": "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 270,
       "max_bytes": 15600,
@@ -101,7 +101,7 @@
     },
     {
       "id": "orchestration-skill",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/SKILL.md",
+      "path": "plugins/codex/skills/shoal-orchestration/SKILL.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 100,
       "max_bytes": 4700,
@@ -118,7 +118,7 @@
     },
     {
       "id": "plugin-agent-prompt",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/agents/openai.yaml",
+      "path": "plugins/codex/skills/shoal-orchestration/agents/openai.yaml",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 14,
       "max_bytes": 900,
@@ -133,7 +133,7 @@
     },
     {
       "id": "plugin-manifest-description",
-      "path": "plugin/plugins/shoal-codex/.codex-plugin/plugin.json",
+      "path": "plugins/codex/.codex-plugin/plugin.json",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 35,
       "max_bytes": 2200,
@@ -569,11 +569,11 @@
   "mirrors": [
     {
       "left": "templates/agents-md.orchestration.md",
-      "right": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md"
+      "right": "plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md"
     },
     {
       "left": "templates/agents-md.extensions.md",
-      "right": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
+      "right": "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
     }
   ]
 }
