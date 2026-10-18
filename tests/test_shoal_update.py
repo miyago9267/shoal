@@ -88,8 +88,6 @@ def sh_wrapper(path: Path, argv: list[str]) -> None:
         path.chmod(0o755)
 
 
-# Windows 暫時跳過：測試用的 .cmd git 包裝會被 cmd.exe 吃掉 `^`，加上暫存路徑問題（Miyago 2026-10-15：先別管 Windows）。
-@unittest.skipIf(sys.platform == "win32", "test_shoal_update 的 Windows 夾具待修")
 class UpdateBase(unittest.TestCase):
     with_codex = False
 
@@ -113,11 +111,14 @@ class UpdateBase(unittest.TestCase):
             "CLAUDE_CONFIG_DIR": str(self.tmp / "claude"),
             "PATH": str(self.bin),
         }
-        script = self.tmp / "fake_cli.py"
-        script.write_text(FAKE_CLI)
         real_git = shutil.which("git")
         assert real_git, "git is required"
-        sh_wrapper(self.bin / "git", [real_git])
+        if sys.platform == "win32":
+            self.env["PATH"] = os.pathsep.join([str(self.bin), str(Path(real_git).parent)])
+        script = self.tmp / "fake_cli.py"
+        script.write_text(FAKE_CLI)
+        if sys.platform != "win32":
+            sh_wrapper(self.bin / "git", [real_git])
         self.install_cli("claude", script)
         if self.with_codex:
             mod = shoal_update._load_codex_install()
@@ -366,6 +367,7 @@ class SwapContractTests(UpdateBase):
 
     def stale_marketplace(self) -> str:
         self.update("--apply")
+        (self.mp / "stale.txt").parent.mkdir(parents=True, exist_ok=True)
         (self.mp / "stale.txt").write_text(
             "old version"
         )  # 讓內容與 HEAD 不同，下一輪會交換
