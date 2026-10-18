@@ -523,8 +523,11 @@ def _plugin_source_digest(plugin_root: Path) -> str:
 
 def _codex_cli() -> str:
     for candidate in ("codex", "codex.exe", "codex.cmd"):
-        if shutil.which(candidate):
-            return candidate
+        found = shutil.which(candidate)
+        if found:
+            # which() applies PATHEXT but CreateProcess only appends .exe: an npm
+            # codex.cmd shim is reachable only by its full path.
+            return found if found.lower().endswith((".cmd", ".bat")) else candidate
     return "codex"
 
 

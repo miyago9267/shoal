@@ -15,6 +15,10 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   Codex plugin 誤報為 `failed`。
 - `sync agy`：`~/.gemini/config` 下沒有任何 agents、skills 時回報 `roles not installed`，
   不再把沒裝 agy role 的機器報成 symlink drift。
+- Windows 上 `codex` 只有 npm 的 `codex.cmd` shim 時，installer 改用完整路徑呼叫
+  （`CreateProcess` 只補 `.exe`）。
+- 測試在 Windows 的假設修正：`USERPROFILE`、`fchmod` 權限位元、`.cmd` 需要的
+  `SYSTEMROOT`/`COMSPEC`，以及暫存目錄位在含 `AGENTS.md` 的 home 底下時 skip。
 
 ## v3.12.0-beta
 

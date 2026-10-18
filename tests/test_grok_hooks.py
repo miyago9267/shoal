@@ -337,7 +337,9 @@ class PlanModeGuardTests(unittest.TestCase):
         roles = Path(fake_home.name) / ".grok" / "roles"
         roles.mkdir(parents=True)
         (roles / "executor.toml").write_text('default_capability_mode = "read-only"\n', encoding="utf-8", newline="\n")
-        self.assertEqual(run(GUARD, spawn(None, "executor"), env={"HOME": fake_home.name}), (0, ""))
+        # Path.home() reads USERPROFILE on Windows
+        env = {"HOME": fake_home.name, "USERPROFILE": fake_home.name}
+        self.assertEqual(run(GUARD, spawn(None, "executor"), env=env), (0, ""))
 
 
 if __name__ == "__main__":

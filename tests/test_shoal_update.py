@@ -115,6 +115,8 @@ class UpdateBase(unittest.TestCase):
         assert real_git, "git is required"
         if sys.platform == "win32":
             self.env["PATH"] = os.pathsep.join([str(self.bin), str(Path(real_git).parent)])
+            # shoal_update swaps os.environ for this env; Windows cannot start a .cmd shim without these
+            self.env.update({k: os.environ[k] for k in ("SYSTEMROOT", "COMSPEC", "PATHEXT") if k in os.environ})
         script = self.tmp / "fake_cli.py"
         script.write_text(FAKE_CLI)
         if sys.platform != "win32":
