@@ -3,6 +3,35 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.12.0-beta
+
+2026-10-18。版本 channel、`#fast` 輕量 lane 與派工開銷優化。
+
+### Behavior change
+
+- `#fast` 改為輕量 lane：簡單工作派 haiku applier、effort low，brief 帶確切
+  修改，不做審查。`#fast` 下 main 不改檔，`#direct` 才讓 main 改檔。
+
+### 版本 channel
+
+- 發版分 beta 與 stable。之後的發版都是 beta（`X.Y.Z-beta`），3.0.0 到 3.11.1
+  也算 beta。
+- stable 從 1.0.0 開始，排序一律高於任何 beta。
+- `--update` 切換 channel 時會重裝 plugin。
+
+### Guard
+
+- role 改完檔後自己跑的檢查算作驗證。
+- 背景執行中的派工還沒結束時，Stop 不擋。
+
+### applier
+
+- 明確列出工具清單；同一檔的修改一次完成；done check 只跑一次。
+
+### Fixes
+
+- hook 啟動器改用安裝時記錄的直譯器（#21），不再每次經 pyenv shim 解析。
+
 ## v3.11.1
 
 2026-10-16。修正 `--update` 的跨平台問題，CI 瘦身。

@@ -1760,7 +1760,7 @@ def run_plugin_split(options: argparse.Namespace) -> tuple[dict[str, Any], Path]
         unchanged = None
     _remove_split_repo(repo)
     agents = shown.get("agents")
-    expected_version = "3.11.1"
+    expected_version = "3.12.0-beta"
     checks = {
         "plugins_enabled": _check(
             PASS

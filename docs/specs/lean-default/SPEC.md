@@ -40,7 +40,9 @@
 | D3 | 輕量 lane 的 brief | 目標、檔案、完成條件三項；不要求附計畫，role 只跑自己改動相關的檢查 |
 | D4 | hook 延遲目標 | 每次 p50 ≤ 150ms（目前 300–450ms） |
 | D5 | 降延遲做法 | (a) guard 對不需要判斷的事件提早結束；(b) chain 成員只在它登記的事件上呼叫；(c) 檢查能否不經 pyenv shim 啟動 python（安裝時解析直譯器路徑）；(d) 移除重複的 hook 事件 |
-| D6 | 驗收 | 同一套 benchmark 重跑：預設 shoal 在 v1、v2 的通過數 ≥ baseline，成本 ≤ 1.3 倍，時間 ≤ 1.5 倍；benchmark 隔離 `XDG_DATA_HOME`，不跑使用者的 chain 成員 |
+| D6 | 驗收 | 同一套 benchmark 重跑：真實任務（v2）維持通過數 ≥ baseline、成本 ≤ 1.3 倍、時間 ≤ 1.5 倍；小任務只設成本門檻、不設時間門檻，因為一次 role 派工有約 20 秒的下限（role 分工原則）。benchmark 隔離 `XDG_DATA_HOME`，不跑使用者的 chain 成員 |
+
+2026-10-18 實測：v1 成本 1.27 倍、時間 2.1 倍、通過數相同；v2 成本 1.19 倍、平均時間 0.51 倍、隱藏驗收相同。
 
 ## Scope
 

@@ -1,5 +1,5 @@
 <!-- shoal-grok:begin -->
-<!-- shoal-grok v3.11.1 -->
+<!-- shoal-grok v3.12.0-beta -->
 ## Orchestration
 
 ### Non-negotiable native Plan gate

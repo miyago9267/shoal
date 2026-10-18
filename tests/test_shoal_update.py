@@ -67,6 +67,8 @@ else:
                               "marketplaceSource": {"source": s}} for s in data["marketplaces"] if data["plugins"]]}
     elif rest[:2] == ["plugin", "add"]:
         data["plugins"] = ["shoal-codex"]
+        if (state / "codex.add_version").exists():
+            (state / "codex.version").write_text((state / "codex.add_version").read_text())
     elif rest[:2] == ["plugin", "remove"]:
         data["plugins"] = []
 db.write_text(json.dumps(data))
@@ -307,7 +309,18 @@ class ChannelSwitchTests(UpdateBase):
         self.assertEqual(code, 0, out + err)
         (self.state / "claude.version").write_text("3.11.1")  # 舊版、沒有後綴＝beta
         (self.state / "claude.log").unlink()
-        with mock.patch.object(shoal_update.Updater, "source_stable", return_value=True):
+        marketplace_info = shoal_update.Updater.marketplace_info
+
+        def stable_marketplace(updater):
+            paths, plugins = marketplace_info(updater)
+            for info in plugins.values():
+                info["version"] = "1.0.0"  # 來源版本固定為 stable，不跟 repo 真實版本走
+            return paths, plugins
+
+        with (
+            mock.patch.object(shoal_update.Updater, "source_stable", return_value=True),
+            mock.patch.object(shoal_update.Updater, "marketplace_info", stable_marketplace),
+        ):
             code, out, err = self.update("--apply")
         self.assertEqual(code, 0, out + err)
         calls = self.calls()
@@ -333,7 +346,12 @@ class CodexChannelSwitchTests(UpdateBase):
         code, out, err = self.update("--apply")
         self.assertEqual(code, 0, out + err)
         (self.state / "codex.log").unlink()
-        with mock.patch.object(shoal_update.Updater, "source_stable", return_value=True):
+        mod = shoal_update._load_codex_install()
+        (self.state / "codex.add_version").write_text("1.0.0")  # 換裝後 fake CLI 回報的新版本
+        with (
+            mock.patch.object(mod, "SHOAL_PLUGIN_VERSION", "1.0.0"),
+            mock.patch.object(shoal_update.Updater, "source_stable", return_value=True),
+        ):
             code, out, err = self.update("--apply")
         self.assertEqual(code, 0, out + err)
         calls = self.calls("codex")

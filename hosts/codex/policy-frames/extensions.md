@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.11.1 -->
+<!-- shoal-codex v3.12.0-beta -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Workflow extensions
 

@@ -727,10 +727,11 @@ class MigrationMarkerTests(unittest.TestCase):
     def test_real_lock_markers_are_only_the_recorded_renewals(self) -> None:
         # 一次性的 marker 只允許已記錄的 renewal：Claude 側的 delegation-default（3.0.2 只有
         # claude-watcher-agent；claude-orchestration-policy 於 3.10.0 改為 dispatch-lanes-3-10-0），以及 Codex 三個 policy surface 的
-        # shared-rules-codex-core 切換，以及兩個 applier surface 的 fast-applier-3-9-0（3.9.0）。之後的 renewal 要換 id。
+        # shared-rules-codex-core 切換，以及 mechanical-executor-agent 的 fast-applier-3-9-0（3.9.0）、claude-applier-agent 的 lean-fast-lane-3-12-0（3.12.0）。之後的 renewal 要換 id。
         delegation = "docs/specs/delegation-default/RENAME.md"
         codex_core = "docs/specs/core-policy/equivalence/codex.md"
         applier = "docs/specs/prompt-document-lock/equivalence/applier-fast-executor.md"
+        lean = "docs/specs/prompt-document-lock/equivalence/lean-fast-lane.md"
         lanes = "docs/specs/prompt-document-lock/equivalence/dispatch-lanes.md"
         expected = {
             "bootstrap-policy": ("shared-rules-codex-core", codex_core),
@@ -739,7 +740,7 @@ class MigrationMarkerTests(unittest.TestCase):
             "claude-orchestration-policy": ("dispatch-lanes-3-10-0", lanes),
             "claude-watcher-agent": ("delegation-default-3-0-2", delegation),
             "mechanical-executor-agent": ("fast-applier-3-9-0", applier),
-            "claude-applier-agent": ("fast-applier-3-9-0", applier),
+            "claude-applier-agent": ("lean-fast-lane-3-12-0", lean),
         }
         marked = {
             s["id"]: s["migration"]
