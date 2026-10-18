@@ -59,7 +59,7 @@ orchestration = "agents-md.orchestration.md"
 extensions = "agents-md.extensions.md"
 
 [policy.mirrors]
-"agents-md.extensions.md" = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
+"agents-md.extensions.md" = "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
 
 # 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
 [models]

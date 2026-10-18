@@ -3,7 +3,9 @@
 `install/install.py` 會把 committed HEAD 的 marketplace 檔案匯出到 shoal 擁有的
 `${XDG_DATA_HOME:-~/.local/share}/shoal/codex-marketplace`，再用
 `codex plugin marketplace add` 登記該目錄；Codex 設定裡不會出現 checkout 路徑。
-舊的 `<repo>/plugin` 登記會在下次安裝時被移除並改登記匯出目錄。
+舊的 `<repo>/plugin` 登記會在下次安裝時被移除並改登記匯出目錄。匯出內容為
+`plugins/codex`、`plugins/jev-router` 與 `.agents/plugins/marketplace.json`；
+`plugin/` 只留一個 release 的相容 symlink（Codex 無法解析 marketplace 根目錄之外的路徑）。
 
 ## 沒有 checkout 時的替代方式
 

@@ -1172,7 +1172,7 @@ def dist_dir(host: str) -> str:
 MIRRORS = {
     "codex": {
         "agents-md.orchestration.md":
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
+            "plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md",
     },
 }
 

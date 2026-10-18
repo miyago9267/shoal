@@ -45,7 +45,7 @@
     },
     "jev-router": {
       "kind": "optional", "hosts": ["codex"], "depends_on": ["host-codex"], "default_new": false,
-      "paths": ["plugin/plugins/shoal-jev-router"],
+      "paths": ["plugins/jev-router"],
       "summary": "Jev router plugin（依賴 Jev 環境，新裝預設關）"
     },
     "claude-explore": {

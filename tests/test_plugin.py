@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "plugin" / "plugins" / "shoal-codex"
+PLUGIN = ROOT / "plugins" / "codex"
 VERSION = (ROOT / "hosts" / "codex" / "VERSION").read_text(encoding="utf-8").strip()
 
 
@@ -17,6 +17,7 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(entry["name"], manifest["name"])
         self.assertEqual(entry["source"]["path"], "./plugins/shoal-codex")
         self.assertEqual(manifest["version"], VERSION)
+        self.assertEqual((ROOT / "plugin" / entry["source"]["path"]).resolve(), PLUGIN.resolve())
 
     def test_skill_is_complete_and_references_exist(self) -> None:
         skill = PLUGIN / "skills" / "shoal-orchestration"
@@ -52,8 +53,12 @@ class PluginPackageTests(unittest.TestCase):
                 f"SKILL.md does not point at references/{reference.name}",
             )
 
-    def test_root_marketplace_mirrors_legacy_one_under_plugin_prefix(self) -> None:
-        """The exported root manifest (R12) lists the same plugins, paths relocated."""
+    def test_root_marketplace_mirrors_legacy_one_at_new_locations(self) -> None:
+        """The exported root manifest lists the same plugins at plugins/<name>.
+
+        The legacy plugin/ marketplace keeps its old paths for one release; Codex
+        cannot resolve ".." out of a marketplace root, so they are symlinks.
+        """
         legacy = json.loads(
             (ROOT / "plugin" / ".agents" / "plugins" / "marketplace.json").read_text()
         )
@@ -64,7 +69,8 @@ class PluginPackageTests(unittest.TestCase):
         )
         for new, old in zip(root["plugins"], legacy["plugins"]):
             self.assertEqual(
-                new["source"]["path"], old["source"]["path"].replace("./", "./plugin/", 1)
+                (ROOT / new["source"]["path"]).resolve(),
+                (ROOT / "plugin" / old["source"]["path"]).resolve(),
             )
             self.assertEqual(new["policy"], old["policy"])
             manifest = new["source"]["path"] + "/.codex-plugin/plugin.json"
@@ -81,14 +87,16 @@ class PluginPackageTests(unittest.TestCase):
         )
         manifest_path = (
             ROOT
-            / "plugin"
             / "plugins"
-            / "shoal-jev-router"
+            / "jev-router"
             / ".codex-plugin"
             / "plugin.json"
         )
         manifest = json.loads(manifest_path.read_text())
         self.assertEqual(entry["source"]["path"], "./plugins/shoal-jev-router")
+        self.assertEqual(
+            (ROOT / "plugin" / entry["source"]["path"]).resolve(), manifest_path.parents[1].resolve()
+        )
         self.assertEqual(entry["name"], manifest["name"])
         self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
 

@@ -17,7 +17,7 @@ RENDER = ROOT / "tools" / "render.py"
 POLICY = "agents-md.orchestration.md"
 MIRROR = render.MIRRORS["codex"][POLICY]
 # binding [policy.mirrors] 另外鏡像 on-demand extensions 文件到 plugin reference。
-EXT_MIRROR = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
+EXT_MIRROR = "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
 
 
 def golden_files() -> dict[str, bytes]:

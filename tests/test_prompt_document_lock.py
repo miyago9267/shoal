@@ -73,14 +73,14 @@ class PromptDocumentLockTests(unittest.TestCase):
         self.assertIn("templates/agents-md.bootstrap.md", paths)
         self.assertIn("templates/agents-md.orchestration.md", paths)
         self.assertIn(
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
+            "plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md",
             paths,
         )
         self.assertIn(
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/SKILL.md", paths
+            "plugins/codex/skills/shoal-orchestration/SKILL.md", paths
         )
         self.assertIn("INSTALL_PROMPT.md", paths)
-        extensions = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
+        extensions = "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
         self.assertIn("templates/agents-md.extensions.md", paths)
         self.assertIn(extensions, paths)
         self.assertIn(
@@ -204,9 +204,8 @@ class PromptDocumentLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             policy = (
                 root
-                / "plugin"
                 / "plugins"
-                / "shoal-codex"
+                / "codex"
                 / "skills"
                 / "shoal-orchestration"
                 / "references"

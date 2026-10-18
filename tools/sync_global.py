@@ -285,9 +285,9 @@ def run_codex_install(ctx: Ctx, home: Path, what: str) -> None:
     head = git(ctx, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
     if commit != head:
         raise SyncError(f"{what} runs install/install.py from the working tree; --ref must be HEAD")
-    dirty = git(ctx, "status", "--porcelain", "--", "install", "templates", "hooks", "plugin", ".agents").decode().strip()
+    dirty = git(ctx, "status", "--porcelain", "--", "install", "templates", "hooks", "plugin", "plugins", ".agents").decode().strip()
     if dirty:
-        raise SyncError(f"{what} needs install/, templates/, hooks/, plugin/ and .agents/ to match HEAD; commit or stash first")
+        raise SyncError(f"{what} needs install/, templates/, hooks/, plugin/, plugins/ and .agents/ to match HEAD; commit or stash first")
     done = run(
         [sys.executable, str(ctx.repo / "install" / "install.py"), "--codex-home", str(home)],
         ctx,

@@ -646,7 +646,7 @@ class NativeInstallTests(unittest.TestCase):
     def _export_fixture(self, root: Path) -> Path:
         """A throwaway git repo carrying the committed plugin tree and root manifest."""
         repo = root / "checkout"
-        for relative in (".agents/plugins/marketplace.json", "plugin/plugins"):
+        for relative in (".agents/plugins/marketplace.json", *installer.CODEX_PLUGIN_DIRS):
             source = ROOT / relative
             target = repo / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -681,20 +681,20 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             repo = self._export_fixture(root)
-            (repo / "plugin" / "plugins" / "uncommitted.txt").write_text("wip")
+            (repo / "plugins" / "codex" / "uncommitted.txt").write_text("wip")
             target = root / "data" / "shoal" / "codex-marketplace"
             (target).mkdir(parents=True)
             (target / "stale.txt").write_text("old")
             installer._export_codex_marketplace(repo, target)
             self.assertFalse((target / "stale.txt").exists())
             self.assertFalse((target / "README.md").exists())
-            self.assertFalse((target / "plugin" / "plugins" / "uncommitted.txt").exists())
+            self.assertFalse((target / "plugins" / "codex" / "uncommitted.txt").exists())
             manifest = json.loads((target / ".agents/plugins/marketplace.json").read_text())
             self.assertEqual(manifest["name"], "shoal-codex")
             names = []
             for entry in manifest["plugins"]:
                 path = entry["source"]["path"]
-                self.assertTrue(path.startswith("./plugin/plugins/"))
+                self.assertTrue(path.startswith("./plugins/"))
                 self.assertTrue((target / path / ".codex-plugin" / "plugin.json").is_file())
                 names.append(entry["name"])
             self.assertEqual(names, ["shoal-codex", "shoal-jev-router"])

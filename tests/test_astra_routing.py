@@ -189,11 +189,11 @@ class AstraMainSessionContractTests(unittest.TestCase):
         bootstrap = self._text("templates/agents-md.bootstrap.md")
         policy = self._text("templates/agents-md.orchestration.md")
         packaged = self._text(
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/"
+            "plugins/codex/skills/shoal-orchestration/references/"
             "orchestration-policy.md"
         )
         prompt = self._text(
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/agents/openai.yaml"
+            "plugins/codex/skills/shoal-orchestration/agents/openai.yaml"
         )
         # core-policy cutover: the bootstrap is now core-rendered and keeps only
         # the generic clauses; the Codex tuning (Astra/Luna/Sol, budgets,
@@ -223,7 +223,7 @@ class AstraMainSessionContractTests(unittest.TestCase):
     def test_packaged_policy_is_kept_in_sync_and_receipt_schema_is_unchanged(self) -> None:
         template = self._text("templates/agents-md.orchestration.md")
         packaged = self._text(
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/"
+            "plugins/codex/skills/shoal-orchestration/references/"
             "orchestration-policy.md"
         )
         self.assertEqual(packaged, template)
@@ -325,7 +325,7 @@ class AstraRoleRoutingTests(unittest.TestCase):
         policy = (ROOT / "templates" / "agents-md.orchestration.md").read_text(encoding="utf-8")
         bootstrap = (ROOT / "templates" / "agents-md.bootstrap.md").read_text(encoding="utf-8")
         role = (ROOT / "templates" / "agents" / "applier.toml").read_text(encoding="utf-8")
-        skill = (ROOT / "plugin" / "plugins" / "shoal-codex" / "skills" / "shoal-orchestration" / "SKILL.md").read_text(encoding="utf-8")
+        skill = (ROOT / "plugins" / "codex" / "skills" / "shoal-orchestration" / "SKILL.md").read_text(encoding="utf-8")
         for source in (policy, bootstrap, role, skill):
             self.assertIn("applier", source)
             self.assertIn("Astra", source)

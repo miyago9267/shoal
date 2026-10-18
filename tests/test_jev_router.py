@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-MODULE = Path(__file__).resolve().parents[1] / "plugin/plugins/shoal-jev-router/jev_router.py"
+MODULE = Path(__file__).resolve().parents[1] / "plugins/jev-router/jev_router.py"
 spec = importlib.util.spec_from_file_location("jev_router", MODULE)
 assert spec is not None and spec.loader is not None
 router = importlib.util.module_from_spec(spec)

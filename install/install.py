@@ -511,10 +511,16 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _plugin_source_digest(plugin_root: Path) -> str:
+def _plugin_source_digest(source_root: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(path for path in plugin_root.rglob("*") if path.is_file()):
-        digest.update(path.relative_to(plugin_root).as_posix().encode())
+    files = sorted(
+        path
+        for relative in CODEX_PLUGIN_DIRS
+        for path in (source_root / relative).rglob("*")
+        if path.is_file()
+    )
+    for path in files:
+        digest.update(path.relative_to(source_root).as_posix().encode())
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
@@ -534,7 +540,8 @@ def _same_path(left: Path, right: Path) -> bool:
     )
 
 
-CODEX_EXPORT_PATHS = (".agents/plugins/marketplace.json", "plugin/plugins")
+CODEX_PLUGIN_DIRS = ("plugins/codex", "plugins/jev-router")
+CODEX_EXPORT_PATHS = (".agents/plugins/marketplace.json", *CODEX_PLUGIN_DIRS)
 
 
 def _codex_export_dir() -> Path:
@@ -585,13 +592,12 @@ def _export_codex_marketplace(source_root: Path, target: Path) -> None:
 
 
 def _plugin_descriptor(source_root: Path, status: str) -> dict[str, str]:
-    plugin_root = source_root / "plugin"
     return {
         "name": SHOAL_PLUGIN_NAME,
         "version": SHOAL_PLUGIN_VERSION,
         "status": status,
-        "source_sha256": _plugin_source_digest(plugin_root)
-        if plugin_root.is_dir() else "",
+        "source_sha256": _plugin_source_digest(source_root)
+        if (source_root / CODEX_PLUGIN_DIRS[0]).is_dir() else "",
     }
 
 
@@ -625,7 +631,7 @@ def _assert_plugin_not_newer(
     allow_downgrade: bool,
 ) -> None:
     """Refuse replacing an installed newer plugin without explicit approval."""
-    if allow_downgrade or not (source_root / "plugin").is_dir():
+    if allow_downgrade or not (source_root / CODEX_PLUGIN_DIRS[0]).is_dir():
         return
     rows = _installed_plugin_rows(codex_home)
     if rows is None:
@@ -671,7 +677,7 @@ def _plugin_is_installed(*, source_root: Path, codex_home: Path) -> bool:
 
 
 def _probe_plugin(*, source_root: Path, codex_home: Path, enabled: bool) -> dict[str, str]:
-    if not enabled or not (source_root / "plugin").is_dir():
+    if not enabled or not (source_root / CODEX_PLUGIN_DIRS[0]).is_dir():
         return _plugin_descriptor(source_root, "unavailable")
     return _plugin_descriptor(
         source_root,
@@ -699,10 +705,9 @@ def _install_plugin(
     *, source_root: Path, codex_home: Path, dry_run: bool, enabled: bool,
 ) -> dict[str, str]:
     """Install through Codex's marketplace/add contract, never an arbitrary path."""
-    plugin_root = source_root / "plugin"
-    if not plugin_root.is_dir():
+    if not (source_root / CODEX_PLUGIN_DIRS[0]).is_dir():
         return _plugin_descriptor(source_root, "unavailable")
-    source_digest = _plugin_source_digest(plugin_root)
+    source_digest = _plugin_source_digest(source_root)
     if not enabled:
         return _plugin_descriptor(source_root, "unavailable")
     result = {
