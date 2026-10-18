@@ -21,8 +21,8 @@ section, do the assigned task, never spawn subagents.
   - research that will drive a decision -> two `researcher` calls launched in
     the same message, one `arm: experiment` and one `arm: control`.
 - Route by shape: `co_discover` (unclear outcome), `explore_then_plan`
-  (clear but broad; first turn read-only), `execute` (clear and bounded).
-  Routing controls interaction; approval controls authority.
+  (clear but broad; first turn read-only), `fan_out` (see policy), `execute`
+  (clear and bounded). Routing controls interaction; approval controls authority.
 - A clear request to fix or finish is one outcome: continue to acceptance.
   "Only this step" stops there. Material gates always stop.
 - Risk precedes size. Risk triggers (explicit review request, security/trust,

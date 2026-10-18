@@ -68,7 +68,7 @@ class PolicyTests(unittest.TestCase):
             "`sol-executor` / `verifier` GPT-6 Sol binding",
             "Use Astra only at the rare deep tier",
             "Automatic typed escalation never switches the root model",
-            "mandatory spawn_agent calls, with no extra opt-in",
+            "mandatory spawn_agent calls",
             "is delegated by default",
         ):
             self.assertIn(phrase, policy)
@@ -195,7 +195,7 @@ class PolicyTests(unittest.TestCase):
             "it reports delegation unavailable",
             "main still does not edit files itself",
             "except under the user's `#direct`. A `#fast` session is the light lane",
-            "Main edits only under the user's `#direct`; otherwise diagnose in main, delegate the fix, and report an unavailable worker",
+            "every edit goes to a write-capable role, except under the user's `#direct`",
         ):
             self.assertIn(phrase, policy)
         # Intended change: the legacy local-edit escape hatches are gone.
@@ -234,8 +234,7 @@ class PolicyTests(unittest.TestCase):
             "context reconstruction, coordination, integration, and verification cost",
             "Recurrence qualifies through stable one-shot brief, not numeric threshold",
             "items must be independent and same shape",
-            "Main retains diagnosis, exceptions, integration, acceptance",
-            "never batch work coupled to evolving diagnosis",
+            "Never batch work coupled to evolving diagnosis",
         ):
             self.assertIn(phrase, policy)
 
@@ -394,11 +393,11 @@ class PolicyTests(unittest.TestCase):
     def test_risk_triggered_plan_review_is_a_mandatory_tool_use_gate(self) -> None:
         policy = _text("agents-md.orchestration.md", "agents-md.extensions.md")
         for phrase in (
-            "pre-approval `plan-critic` and post-implementation `verifier` are mandatory spawn_agent calls, with no extra opt-in",
+            "pre-approval `plan-critic` and post-implementation `verifier` are mandatory spawn_agent calls",
             "Higher-priority prohibition → pause before edits, never direct fallback or waiver",
             "never substitute a main-session readiness judgment",
             "## Review-service circuit breaker",
-            "Allow one bounded retry for the same stable unit and role",
+            "Allow one bounded retry per unit and role",
             "never loop an unchanged retry",
             "`WAITING_FOR_REVIEW` (plan or security readiness)",
             "emit `PAUSED_NEEDS_USER` solely because the service is unavailable",

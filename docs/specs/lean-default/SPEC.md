@@ -41,8 +41,19 @@
 | D4 | hook 延遲目標 | 每次 p50 ≤ 150ms（目前 300–450ms） |
 | D5 | 降延遲做法 | (a) guard 對不需要判斷的事件提早結束；(b) chain 成員只在它登記的事件上呼叫；(c) 檢查能否不經 pyenv shim 啟動 python（安裝時解析直譯器路徑）；(d) 移除重複的 hook 事件 |
 | D6 | 驗收 | 同一套 benchmark 重跑：真實任務（v2）維持通過數 ≥ baseline、成本 ≤ 1.3 倍、時間 ≤ 1.5 倍；小任務只設成本門檻、不設時間門檻，因為一次 role 派工有約 20 秒的下限（role 分工原則）。benchmark 隔離 `XDG_DATA_HOME`，不跑使用者的 chain 成員 |
+| D7 | Workflow 與 `fan_out` | 新增第四種 route shape `fan_out`：清單明確、項目獨立（檔案不重疊、無順序、各自可驗）且各有份量，或目標是信心而非速度（audit、review、設計比較）才選。Workflow 只用於這類高階可拆工作，簡單工作不用；需使用者明確同意（或 ultracode 開啟），main 以一行提議並附清單項數。未同意則同一則訊息並行 Agent。Workflow 細節放 workflow-extensions（按需載入），常駐 policy 只留判斷與整合檢查。條款不設數字門檻 |
 
 2026-10-18 實測：v1 成本 1.27 倍、時間 2.1 倍、通過數相同；v2 成本 1.19 倍、平均時間 0.51 倍、隱藏驗收相同。
+
+2026-10-16 量測（shoal + Workflow，v2 任務）：通過率與 baseline 相同，
+時間中位數 80 秒、baseline 36 秒，另有三個 13–21 分鐘的離群值。
+任務太小，不適合 fan-out，因此 D7 把 Workflow 限於高階可拆工作。
+
+v3 寬任務（4 題 × 2 次，Sonnet main）：Workflow 通過 6/8，baseline 與 shoal-fast 皆 8/8；
+失敗的 migrate-12 與 audit-10 是真的隱藏測試失敗，main 在 2–3 回合後信任 fan-out 結果就結束。
+成本約 baseline 的 3 倍（$0.54 對 $0.18）。只有最重的 tests-10（每項修 10–20 行）較快，
+41–46 秒對 64–77 秒，較輕的寬任務持平或更慢。
+因此 D7 要求 fan_out 以整合階段收尾，並把「每項有份量」當作主要門檻。
 
 ## Scope
 
@@ -61,5 +72,4 @@
 
 ## Out of scope
 
-- shoal 加 Workflow 的組合：另外量測（`shoal-workflow` arm），結果出來再決定
-  是否寫進條款。
+- shoal 加 Workflow 的組合已量測並寫入 D7。

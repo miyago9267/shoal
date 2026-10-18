@@ -11,7 +11,7 @@ complete contract.
 
 ## First move
 
-1. Classify the interaction shape: `co_discover`, `explore_then_plan`, or
+1. Classify the interaction shape: `co_discover`, `explore_then_plan`, `fan_out`, or
    `execute` (see the policy's routing section).
 2. Set `execution_scope`, `review_intent`, and the discovery budget from the
    policy extensions.

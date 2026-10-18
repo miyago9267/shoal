@@ -52,6 +52,19 @@ text = '''
   approval. Stop discovery when more evidence cannot change next gate.'''
 
 [[clause]]
+id = "fan-out-route"
+kind = "routing"
+sep = "newline"
+text = '''
+**`fan_out` shape (before `execute`):** only for an explicit list from a light
+  scout whose items are independent (disjoint files, no ordering, each
+  verifiable alone) and each substantial (minutes of reading or judgment; the
+  main gate, else `applier` calls), or when independent perspectives are the
+  goal (audit, review, design comparison). Not for one coherent change,
+  sequential work, unclear scope. End with an integration check;
+  re-dispatch failures once; never report done on fan-out results alone.'''
+
+[[clause]]
 id = "baton-dispatch"
 kind = "routing"
 sep = "newline"
@@ -90,8 +103,7 @@ text = '''
   `applier`, effort `low`; brief = goal, files, exact edits (old -> new or
   whole file) for files main read, done check. No plan-critic or verifier; a
   passing check quoted in the hand-back is main's verification unless
-  ambiguous. Main keeps reads, diagnosis, integration. Else see
-  lifecycle below.'''
+  ambiguous. Main keeps reads, diagnosis, integration.'''
 
 [[clause]]
 id = "discovery-gate"
@@ -139,9 +151,7 @@ kind = "gate"
 sep = "newline"
 text = '''
 - Execution gate: approved contract fixes scope, exclusive ownership,
-  constraints, done criteria, integration, verification. Routes: `applier`
-  small bounded changes, `executor` multi-file/judgment work,
-  `security-executor` approved security work.'''
+  constraints, done criteria, integration, verification.'''
 
 [[clause]]
 id = "verification-gate"
@@ -205,7 +215,7 @@ sep = "newline"
 text = '''
 - Stable same-shape multi-file mechanical repetition defaults to one
   `applier` with complete one-shot brief, exclusive ownership, independent
-  items, per-item acceptance. Foreground unless a long command needs background.'''
+  items, per-item acceptance.'''
 
 [[clause]]
 id = "mech-collect"
@@ -230,12 +240,9 @@ id = "delegate-cost-benefit"
 kind = "dispatch"
 sep = "newline"
 text = '''
-- Implementation with a stable execution contract (goal, scope, constraints, done
-  criteria known without rediscovery) is delegated by default: `applier` for
+- Implementation with a stable execution contract is delegated by default: `applier` for
   small bounded changes, `executor` for multi-file/judgment-heavy work,
-  `security-executor` for approved security work. Main edits only under the
-  user's `#direct`; otherwise diagnose in main, delegate the fix, and report an
-  unavailable worker.'''
+  `security-executor` for approved security work.'''
 
 [[clause]]
 id = "brake-per-call"
@@ -244,8 +251,7 @@ sep = "newline"
 text = '''
 - Dispatch brakes judge one call at a time. Recurrence qualifies through stable
   one-shot brief, not numeric threshold; items must be independent and same
-  shape. Main retains diagnosis, exceptions, integration, acceptance; never
-  batch work coupled to evolving diagnosis.'''
+  shape. Never batch work coupled to evolving diagnosis.'''
 
 [[clause]]
 id = "research-fanout"
@@ -277,8 +283,8 @@ kind = "dispatch"
 sep = "newline"
 text = '''
 - Large cross-surface investigation may use bounded read-only discovery,
-  followed by main Plan synthesis. Executor waits until root cause, scope,
-  files, constraints, done criteria, approval are stable without rediscovery.
+  then main Plan synthesis. Executor waits until root cause, scope, files,
+  constraints, done criteria, approval are stable.
   Diagnosed review finding with known remedy is Execution work and may join
   independent same-shape findings.'''
 
@@ -335,8 +341,8 @@ required = true
 sep = "newline"
 text = '''
 - Any independent-review trigger makes that unit risky: pre-approval
-  `plan-critic` and post-implementation `verifier` are mandatory {{dispatch_tool}} calls,
-  with no extra opt-in. Higher-priority prohibition → pause before edits, never
+  `plan-critic` and post-implementation `verifier` are mandatory {{dispatch_tool}} calls.
+  Higher-priority prohibition → pause before edits, never
   direct fallback or waiver; unblock only by lifting the prohibition or
   narrowing away every trigger. Bounded fail-soft exception applies only without
   listed risk. After readiness, present Plan and end turn; implementation begins

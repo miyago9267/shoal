@@ -1,6 +1,6 @@
 # Shoal workflow extensions
 
-Ported from shoal-codex 1.8.1 and adapted to Claude Code. These rules
+These rules
 extend [orchestration-policy.md](orchestration-policy.md). When a rule here
 conflicts with that policy, the policy wins: report the conflict to the user
 instead of choosing silently. None of these rules expands approval, security,
@@ -130,8 +130,8 @@ An explicit user pause is honored without inventing a question.
 
 A missing, failed, or timed-out `plan-critic`, `security-reviewer`, or
 `verifier` result is a service failure, not a user decision and not a
-verdict. Allow one bounded retry for the same stable unit and role. If the
-retry also returns no valid verdict, stop dispatching that role for the unit
+verdict. Allow one bounded retry per unit and role. If it
+also returns no valid verdict, stop dispatching that role for the unit
 and record `WAITING_FOR_REVIEW` (plan or security readiness) or
 `PAUSED_VERIFICATION` (outcome or direction verification). Never claim `READY`
 or `CONFIRMED`, never substitute a main-session readiness judgment, and never
@@ -170,3 +170,7 @@ material change, otherwise `PAUSED_VERIFICATION`. Escalate only to a higher
 executor tier or report to the user; an unresolved P1 outside approved
 scope still stops. A `PIVOT` re-plans only within approved scope; beyond it,
 stop at `decision`.
+
+`fan_out` uses a Workflow only on a user yes ("清單 N 項，要用 Workflow
+嗎？") or ultracode; each `agent()` sets `agentType` `shoal:applier`
+(mechanical) or `shoal:executor` (judgment). Else parallel `Agent` calls.

@@ -43,8 +43,8 @@ kind = "routing"
 sep = "newline"
 text = '''
 - Route by shape: `co_discover` (unclear outcome), `explore_then_plan`
-  (clear but broad; first turn read-only), `execute` (clear and bounded).
-  Routing controls interaction; approval controls authority.'''
+  (clear but broad; first turn read-only), `fan_out` (see policy), `execute`
+  (clear and bounded). Routing controls interaction; approval controls authority.'''
 
 [[clause]]
 id = "bootstrap-outcome"

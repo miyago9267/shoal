@@ -102,17 +102,17 @@ class OtherHostsRoleTests(unittest.TestCase):
     # 版本 marker 先換成 vX。之後有意改 policy 時連同這張表一起改。
     POLICY_SHA256 = {
         "codex": {
-            "agents-md.bootstrap.md": "331cb05997867dd544c234c0ec8720051ba8c7fd4ebd6a0e2b9470eb067b6481",
-            "agents-md.orchestration.md": "5f08b7cef8735556879d9d84d655dc28a464d0c16f10fbbac47b01cf9539bce5",
+            "agents-md.bootstrap.md": "95c48175f825196fb368ae624a0ede8d8cfee465b4f393d41191c07ad39d4e8d",
+            "agents-md.orchestration.md": "de99c92a300ca9e1ab74d023fad5bc9ea75ca72f595786bc43da15e8b42b688a",
         },
         "grok": {"rules/shoal-grok.md": "2056e483ebe832a186a60ea21c56ac194d75b89bd112da3f67911dd465db9279"},
         "agy": {
-            "rules/shoal-agy.md": "5764d10bd44a3a67acf6bdd37098c973b008a7bb33c7b180f4f0bb3638601ccf",
-            "skills/shoal-orchestration/SKILL.md": "d9ecd94a9d5656791edc026b5c3abd315817341f09b34a184f58f0787f90b6f2",
+            "rules/shoal-agy.md": "4596257ce798ee84fed9528033c2aafd048af0fa95c3ba9ea04577558377db7c",
+            "skills/shoal-orchestration/SKILL.md": "5ed23c81ebc9fd72da55b8db7a3e14e64f47df90c6147983ee4982ed0f98eb70",
             "skills/shoal-orchestration/references/orchestration-policy.md":
-                "c1acd983203887f586565e002145b716acbc7ca6a6ef8dd0dc1cf4e4c68756a0",
+                "0c3967b5424b5d830492dc0d316c9d8e1924e7ae58331b71ef62f67283debc4c",
             "skills/shoal-orchestration/references/workflow-extensions.md":
-                "354ddedd06c0dc21aa00c2182fd9784ffbdb82cfda05cf5bbe166cd400939fc1",
+                "44efae6593b56cc6f27979b912907a90251f46e4e133e890be6b7b63e5db431b",
         },
         "opencode": {},
     }
@@ -350,7 +350,7 @@ class PolicyClauseTests(unittest.TestCase):
             "main still does not edit files itself: every edit goes to a write-capable role, "
             "except under the user's `#direct`. A `#fast` session is the light lane:",
             "Direct main execution of mechanical work needs `#direct`.",
-            "Main edits only under the user's `#direct`; otherwise diagnose in main, delegate the fix, and report an unavailable worker.",
+            "every edit goes to a write-capable role, except under the user's `#direct`",
             "Reconnaissance over two or more independent surfaces goes to parallel `scout` calls",
             "Implementation with a stable execution contract",
             "is delegated by default",

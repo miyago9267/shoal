@@ -106,6 +106,7 @@ EXPECTED_POLICY_TEXT["codex"] = "core"
 EXPECTED_POLICY_OMITS["agy"] = [
     "auto-ask-selection", "bootstrap-effort", "effort-per-delegation", "parallel-writers",
 ]
+EXPECTED_POLICY_ADDENDA["claude"] = {"extensions": ["claude-fan-out-workflow"]}
 EXPECTED_POLICY_ADDENDA["agy"] = {
     "orchestration": [
         "agy-plan-mode", "pending-shared-auto-approved-permissions", "agy-readiness-brief",
