@@ -63,7 +63,6 @@ hosts/<host>/src/          該 host 的 policy 與 skill 原文
 hosts/<host>/dist/         render 產出，已 commit（codex 產出在 templates/）
 plugins/codex/             Codex plugin shoal-codex（skill、policy 鏡像）
 plugins/jev-router/        Codex 選用 plugin shoal-jev-router
-plugin/                    舊版 Codex marketplace 入口，只剩相容用 symlink，下個 release 移除
 plugins/claude/            Claude plugin shoal（role、skill、policy），render 產出（--host claude-plugin），不手改
 plugins/claude-guard/      Claude plugin shoal-dispatch-guard（guard hook），同上
 .claude-plugin/            Claude marketplace manifest，同上

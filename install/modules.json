@@ -15,7 +15,7 @@
     },
     "host-codex": {
       "kind": "host", "hosts": ["codex"], "depends_on": ["core"], "default_new": true,
-      "paths": ["templates/agents/", "plugin/"],
+      "paths": ["templates/agents/", "plugins/codex/"],
       "summary": "Codex role TOML、AGENTS.md、config 片段、shoal-codex plugin"
     },
     "host-agy": {

@@ -107,7 +107,6 @@ def worktree_repo(dst: Path) -> Path:
         "templates",
         "hooks",
         "tools",
-        "plugin",
         "plugins/codex",
         "plugins/jev-router",
         ".agents",
