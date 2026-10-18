@@ -87,6 +87,7 @@ import re
 import shlex
 import stat
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,8 +95,14 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 try:
     import fcntl
-except ImportError:  # Windows: run() is a no-op there
+except ImportError:  # Windows: msvcrt byte-range locks instead
     fcntl = None  # type: ignore[assignment]
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None  # type: ignore[assignment]
+
+WINDOWS = os.name == "nt"
 
 MAX_INPUT_BYTES = 256 * 1024
 MAX_LOG_BYTES = 1024 * 1024
@@ -437,7 +444,8 @@ MESSAGES = {
 
 
 def _uid() -> int:
-    return os.getuid()
+    # Windows reports st_uid 0 for every file; ownership there comes from the per-user profile ACL.
+    return 0 if WINDOWS else os.getuid()
 
 
 def _no_symlink_below(path: Path, anchor: Path) -> bool:
@@ -457,7 +465,9 @@ def _no_symlink_below(path: Path, anchor: Path) -> bool:
 def _open_private(path: Path, flags: int) -> Optional[int]:
     """Open a regular file owned by us with O_NOFOLLOW; force mode 0600."""
     try:
-        fd = os.open(str(path), flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        if WINDOWS and os.path.islink(str(path)):  # no O_NOFOLLOW on Windows
+            return None
+        fd = os.open(str(path), flags | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)
     except OSError:
         return None
     try:
@@ -465,7 +475,8 @@ def _open_private(path: Path, flags: int) -> Optional[int]:
         if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
             os.close(fd)
             return None
-        os.fchmod(fd, 0o600)
+        if not WINDOWS:
+            os.fchmod(fd, 0o600)
     except OSError:
         os.close(fd)
         return None
@@ -501,7 +512,7 @@ def _guard_dir(env: Dict[str, str], home: Path) -> Optional[Path]:
             info = os.lstat(str(cursor))
             if not stat.S_ISDIR(info.st_mode) or info.st_uid != _uid():
                 return None
-            if strict and stat.S_IMODE(info.st_mode) & 0o077:
+            if strict and not WINDOWS and stat.S_IMODE(info.st_mode) & 0o077:
                 return None
     except OSError:
         return None
@@ -539,7 +550,7 @@ def _state_lock(path: Path) -> Iterator[Optional[str]]:
     Yields None once held, else the skip reason (the caller then fails open).  Waits at
     most LOCK_WAIT_SECONDS; the lock dies with the process, so a crash never wedges it.
     """
-    fd = _open_private(path, os.O_RDWR | os.O_CREAT) if fcntl is not None else None
+    fd = _open_private(path, os.O_RDWR | os.O_CREAT) if (fcntl or msvcrt) is not None else None
     if fd is None:
         yield "state_unavailable"
         return
@@ -547,7 +558,10 @@ def _state_lock(path: Path) -> Iterator[Optional[str]]:
         deadline = time.monotonic() + LOCK_WAIT_SECONDS
         while True:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
                 break
             except OSError:
                 if time.monotonic() >= deadline:
@@ -854,11 +868,31 @@ def _max_files(env: Dict[str, str]) -> Optional[int]:
         return None
 
 
+_MSYS_DRIVE_RE = re.compile(r"^/([A-Za-z])(?=/|$)")
+
+
+def _real(path: str) -> str:
+    """os.path.realpath; on Windows also maps Git Bash paths (`/c/x`, `/tmp`) to native ones and
+    returns a case-folded, `/`-separated form so prefix checks work the same as on POSIX."""
+    if not WINDOWS:
+        return os.path.realpath(path)
+    if "\u0000" in path:  # POSIX realpath raises here; keep the same fail-open path
+        raise ValueError("embedded null byte")
+    path = path.replace("\\", "/")
+    if path == "/tmp" or path.startswith("/tmp/"):
+        path = tempfile.gettempdir() + path[4:]
+    else:
+        path = _MSYS_DRIVE_RE.sub(lambda m: m.group(1) + ":", path)
+    return os.path.normcase(os.path.realpath(path)).replace("\\", "/")
+
+
 def resolve_path(path: str, cwd: str) -> str:
     """Absolute, symlink-resolved path (`..` collapsed); non-existent tails are kept."""
+    if WINDOWS:
+        path = _real(path) if path.startswith("/") else path
     if not os.path.isabs(path):
         path = os.path.join(cwd or os.getcwd(), path)
-    return os.path.realpath(path)
+    return _real(path)
 
 
 def _under(path: str, root: str) -> bool:
@@ -869,7 +903,7 @@ def _under(path: str, root: str) -> bool:
 def repo_under_test(cwd: str) -> str:
     """Root of the repository under test: the nearest ancestor of `cwd` holding `.git` (a directory or a
     worktree file); `cwd` itself (resolved) when there is none."""
-    start = os.path.realpath(cwd or os.getcwd())
+    start = _real(cwd or os.getcwd())
     cursor = start
     while True:
         if os.path.exists(os.path.join(cursor, ".git")):
@@ -884,15 +918,17 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
     """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts."""
     if ".ai" in path.split("/")[:-1]:
         return True
-    roots = ["/tmp", "/private/tmp", os.path.realpath("/tmp")]
+    roots = ["/tmp", "/private/tmp", _real("/tmp")]
+    if WINDOWS:
+        roots += [_real("/private/tmp"), _real(tempfile.gettempdir())]
     tmpdir = env.get("TMPDIR", "")
-    if tmpdir and os.path.isabs(tmpdir) and os.path.realpath(tmpdir) != "/":
-        roots.append(os.path.realpath(tmpdir))
+    if tmpdir and os.path.isabs(tmpdir) and _real(tmpdir) != "/":
+        roots.append(_real(tmpdir))
     if host == "claude":
-        roots.append(os.path.realpath(str(home / ".claude" / "projects")))
+        roots.append(_real(str(home / ".claude" / "projects")))
         config = env.get("CLAUDE_CONFIG_DIR", "")
         if config and os.path.isabs(config):
-            roots.append(os.path.realpath(os.path.join(config, "projects")))
+            roots.append(_real(os.path.join(config, "projects")))
     return any(_under(path, root) for root in roots)
 
 
@@ -3101,7 +3137,7 @@ def _open_readable(path: Path) -> Optional[int]:
 
 def defer_to_global(host: str, raw: bytes, env: Dict[str, str]) -> bool:
     """True when the plugin copy must stay silent.  Any doubt returns False: never zero evaluations."""
-    if os.name == "nt" or host != "claude" or not raw or len(raw) > MAX_INPUT_BYTES:
+    if host != "claude" or not raw or len(raw) > MAX_INPUT_BYTES:
         return False
     try:
         payload = json.loads(raw)
@@ -3113,8 +3149,6 @@ def defer_to_global(host: str, raw: bytes, env: Dict[str, str]) -> bool:
 
 def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
     """Process one stdin payload; returns the stdout text, if any."""
-    if os.name == "nt":  # POSIX-only semantics (O_NOFOLLOW, uid ownership); fail-open no-op
-        return None
     home = Path(env.get("HOME") or os.path.expanduser("~"))
     try:
         if not raw:

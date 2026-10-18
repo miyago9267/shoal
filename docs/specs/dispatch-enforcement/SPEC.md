@@ -175,7 +175,9 @@ E0 需要少量 live 呼叫（每個 host 一個小 prompt），執行前取得�
 
 ## 已知限制
 
-- guard 在 Windows 為 no-op（依賴 POSIX 語意），不支援 Windows。
+- Windows（v3.11.2 起）：guard 照常執行。沒有 `O_NOFOLLOW` 與 POSIX 權限位元，改為開檔前檢查
+  symlink、以 `msvcrt` 鎖檔，state 目錄的私有性依賴使用者 profile 的 ACL；Git Bash 的 `/tmp`
+  對應 Windows 暫存目錄並視為 exempt。
 - guard 不防同 uid 的 model 經 shell 竄改 state、設定或環境變數。
 - main 與 subagent 經 shell 寫檔都不擋。
 - Codex verifier 的 `apply_patch` deny 只擋編輯工具，不擋 shell 寫檔。

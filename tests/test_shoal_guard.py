@@ -26,7 +26,10 @@ import shoal_guard as guard  # noqa: E402
 GUARD = ROOT / "hooks" / "shoal_guard.py"
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
+# POSIX permission bits mean nothing on Windows; the per-user profile ACL protects the state dir there.
+POSIX_MODE_VECTORS = frozenset(("state_dir_group_readable_rejected", "state_dirs_are_private"))
+
+
 class VectorTests(unittest.TestCase):
     def test_shared_vectors(self) -> None:
         data = helper.load_vectors()
@@ -35,6 +38,8 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for vector in data["vectors"]:
             with self.subTest(vector["name"]):
+                if os.name == "nt" and vector["name"] in POSIX_MODE_VECTORS:
+                    continue
                 self.assertEqual(helper.run_vector(vector, data["log_whitelist"], guard, data.get("env_defaults")), [])
 
     def test_vectors_cover_the_spec_r8_list(self) -> None:
@@ -48,7 +53,6 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(list(guard.LOG_FIELDS), helper.load_vectors()["log_whitelist"])
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class ShellWriteDetectorTests(unittest.TestCase):
     """G5: shell_write_targets is replayed from the fixture the TypeScript port also replays."""
 
@@ -73,7 +77,6 @@ class ShellWriteDetectorTests(unittest.TestCase):
             self.assertIsInstance(guard.shell_write_targets(command), list, command)
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class DeclarationParserTests(unittest.TestCase):
     """M3: parse_declaration is replayed from the fixture the TypeScript port also replays."""
 
@@ -121,13 +124,15 @@ class DeclarationParserTests(unittest.TestCase):
             "as its own shell command, or ask the user to add #direct to the prompt.")
 
 
-class WindowsNoOpTests(unittest.TestCase):
-    def test_run_is_a_silent_no_op_when_os_name_is_nt(self) -> None:
-        with tempfile.TemporaryDirectory() as home:
-            with mock.patch.object(guard.os, "name", "nt"):
-                out = guard.run("claude", b"x" * (guard.MAX_INPUT_BYTES + 1), {"HOME": home})
-            self.assertIsNone(out)
-            self.assertEqual(list(Path(home).iterdir()), [])
+@unittest.skipUnless(os.name == "nt", "Windows path mapping")
+class WindowsPathTests(unittest.TestCase):
+    def test_git_bash_paths_map_to_native_ones(self) -> None:
+        temp = guard._real(tempfile.gettempdir())
+        self.assertEqual(guard._real("/tmp/x"), temp + "/x")
+        self.assertEqual(guard._real("/c/Users"), guard._real(r"C:\Users"))
+        self.assertEqual(guard.resolve_path(r"C:\A\b", ""), "c:/a/b")
+        self.assertTrue(guard.is_exempt(guard.resolve_path("/tmp/y", ""), "claude", {}, Path.home()))
+        self.assertRaises(ValueError, guard._real, "a\u0000b")
 
 
 class RoleTableTests(unittest.TestCase):
@@ -177,7 +182,6 @@ class SyntaxTests(unittest.TestCase):
         self.assertFalse(guard.valid_id("conv/1:2", composed=True))
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class CliCase(unittest.TestCase):
     """Runs the real script with a temp HOME and XDG_STATE_HOME."""
 
@@ -1120,13 +1124,17 @@ class StateLockTests(CliCase):
         self.assertEqual(len(set(state["edited"])), count)
 
     def test_lock_file_is_private_and_a_held_lock_fails_open(self) -> None:
-        import fcntl
         self.run_guard("claude", claude_prompt(cwd=self.work))
         lock = Path(self.guard_dir, "state", "sess-1.lock")
-        self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
         fd = os.open(str(lock), os.O_RDWR)
         self.addCleanup(os.close, fd)
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        if os.name == "nt":  # no POSIX modes; a byte-range lock on another handle blocks the guard's
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
         event = guard.adapt_claude(claude_tool("Edit", {"file_path": self.path("a")}, cwd=self.work))
         with mock.patch.object(guard, "LOCK_WAIT_SECONDS", 0.05):
             result = guard.evaluate(event, self.env(), Path(self.home))
@@ -1641,7 +1649,7 @@ class ChainCliTests(CliCase):
     def test_member_receives_the_raw_stdin_bytes(self) -> None:
         record = os.path.join(self.home, "seen.txt")
         self.configure(["record", record])
-        raw = b'{"session_id": "sess-1",  "hook_event_name":"PreToolUse", "tool_name":"Read","tool_input":{},"cwd":"%s"}' % self.work.encode()
+        raw = b'{"session_id": "sess-1",  "hook_event_name":"PreToolUse", "tool_name":"Read","tool_input":{},"cwd":%s}' % json.dumps(self.work).encode()
         self.assertEqual(self.run_guard("claude", raw, **self.chain_env), "")
         self.assertEqual(Path(record).read_bytes(), raw + b"\n")
 

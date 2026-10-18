@@ -496,7 +496,6 @@ class SessionStartTests(unittest.TestCase):
         self.assertNotIn("Named roles", out)
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class PluginDeferralTests(unittest.TestCase):
     """K4: with `--plugin` the guard runs exactly once per event whether or not the global entry exists."""
 
