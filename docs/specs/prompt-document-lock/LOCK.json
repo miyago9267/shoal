@@ -43,8 +43,8 @@
         "presence gates for likely long unattended work"
       ],
       "migration": {
-        "migration_id": "shared-rules-codex-core",
-        "equivalence": "docs/specs/core-policy/equivalence/codex.md"
+        "migration_id": "fan-out-route-3-13-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/fan-out-route.md"
       }
     },
     {
@@ -63,8 +63,8 @@
         "presence gates for likely long unattended work"
       ],
       "migration": {
-        "migration_id": "shared-rules-codex-core",
-        "equivalence": "docs/specs/core-policy/equivalence/codex.md"
+        "migration_id": "fan-out-route-3-13-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/fan-out-route.md"
       }
     },
     {
@@ -545,8 +545,8 @@
         "**CONFIRMED**, **REFUTED**, or **INCONCLUSIVE**"
       ],
       "migration": {
-        "migration_id": "dispatch-lanes-3-10-0",
-        "equivalence": "docs/specs/prompt-document-lock/equivalence/dispatch-lanes.md"
+        "migration_id": "fan-out-route-3-13-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/fan-out-route.md"
       }
     },
     {
