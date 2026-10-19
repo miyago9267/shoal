@@ -33,7 +33,6 @@ from hook_registration import (
     CURRENT_PROJECTION_ID,
     GUARD_PROJECTION_IDS,
     HookRegistrationError,
-    legacy_projection_id,
     load_registration,
     merge_registration,
     projection_state,
@@ -60,23 +59,6 @@ LEGACY_PATHS = frozenset({
     "features.multi_agent_v2.hide_spawn_agent_metadata", "agents.max_threads",
     "agents.max_concurrent_threads_per_session",
 })
-CANONICAL_ROLE_UPGRADE_DIGESTS = {
-    "security-reviewer": frozenset({
-        "94d7de12d1cb197c98e83c2f78d402cf3fb393e860feee1e146f5b6294075d27",
-    }),
-    "security-executor": frozenset({
-        "1424995ef9b2a3d63a424a75ebf563fa329bf7badbbf5fe8eadc2c69649d3068",
-        "90568cf473e0e8025bfbd2a22a9c46d4db6d6b4ed0d344c975f4116365da9ce0",
-    }),
-    "verifier": frozenset({
-        "4e93fd5660b5f08c0362f632ef2a4f0b85ac33176a6def57fc768aeda95e136d",
-        "5d46fbeda04d159a84614d9f69c6b30c30d4a53a5577d023bddfb3da77a6b6f9",
-        "b4d2a70d8b762f574c05b7e1fa285b05796ebae3f506e331c736d9cd504e6723",
-        "9478638b7456b6e4120ecd5a59408431d886c87ae1a7391aade61bc84d722e2e",
-        "07e9864edc5734644557bff9c26a41476a30620779980658954e07ff865c9cb8",
-    }),
-}
-
 # Roles renamed in shoal 3.0.0 (docs/specs/delegation-default/RENAME.md): sha256 of every
 # released templates/agents/<old name>.toml.  An installed file with the old name is removed
 # only when its bytes equal one of these; tests/test_install_renamed_roles.py keeps the table
@@ -129,11 +111,8 @@ RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
 AUTOROUTE_SCRIPT_RELATIVE = "hooks/shoal_autoroute_gate.py"
 # Backups of config.toml an installer made: (name infix, pristine marker suffix, marker text).
-# The pre-2.0.0 spelling stays recognized so an old pristine backup still proves ownership.
-LEGACY_BACKUP_NAMING = (".pilotfish-codex-", ".pilotfish-v1.2-pristine", "pilotfish-codex-v1.2-adapter-pristine\n")
 BACKUP_NAMING = (
     (".shoal-codex-", ".shoal-v1.2-pristine", "shoal-codex-v1.2-adapter-pristine\n"),
-    LEGACY_BACKUP_NAMING,
 )
 
 
@@ -905,49 +884,27 @@ def _validate_committed_state(
     """Validate sidecar provenance, including event-bound hook ownership."""
     if not isinstance(state, dict) or state.get("status") != "committed":
         raise InstallAbort("install state is not a committed transaction")
-    # guard_registration is optional (homes installed before the dispatch guard lack
-    # it) and only valid together with state_version; it is checked further below.
+    # Homes installed before shoal 3.0.0 (no state_version, or state_version 2) are not upgraded in place.
+    if type(state.get("state_version")) is not int or state["state_version"] not in (3, 4):
+        raise InstallAbort("install state predates shoal 3.0.0 or is malformed; reinstall")
+    # guard_registration is optional (homes installed before the dispatch guard lack it).
     guard_present = "guard_registration" in state
-    if guard_present and "state_version" not in state:
-        raise InstallAbort("install state has missing or unknown fields")
     state_keys = set(state) - {"guard_registration"}
     # modular-install S3: a state written with --no-autoroute has no hook_registration and does not record the gate
-    # script (recorded if and only if the projection is, like the guard).  Only a v2+ state can be in that shape.
-    autoroute_present = "hook_registration" in state or "state_version" not in state
+    # script (recorded if and only if the projection is, like the guard).
+    autoroute_present = "hook_registration" in state
     if not autoroute_present:
         state_keys |= {"hook_registration"}
-    legacy_allowed = {
+    v3_allowed = {
         "status", "target_fingerprints", "original_targets", "owned_legacy",
-        "policy_ownership",
+        "policy_ownership", "state_version", "hook_registration",
+        "plugin", "runtime_status", "rollback_backups",
     }
-    legacy_with_plugin = legacy_allowed | {"plugin", "runtime_status", "rollback_backups"}
-    v2_allowed = legacy_allowed | {"state_version", "hook_registration", "policy_ownership"}
-    v4_allowed = v2_allowed | {"reconciliation"}
-    v2_pre_policy_ownership = (
-        v2_allowed - {"policy_ownership"}
-    )
+    v4_allowed = v3_allowed | {"reconciliation"}
     sha_re = re.compile(r"^[0-9a-f]{64}$")
-    is_v2 = "state_version" in state
-    if is_v2 and type(state["state_version"]) is int and state["state_version"] == 4:
-        allowed_top = v4_allowed | {"plugin", "runtime_status", "rollback_backups"}
-    elif is_v2 and type(state["state_version"]) is int and state["state_version"] == 3:
-        allowed_top = v2_allowed | {"plugin", "runtime_status", "rollback_backups"}
-    else:
-        allowed_top = v2_allowed if is_v2 else legacy_allowed
-    accepted_shapes = [allowed_top]
-    if not is_v2:
-        accepted_shapes.append(legacy_with_plugin)
-    if is_v2 and state.get("state_version") == 2:
-        accepted_shapes.append(v2_pre_policy_ownership)
-    if state_keys not in accepted_shapes:
+    if state_keys != (v4_allowed if state["state_version"] == 4 else v3_allowed):
         raise InstallAbort("install state has missing or unknown fields")
-    if is_v2 and (
-        type(state["state_version"]) is not int or state["state_version"] not in (2, 3, 4)
-    ):
-        raise InstallAbort("install state version is malformed")
-    if is_v2 and state["state_version"] == 4:
-        if state_keys != v4_allowed | {"plugin", "runtime_status", "rollback_backups"}:
-            raise InstallAbort("install state v4 fields are malformed")
+    if state["state_version"] == 4:
         plugin = state.get("plugin")
         if not isinstance(plugin, dict) or set(plugin) != {
             "name", "version", "status", "source_sha256"
@@ -972,9 +929,7 @@ def _validate_committed_state(
             for key, value in rollback_backups.items()
         ):
             raise InstallAbort("install state rollback backup manifest is malformed")
-    elif is_v2 and state["state_version"] == 3:
-        if state_keys != v2_allowed | {"plugin", "runtime_status", "rollback_backups"}:
-            raise InstallAbort("install state v3 fields are malformed")
+    else:
         plugin = state.get("plugin")
         if not isinstance(plugin, dict) or set(plugin) != {
             "name", "version", "status", "source_sha256"
@@ -996,29 +951,6 @@ def _validate_committed_state(
             for key, value in rollback_backups.items()
         ):
             raise InstallAbort("install state rollback backup manifest is malformed")
-    elif "plugin" in state:
-        plugin = state["plugin"]
-        if not isinstance(plugin, dict) or set(plugin) != {
-            "name", "version", "status", "source_sha256"
-        } or not all(isinstance(value, str) for value in plugin.values()):
-            raise InstallAbort("install state plugin status is malformed")
-        if "runtime_status" in state and state["runtime_status"] not in RUNTIME_STATUSES:
-            raise InstallAbort("install state runtime status is malformed")
-        if "rollback_backups" in state:
-            rollback_backups = state["rollback_backups"]
-            if not isinstance(rollback_backups, dict) or not all(
-                isinstance(key, str)
-                and isinstance(value, str)
-                and not Path(key).is_absolute()
-                and Path(value).name == value
-                and ".shoal-codex-" in value
-                for key, value in rollback_backups.items()
-            ):
-                raise InstallAbort("install state rollback backup manifest is malformed")
-        if plugin["name"] != SHOAL_PLUGIN_NAME or plugin["status"] not in {
-            "installed", "unavailable"
-        } or (plugin["source_sha256"] and not re.fullmatch(r"[0-9a-f]{64}", plugin["source_sha256"])):
-            raise InstallAbort("install state plugin status is malformed")
     if "policy_ownership" in state:
         policy_ownership = state["policy_ownership"]
         if not isinstance(policy_ownership, dict) or set(policy_ownership) != {
@@ -1040,11 +972,7 @@ def _validate_committed_state(
     recorded = frozenset(targets)
     policy_relative = policy_path.relative_to(home).as_posix()
     accepted_drift: set[str] = set()
-    required = (
-        _required_v2_state_targets(policy_path, home)
-        if is_v2
-        else _required_state_targets(policy_path, home)
-    )
+    required = _required_v2_state_targets(policy_path, home)
     newly_managed_role_targets = {
         f"agents/{role}.toml" for role in ROLES
     }
@@ -1061,15 +989,10 @@ def _validate_committed_state(
     ):
         raise InstallAbort("install state target manifest is stale or incomplete")
     try:
-        if is_v2 and not autoroute_present:
+        if not autoroute_present:
             hook_projection_id = None
-        elif is_v2:
-            hook_projection_id = validate_projection_state(state["hook_registration"])
         else:
-            raw_fingerprint = targets.get("hooks.json")
-            if not isinstance(raw_fingerprint, str):
-                raise HookRegistrationError("legacy hooks.json fingerprint is malformed")
-            hook_projection_id = legacy_projection_id(raw_fingerprint)
+            hook_projection_id = validate_projection_state(state["hook_registration"])
         hooks_path = home / "hooks.json"
         if not hooks_path.is_file():
             raise HookRegistrationError("owned hooks.json is missing")
@@ -1194,7 +1117,7 @@ def _validate_committed_state(
             expected_parsed, owned
         ):
             raise InstallAbort("committed config routing projection is stale")
-    if is_v2 and state["state_version"] == 4:
+    if state["state_version"] == 4:
         reconciliation = state.get("reconciliation")
         if not isinstance(reconciliation, dict) or set(reconciliation) != {
             "accepted_targets",
@@ -1351,7 +1274,6 @@ def _validate_committed_state(
         owned,
         migration_proven,
         hook_projection_id,
-        not is_v2,
         hook_script_fingerprint,
         frozenset(accepted_drift),
     )
@@ -1812,17 +1734,11 @@ def _role_writes(
         if current == payload:
             continue
         if current is not None:
-            digest = _sha256_bytes(current)
-            known = CANONICAL_ROLE_UPGRADE_DIGESTS.get(role, frozenset())
-            if digest not in known and role not in approved_drift_roles:
+            if role not in approved_drift_roles:
                 raise InstallAbort(
                     f"installed_role_drift: agents/{role}.toml requires explicit replacement approval"
                 )
-            notes.append(
-                f"replaced drifted role {role} with upstream canonical bytes"
-                if digest not in known
-                else f"upgraded canonical role {role}"
-            )
+            notes.append(f"replaced drifted role {role} with upstream canonical bytes")
         else:
             notes.append(f"installed missing role {role}")
         writes.append((target, payload, 0o600, current))
@@ -2137,7 +2053,6 @@ def install(
     migration_proven = False
     owned_hook_projection: str | None = None
     owned_guard_projection: str | None = None
-    legacy_state = False
     proven_hook_script_fingerprint: str | None = None
     proven_guard_script_fingerprint: str | None = None
     accepted_drift: frozenset[str] = frozenset()
@@ -2150,7 +2065,6 @@ def install(
             owned,
             migration_proven,
             owned_hook_projection,
-            legacy_state,
             proven_hook_script_fingerprint,
             accepted_drift,
         ) = _validate_committed_state(
@@ -2214,15 +2128,10 @@ def install(
         target = agents / f"{role}.toml"
         current = target.read_bytes() if target.exists() else None
         if current is not None and current != payload:
-            known = CANONICAL_ROLE_UPGRADE_DIGESTS.get(role, frozenset())
-            if _sha256_bytes(current) not in known and role not in approved_drift_roles:
+            if role not in approved_drift_roles:
                 raise InstallAbort(f"installed_role_drift: agents/{role}.toml requires explicit replacement approval")
             writes.append((target, payload, 0o600, current))
-            notes.append(
-                f"replaced drifted role {role} with upstream canonical bytes"
-                if _sha256_bytes(current) not in known
-                else f"upgraded canonical role {role}"
-            )
+            notes.append(f"replaced drifted role {role} with upstream canonical bytes")
         elif current is None:
             writes.append((target, payload, 0o600, None))
     removals, removal_drift = _renamed_role_removals(agents)
@@ -2432,7 +2341,7 @@ def install(
     reconciliation_previous_targets = (
         dict(state.get("target_fingerprints", {})) if state is not None else {}
     )
-    state_needs_publication = state is None or legacy_state or (
+    state_needs_publication = state is None or (
         owned_hook_projection != desired_hook_projection
         or owned_guard_projection != desired_guard_projection
     ) or state is None or state.get("plugin") != plugin or state.get("runtime_status") != runtime_status or plugin_install_needed or (
