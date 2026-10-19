@@ -1,7 +1,8 @@
 """Claude plugin (generic-shoal K1, K2, K4, K5, K6): render, golden, quoting, guard `--plugin` deferral.
 
 tests/golden/claude-plugin is a copy of the render output (repo-relative paths); refresh it by
-copying `plugins/claude/`, `plugins/claude-guard/` and `.claude-plugin/marketplace.json` after `render.py --host claude-plugin --write`.
+copying `plugins/claude/`, `plugins/claude-guard/` and `.claude-plugin/marketplace.json` after `render.py --host claude-plugin --write`;
+files in render_helpers.GOLDEN_HASHED are stored as `<path>.sha256` (hex digest) instead of a full copy.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 import guard_vectors_helper as helper  # noqa: E402
 import install_hooks  # noqa: E402
 import render  # noqa: E402
+import render_helpers  # noqa: E402
 import shoal_guard as guard  # noqa: E402
 
 GOLDEN = ROOT / "tests" / "golden" / "claude-plugin"
@@ -50,22 +52,15 @@ def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def golden_files() -> dict[str, bytes]:
-    return {
-        p.relative_to(GOLDEN).as_posix(): p.read_bytes()
-        for p in GOLDEN.rglob("*")
-        if p.is_file() and p.name != "SOURCE"
-    }
+def golden_files() -> dict[str, bytes | str]:
+    return render_helpers.golden_files("claude-plugin")
 
 
 class GoldenTests(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files()
         self.assertEqual(len(golden), 23)
-        rendered = render.render_claude_plugin(ROOT)
-        self.assertEqual(sorted(rendered), sorted(golden))
-        for rel, data in golden.items():
-            self.assertEqual(rendered[rel], data, rel)
+        render_helpers.assert_golden_equal(self, render.render_claude_plugin(ROOT), golden)
 
     def test_committed_files_match_render(self) -> None:
         for rel, data in render.render_claude_plugin(ROOT).items():

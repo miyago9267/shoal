@@ -65,7 +65,6 @@ from hook_registration import (  # noqa: E402
     legacy_autoroute_locations,
     load_registration,
 )
-from legacy_codex import legacy_state_path  # noqa: E402
 GUARD_SOURCE = "hooks/shoal_guard.py"
 CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
 AGY_GROUP = "shoal-dispatch-guard"
@@ -435,17 +434,11 @@ def owned_entries(host: str, data: dict[str, Any]) -> int:
 
 def install_state_owns_guard(codex_home: Path) -> bool:
     """install.py 的 state 是否已記錄 guard（有就不能繞過它移除 entry）。"""
-    # 2.0.0 之前的 state 檔名（legacy_codex.LEGACY_STATE_SUFFIX）也算：它同樣記錄 guard。
-    for state in (
-        codex_home.with_name(f"{codex_home.name}.shoal-install-state.json"),
-        legacy_state_path(codex_home),
-    ):
-        try:
-            if "guard_registration" in json.loads(state.read_text(encoding="utf-8")):
-                return True
-        except (OSError, ValueError):
-            continue
-    return False
+    state = codex_home.with_name(f"{codex_home.name}.shoal-install-state.json")
+    try:
+        return "guard_registration" in json.loads(state.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
 
 
 def legacy_autoroute_note(current: dict[str, Any]) -> Optional[str]:

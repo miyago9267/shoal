@@ -7,6 +7,7 @@
         （切換後的模式：從本 repo 的 DIST_DIRS[host] 複製，SOURCE 記 shoal@<HEAD sha>，
         golden 變成 regression fixture，不再對照舊 host repo）
 會清空 tests/golden/<host>/ 後重建，並寫入 SOURCE 記錄來源。
+render_helpers.GOLDEN_HASHED 內的檔案只寫 <file>.sha256，不存全文。
 """
 from __future__ import annotations
 
@@ -20,7 +21,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(REPO / "tests"))
 from render import DIST_DIRS  # noqa: E402
+from render_helpers import GOLDEN_HASHED, sha256_hex  # noqa: E402
 # 各 host 的 golden 來源：[(哪個 repo, 匯出的路徑, 從 golden 相對路徑剝掉的前綴)]。
 # "primary" 對應 --from/--ref，"extra" 對應 --extra-from/--extra-ref。
 SOURCES = {
@@ -45,7 +48,10 @@ def write_golden(target: Path, files: dict[Path, bytes], records: list[str]) -> 
         shutil.rmtree(target)
     for rel, data in files.items():
         (target / rel).parent.mkdir(parents=True, exist_ok=True)
-        (target / rel).write_bytes(data)
+        if rel.as_posix() in GOLDEN_HASHED:
+            (target / f"{rel.as_posix()}.sha256").write_text(sha256_hex(data) + "\n", encoding="utf-8", newline="\n")
+        else:
+            (target / rel).write_bytes(data)
     (target / "SOURCE").write_text("\n".join(records), encoding="utf-8", newline="\n")
     print(f"已匯入 {len(files)} 個檔案到 {target}")
     return 0

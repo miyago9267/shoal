@@ -74,16 +74,12 @@ class CompareTests(unittest.TestCase):
 class FormatTests(unittest.TestCase):
     def test_validators_accept_beta_suffix(self) -> None:
         sys.path.insert(0, str(ROOT / "tools"))
-        import check_rename
         import render
 
         for version in ("3.12.0-beta", "1.0.0"):
             self.assertRegex(version, render.PRODUCT_VERSION)
             self.assertRegex(version, render.HOST_VERSION)
             self.assertRegex(f"<!-- shoal-claude v{version} -->", sv.VERSION_PATTERN)
-            self.assertRegex(
-                f"<!-- shoal-claude v{version} -->", check_rename.MARKER_VERSION
-            )
         self.assertNotRegex("3.12.0-rc", render.PRODUCT_VERSION)
 
 

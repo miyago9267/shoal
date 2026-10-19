@@ -1,6 +1,7 @@
 """agy / grok / opencode 三個 host 的 render 測試共用的 helper。"""
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -17,10 +18,47 @@ import render  # noqa: E402
 RENDER = ROOT / "tools" / "render.py"
 
 
-def golden_files(host: str) -> dict[str, bytes]:
+# golden 內只存 sha256 的檔案（golden 根目錄起算的路徑）。這兩份是 hooks/shoal_guard.py 的完整副本，
+# 存全文只會讓每次改 guard 都多兩份 3000 行的 diff。golden 改存 <path>.sha256，一行 hex digest。
+GOLDEN_HASHED = frozenset({
+    "plugins/claude-guard/hooks/shoal_guard.py",
+    "hooks/shoal-grok/shoal_guard.py",
+})
+GUARD_SOURCE = "hooks/shoal_guard.py"
+
+
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def golden_files(host: str) -> dict[str, bytes | str]:
+    """golden 內容；GOLDEN_HASHED 的檔案以 hex digest（str）表示。"""
     golden = ROOT / "tests" / "golden" / host
-    return {p.relative_to(golden).as_posix(): p.read_bytes()
-            for p in golden.rglob("*") if p.is_file() and p.name != "SOURCE"}
+    out: dict[str, bytes | str] = {}
+    for p in golden.rglob("*"):
+        if not p.is_file() or p.name == "SOURCE":
+            continue
+        rel = p.relative_to(golden).as_posix()
+        if rel.endswith(".sha256") and rel[:-7] in GOLDEN_HASHED:
+            out[rel[:-7]] = p.read_text(encoding="utf-8").strip()
+        else:
+            out[rel] = p.read_bytes()
+    return out
+
+
+def golden_view(files: dict[str, bytes]) -> dict[str, bytes | str]:
+    """把實際輸出轉成與 golden_files 同形：GOLDEN_HASHED 的檔案換成 digest。"""
+    return {rel: sha256_hex(data) if rel in GOLDEN_HASHED else data for rel, data in files.items()}
+
+
+def assert_golden_equal(case: unittest.TestCase, actual: dict[str, bytes], golden: dict[str, bytes | str]) -> None:
+    case.assertEqual(sorted(actual), sorted(golden))
+    for rel, value in golden_view(actual).items():
+        if rel in GOLDEN_HASHED:
+            case.assertEqual(value, golden[rel],
+                             f"{rel}: expected sha256 {golden[rel]}, actual {value}; diff against {GUARD_SOURCE}")
+        else:
+            case.assertEqual(value, golden[rel], rel)
 
 
 def dist_files(host: str) -> dict[str, bytes]:
@@ -75,10 +113,7 @@ class HostRenderCase(unittest.TestCase):
     def test_render_is_byte_identical_to_golden(self) -> None:
         golden = golden_files(self.HOST)
         self.assertEqual(len(golden), self.GOLDEN_COUNT)
-        rendered = render.RENDERERS[self.HOST](ROOT)
-        self.assertEqual(sorted(rendered), sorted(golden))
-        for rel, data in golden.items():
-            self.assertEqual(rendered[rel], data, rel)
+        assert_golden_equal(self, render.RENDERERS[self.HOST](ROOT), golden)
 
     def test_golden_records_source(self) -> None:
         source = (ROOT / "tests" / "golden" / self.HOST / "SOURCE").read_text(encoding="utf-8")
@@ -86,7 +121,7 @@ class HostRenderCase(unittest.TestCase):
             self.assertRegex(source, rf"(?m)^ref: {ref}[0-9a-f]{{7}}$")
 
     def test_committed_dist_matches_golden(self) -> None:
-        self.assertEqual(dist_files(self.HOST), golden_files(self.HOST))
+        assert_golden_equal(self, dist_files(self.HOST), golden_files(self.HOST))
 
     # --- --check / --write ---
     def test_check_passes_when_dist_matches(self) -> None:
