@@ -12,7 +12,7 @@
   claude  <home>/settings.json（--home，其次 CLAUDE_CONFIG_DIR，預設 ~/.claude）：
           UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse，
           SubagentStart（3.3.1 起）、Stop（3.4.0 起，完成檢查），以及 matcher 為 Bash 的 PostToolUse（3.6.0 起，確認指令真的執行）；舊設定重跑 --apply 會原地補上，其他 entry 不動
-  agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-dispatch-guard"（3.8.0 之前的 legacy 舊名 "shoal-guard"，重跑 --apply 會 migrate 原地改名），
+  agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-dispatch-guard"，
           PreToolUse（matcher "*"）、SessionStart、PreInvocation 與 Stop；每個 command 結尾帶
           --event <名稱>（agy 的 payload 不含事件名稱），舊設定重跑 --apply 會原地補上
   codex   <home>/hooks.json（--home，其次 CODEX_HOME，預設 ~/.codex）：與 install/install.py 的
@@ -65,7 +65,6 @@ from hook_registration import (  # noqa: E402
 GUARD_SOURCE = "hooks/shoal_guard.py"
 CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
 AGY_GROUP = "shoal-dispatch-guard"
-LEGACY_AGY_GROUP = "shoal-guard"  # old group name before 3.8.0; migrated in place to AGY_GROUP
 TIMEOUT = 10
 # 標記是 "shoal_guard.py --host"；路徑被引號包住時 "shoal_guard.py'" 後面才接空白與 --host。
 OWNED = re.compile(r"shoal_guard\.py[\"']?\s+--host\b")
@@ -279,48 +278,8 @@ def apply_codex(hooks_json: dict[str, Any], command: Optional[str]) -> dict[str,
 AGY_FLAT_EVENTS = ("SessionStart", "PreInvocation", "Stop")
 
 
-def _legacy_group_is_owned(group: Any) -> bool:
-    """舊群組內每個 handler 都符合 OWNED（且至少有一個）才算 shoal 自己的，可以 migrate。"""
-    if not isinstance(group, dict):
-        return False
-    handlers: list[Any] = []
-    for value in group.values():
-        if not isinstance(value, list):
-            return False
-        for item in value:
-            handlers.extend(_group_handlers(item) if isinstance(item, dict) and "hooks" in item else [item])
-    return bool(handlers) and all(is_owned(h) for h in handlers)
-
-
-def _migrate_legacy_agy_group(config: dict[str, Any]) -> dict[str, Any]:
-    """legacy 舊群組名 "shoal-guard"（3.8.0 之前），migrate：沒有新群組就原地改名（key 位置不變），兩個都在就把舊群組的 shoal handler 併入新群組。"""
-    if LEGACY_AGY_GROUP not in config:
-        return config
-    old = config[LEGACY_AGY_GROUP]
-    if not _legacy_group_is_owned(old):
-        # "shoal-guard" 也是另一個外部專案用的群組名；裡面只要有一個不是 shoal 的 handler 就整組不碰。
-        print(
-            f'notice: hooks.json 的 "{LEGACY_AGY_GROUP}" 群組含有非 shoal 的 handler（或不是 shoal 的群組），'
-            "不遷移、不移除，原樣保留",
-            file=sys.stderr,
-        )
-        return config
-    if AGY_GROUP not in config:
-        return {(AGY_GROUP if key == LEGACY_AGY_GROUP else key): value for key, value in config.items()}
-    out = {key: value for key, value in config.items() if key != LEGACY_AGY_GROUP}
-    merged = out[AGY_GROUP]
-    if not isinstance(merged, dict):
-        raise InstallError(f'hooks.json 的 "{AGY_GROUP}" 不是物件，不處理')
-    for event, value in old.items():
-        if isinstance(value, list):
-            merged[event] = [*merged.get(event, []), *value] if isinstance(merged.get(event, []), list) else value
-        else:
-            merged.setdefault(event, value)
-    return out
-
-
 def apply_agy(config: dict[str, Any], command: Optional[str]) -> dict[str, Any]:
-    out = _migrate_legacy_agy_group(copy.deepcopy(config))
+    out = copy.deepcopy(config)
     group = out.get(AGY_GROUP)
     if group is None:
         group = {}
@@ -417,10 +376,8 @@ def owned_entries(host: str, data: dict[str, Any]) -> int:
             for group in groups if isinstance(groups, list) else []:
                 count += sum(is_owned(h) for h in _group_handlers(group))
     else:
-        for name in (AGY_GROUP, LEGACY_AGY_GROUP):
+        for name in (AGY_GROUP,):
             group = data.get(name) or {}
-            if name == LEGACY_AGY_GROUP and not _legacy_group_is_owned(group):
-                continue
             for event, value in group.items():
                 for item in value if isinstance(value, list) else []:
                     count += is_owned(item) + sum(
