@@ -3,6 +3,22 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## v3.13.0-beta
+
+2026-10-19。fan_out 路由與 Codex plugin 搬家。
+
+### 路由
+
+- 新增 `fan_out` 互動形狀：只有每一項都夠重時才提議用 Workflow；結尾一定做整合驗證，失敗的項目最多重派一次。Workflow 的 opt-in、agentType 與 Agent fallback 細節放在 skill 參考檔 `workflow-extensions`。
+
+### Codex
+
+- Codex plugin 從 `plugin/plugins/shoal-codex` 搬到 `plugins/codex`，`shoal-jev-router` 搬到 `plugins/jev-router`；舊的 `plugin/` 目錄與 symlink 移除。用舊路徑註冊過的安裝，下次安裝會自動換到新路徑。
+
+### Tests
+
+- `test_shoal_update` 在 Windows 改用真的 git，不再跳過（#20）。
+
 ## v3.12.0-beta
 
 2026-10-18。版本 channel、`#fast` 輕量 lane 與派工開銷優化。

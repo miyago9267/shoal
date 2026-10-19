@@ -155,12 +155,12 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 
 | 項目 | 版本 |
 | --- | --- |
-| shoal（產品） | 3.12.0-beta |
-| codex host | 3.12.0-beta（`hosts/codex/VERSION`） |
-| claude host | 3.12.0-beta（`hosts/claude/VERSION`） |
-| agy host | 3.12.0-beta（`hosts/agy/VERSION`） |
-| grok host | 3.12.0-beta（`hosts/grok/VERSION`） |
-| opencode host | 3.12.0-beta（`hosts/opencode/plugin/package.json`） |
+| shoal（產品） | 3.13.0-beta |
+| codex host | 3.13.0-beta（`hosts/codex/VERSION`） |
+| claude host | 3.13.0-beta（`hosts/claude/VERSION`） |
+| agy host | 3.13.0-beta（`hosts/agy/VERSION`） |
+| grok host | 3.13.0-beta（`hosts/grok/VERSION`） |
+| opencode host | 3.13.0-beta（`hosts/opencode/plugin/package.json`） |
 
 產品版本記在根目錄 `VERSION`，各 host 版本另外維護，互不連動。2.0.0 起
 shoal 是獨立產品，不再沿用上游衍生的版本號；上游版本只記在 `upstream.lock`。
@@ -174,9 +174,9 @@ shoal 目前是 beta。beta 的 minor 版本可能有破壞性變更；正式版
 - stable：沒有後綴的 `X.Y.Z`。repo 頂層有 `CHANNEL` 檔且內容是 `stable` 才算
   stable；沒有這個檔就是 beta。
 - 比較時先比 channel（beta < stable）再比數字，所以
-  1.0.0 > 3.12.0-beta > 3.11.1 > 3.0.0。規則在 `install/shoal_version.py`。
+  1.0.0 > 3.13.0-beta > 3.11.1 > 3.0.0。規則在 `install/shoal_version.py`。
 - `--update` 從 beta 換到 stable 時，Claude 與 Codex plugin 會先移除再重裝：
-  兩邊的 plugin manager 用純 SemVer，會把 1.0.0 當成比 3.12.0-beta 舊。
+  兩邊的 plugin manager 用純 SemVer，會把 1.0.0 當成比 3.13.0-beta 舊。
 
 ### 驗證
 
