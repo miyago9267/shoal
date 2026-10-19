@@ -61,9 +61,6 @@ sys.path.insert(0, str(REPO / "install"))
 from hook_registration import (  # noqa: E402
     GUARD_PROJECTION_ID,
     TRUSTED_PROJECTIONS,
-    HookRegistrationError,
-    legacy_autoroute_locations,
-    load_registration,
 )
 GUARD_SOURCE = "hooks/shoal_guard.py"
 CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
@@ -441,20 +438,6 @@ def install_state_owns_guard(codex_home: Path) -> bool:
         return False
 
 
-def legacy_autoroute_note(current: dict[str, Any]) -> Optional[str]:
-    """hooks.json 仍有 2.0.0 之前的 autoroute 群組時的提醒（這條窄路徑不碰它；遷移由 install.py／sync_global.py 做）。"""
-    try:
-        document = load_registration(json.dumps(current).encode("utf-8"), source="hooks.json")
-    except HookRegistrationError:
-        return None
-    if not legacy_autoroute_locations(document):
-        return None
-    return (
-        "注意：hooks.json 仍有 2.0.0 之前的 autoroute 註冊（舊名 gate）；"
-        "請用 tools/sync_global.py --apply 或 install/install.py 遷移，這個工具不動它"
-    )
-
-
 # ---- 主流程 ----
 def run(
     host: str,
@@ -511,9 +494,6 @@ def run(
         )
 
     print(f"host: {host}  設定檔: {target}" + (f" -> {real}" if real != target else ""))
-    note = legacy_autoroute_note(current) if codex else None
-    if note:
-        print(note)
     if codex and uninstall:
         print(f"  [{script_state}] {script}")
     if guard is not None:
