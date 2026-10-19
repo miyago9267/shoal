@@ -83,7 +83,6 @@
   "invalid role {}: {}",
   "inventory target is missing without a planned write: {}",
   "legacy V2 concurrency must be exactly 4",
-  "legacy V2 migration requires a committed install state",
   "legacy V2 migration requires committed installer provenance",
   "legacy V2 migration would replace an unapproved primary target",
   "legacy V2 table has extra or unowned entries",
