@@ -69,7 +69,6 @@
   "install state rollback backup is unavailable",
   "install state rollback backup manifest is incomplete",
   "install state rollback backup manifest is malformed",
-  "install state rollback backup target is unknown",
   "install state runtime status is malformed",
   "install state target evidence is malformed",
   "install state target fingerprint is malformed",

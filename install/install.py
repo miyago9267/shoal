@@ -873,15 +873,7 @@ def _config_without_plugin_owned(data: dict) -> dict:
     return result
 
 
-def _validate_committed_state(
-    state: dict,
-    *,
-    home: Path,
-    policy_path: Path,
-    config_snapshot: bytes | None,
-    allow_policy_drift: bool = False,
-) -> tuple[frozenset[str], bool, str | None, bool, str | None, frozenset[str]]:
-    """Validate sidecar provenance, including event-bound hook ownership."""
+def _check_state_header(state: dict) -> tuple[bool, bool]:
     if not isinstance(state, dict) or state.get("status") != "committed":
         raise InstallAbort("install state is not a committed transaction")
     # Homes installed before shoal 3.0.0 (no state_version, or state_version 2) are not upgraded in place.
@@ -901,9 +893,12 @@ def _validate_committed_state(
         "plugin", "runtime_status", "rollback_backups",
     }
     v4_allowed = v3_allowed | {"reconciliation"}
-    sha_re = re.compile(r"^[0-9a-f]{64}$")
     if state_keys != (v4_allowed if state["state_version"] == 4 else v3_allowed):
         raise InstallAbort("install state has missing or unknown fields")
+    return guard_present, autoroute_present
+
+
+def _check_plugin_and_backups(state: dict) -> None:
     if state["state_version"] == 4:
         plugin = state.get("plugin")
         if not isinstance(plugin, dict) or set(plugin) != {
@@ -951,6 +946,9 @@ def _validate_committed_state(
             for key, value in rollback_backups.items()
         ):
             raise InstallAbort("install state rollback backup manifest is malformed")
+
+
+def _check_policy_ownership(state: dict) -> None:
     if "policy_ownership" in state:
         policy_ownership = state["policy_ownership"]
         if not isinstance(policy_ownership, dict) or set(policy_ownership) != {
@@ -965,13 +963,16 @@ def _validate_committed_state(
                 raise InstallAbort("install state policy ownership is malformed")
             if not all(isinstance(entry[key], str) for key in entry):
                 raise InstallAbort("install state policy ownership is malformed")
+
+
+def _check_target_manifest(
+    state: dict, *, home: Path, policy_path: Path, guard_present: bool, autoroute_present: bool,
+) -> tuple[dict, dict, frozenset[str]]:
     targets = state.get("target_fingerprints")
     originals = state.get("original_targets")
     if not isinstance(targets, dict) or not isinstance(originals, dict):
         raise InstallAbort("install state target evidence is malformed")
     recorded = frozenset(targets)
-    policy_relative = policy_path.relative_to(home).as_posix()
-    accepted_drift: set[str] = set()
     required = _required_v2_state_targets(policy_path, home)
     newly_managed_role_targets = {
         f"agents/{role}.toml" for role in ROLES
@@ -988,6 +989,12 @@ def _validate_committed_state(
         or not missing_targets <= newly_managed_role_targets | {GUARD_SCRIPT_RELATIVE, AUTOROUTE_SCRIPT_RELATIVE}
     ):
         raise InstallAbort("install state target manifest is stale or incomplete")
+    return targets, originals, recorded
+
+
+def _check_hook_registration(
+    state: dict, *, home: Path, guard_present: bool, autoroute_present: bool,
+) -> str | None:
     try:
         if not autoroute_present:
             hook_projection_id = None
@@ -1008,12 +1015,23 @@ def _validate_committed_state(
             validate_owned_projection(registration, recorded_guard)
     except (OSError, HookRegistrationError) as exc:
         raise InstallAbort(f"committed hook registration is invalid: {exc}") from exc
+    return hook_projection_id
+
+
+def _check_config_unchanged(home: Path, config_snapshot: bytes | None) -> None:
     config_path = home / "config.toml"
     config_on_disk = config_path.read_bytes() if config_path.is_file() else None
     if config_on_disk != config_snapshot:
         raise InstallAbort("config.toml changed during state validation")
+
+
+def _check_target_evidence(
+    *, home: Path, policy_relative: str, recorded: frozenset[str], targets: dict, originals: dict,
+    allow_policy_drift: bool, accepted_drift: set[str],
+) -> tuple[dict[str, bytes | None], str | None]:
     original_payloads: dict[str, bytes | None] = {}
     hook_script_fingerprint: str | None = None
+    sha_re = re.compile(r"^[0-9a-f]{64}$")
     for relative in sorted(recorded):
         fingerprint = targets.get(relative)
         evidence = originals.get(relative)
@@ -1052,9 +1070,14 @@ def _validate_committed_state(
             raise InstallAbort("committed install state is stale; operator resolution required")
         if relative == "hooks/shoal_autoroute_gate.py":
             hook_script_fingerprint = fingerprint
+    return original_payloads, hook_script_fingerprint
+
+
+def _check_owned_legacy(state: dict) -> frozenset[str]:
     ownership = state.get("owned_legacy", {})
     if not isinstance(ownership, dict):
         raise InstallAbort("install state ownership evidence is malformed")
+    sha_re = re.compile(r"^[0-9a-f]{64}$")
     proven: set[str] = set()
     for path, evidence in ownership.items():
         if path not in LEGACY_PATHS or not isinstance(evidence, dict):
@@ -1073,7 +1096,13 @@ def _validate_committed_state(
         if _sha256_bytes(original) != digest:
             raise InstallAbort("install state ownership fingerprint mismatch")
         proven.add(path)
-    owned = frozenset(proven)
+    return frozenset(proven)
+
+
+def _check_config_provenance(
+    *, config_snapshot: bytes | None, targets: dict, original_payloads: dict[str, bytes | None],
+    owned: frozenset[str], accepted_drift: set[str],
+) -> bool:
     if config_snapshot is None:
         raise InstallAbort("committed install state is stale; operator resolution required")
 
@@ -1117,159 +1146,232 @@ def _validate_committed_state(
             expected_parsed, owned
         ):
             raise InstallAbort("committed config routing projection is stale")
-    if state["state_version"] == 4:
-        reconciliation = state.get("reconciliation")
-        if not isinstance(reconciliation, dict) or set(reconciliation) != {
-            "accepted_targets",
-            "previous_state_sha256",
-            "previous_state_backup",
-            "previous_target_fingerprints",
-            "accepted_preimages",
-            "post_merge_target_fingerprints",
-        }:
-            raise InstallAbort("install state reconciliation metadata is malformed")
-        accepted_targets = reconciliation["accepted_targets"]
-        if not isinstance(accepted_targets, list) or not all(
-            isinstance(value, str) for value in accepted_targets
-        ):
-            raise InstallAbort("install state reconciliation targets are malformed")
+    return migration_proven
+
+
+def _check_accepted_preimage(
+    relative: str, preimage: object, *, home: Path, policy_path: Path, policy_relative: str,
+) -> None:
+    sha_re = re.compile(r"^[0-9a-f]{64}$")
+    identity_fields = {
+        "link_path", "target_path", "policy_root", "symlink", "link_dev",
+        "link_ino", "target_dev", "target_ino", "target_sha256",
+    }
+    if not isinstance(preimage, dict) or set(preimage) != identity_fields | {"sha256"}:
+        raise InstallAbort("install state accepted preimage is malformed")
+    if not isinstance(preimage["sha256"], str) or not sha_re.fullmatch(preimage["sha256"]):
+        raise InstallAbort("install state accepted preimage is malformed")
+    if (
+        not all(isinstance(preimage[key], str) for key in ("link_path", "target_path", "policy_root", "target_sha256"))
+        or not isinstance(preimage["symlink"], bool)
+        or type(preimage["target_dev"]) is not int
+        or type(preimage["target_ino"]) is not int
+        or (preimage["link_dev"] is not None and type(preimage["link_dev"]) is not int)
+        or (preimage["link_ino"] is not None and type(preimage["link_ino"]) is not int)
+        or not sha_re.fullmatch(preimage["target_sha256"])
+        or preimage["sha256"] != preimage["target_sha256"]
+        or (
+            preimage["symlink"]
+            and (preimage["link_dev"] is None or preimage["link_ino"] is None)
+        )
+        or (
+            not preimage["symlink"]
+            and (preimage["link_dev"] is not None or preimage["link_ino"] is not None)
+        )
+    ):
+        raise InstallAbort("install state accepted preimage is malformed")
+    expected_link = policy_path if relative == policy_relative else home / relative
+    try:
+        expected_target = expected_link.resolve(strict=True)
+    except OSError as exc:
+        raise InstallAbort("install state accepted preimage is unavailable") from exc
+    if preimage["link_path"] != str(expected_link):
+        raise InstallAbort("install state accepted preimage path is malformed")
+    if preimage["symlink"]:
+        if relative != policy_relative or not expected_link.is_symlink():
+            raise InstallAbort("install state accepted preimage symlink identity is malformed")
+        try:
+            root = Path(preimage["policy_root"]).resolve(strict=True)
+            expected_target.relative_to(root)
+        except (OSError, ValueError) as exc:
+            raise InstallAbort("install state accepted preimage root is malformed") from exc
         if (
-            accepted_targets != sorted(set(accepted_targets))
-            or not accepted_targets
-            or not set(accepted_targets) <= {policy_relative, "config.toml"}
-            or not set(accepted_targets) <= recorded
+            not root.is_dir()
+            or preimage["policy_root"] != str(root)
+            or preimage["target_path"] != str(expected_target)
         ):
-            raise InstallAbort("install state reconciliation targets are malformed")
-        previous_state_sha256 = reconciliation["previous_state_sha256"]
-        if not isinstance(previous_state_sha256, str) or (
-            previous_state_sha256 and not sha_re.fullmatch(previous_state_sha256)
+            raise InstallAbort("install state accepted preimage symlink identity is malformed")
+    elif (
+        expected_link.is_symlink()
+        or preimage["policy_root"]
+        or preimage["target_path"] != str(expected_target)
+        or preimage["link_dev"] is not None
+        or preimage["link_ino"] is not None
+    ):
+        raise InstallAbort("install state accepted preimage path is malformed")
+
+
+def _check_previous_state_backup(
+    reconciliation: dict, *, home: Path, previous_state_sha256: str,
+) -> None:
+    sha_re = re.compile(r"^[0-9a-f]{64}$")
+    previous_state_backup = reconciliation["previous_state_backup"]
+    if previous_state_backup is not None:
+        if not isinstance(previous_state_backup, dict) or set(previous_state_backup) != {"path", "sha256"}:
+            raise InstallAbort("install state previous state backup is malformed")
+        backup_path = previous_state_backup["path"]
+        backup_sha256 = previous_state_backup["sha256"]
+        if (
+            not isinstance(backup_path, str)
+            or Path(backup_path).is_absolute()
+            or ".shoal-codex-" not in backup_path
+            or not isinstance(backup_sha256, str)
+            or not sha_re.fullmatch(backup_sha256)
         ):
-            raise InstallAbort("install state previous state digest is malformed")
-        previous_state_backup = reconciliation["previous_state_backup"]
-        if previous_state_backup is not None:
-            if not isinstance(previous_state_backup, dict) or set(previous_state_backup) != {"path", "sha256"}:
-                raise InstallAbort("install state previous state backup is malformed")
-            backup_path = previous_state_backup["path"]
-            backup_sha256 = previous_state_backup["sha256"]
-            if (
-                not isinstance(backup_path, str)
-                or Path(backup_path).is_absolute()
-                or ".shoal-codex-" not in backup_path
-                or not isinstance(backup_sha256, str)
-                or not sha_re.fullmatch(backup_sha256)
-            ):
-                raise InstallAbort("install state previous state backup is malformed")
-            state_backup_path = _home_relative_path(
-                _state_path(home).parent,
-                backup_path,
-                label="install state backup",
-            )
-            if (
-                state_backup_path.is_symlink()
-                or not state_backup_path.is_file()
-                or _sha256_bytes(state_backup_path.read_bytes()) != backup_sha256
-            ):
-                raise InstallAbort("install state previous state backup is unavailable")
-        elif previous_state_sha256:
-            raise InstallAbort("install state previous state backup is missing")
-        previous_targets = reconciliation["previous_target_fingerprints"]
-        if not isinstance(previous_targets, dict) or set(previous_targets) - recorded or not all(
-            isinstance(value, str) and sha_re.fullmatch(value)
-            for value in previous_targets.values()
+            raise InstallAbort("install state previous state backup is malformed")
+        state_backup_path = _home_relative_path(
+            _state_path(home).parent,
+            backup_path,
+            label="install state backup",
+        )
+        if (
+            state_backup_path.is_symlink()
+            or not state_backup_path.is_file()
+            or _sha256_bytes(state_backup_path.read_bytes()) != backup_sha256
         ):
-            raise InstallAbort("install state previous target fingerprints are malformed")
-        preimages = reconciliation["accepted_preimages"]
-        if not isinstance(preimages, dict) or set(preimages) != set(accepted_targets):
-            raise InstallAbort("install state accepted preimages are malformed")
-        identity_fields = {
-            "link_path", "target_path", "policy_root", "symlink", "link_dev",
-            "link_ino", "target_dev", "target_ino", "target_sha256",
-        }
-        for relative, preimage in preimages.items():
-            if not isinstance(preimage, dict) or set(preimage) != identity_fields | {"sha256"}:
-                raise InstallAbort("install state accepted preimage is malformed")
-            if not isinstance(preimage["sha256"], str) or not sha_re.fullmatch(preimage["sha256"]):
-                raise InstallAbort("install state accepted preimage is malformed")
-            if (
-                not all(isinstance(preimage[key], str) for key in ("link_path", "target_path", "policy_root", "target_sha256"))
-                or not isinstance(preimage["symlink"], bool)
-                or type(preimage["target_dev"]) is not int
-                or type(preimage["target_ino"]) is not int
-                or (preimage["link_dev"] is not None and type(preimage["link_dev"]) is not int)
-                or (preimage["link_ino"] is not None and type(preimage["link_ino"]) is not int)
-                or not sha_re.fullmatch(preimage["target_sha256"])
-                or preimage["sha256"] != preimage["target_sha256"]
-                or (
-                    preimage["symlink"]
-                    and (preimage["link_dev"] is None or preimage["link_ino"] is None)
-                )
-                or (
-                    not preimage["symlink"]
-                    and (preimage["link_dev"] is not None or preimage["link_ino"] is not None)
-                )
-            ):
-                raise InstallAbort("install state accepted preimage is malformed")
-            expected_link = policy_path if relative == policy_relative else home / relative
-            try:
-                expected_target = expected_link.resolve(strict=True)
-            except OSError as exc:
-                raise InstallAbort("install state accepted preimage is unavailable") from exc
-            if preimage["link_path"] != str(expected_link):
-                raise InstallAbort("install state accepted preimage path is malformed")
-            if preimage["symlink"]:
-                if relative != policy_relative or not expected_link.is_symlink():
-                    raise InstallAbort("install state accepted preimage symlink identity is malformed")
-                try:
-                    root = Path(preimage["policy_root"]).resolve(strict=True)
-                    expected_target.relative_to(root)
-                except (OSError, ValueError) as exc:
-                    raise InstallAbort("install state accepted preimage root is malformed") from exc
-                if (
-                    not root.is_dir()
-                    or preimage["policy_root"] != str(root)
-                    or preimage["target_path"] != str(expected_target)
-                ):
-                    raise InstallAbort("install state accepted preimage symlink identity is malformed")
-            elif (
-                expected_link.is_symlink()
-                or preimage["policy_root"]
-                or preimage["target_path"] != str(expected_target)
-                or preimage["link_dev"] is not None
-                or preimage["link_ino"] is not None
-            ):
-                raise InstallAbort("install state accepted preimage path is malformed")
-        post_merge = reconciliation["post_merge_target_fingerprints"]
-        if not isinstance(post_merge, dict) or set(post_merge) != recorded or any(
-            post_merge.get(key) != targets.get(key) for key in recorded
+            raise InstallAbort("install state previous state backup is unavailable")
+    elif previous_state_sha256:
+        raise InstallAbort("install state previous state backup is missing")
+
+
+def _check_rollback_backups(
+    state: dict, *, home: Path, recorded: frozenset[str], targets: dict, originals: dict,
+    accepted_targets: list[str],
+) -> None:
+    sha_re = re.compile(r"^[0-9a-f]{64}$")
+    rollback_backups = state["rollback_backups"]
+    required_backups = set(accepted_targets)
+    for relative in recorded:
+        evidence = originals[relative]
+        if evidence["present"] and evidence["sha256"] != targets[relative]:
+            required_backups.add(relative)
+    # The equality gate also guarantees every backup key is a recorded target.
+    if set(rollback_backups) != required_backups:
+        raise InstallAbort("install state rollback backup manifest is incomplete")
+    if any(not originals[relative]["present"] for relative in accepted_targets):
+        raise InstallAbort("install state accepted target has no original evidence")
+    for relative, backup in rollback_backups.items():
+        path = _home_relative_path(
+            home,
+            backup["path"],
+            label="install state rollback backup",
+        )
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or not sha_re.fullmatch(backup["sha256"])
+            or not sha_re.fullmatch(backup["target_sha256"])
+            or _sha256_bytes(path.read_bytes()) != backup["sha256"]
+            or backup["target_sha256"] != (originals[relative]["sha256"] or "")
         ):
-            raise InstallAbort("install state post-merge fingerprints are malformed")
-        rollback_backups = state["rollback_backups"]
-        required_backups = set(accepted_targets)
-        for relative in recorded:
-            evidence = originals[relative]
-            if evidence["present"] and evidence["sha256"] != targets[relative]:
-                required_backups.add(relative)
-        if set(rollback_backups) != required_backups:
-            raise InstallAbort("install state rollback backup manifest is incomplete")
-        if any(not originals[relative]["present"] for relative in accepted_targets):
-            raise InstallAbort("install state accepted target has no original evidence")
-        for relative, backup in rollback_backups.items():
-            if relative not in recorded:
-                raise InstallAbort("install state rollback backup target is unknown")
-            path = _home_relative_path(
-                home,
-                backup["path"],
-                label="install state rollback backup",
-            )
-            if (
-                path.is_symlink()
-                or not path.is_file()
-                or not sha_re.fullmatch(backup["sha256"])
-                or not sha_re.fullmatch(backup["target_sha256"])
-                or _sha256_bytes(path.read_bytes()) != backup["sha256"]
-                or backup["target_sha256"] != (originals[relative]["sha256"] or "")
-            ):
-                raise InstallAbort("install state rollback backup is unavailable")
+            raise InstallAbort("install state rollback backup is unavailable")
+
+
+def _check_reconciliation(
+    state: dict, *, home: Path, policy_path: Path, policy_relative: str,
+    recorded: frozenset[str], targets: dict, originals: dict,
+) -> None:
+    sha_re = re.compile(r"^[0-9a-f]{64}$")
+    reconciliation = state.get("reconciliation")
+    if not isinstance(reconciliation, dict) or set(reconciliation) != {
+        "accepted_targets",
+        "previous_state_sha256",
+        "previous_state_backup",
+        "previous_target_fingerprints",
+        "accepted_preimages",
+        "post_merge_target_fingerprints",
+    }:
+        raise InstallAbort("install state reconciliation metadata is malformed")
+    accepted_targets = reconciliation["accepted_targets"]
+    if not isinstance(accepted_targets, list) or not all(
+        isinstance(value, str) for value in accepted_targets
+    ):
+        raise InstallAbort("install state reconciliation targets are malformed")
+    if (
+        accepted_targets != sorted(set(accepted_targets))
+        or not accepted_targets
+        or not set(accepted_targets) <= {policy_relative, "config.toml"}
+        or not set(accepted_targets) <= recorded
+    ):
+        raise InstallAbort("install state reconciliation targets are malformed")
+    previous_state_sha256 = reconciliation["previous_state_sha256"]
+    if not isinstance(previous_state_sha256, str) or (
+        previous_state_sha256 and not sha_re.fullmatch(previous_state_sha256)
+    ):
+        raise InstallAbort("install state previous state digest is malformed")
+    _check_previous_state_backup(
+        reconciliation, home=home, previous_state_sha256=previous_state_sha256
+    )
+    previous_targets = reconciliation["previous_target_fingerprints"]
+    if not isinstance(previous_targets, dict) or set(previous_targets) - recorded or not all(
+        isinstance(value, str) and sha_re.fullmatch(value)
+        for value in previous_targets.values()
+    ):
+        raise InstallAbort("install state previous target fingerprints are malformed")
+    preimages = reconciliation["accepted_preimages"]
+    if not isinstance(preimages, dict) or set(preimages) != set(accepted_targets):
+        raise InstallAbort("install state accepted preimages are malformed")
+    for relative, preimage in preimages.items():
+        _check_accepted_preimage(
+            relative, preimage, home=home, policy_path=policy_path, policy_relative=policy_relative
+        )
+    post_merge = reconciliation["post_merge_target_fingerprints"]
+    if not isinstance(post_merge, dict) or set(post_merge) != recorded or any(
+        post_merge.get(key) != targets.get(key) for key in recorded
+    ):
+        raise InstallAbort("install state post-merge fingerprints are malformed")
+    _check_rollback_backups(
+        state, home=home, recorded=recorded, targets=targets, originals=originals,
+        accepted_targets=accepted_targets,
+    )
+
+
+def _validate_committed_state(
+    state: dict,
+    *,
+    home: Path,
+    policy_path: Path,
+    config_snapshot: bytes | None,
+    allow_policy_drift: bool = False,
+) -> tuple[frozenset[str], bool, str | None, bool, str | None, frozenset[str]]:
+    """Validate sidecar provenance, including event-bound hook ownership."""
+    guard_present, autoroute_present = _check_state_header(state)
+    _check_plugin_and_backups(state)
+    _check_policy_ownership(state)
+    targets, originals, recorded = _check_target_manifest(
+        state, home=home, policy_path=policy_path,
+        guard_present=guard_present, autoroute_present=autoroute_present,
+    )
+    policy_relative = policy_path.relative_to(home).as_posix()
+    accepted_drift: set[str] = set()
+    hook_projection_id = _check_hook_registration(
+        state, home=home, guard_present=guard_present, autoroute_present=autoroute_present
+    )
+    _check_config_unchanged(home, config_snapshot)
+    original_payloads, hook_script_fingerprint = _check_target_evidence(
+        home=home, policy_relative=policy_relative, recorded=recorded, targets=targets,
+        originals=originals, allow_policy_drift=allow_policy_drift, accepted_drift=accepted_drift,
+    )
+    owned = _check_owned_legacy(state)
+    migration_proven = _check_config_provenance(
+        config_snapshot=config_snapshot, targets=targets, original_payloads=original_payloads,
+        owned=owned, accepted_drift=accepted_drift,
+    )
+    if state["state_version"] == 4:
+        _check_reconciliation(
+            state, home=home, policy_path=policy_path, policy_relative=policy_relative,
+            recorded=recorded, targets=targets, originals=originals,
+        )
     return (
         owned,
         migration_proven,
