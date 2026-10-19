@@ -13,7 +13,7 @@ updated: 2026-10-06
 ## Background
 
 Miyago 2026-10-06 要求補上「泛用版 pilotfish」剩下的四個缺口。缺口 1（policy
-共用）拆到 [core-policy](../core-policy/SPEC.md)，本 spec 處理缺口 2 到 4。
+共用）拆到 [core-policy](../../../specs/core-policy/SPEC.md)，本 spec 處理缺口 2 到 4。
 現況（main `7bed030` 查證）：
 
 1. **Policy 各 host 各一份**：見 core-policy。
