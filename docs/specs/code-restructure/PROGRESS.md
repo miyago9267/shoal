@@ -47,3 +47,9 @@ p50 中位數：PreToolUse(Bash) 84.35 -> 43.09（門檻 +5ms 內，通過）；
 
 - `render --check`：claude、codex、grok、agy、opencode、claude-plugin 全 OK。
 - 全套 unittest：1733 tests，1 fail，`test_claude_live_probe.PluginSplitTests.test_install_failure_runs_nothing_live`。原因是 worktree 路徑 `wt-guard` 含 `guard`，測試的假 host 以 `"guard" in argv[-1]` 判斷失敗，`marketplace add <ROOT>` 被誤判。同一份 diff 套在路徑不含 `guard` 的 worktree，該模組 103 tests 全 OK；其餘模組逐一跑過全 OK。
+
+## 2026-10-19
+
+- P1：`hooks/shoal_guard.py` 3181 -> 3080 行（-101）。
+- P4：`install/install.py` 2773 -> 3067 行（+294）；`install()` 692 -> 70 行、`_validate_committed_state` 404 -> 44 行，以行數換可讀性。
+- P5 不做：`render.py` 查表化 +38 行，無可讀性收益（Miyago 決定丟掉）。

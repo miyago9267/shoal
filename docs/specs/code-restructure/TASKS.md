@@ -23,16 +23,16 @@
 
 ## P4 install.py 拆函式
 
-- [ ] T4.1 `_Plan` dataclass 與 `install()` 步驟函式
-- [ ] T4.2 `_validate_committed_state` 拆檢查函式
-- [ ] T4.3 共同驗收；`test_install` 斷言不改
+- [x] T4.1 `_Plan` dataclass 與 `install()` 步驟函式
+- [x] T4.2 `_validate_committed_state` 拆檢查函式
+- [x] T4.3 共同驗收；`test_install` 斷言不改
 
 ## P5 render.py 資料化
 
-- [ ] T5.1 `HostSpec` 與共同 `render_roles`；claude、agy 先轉
-- [ ] T5.2 grok、codex 部分轉；opencode 只共用 validate
-- [ ] T5.3 保留 `validate_*` / `render_*` 薄包裝；golden 全部不變
-- [ ] T5.4 共同驗收
+- [ ] T5.1 `HostSpec` 與共同 `render_roles`；claude、agy 先轉（不做：2026-10-19 Miyago 決定丟掉，查表化反而 +38 行）
+- [ ] T5.2 grok、codex 部分轉；opencode 只共用 validate（不做：2026-10-19 Miyago 決定丟掉，查表化反而 +38 行）
+- [ ] T5.3 保留 `validate_*` / `render_*` 薄包裝；golden 全部不變（不做：2026-10-19 Miyago 決定丟掉，查表化反而 +38 行）
+- [ ] T5.4 共同驗收（不做：2026-10-19 Miyago 決定丟掉，查表化反而 +38 行）
 
 ## Open questions（待 Miyago）
 
