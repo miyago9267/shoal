@@ -1,7 +1,7 @@
 """role 改名後，tools/sync_global.py 與 tools/install_grok.py 對舊名安裝檔案的處理。
 
 mech-executor -> applier、plan-verifier -> plan-critic（docs/specs/delegation-default/RENAME.md）。
-舊名只在 tests/legacy_fixtures.py 的 LEGACY_ROLE_NAMES；home 與 repo 一律是 temp 目錄。
+舊名只在本檔的 LEGACY_ROLE_NAMES；home 與 repo 一律是 temp 目錄。
 規則：只移除確認是 shoal 安裝的檔案（位元組等於歷史版本，或 symlink 仍指向本 repo 的 dist），
 dry-run 只回報，--apply 才移除；其餘不動。
 """
@@ -15,10 +15,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
-import legacy_fixtures as lf  # noqa: E402
+import repo_fixtures as lf  # noqa: E402
 from test_sync_global import POSIX, Base, git, snapshot  # noqa: E402
 
-OLD_MECH, OLD_PLAN = lf.LEGACY_ROLE_NAMES
+LEGACY_ROLE_NAMES = ("mech-executor", "plan-verifier")
+OLD_MECH, OLD_PLAN = LEGACY_ROLE_NAMES
 
 
 def rename_in_history(repo: Path, old: str, new: str, rel: str) -> None:
@@ -55,7 +56,7 @@ class CodexRenamedRoleTests(Base):
         return lines[0]
 
     def test_dry_run_reports_and_apply_removes_released_old_roles(self) -> None:
-        for old in lf.LEGACY_ROLE_NAMES:
+        for old in LEGACY_ROLE_NAMES:
             (self.agents / f"{old}.toml").write_text("released v1\n")
         before = snapshot(self.codex, self.state, self.data)
         line = self.codex_sync()
@@ -89,7 +90,7 @@ class CodexRenamedRoleTests(Base):
 class GrokRenamedRoleTests(Base):
     OLD_FILES = tuple(
         f"{top}/{old}.{ext}"
-        for old in lf.LEGACY_ROLE_NAMES
+        for old in LEGACY_ROLE_NAMES
         for top, ext in (("agents", "md"), ("roles", "toml"))
     )
 
@@ -149,7 +150,7 @@ class AgyRenamedRoleTests(Base):
         self.dist_agents = self.repo / "hosts" / "agy" / "dist" / "agents"
 
     def test_dangling_link_into_this_repo_is_removed_only_with_apply(self) -> None:
-        for old in lf.LEGACY_ROLE_NAMES:
+        for old in LEGACY_ROLE_NAMES:
             (self.agents / old).symlink_to(self.dist_agents / old)  # 目標已不存在
         line = self.sync("--host", "agy")[1][0]
         self.assertIn(f"legacy migration: remove agents/{OLD_MECH}, agents/{OLD_PLAN}", line)
@@ -157,13 +158,13 @@ class AgyRenamedRoleTests(Base):
         self.assertTrue((self.agents / OLD_MECH).is_symlink())
 
         self.sync("--host", "agy", "--apply")
-        for old in lf.LEGACY_ROLE_NAMES:
+        for old in LEGACY_ROLE_NAMES:
             self.assertFalse((self.agents / old).is_symlink(), old)
         self.assertIn("symlinks ok", self.sync("--host", "agy", "--apply")[1][0])
 
     def test_old_link_is_replaced_by_new_name_link_when_missing(self) -> None:
         """只掛了舊名的機器（2026-10 實機）：移除舊名後補上新名，不留下 'agents/<新名> 不是 symlink'。"""
-        for old, new in zip(lf.LEGACY_ROLE_NAMES, ("applier", "plan-critic")):
+        for old, new in zip(LEGACY_ROLE_NAMES, ("applier", "plan-critic")):
             (self.agents / new).unlink()
             (self.agents / old).symlink_to(self.dist_agents / old)  # 目標已不存在
         before = snapshot(self.home)
@@ -173,7 +174,7 @@ class AgyRenamedRoleTests(Base):
         self.assertEqual(snapshot(self.home), before)
 
         self.sync("--host", "agy", "--apply")
-        for old, new in zip(lf.LEGACY_ROLE_NAMES, ("applier", "plan-critic")):
+        for old, new in zip(LEGACY_ROLE_NAMES, ("applier", "plan-critic")):
             self.assertFalse((self.agents / old).is_symlink(), old)
             self.assertEqual(
                 (self.agents / new).resolve(), (self.dist_agents / new).resolve()
