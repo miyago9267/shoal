@@ -8,7 +8,7 @@
   [#6 — fix(plan): bound readiness by executable slices](https://github.com/miyago9267/pilotfish-codex/pull/6)
   (author @Nanako0129, branch `codex/plan-verifier-convergence`)
 - Related spec:
-  [`codex-native-multi-agent-migration`](../codex-native-multi-agent-migration/SPEC.md)
+  [`codex-native-multi-agent-migration`](../../archive/specs/codex-native-multi-agent-migration/SPEC.md)
   — this spec extends its installer transactional boundary rather than
   redefining it.
 

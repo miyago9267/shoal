@@ -8,7 +8,7 @@
   [#1 — port Pilotfish v1.2 orchestration to Codex](https://github.com/miyago9267/pilotfish-codex/pull/1)
   (author @Nanako0129)
 - Related spec:
-  [`dispatch-verification`](../dispatch-verification/SPEC.md) — this spec
+  [`dispatch-verification`](../../../specs/dispatch-verification/SPEC.md) — this spec
   extends its Gap A / Gap B rather than redefining them.
 
 ## Context
