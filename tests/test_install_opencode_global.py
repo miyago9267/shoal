@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SH = ROOT / "hosts" / "opencode" / "plugin" / "install" / "install.sh"
 sys.path.insert(0, str(ROOT / "tests"))
-import legacy_fixtures  # noqa: E402
+import repo_fixtures  # noqa: E402
 ROLES = ("scout", "applier", "executor", "plan-critic", "verifier", "security-reviewer", "security-executor", "watcher", "researcher")
 FAKE_PLUGIN = "// fake plugin bundle\n"
 
@@ -522,7 +522,7 @@ class InstallOpenCodeGlobalRealBunTests(unittest.TestCase):
             project = tmp / "project"
             project.mkdir()
             # install.sh 讀「它所在 repo 的 HEAD」：用工作樹建的 temp repo，不看真實 repo 的 HEAD
-            repo = legacy_fixtures.worktree_repo(tmp / "repo")
+            repo = repo_fixtures.worktree_repo(tmp / "repo")
             env = dict(os.environ)
             env.pop("OPENCODE_CONFIG_DIR", None)
             env["HOME"] = str(tmp / "home")

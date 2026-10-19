@@ -28,7 +28,6 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import legacy_codex
 import shoal_version
 from hook_registration import (
     CURRENT_PROJECTION_ID,
@@ -2110,20 +2109,6 @@ def install(
             codex_home=codex_home,
             allow_downgrade=allow_plugin_downgrade,
         )
-    # shoal 2.0.0 renamed every installed name; recognize and remove what an earlier
-    # release installed before planning (docs/specs/shoal-rebrand N5, N8).
-    try:
-        legacy = legacy_codex.detect(codex_home, source_root / "plugin")
-        if legacy.found and dry_run:
-            for line in legacy.plan():
-                print(f"legacy: would {line}")
-            print("legacy install found; the install plan is computed after the migration is applied")
-            return 0
-        if legacy.found:
-            for line in legacy_codex.apply(legacy):
-                print(f"note: legacy: {line}")
-    except legacy_codex.LegacyMigrationError as exc:
-        raise InstallAbort(str(exc)) from exc
     config_path = codex_home / "config.toml"
     config_snapshot = config_path.read_bytes() if config_path.is_file() else None
     config_text, parsed_config = _decode_config(
@@ -2187,9 +2172,6 @@ def install(
         # forms before reporting the missing provenance gate.
         merge_config_text(config_text, migration_proven=False)
         raise InstallAbort("legacy V2 migration requires a committed install state")
-    if proven_guard_script_fingerprint is None:
-        # The guard script a legacy install recorded (and that still matches) may be upgraded.
-        proven_guard_script_fingerprint = legacy.proven_guard_sha256
     new_config, notes = merge_config_text(
         config_text,
         owned_legacy=owned,

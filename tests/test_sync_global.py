@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
-import legacy_fixtures  # noqa: E402
+import repo_fixtures  # noqa: E402
 import sync_global  # noqa: E402
 
 FAKE_BUN = """#!/bin/sh
@@ -298,7 +298,7 @@ class CodexTests(Base):
 class GrokTests(Base):
     def setUp(self) -> None:
         super().setUp()
-        self.repo = legacy_fixtures.worktree_repo(self.tmp / "repo")
+        self.repo = repo_fixtures.worktree_repo(self.tmp / "repo")
 
     def install(self) -> None:
         subprocess.run(
@@ -334,7 +334,7 @@ class GrokTests(Base):
 class AgyTests(Base):
     def setUp(self) -> None:
         super().setUp()
-        self.repo = legacy_fixtures.worktree_repo(self.tmp / "repo")
+        self.repo = repo_fixtures.worktree_repo(self.tmp / "repo")
 
     def links(self, skip: str | None = None) -> None:
         config = self.home / ".gemini" / "config"
@@ -381,7 +381,7 @@ class AgyTests(Base):
 class OpenCodeTests(Base):
     def setUp(self) -> None:
         super().setUp()
-        self.repo = legacy_fixtures.worktree_repo(self.tmp / "repo")
+        self.repo = repo_fixtures.worktree_repo(self.tmp / "repo")
         self.config = self.tmp / "opencode"
         self.config.mkdir()
         self.fake_bin = self.tmp / "fakebin"

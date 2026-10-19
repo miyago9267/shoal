@@ -8,10 +8,6 @@ import unittest
 import render_helpers as rh
 from render_helpers import ROOT, render, run_render
 
-sys.path.insert(0, str(ROOT / "tools"))
-from check_rename import apply_rename  # noqa: E402
-
-UPSTREAM_RULES = ROOT / "tests" / "fixtures" / "grok" / "rules.pilotfish-grok.upstream-v1.0.6.txt"
 
 
 class GrokRenderTests(rh.HostRenderCase):
@@ -64,16 +60,6 @@ class GrokRenderTests(rh.HostRenderCase):
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-grok v.+ -->$", rules),
                          [f"<!-- shoal-grok v{version} -->"])
         self.assertEqual(version, "3.13.0-beta")
-
-    def test_rules_equal_upstream_except_the_rename(self) -> None:  # AC-GW-003
-        # 2.0.0 起 rules 不再逐字等於上游：只差 docs/specs/shoal-rebrand/RENAME.md 的名稱替換與版本 marker。
-        # 另加 docs/specs/delegation-default/RENAME.md 的 role 改名（上游仍用舊名）。
-        upstream = apply_rename(UPSTREAM_RULES.read_text(encoding="utf-8"), "rules.md")
-        upstream = upstream.replace("mech-executor", "applier").replace("plan-verifier", "plan-critic")
-        version = (ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip()
-        upstream = upstream.replace("<!-- shoal-grok v2.0.0 -->", f"<!-- shoal-grok v{version} -->")  # apply_rename stamps 2.0.0
-        rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
-        self.assertEqual(rules, upstream)
 
     def test_changing_version_requires_rewriting_dist(self) -> None:  # AC-GW-002
         (self.root / "hosts" / "grok" / "VERSION").write_text("2.0.1\n", encoding="utf-8", newline="\n")
