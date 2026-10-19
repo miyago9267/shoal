@@ -4,12 +4,12 @@
 
 ## P0 量測與 characterization
 
-- [ ] T0.1 `tests/bench_hook_latency.py`：對 `run.sh` 入口各 200 次 `SessionStart`、`PreToolUse(Bash)`、`PreToolUse(Edit)`，輸出 p50 / p95（只服務 P1 前後對照）
-- [ ] T0.2 在現有 code 上量 baseline，數字寫入 PROGRESS.md
-- [ ] T0.3 在現有 code 產生 `tests/fixtures/adapter_golden.json`：每個 host、現有 shape fixtures（`tests/fixtures/*payload_shapes*.json`、`claude_subagent_tool_shapes.json`、grok shapes）與 `guard_vectors.json` 的每個 payload -> `adapt_*` 回傳的完整 dict（含 None）；main 上綠、改一個 tool-name 對照會轉紅
-- [ ] T0.4 列出 `install.py` 全部 `InstallAbort` 訊息，缺 test 的補上
-- [ ] T0.6 Security 回歸測試 S1.5（Workflow 恆為 None）、S1.6（predicate 案例，加入 T0.3 golden 輸入）、S1.9（舊集合 literal、opencode 不在 HOST_DEFAULT_MODE）；在現有 code 全綠，且先於任何 P1 code 變更
-- [ ] T0.7 另開 security follow-up issue：F9（O_NONBLOCK、chain manifest uid 檢查），P1 不處理
+- [x] T0.1 `tests/bench_hook_latency.py`：對 `run.sh` 入口各 200 次 `SessionStart`、`PreToolUse(Bash)`、`PreToolUse(Edit)`，輸出 p50 / p95（只服務 P1 前後對照）
+- [x] T0.2 在現有 code 上量 baseline，數字寫入 PROGRESS.md
+- [x] T0.3 在現有 code 產生 `tests/fixtures/adapter_golden.json`：每個 host、現有 shape fixtures（`tests/fixtures/*payload_shapes*.json`、`claude_subagent_tool_shapes.json`、grok shapes）與 `guard_vectors.json` 的每個 payload -> `adapt_*` 回傳的完整 dict（含 None）；main 上綠、改一個 tool-name 對照會轉紅
+- [x] T0.4（部分：136 種訊息模板已凍結；逐字行為測試約 36 種，其餘留待 T4.2 前補） 列出 `install.py` 全部 `InstallAbort` 訊息，缺 test 的補上
+- [x] T0.6 Security 回歸測試 S1.5（Workflow 恆為 None）、S1.6（predicate 案例，加入 T0.3 golden 輸入）、S1.9（舊集合 literal、opencode 不在 HOST_DEFAULT_MODE）；在現有 code 全綠，且先於任何 P1 code 變更
+- [x] T0.7 另開 security follow-up issue：F9（O_NONBLOCK、chain manifest uid 檢查），P1 不處理（issue #26）
 
 ## P1 guard 單檔內整理（plan-critic 前置）
 
