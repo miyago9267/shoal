@@ -2088,45 +2088,111 @@ def install_roles(
     return 0
 
 
-def install(
+@dataclass
+class _Plan:
+    """Everything install() plans before the first write, plus the transaction state it fills in later."""
+
+    source_root: Path
+    codex_home: Path
+    dry_run: bool
+    reconcile_current: bool
+    with_autoroute: bool
+    with_guard: bool
+    config_path: Path
+    config_snapshot: bytes | None
+    config_text: str
+    user_policy_path: Path
+    policy_path: Path
+    policy_identity: PolicyTargetIdentity | None
+    policy_bytes: bytes | None
+    state: dict | None
+    owned: frozenset
+    owned_hook_projection: str | None
+    owned_guard_projection: str | None
+    proven_hook_script_fingerprint: str | None
+    proven_guard_script_fingerprint: str | None
+    notes: list[str]
+    policy_payload: bytes
+    policy_ownership: dict
+    plugin: dict
+    plugin_was_installed: bool
+    plugin_install_needed: bool
+    runtime_status: str
+    legacy_v2: bool
+    new_config: str
+    # filled by _plan_writes
+    writes: list = None
+    agents: Path = None
+    hooks_root: Path = None
+    hooks_registration: Path = None
+    hook_script: Path = None
+    guard_script: Path = None
+    removals: list = None
+    script_removals: list = None
+    windows_warnings: list = None
+    desired_hook_projection: str | None = None
+    desired_guard_projection: str | None = None
+    # filled by _plan_state
+    inventory: list = None
+    pre_targets: dict = None
+    expected_inventory: dict = None
+    state_pre_targets: dict = None
+    expected_state_inventory: dict = None
+    policy_relative: str = ""
+    state_path: Path = None
+    state_original: bytes | None = None
+    state_version: int = 3
+    accepted_targets: set = None
+    accepted_preimages: dict = None
+    reconciliation_previous_targets: dict = None
+    state_needs_publication: bool = False
+    # filled by _prepare_transaction / _publish
+    stamp: str = ""
+    backup_paths: dict = None
+    backup_originals: dict = None
+    unbacked_paths: frozenset = frozenset()
+    rollback_backups: dict = None
+    pending: Path = None
+    pending_record: dict = None
+    pending_payload: bytes = b""
+    previous_state_backup: dict | None = None
+    state_backup_path: Path | None = None
+    applied: list = None
+    state_payload: bytes | None = None
+    plugin_activated: bool = False
+
+
+def _check_codex(*, source_root: Path, codex_home: Path, allow_plugin_downgrade: bool) -> int | None:
+    try:
+        completed = subprocess.run([_codex_cli(), "--version"], capture_output=True, text=True, check=False)
+    except OSError:
+        completed = None
+    version = parse_codex_version((completed.stdout + completed.stderr) if completed and completed.returncode == 0 else "")
+    if version is None:
+        print("error: version_parse_failed", file=sys.stderr); return 2
+    if version < MIN_COMPATIBLE_CODEX_VERSION:
+        minimum = ".".join(str(part) for part in MIN_COMPATIBLE_CODEX_VERSION)
+        print(f"error: version_below_minimum (requires >= {minimum})", file=sys.stderr); return 2
+    _assert_plugin_not_newer(
+        source_root=source_root,
+        codex_home=codex_home,
+        allow_downgrade=allow_plugin_downgrade,
+    )
+    return None
+
+
+def _load_plan(
     *,
     source_root: Path,
     codex_home: Path,
     dry_run: bool,
-    check_codex: bool = True,
-    replace_drifted_roles: bool = False,
-    replace_drifted_role: tuple[str, ...] = (),
-    follow_policy_symlink: bool = False,
-    policy_root: Path | None = None,
-    reconcile_current: bool = False,
-    allow_plugin_downgrade: bool = False,
-    with_guard: bool = True,
-    with_autoroute: bool = True,
-) -> int:
-    unknown_drift_roles = set(replace_drifted_role) - set(ROLES)
-    if unknown_drift_roles:
-        raise InstallAbort(
-            "unknown drifted role: " + ", ".join(sorted(unknown_drift_roles))
-        )
-    approved_drift_roles = (
-        set(ROLES) if replace_drifted_roles else set(replace_drifted_role)
-    )
-    if check_codex:
-        try:
-            completed = subprocess.run([_codex_cli(), "--version"], capture_output=True, text=True, check=False)
-        except OSError:
-            completed = None
-        version = parse_codex_version((completed.stdout + completed.stderr) if completed and completed.returncode == 0 else "")
-        if version is None:
-            print("error: version_parse_failed", file=sys.stderr); return 2
-        if version < MIN_COMPATIBLE_CODEX_VERSION:
-            minimum = ".".join(str(part) for part in MIN_COMPATIBLE_CODEX_VERSION)
-            print(f"error: version_below_minimum (requires >= {minimum})", file=sys.stderr); return 2
-        _assert_plugin_not_newer(
-            source_root=source_root,
-            codex_home=codex_home,
-            allow_downgrade=allow_plugin_downgrade,
-        )
+    check_codex: bool,
+    follow_policy_symlink: bool,
+    policy_root: Path | None,
+    reconcile_current: bool,
+    with_guard: bool,
+    with_autoroute: bool,
+) -> _Plan:
     config_path = codex_home / "config.toml"
     config_snapshot = config_path.read_bytes() if config_path.is_file() else None
     config_text, parsed_config = _decode_config(
@@ -2157,7 +2223,6 @@ def install(
     owned_guard_projection: str | None = None
     proven_hook_script_fingerprint: str | None = None
     proven_guard_script_fingerprint: str | None = None
-    accepted_drift: frozenset[str] = frozenset()
     features = parsed_config.get("features", {}) if isinstance(parsed_config, dict) else {}
     legacy_v2 = isinstance(features, dict) and "multi_agent_v2" in features
     if reconcile_current and state is None:
@@ -2168,7 +2233,7 @@ def install(
             migration_proven,
             owned_hook_projection,
             proven_hook_script_fingerprint,
-            accepted_drift,
+            _accepted_drift,
         ) = _validate_committed_state(
             state,
             home=codex_home,
@@ -2184,16 +2249,15 @@ def install(
                 GUARD_SCRIPT_RELATIVE
             ]
     elif legacy_v2:
-        # Let the config validator classify malformed/disabled/extra legacy
-        # forms before reporting the missing provenance gate.
+        # Without committed state migration_proven is False, so this call always raises:
+        # it classifies malformed/disabled/extra legacy forms, else reports the missing provenance.
         merge_config_text(config_text, migration_proven=False)
-        raise InstallAbort("legacy V2 migration requires a committed install state")
     new_config, notes = merge_config_text(
         config_text,
         owned_legacy=owned,
         migration_proven=migration_proven,
     )
-    new_policy, policy_action = merge_instruction_text(policy_text, policy_template)
+    new_policy, _policy_action = merge_instruction_text(policy_text, policy_template)
     policy_payload = _encode_instruction_text(new_policy, policy_newline)
     policy_ownership = _policy_ownership(codex_home, user_policy_path, policy_path)
     if policy_identity is not None and policy_identity.symlink:
@@ -2218,12 +2282,47 @@ def install(
         else "integrated-plugin-unavailable"
     )
     notes.append(f"shoal plugin status: {plugin['status']}")
+    return _Plan(
+        source_root=source_root,
+        codex_home=codex_home,
+        dry_run=dry_run,
+        reconcile_current=reconcile_current,
+        with_autoroute=with_autoroute,
+        with_guard=with_guard,
+        config_path=config_path,
+        config_snapshot=config_snapshot,
+        config_text=config_text,
+        user_policy_path=user_policy_path,
+        policy_path=policy_path,
+        policy_identity=policy_identity,
+        policy_bytes=policy_bytes,
+        state=state,
+        owned=owned,
+        owned_hook_projection=owned_hook_projection,
+        owned_guard_projection=owned_guard_projection,
+        proven_hook_script_fingerprint=proven_hook_script_fingerprint,
+        proven_guard_script_fingerprint=proven_guard_script_fingerprint,
+        notes=notes,
+        policy_payload=policy_payload,
+        policy_ownership=policy_ownership,
+        plugin=plugin,
+        plugin_was_installed=plugin_was_installed,
+        plugin_install_needed=plugin_install_needed,
+        runtime_status=runtime_status,
+        legacy_v2=legacy_v2,
+        new_config=new_config,
+    )
+
+
+def _plan_writes(p: _Plan, *, approved_drift_roles: set[str]) -> None:
+    codex_home = p.codex_home
+    source_root = p.source_root
+    notes = p.notes
     writes: list[tuple[Path, bytes, int, bytes | None]] = []
-    if new_config != config_text:
-        writes.append((config_path, new_config.encode(), 0o600, config_snapshot))
+    if p.new_config != p.config_text:
+        writes.append((p.config_path, p.new_config.encode(), 0o600, p.config_snapshot))
     agents = codex_home / "agents"
     _assert_agents_root(agents, codex_home)
-    existing = list(agents.rglob("*.toml")) if agents.is_dir() else []
     for role in sorted(ROLES):
         source = source_root / "templates" / "agents" / f"{role}.toml"
         payload = source.read_bytes()
@@ -2237,9 +2336,9 @@ def install(
         elif current is None:
             writes.append((target, payload, 0o600, None))
     removals, removal_drift = _renamed_role_removals(agents)
-    notes.extend(_removal_notes(removals, removal_drift, dry_run=dry_run))
-    if policy_payload != policy_bytes:
-        writes.append((policy_path, policy_payload, 0o644, policy_bytes))
+    notes.extend(_removal_notes(removals, removal_drift, dry_run=p.dry_run))
+    if p.policy_payload != p.policy_bytes:
+        writes.append((p.policy_path, p.policy_payload, 0o644, p.policy_bytes))
     hooks_registration = codex_home / "hooks.json"
     hooks_root = codex_home / "hooks"
     hook_script = hooks_root / "shoal_autoroute_gate.py"
@@ -2254,10 +2353,10 @@ def install(
             merge_registration(
                 current_registration,
                 source_registration,
-                owned_projection_id=owned_hook_projection,
-                owned_guard_projection_id=owned_guard_projection,
-                with_autoroute=with_autoroute,
-                with_guard=with_guard,
+                owned_projection_id=p.owned_hook_projection,
+                owned_guard_projection_id=p.owned_guard_projection,
+                with_autoroute=p.with_autoroute,
+                with_guard=p.with_guard,
             )
         )
     except HookRegistrationError as exc:
@@ -2284,18 +2383,16 @@ def install(
     source_hook_script = source_root / "hooks" / "shoal_autoroute_gate.py"
     hook_script_payload = source_hook_script.read_bytes()
     current_hook_script = hook_script.read_bytes() if hook_script.is_file() else None
-    if not with_autoroute:
+    proven_hook = p.proven_hook_script_fingerprint
+    if not p.with_autoroute:
         if (
             current_hook_script is not None
-            and proven_hook_script_fingerprint is not None
-            and _sha256_bytes(current_hook_script) == proven_hook_script_fingerprint
+            and proven_hook is not None
+            and _sha256_bytes(current_hook_script) == proven_hook
         ):
             script_removals.append(hook_script)
     elif current_hook_script is not None and current_hook_script != hook_script_payload:
-        if (
-            proven_hook_script_fingerprint is None
-            or _sha256_bytes(current_hook_script) != proven_hook_script_fingerprint
-        ):
+        if proven_hook is None or _sha256_bytes(current_hook_script) != proven_hook:
             raise InstallAbort(
                 "installed_hook_drift: hook script requires explicit replacement approval"
             )
@@ -2306,18 +2403,16 @@ def install(
     guard_script = hooks_root / "shoal_guard.py"
     guard_script_payload = (source_root / "hooks" / "shoal_guard.py").read_bytes()
     current_guard_script = guard_script.read_bytes() if guard_script.is_file() else None
-    if not with_guard:
+    proven_guard = p.proven_guard_script_fingerprint
+    if not p.with_guard:
         if (
             current_guard_script is not None
-            and proven_guard_script_fingerprint is not None
-            and _sha256_bytes(current_guard_script) == proven_guard_script_fingerprint
+            and proven_guard is not None
+            and _sha256_bytes(current_guard_script) == proven_guard
         ):
             script_removals.append(guard_script)
     elif current_guard_script is not None and current_guard_script != guard_script_payload:
-        if (
-            proven_guard_script_fingerprint is None
-            or _sha256_bytes(current_guard_script) != proven_guard_script_fingerprint
-        ):
+        if proven_guard is None or _sha256_bytes(current_guard_script) != proven_guard:
             raise InstallAbort(
                 "installed_hook_drift: guard script requires explicit replacement approval"
             )
@@ -2330,7 +2425,7 @@ def install(
         )
     for path in script_removals:
         notes.append(f"module off: will remove state-proven {path.relative_to(codex_home).as_posix()}")
-    if legacy_v2:
+    if p.legacy_v2:
         allowed_migration = {
             "config.toml",
             "agents/plan-critic.toml",
@@ -2339,35 +2434,51 @@ def install(
             "hooks.json",
             "hooks/shoal_autoroute_gate.py",
             GUARD_SCRIPT_RELATIVE,
-            policy_path.relative_to(codex_home).as_posix(),
+            p.policy_path.relative_to(codex_home).as_posix(),
         }
         changed_migration = {path.relative_to(codex_home).as_posix() for path, _, _, _ in writes}
         if not changed_migration <= allowed_migration:
             raise InstallAbort("legacy V2 migration would replace an unapproved primary target")
-    errors, _ = validate_agents_config(tomllib.loads(new_config))
+    errors, _ = validate_agents_config(tomllib.loads(p.new_config))
     if errors:
         raise InstallAbort("planned native config invalid: " + "; ".join(errors))
+    p.writes = writes
+    p.agents = agents
+    p.hooks_root = hooks_root
+    p.hooks_registration = hooks_registration
+    p.hook_script = hook_script
+    p.guard_script = guard_script
+    p.removals = removals
+    p.script_removals = script_removals
+    p.windows_warnings = windows_warnings
+    p.desired_hook_projection = desired_hook_projection
+    p.desired_guard_projection = desired_guard_projection
+
+
+def _plan_state(p: _Plan) -> None:
+    codex_home = p.codex_home
+    state = p.state
     inventory = [
-        config_path,
-        policy_path,
-        *(agents / f"{role}.toml" for role in sorted(ROLES)),
-        hooks_registration,
-        *([hook_script] if with_autoroute else []),
-        *([guard_script] if with_guard else []),
+        p.config_path,
+        p.policy_path,
+        *(p.agents / f"{role}.toml" for role in sorted(ROLES)),
+        p.hooks_registration,
+        *([p.hook_script] if p.with_autoroute else []),
+        *([p.guard_script] if p.with_guard else []),
     ]
-    state_inventory = [path for path in inventory if path != hooks_registration]
+    state_inventory = [path for path in inventory if path != p.hooks_registration]
     pre_targets: dict[str, dict[str, object]] = {}
     for path in inventory:
         relative = path.relative_to(codex_home).as_posix()
         current = (
-            config_snapshot
-            if path == config_path
+            p.config_snapshot
+            if path == p.config_path
             else path.read_bytes() if path.is_file() else None
         )
         pre_targets[relative] = {"present": current is not None,
                                  "sha256": _sha256_bytes(current) if current is not None else None,
                                  "bytes_b64": base64.b64encode(current).decode() if current is not None else None}
-    write_payloads = {path: payload for path, payload, _, _ in writes}
+    write_payloads = {path: payload for path, payload, _, _ in p.writes}
     expected_inventory: dict[str, str] = {}
     for path in inventory:
         relative = path.relative_to(codex_home).as_posix()
@@ -2390,7 +2501,7 @@ def install(
         ]
         for path in state_inventory
     }
-    policy_relative = policy_path.relative_to(codex_home).as_posix()
+    policy_relative = p.policy_path.relative_to(codex_home).as_posix()
     state_path = _state_path(codex_home)
     state_original = state_path.read_bytes() if state_path.is_file() else None
     previous_reconciliation = (
@@ -2403,9 +2514,10 @@ def install(
         if isinstance(previous_reconciliation, dict)
         else set()
     )
+    policy_identity = p.policy_identity
     state_version = (
         RECONCILIATION_STATE_VERSION
-        if reconcile_current
+        if p.reconcile_current
         or (policy_identity is not None and policy_identity.symlink)
         or (state is not None and state.get("state_version") == RECONCILIATION_STATE_VERSION)
         else 3
@@ -2413,7 +2525,7 @@ def install(
     accepted_targets: set[str] = set()
     if state_version == RECONCILIATION_STATE_VERSION:
         accepted_targets.update(previous_accepted_targets)
-        if reconcile_current:
+        if p.reconcile_current:
             accepted_targets.update({policy_relative, "config.toml"})
         if policy_identity is not None and policy_identity.symlink:
             accepted_targets.add(policy_relative)
@@ -2425,12 +2537,12 @@ def install(
             policy_identity
             if relative == policy_relative
             else _capture_policy_identity(
-                config_path,
+                p.config_path,
                 follow_policy_symlink=False,
                 policy_root=None,
             )
         )
-        payload = policy_bytes if relative == policy_relative else config_snapshot
+        payload = p.policy_bytes if relative == policy_relative else p.config_snapshot
         if identity is None or payload is None:
             raise InstallAbort(f"reconciliation preimage is unavailable: {relative}")
         identity_record = _policy_identity_record(identity)
@@ -2440,343 +2552,423 @@ def install(
             "sha256": _sha256_bytes(payload),
             **identity_record,
         }
-    reconciliation_previous_targets = (
+    p.reconciliation_previous_targets = (
         dict(state.get("target_fingerprints", {})) if state is not None else {}
     )
-    state_needs_publication = state is None or (
-        owned_hook_projection != desired_hook_projection
-        or owned_guard_projection != desired_guard_projection
-    ) or state is None or state.get("plugin") != plugin or state.get("runtime_status") != runtime_status or plugin_install_needed or (
+    p.state_needs_publication = state is None or (
+        p.owned_hook_projection != p.desired_hook_projection
+        or p.owned_guard_projection != p.desired_guard_projection
+    ) or state is None or state.get("plugin") != p.plugin or state.get("runtime_status") != p.runtime_status or p.plugin_install_needed or (
         state is not None and state.get("state_version", 3) != state_version
     ) or (
         state is not None
         and state.get("target_fingerprints") != expected_state_inventory
     )
-    if dry_run:
-        for warning in windows_warnings:
-            print(f"warning: {warning}")
-        for note in notes:
-            print(f"note: {note}")
-        if not writes and not state_needs_publication and not removals and not script_removals:
-            print("already up to date; nothing to change")
-            return 0
-        for path, _, _, _ in writes:
-            print(f"would change primary: {path.relative_to(codex_home).as_posix()}")
-        for path in script_removals:
-            print(f"would remove primary: {path.relative_to(codex_home).as_posix()}")
-        for path, _ in removals:
-            print(f"would remove primary: {path.relative_to(codex_home).as_posix()}")
-            backup = _role_backup_path(path, codex_home, "<timestamp>")
-            print(f"allowed transaction artifact: {backup.relative_to(codex_home).as_posix()}")
-        print(f"allowed transaction artifact: {state_path.name}.pending")
-        print(f"allowed transaction artifact: {state_path.name}")
-        for path, _, _, original in writes:
-            if (
-                original is not None
-                and not (state_version == RECONCILIATION_STATE_VERSION and path == hooks_registration)
-            ):
-                backup = _planned_backup_path(
-                    path,
-                    codex_home=codex_home,
-                    policy_identity=policy_identity,
-                    stamp="<timestamp>",
-                )
-                print(
-                    f"allowed transaction artifact: "
-                    f"{backup.relative_to(codex_home).as_posix()}"
-                )
-        if state_version == RECONCILIATION_STATE_VERSION:
-            planned_sources = {path for path, _, _, _ in writes}
-            for relative in sorted(accepted_targets):
-                source = policy_path if relative == policy_relative else config_path
-                if source in planned_sources:
-                    continue
-                backup = _planned_backup_path(
-                    source,
-                    codex_home=codex_home,
-                    policy_identity=policy_identity,
-                    stamp="<timestamp>",
-                )
-                print(
-                    f"allowed transaction artifact: "
-                    f"{backup.relative_to(codex_home).as_posix()}"
-                )
-        if state_version == RECONCILIATION_STATE_VERSION and state_original is not None:
-            print(f"allowed transaction artifact: {state_path.name}.shoal-codex-<timestamp>")
-        return 0
-    if writes or state_needs_publication:
-        stamp = _stamp()
-        backup_paths = _planned_backup_paths(
-            writes,
-            codex_home=codex_home,
-            policy_identity=policy_identity,
-            stamp=stamp,
-        )
-        unbacked_paths = (
-            frozenset({hooks_registration})
-            if state_version == RECONCILIATION_STATE_VERSION
-            else frozenset()
-        )
-        backup_paths = {
-            path: backup
-            for path, backup in backup_paths.items()
-            if path not in unbacked_paths
-        }
-        backup_originals = {
-            path: original
-            for path, _, _, original in writes
-            if original is not None and path not in unbacked_paths
-        }
-        if state_version == RECONCILIATION_STATE_VERSION:
-            for relative in sorted(accepted_targets):
-                source = policy_path if relative == policy_relative else config_path
-                if source in backup_paths:
-                    continue
-                encoded = pre_targets[relative]["bytes_b64"]
-                if not isinstance(encoded, str):
-                    raise InstallAbort(f"reconciliation backup source is unavailable: {relative}")
-                original = base64.b64decode(encoded, validate=True)
-                backup_paths[source] = _planned_backup_path(
-                    source,
-                    codex_home=codex_home,
-                    policy_identity=policy_identity,
-                    stamp=stamp,
-                )
-                backup_originals[source] = original
-        if state_version == RECONCILIATION_STATE_VERSION:
-            rollback_backups = {
-                source.relative_to(codex_home).as_posix(): {
-                    "path": backup.relative_to(codex_home).as_posix(),
-                    "sha256": _sha256_bytes(backup_originals[source]),
-                    "target_sha256": _sha256_bytes(backup_originals[source]),
-                }
-                for source, backup in backup_paths.items()
-            }
-        else:
-            rollback_backups = {
-                path.relative_to(codex_home).as_posix(): backup_paths[path].name
-                for path, original in backup_originals.items()
-                if path in {write[0] for write in writes}
-            }
-        pending = state_path.with_suffix(".json.pending")
-        previous_state_backup = None
-        state_backup_path: Path | None = None
-        if state_version == RECONCILIATION_STATE_VERSION and state_original is not None:
-            state_backup_path = state_path.parent / f"{state_path.name}.shoal-codex-{stamp}"
-            if state_backup_path.exists() or state_backup_path.is_symlink():
-                raise InstallAbort(f"previous install state backup already exists: {state_backup_path}")
-            previous_state_backup = {
-                "path": state_backup_path.name,
-                "sha256": _sha256_bytes(state_original),
-            }
-        pending_record = {
-            "status": "pending",
-            "original_targets": state_pre_targets,
-            "policy_ownership": policy_ownership,
-            "plugin": plugin,
-            "runtime_status": runtime_status,
-            "rollback_backups": rollback_backups,
-            "owned_legacy": {
-                path: {
-                    "original_present": True,
-                    "original_sha256": _sha256_bytes(config_text.encode()),
-                    "original_bytes_b64": base64.b64encode(config_text.encode()).decode(),
-                }
-                for path in owned
-            },
-        }
-        if state_version == RECONCILIATION_STATE_VERSION:
-            pending_record["reconciliation"] = {
-                "accepted_targets": sorted(accepted_targets),
-                "previous_state_sha256": _sha256_bytes(state_original) if state_original else "",
-                "previous_state_backup": previous_state_backup,
-                "previous_target_fingerprints": reconciliation_previous_targets,
-                "accepted_preimages": accepted_preimages,
-                "post_merge_target_fingerprints": expected_state_inventory,
-            }
-        pending_payload = json.dumps(pending_record, sort_keys=True).encode() + b"\n"
-        _atomic_write(pending, pending_payload, 0o600)
-        applied: list[tuple[Path, bytes | None, bytes, int]] = []
-        state_payload: bytes | None = None
-        plugin_activated = False
-        try:
-            if state_backup_path is not None:
-                _atomic_write(state_backup_path, state_original or b"", 0o600)
-            for source, backup in backup_paths.items():
-                if source in {write[0] for write in writes}:
-                    continue
-                _assert_policy_identity(policy_identity)
-                destination = _write_destination(source, policy_identity)
-                expected_original = backup_originals[source]
-                if not destination.is_file() or destination.read_bytes() != expected_original:
-                    raise InstallAbort(
-                        f"reconciliation target changed while install was planned: "
-                        f"{source.relative_to(codex_home).as_posix()}"
-                    )
-                if backup.exists() or backup.is_symlink():
-                    raise InstallAbort(f"rollback backup already exists: {backup}")
-                _copy_backup_no_follow(destination, backup, expected_original)
-            applied = _commit(
-                writes,
-                stamp,
-                agents_root=agents,
-                hooks_root=hooks_root,
+    p.inventory = inventory
+    p.pre_targets = pre_targets
+    p.expected_inventory = expected_inventory
+    p.state_pre_targets = state_pre_targets
+    p.expected_state_inventory = expected_state_inventory
+    p.policy_relative = policy_relative
+    p.state_path = state_path
+    p.state_original = state_original
+    p.state_version = state_version
+    p.accepted_targets = accepted_targets
+    p.accepted_preimages = accepted_preimages
+
+
+def _print_dry_run(p: _Plan) -> None:
+    codex_home = p.codex_home
+    state_path = p.state_path
+    reconciling = p.state_version == RECONCILIATION_STATE_VERSION
+    for warning in p.windows_warnings:
+        print(f"warning: {warning}")
+    for note in p.notes:
+        print(f"note: {note}")
+    if not p.writes and not p.state_needs_publication and not p.removals and not p.script_removals:
+        print("already up to date; nothing to change")
+        return
+    for path, _, _, _ in p.writes:
+        print(f"would change primary: {path.relative_to(codex_home).as_posix()}")
+    for path in p.script_removals:
+        print(f"would remove primary: {path.relative_to(codex_home).as_posix()}")
+    for path, _ in p.removals:
+        print(f"would remove primary: {path.relative_to(codex_home).as_posix()}")
+        backup = _role_backup_path(path, codex_home, "<timestamp>")
+        print(f"allowed transaction artifact: {backup.relative_to(codex_home).as_posix()}")
+    print(f"allowed transaction artifact: {state_path.name}.pending")
+    print(f"allowed transaction artifact: {state_path.name}")
+    for path, _, _, original in p.writes:
+        if (
+            original is not None
+            and not (reconciling and path == p.hooks_registration)
+        ):
+            backup = _planned_backup_path(
+                path,
                 codex_home=codex_home,
-                policy_path=user_policy_path,
-                policy_identity=policy_identity,
-                backup_paths=backup_paths,
-                unbacked_paths=unbacked_paths,
+                policy_identity=p.policy_identity,
+                stamp="<timestamp>",
             )
-            _assert_active_instruction_file(codex_home, user_policy_path)
-            if policy_identity is not None:
-                _assert_policy_identity(
-                    policy_identity,
-                    expected_sha256=expected_inventory[policy_relative],
-                )
-            for path in inventory:
-                relative = path.relative_to(codex_home).as_posix()
-                if not path.is_file() or _sha256_bytes(path.read_bytes()) != expected_inventory[relative]:
-                    raise InstallAbort("post-write transaction fingerprint mismatch")
-            _assert_active_instruction_file(codex_home, user_policy_path)
-            if policy_identity is not None:
-                _assert_policy_identity(
-                    policy_identity,
-                    expected_sha256=expected_inventory[policy_relative],
-                )
-            for path in inventory:
-                relative = path.relative_to(codex_home).as_posix()
-                if not path.is_file() or _sha256_bytes(path.read_bytes()) != expected_inventory[relative]:
-                    raise InstallAbort("post-write state publication fingerprint mismatch")
-            if plugin_install_needed:
-                plugin_config_before = config_path.read_bytes() if config_path.is_file() else None
-                if plugin_config_before is None:
-                    raise InstallAbort("config.toml disappeared before plugin installation")
-                _, plugin_config_before_parsed = _decode_config(
-                    plugin_config_before,
-                    source="pre-plugin",
-                )
-                plugin = _install_plugin(
-                    source_root=source_root,
-                    codex_home=codex_home,
-                    dry_run=False,
-                    enabled=True,
-                )
-                runtime_status = (
-                    "integrated" if plugin["status"] == "installed"
-                    else "integrated-plugin-unavailable"
-                )
-                plugin_activated = not plugin_was_installed and plugin["status"] == "installed"
-                # Codex records local marketplace registration in config.toml.
-                # Include that host-side mutation in the committed fingerprint.
-                current_config = config_path.read_bytes() if config_path.is_file() else None
-                if current_config is None:
-                    raise InstallAbort("config.toml disappeared during Plugin installation")
-                try:
-                    _, plugin_config_after_parsed = _decode_config(
-                        current_config,
-                        source="post-plugin",
-                    )
-                except InstallAbort as exc:
-                    raise InstallAbort("foreign config mutation during plugin installation") from exc
-                if _config_without_plugin_owned(plugin_config_before_parsed) != _config_without_plugin_owned(
-                    plugin_config_after_parsed
-                ):
-                    raise InstallAbort("foreign config mutation during plugin installation")
-                expected_inventory["config.toml"] = _sha256_bytes(current_config)
-                expected_state_inventory["config.toml"] = expected_inventory["config.toml"]
-                if state_version == RECONCILIATION_STATE_VERSION:
-                    pending_record["reconciliation"]["post_merge_target_fingerprints"] = dict(
-                        expected_state_inventory
-                    )
-            if state_version == RECONCILIATION_STATE_VERSION:
-                for source, backup in backup_paths.items():
-                    relative = source.relative_to(codex_home).as_posix()
-                    if relative in rollback_backups and backup.is_file():
-                        rollback_backups[relative]["sha256"] = _sha256_bytes(
-                            backup.read_bytes()
-                        )
-            ownership = dict(pending_record["owned_legacy"])
-            record = {
-                "state_version": state_version,
-                "status": "committed",
-                "target_fingerprints": expected_state_inventory,
-                "original_targets": state_pre_targets,
-                "policy_ownership": policy_ownership,
-                "plugin": plugin,
-                "runtime_status": runtime_status,
-                "rollback_backups": rollback_backups,
-                "owned_legacy": ownership,
+            print(
+                f"allowed transaction artifact: "
+                f"{backup.relative_to(codex_home).as_posix()}"
+            )
+    if reconciling:
+        planned_sources = {path for path, _, _, _ in p.writes}
+        for relative in sorted(p.accepted_targets):
+            source = p.policy_path if relative == p.policy_relative else p.config_path
+            if source in planned_sources:
+                continue
+            backup = _planned_backup_path(
+                source,
+                codex_home=codex_home,
+                policy_identity=p.policy_identity,
+                stamp="<timestamp>",
+            )
+            print(
+                f"allowed transaction artifact: "
+                f"{backup.relative_to(codex_home).as_posix()}"
+            )
+    if reconciling and p.state_original is not None:
+        print(f"allowed transaction artifact: {state_path.name}.shoal-codex-<timestamp>")
+
+
+def _prepare_transaction(p: _Plan) -> None:
+    """Plan backups and write the pending sidecar (first filesystem effect)."""
+    codex_home = p.codex_home
+    reconciling = p.state_version == RECONCILIATION_STATE_VERSION
+    p.stamp = _stamp()
+    backup_paths = _planned_backup_paths(
+        p.writes,
+        codex_home=codex_home,
+        policy_identity=p.policy_identity,
+        stamp=p.stamp,
+    )
+    p.unbacked_paths = (
+        frozenset({p.hooks_registration}) if reconciling else frozenset()
+    )
+    backup_paths = {
+        path: backup
+        for path, backup in backup_paths.items()
+        if path not in p.unbacked_paths
+    }
+    backup_originals = {
+        path: original
+        for path, _, _, original in p.writes
+        if original is not None and path not in p.unbacked_paths
+    }
+    if reconciling:
+        for relative in sorted(p.accepted_targets):
+            source = p.policy_path if relative == p.policy_relative else p.config_path
+            if source in backup_paths:
+                continue
+            encoded = p.pre_targets[relative]["bytes_b64"]
+            if not isinstance(encoded, str):
+                raise InstallAbort(f"reconciliation backup source is unavailable: {relative}")
+            original = base64.b64decode(encoded, validate=True)
+            backup_paths[source] = _planned_backup_path(
+                source,
+                codex_home=codex_home,
+                policy_identity=p.policy_identity,
+                stamp=p.stamp,
+            )
+            backup_originals[source] = original
+    if reconciling:
+        rollback_backups = {
+            source.relative_to(codex_home).as_posix(): {
+                "path": backup.relative_to(codex_home).as_posix(),
+                "sha256": _sha256_bytes(backup_originals[source]),
+                "target_sha256": _sha256_bytes(backup_originals[source]),
             }
-            if desired_hook_projection is not None:
-                record["hook_registration"] = projection_state(desired_hook_projection)
-            if desired_guard_projection is not None:
-                record["guard_registration"] = projection_state(desired_guard_projection)
-            if state_version == RECONCILIATION_STATE_VERSION:
-                record["reconciliation"] = {
-                    "accepted_targets": sorted(accepted_targets),
-                    "previous_state_sha256": _sha256_bytes(state_original) if state_original else "",
-                    "previous_state_backup": previous_state_backup,
-                    "previous_target_fingerprints": reconciliation_previous_targets,
-                    "accepted_preimages": accepted_preimages,
-                    "post_merge_target_fingerprints": expected_state_inventory,
-                }
-            state_payload = json.dumps(record, sort_keys=True).encode() + b"\n"
-            _assert_active_instruction_file(codex_home, user_policy_path)
-            _atomic_write_if_unchanged(
-                state_path,
-                state_payload,
-                0o600,
-                state_original,
+            for source, backup in backup_paths.items()
+        }
+    else:
+        rollback_backups = {
+            path.relative_to(codex_home).as_posix(): backup_paths[path].name
+            for path, original in backup_originals.items()
+            if path in {write[0] for write in p.writes}
+        }
+    p.pending = p.state_path.with_suffix(".json.pending")
+    p.previous_state_backup = None
+    p.state_backup_path = None
+    if reconciling and p.state_original is not None:
+        p.state_backup_path = p.state_path.parent / f"{p.state_path.name}.shoal-codex-{p.stamp}"
+        if p.state_backup_path.exists() or p.state_backup_path.is_symlink():
+            raise InstallAbort(f"previous install state backup already exists: {p.state_backup_path}")
+        p.previous_state_backup = {
+            "path": p.state_backup_path.name,
+            "sha256": _sha256_bytes(p.state_original),
+        }
+    pending_record = {
+        "status": "pending",
+        "original_targets": p.state_pre_targets,
+        "policy_ownership": p.policy_ownership,
+        "plugin": p.plugin,
+        "runtime_status": p.runtime_status,
+        "rollback_backups": rollback_backups,
+        "owned_legacy": {
+            path: {
+                "original_present": True,
+                "original_sha256": _sha256_bytes(p.config_text.encode()),
+                "original_bytes_b64": base64.b64encode(p.config_text.encode()).decode(),
+            }
+            for path in p.owned
+        },
+    }
+    if reconciling:
+        pending_record["reconciliation"] = _reconciliation_record(p)
+    p.backup_paths = backup_paths
+    p.backup_originals = backup_originals
+    p.rollback_backups = rollback_backups
+    p.pending_record = pending_record
+    p.pending_payload = json.dumps(pending_record, sort_keys=True).encode() + b"\n"
+    _atomic_write(p.pending, p.pending_payload, 0o600)
+
+
+def _reconciliation_record(p: _Plan) -> dict:
+    return {
+        "accepted_targets": sorted(p.accepted_targets),
+        "previous_state_sha256": _sha256_bytes(p.state_original) if p.state_original else "",
+        "previous_state_backup": p.previous_state_backup,
+        "previous_target_fingerprints": p.reconciliation_previous_targets,
+        "accepted_preimages": p.accepted_preimages,
+        "post_merge_target_fingerprints": p.expected_state_inventory,
+    }
+
+
+def _inventory_matches(p: _Plan) -> bool:
+    return all(
+        path.is_file()
+        and _sha256_bytes(path.read_bytes()) == p.expected_inventory[path.relative_to(p.codex_home).as_posix()]
+        for path in p.inventory
+    )
+
+
+def _assert_policy_unchanged(p: _Plan) -> None:
+    _assert_active_instruction_file(p.codex_home, p.user_policy_path)
+    if p.policy_identity is not None:
+        _assert_policy_identity(
+            p.policy_identity,
+            expected_sha256=p.expected_inventory[p.policy_relative],
+        )
+
+
+def _install_plugin_step(p: _Plan) -> None:
+    plugin_config_before = p.config_path.read_bytes() if p.config_path.is_file() else None
+    if plugin_config_before is None:
+        raise InstallAbort("config.toml disappeared before plugin installation")
+    _, plugin_config_before_parsed = _decode_config(
+        plugin_config_before,
+        source="pre-plugin",
+    )
+    p.plugin = _install_plugin(
+        source_root=p.source_root,
+        codex_home=p.codex_home,
+        dry_run=False,
+        enabled=True,
+    )
+    p.runtime_status = (
+        "integrated" if p.plugin["status"] == "installed"
+        else "integrated-plugin-unavailable"
+    )
+    p.plugin_activated = not p.plugin_was_installed and p.plugin["status"] == "installed"
+    # Codex records local marketplace registration in config.toml.
+    # Include that host-side mutation in the committed fingerprint.
+    current_config = p.config_path.read_bytes() if p.config_path.is_file() else None
+    if current_config is None:
+        raise InstallAbort("config.toml disappeared during Plugin installation")
+    try:
+        _, plugin_config_after_parsed = _decode_config(
+            current_config,
+            source="post-plugin",
+        )
+    except InstallAbort as exc:
+        raise InstallAbort("foreign config mutation during plugin installation") from exc
+    if _config_without_plugin_owned(plugin_config_before_parsed) != _config_without_plugin_owned(
+        plugin_config_after_parsed
+    ):
+        raise InstallAbort("foreign config mutation during plugin installation")
+    p.expected_inventory["config.toml"] = _sha256_bytes(current_config)
+    p.expected_state_inventory["config.toml"] = p.expected_inventory["config.toml"]
+    if p.state_version == RECONCILIATION_STATE_VERSION:
+        p.pending_record["reconciliation"]["post_merge_target_fingerprints"] = dict(
+            p.expected_state_inventory
+        )
+
+
+def _publish(p: _Plan) -> None:
+    """Back up, commit the writes, verify, install the plugin and publish the state."""
+    codex_home = p.codex_home
+    reconciling = p.state_version == RECONCILIATION_STATE_VERSION
+    if p.state_backup_path is not None:
+        _atomic_write(p.state_backup_path, p.state_original or b"", 0o600)
+    for source, backup in p.backup_paths.items():
+        if source in {write[0] for write in p.writes}:
+            continue
+        _assert_policy_identity(p.policy_identity)
+        destination = _write_destination(source, p.policy_identity)
+        expected_original = p.backup_originals[source]
+        if not destination.is_file() or destination.read_bytes() != expected_original:
+            raise InstallAbort(
+                f"reconciliation target changed while install was planned: "
+                f"{source.relative_to(codex_home).as_posix()}"
             )
-            if not state_path.is_file() or state_path.read_bytes() != state_payload:
-                raise InstallAbort("published install state changed before verification")
-            _assert_active_instruction_file(codex_home, user_policy_path)
-            if policy_identity is not None:
-                _assert_policy_identity(
-                    policy_identity,
-                    expected_sha256=expected_inventory[policy_relative],
+        if backup.exists() or backup.is_symlink():
+            raise InstallAbort(f"rollback backup already exists: {backup}")
+        _copy_backup_no_follow(destination, backup, expected_original)
+    p.applied = _commit(
+        p.writes,
+        p.stamp,
+        agents_root=p.agents,
+        hooks_root=p.hooks_root,
+        codex_home=codex_home,
+        policy_path=p.user_policy_path,
+        policy_identity=p.policy_identity,
+        backup_paths=p.backup_paths,
+        unbacked_paths=p.unbacked_paths,
+    )
+    _assert_policy_unchanged(p)
+    if not _inventory_matches(p):
+        raise InstallAbort("post-write transaction fingerprint mismatch")
+    _assert_policy_unchanged(p)
+    if not _inventory_matches(p):
+        raise InstallAbort("post-write state publication fingerprint mismatch")
+    if p.plugin_install_needed:
+        _install_plugin_step(p)
+    if reconciling:
+        for source, backup in p.backup_paths.items():
+            relative = source.relative_to(codex_home).as_posix()
+            if relative in p.rollback_backups and backup.is_file():
+                p.rollback_backups[relative]["sha256"] = _sha256_bytes(
+                    backup.read_bytes()
                 )
-            if any(not path.is_file() or _sha256_bytes(path.read_bytes()) != expected_inventory[path.relative_to(codex_home).as_posix()] for path in inventory):
-                raise InstallAbort("post-sidecar transaction fingerprint mismatch")
-            if not pending.is_file() or pending.read_bytes() != pending_payload:
-                raise InstallAbort("pending install state changed before removal")
-            pending.unlink()
+    record = {
+        "state_version": p.state_version,
+        "status": "committed",
+        "target_fingerprints": p.expected_state_inventory,
+        "original_targets": p.state_pre_targets,
+        "policy_ownership": p.policy_ownership,
+        "plugin": p.plugin,
+        "runtime_status": p.runtime_status,
+        "rollback_backups": p.rollback_backups,
+        "owned_legacy": dict(p.pending_record["owned_legacy"]),
+    }
+    if p.desired_hook_projection is not None:
+        record["hook_registration"] = projection_state(p.desired_hook_projection)
+    if p.desired_guard_projection is not None:
+        record["guard_registration"] = projection_state(p.desired_guard_projection)
+    if reconciling:
+        record["reconciliation"] = _reconciliation_record(p)
+    p.state_payload = json.dumps(record, sort_keys=True).encode() + b"\n"
+    _assert_active_instruction_file(codex_home, p.user_policy_path)
+    _atomic_write_if_unchanged(
+        p.state_path,
+        p.state_payload,
+        0o600,
+        p.state_original,
+    )
+    if not p.state_path.is_file() or p.state_path.read_bytes() != p.state_payload:
+        raise InstallAbort("published install state changed before verification")
+    _assert_policy_unchanged(p)
+    if not _inventory_matches(p):
+        raise InstallAbort("post-sidecar transaction fingerprint mismatch")
+    if not p.pending.is_file() or p.pending.read_bytes() != p.pending_payload:
+        raise InstallAbort("pending install state changed before removal")
+    p.pending.unlink()
+
+
+def _rollback(p: _Plan, exc: BaseException) -> None:
+    plugin_rollback = "not-required"
+    if p.plugin_activated and p.plugin.get("status") == "installed":
+        plugin_rollback = "removed" if _remove_plugin(codex_home=p.codex_home) else "failed"
+    current_state = p.state_path.read_bytes() if p.state_path.is_file() else None
+    if p.state_payload is not None and current_state == p.state_payload:
+        if p.state_original is None:
+            p.state_path.unlink(missing_ok=True)
+        else:
+            _atomic_write(p.state_path, p.state_original, 0o600)
+    for path, original, payload, mode in reversed(p.applied):
+        current = path.read_bytes() if path.is_file() else None
+        if current != payload:
+            continue
+        if original is None:
+            path.unlink(missing_ok=True)
+        else:
+            _atomic_write(path, original, mode)
+    aborted = dict(p.pending_record, status="aborted", error=type(exc).__name__)
+    aborted["plugin_rollback"] = plugin_rollback
+    aborted_payload = json.dumps(aborted, sort_keys=True).encode() + b"\n"
+    if p.pending.is_file() and p.pending.read_bytes() == p.pending_payload:
+        _atomic_write(p.pending, aborted_payload, 0o600)
+
+
+def install(
+    *,
+    source_root: Path,
+    codex_home: Path,
+    dry_run: bool,
+    check_codex: bool = True,
+    replace_drifted_roles: bool = False,
+    replace_drifted_role: tuple[str, ...] = (),
+    follow_policy_symlink: bool = False,
+    policy_root: Path | None = None,
+    reconcile_current: bool = False,
+    allow_plugin_downgrade: bool = False,
+    with_guard: bool = True,
+    with_autoroute: bool = True,
+) -> int:
+    unknown_drift_roles = set(replace_drifted_role) - set(ROLES)
+    if unknown_drift_roles:
+        raise InstallAbort(
+            "unknown drifted role: " + ", ".join(sorted(unknown_drift_roles))
+        )
+    approved_drift_roles = (
+        set(ROLES) if replace_drifted_roles else set(replace_drifted_role)
+    )
+    if check_codex:
+        failed = _check_codex(
+            source_root=source_root,
+            codex_home=codex_home,
+            allow_plugin_downgrade=allow_plugin_downgrade,
+        )
+        if failed is not None:
+            return failed
+    p = _load_plan(
+        source_root=source_root,
+        codex_home=codex_home,
+        dry_run=dry_run,
+        check_codex=check_codex,
+        follow_policy_symlink=follow_policy_symlink,
+        policy_root=policy_root,
+        reconcile_current=reconcile_current,
+        with_guard=with_guard,
+        with_autoroute=with_autoroute,
+    )
+    _plan_writes(p, approved_drift_roles=approved_drift_roles)
+    _plan_state(p)
+    if dry_run:
+        _print_dry_run(p)
+        return 0
+    if p.writes or p.state_needs_publication:
+        _prepare_transaction(p)
+        p.applied = []
+        try:
+            _publish(p)
         except BaseException as exc:
-            plugin_rollback = "not-required"
-            if plugin_activated and plugin.get("status") == "installed":
-                plugin_rollback = "removed" if _remove_plugin(codex_home=codex_home) else "failed"
-            current_state = state_path.read_bytes() if state_path.is_file() else None
-            if state_payload is not None and current_state == state_payload:
-                if state_original is None:
-                    state_path.unlink(missing_ok=True)
-                else:
-                    _atomic_write(state_path, state_original, 0o600)
-            for path, original, payload, mode in reversed(applied):
-                current = path.read_bytes() if path.is_file() else None
-                if current != payload:
-                    continue
-                if original is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    _atomic_write(path, original, mode)
-            aborted = dict(pending_record, status="aborted", error=type(exc).__name__)
-            aborted["plugin_rollback"] = plugin_rollback
-            aborted_payload = json.dumps(aborted, sort_keys=True).encode() + b"\n"
-            if pending.is_file() and pending.read_bytes() == pending_payload:
-                _atomic_write(pending, aborted_payload, 0o600)
+            _rollback(p, exc)
             raise
     # Old-name roles sit outside the state inventory; they get their own per-file backup and
     # all-or-nothing removal after the main transaction has committed.
-    _commit_role_removals(removals, agents_root=agents, codex_home=codex_home, stamp=_stamp())
-    for path in script_removals:
+    _commit_role_removals(p.removals, agents_root=p.agents, codex_home=codex_home, stamp=_stamp())
+    for path in p.script_removals:
         path.unlink(missing_ok=True)
-    for warning in windows_warnings:
+    for warning in p.windows_warnings:
         print(f"warning: {warning}")
-    for note in notes:
+    for note in p.notes:
         print(f"note: {note}")
     print(
         "changed native target"
-        if writes or removals
+        if p.writes or p.removals
         else "already up to date; nothing to change"
     )
     return 0
