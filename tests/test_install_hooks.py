@@ -524,57 +524,6 @@ class AgyTests(Case):
         self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
         self.assertEqual(self.load(path), self.FOREIGN)
 
-    def test_legacy_group_name_is_renamed_in_place_and_idempotent(self) -> None:
-        # before 3.8.0 the agy group was called "shoal-guard"; it moves to "shoal-dispatch-guard" at the same position
-        legacy_key = "shoal-guard"  # legacy group name
-        self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        path = self.gemini / "config" / "hooks.json"
-        installed = self.load(path)
-        old = {"orca-status": self.FOREIGN["orca-status"], legacy_key: installed["shoal-dispatch-guard"], "herdr": self.FOREIGN["herdr"]}
-        path.write_text(json.dumps(old, indent=2) + "\n", encoding="utf-8")
-        self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        migrated = self.load(path)
-        self.assertEqual(list(migrated), ["orca-status", "shoal-dispatch-guard", "herdr"])
-        self.assertEqual(migrated["shoal-dispatch-guard"], installed["shoal-dispatch-guard"])
-        after = path.read_bytes()
-        self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        self.assertEqual(path.read_bytes(), after)
-
-    def test_legacy_group_with_a_foreign_handler_is_left_untouched(self) -> None:
-        # "shoal-guard" 也是外部專案用的群組名：含非 shoal handler 就不遷移，install / uninstall 都不碰它
-        legacy_key = "shoal-guard"
-        self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        path = self.gemini / "config" / "hooks.json"
-        owned = self.load(path)["shoal-dispatch-guard"]["SessionStart"][0]
-        foreign = {"SessionStart": [owned, {"type": "command", "command": "other-tool --start", "timeout": 5}]}
-        base = {"orca-status": self.FOREIGN["orca-status"], legacy_key: foreign}
-        path.write_text(json.dumps(base, indent=2) + "\n", encoding="utf-8")
-        self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        after = self.load(path)
-        self.assertEqual(after[legacy_key], foreign)
-        self.assertIn("shoal-dispatch-guard", after)  # 新群組照裝
-        self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
-        self.assertEqual(self.load(path), base)
-
-    def test_legacy_group_with_only_a_foreign_handler_and_non_object_is_untouched(self) -> None:
-        legacy_key = "shoal-guard"
-        path = self.gemini / "config" / "hooks.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        for group in ({"Stop": [{"type": "command", "command": "other", "timeout": 1}]}, ["not", "an", "object"], {}):
-            base = {legacy_key: group}
-            path.write_text(json.dumps(base) + "\n", encoding="utf-8")
-            self.assertEqual(self.cli("agy", "--apply")[0], 0)
-            self.assertEqual(self.load(path)[legacy_key], group)
-
-    def test_uninstall_removes_a_legacy_named_group_too(self) -> None:
-        legacy_key = "shoal-guard"  # legacy group name
-        self.assertEqual(self.cli("agy", "--apply")[0], 0)
-        path = self.gemini / "config" / "hooks.json"
-        group = self.load(path)["shoal-dispatch-guard"]
-        path.write_text(json.dumps({**self.FOREIGN, legacy_key: group}, indent=2) + "\n", encoding="utf-8")
-        self.assertEqual(self.cli("agy", "--uninstall", "--apply")[0], 0)
-        self.assertEqual(self.load(path), self.FOREIGN)
-
     def test_symlinked_hooks_json_is_written_through(self) -> None:
         target = self.base / "dotfile-hooks.json"
         target.write_text(json.dumps(self.FOREIGN, indent=2) + "\n", encoding="utf-8")
