@@ -13,13 +13,13 @@
 
 ## P1 guard 單檔內整理（plan-critic 前置）
 
-- [ ] T1.1 host 集合改單表，舊名稱由表衍生
-- [ ] T1.2 三個 adapter 改 `AdapterSpec` 加共用 `adapt()`；`adapt_agy` 保持獨立；新輸出對 adapter golden 每筆 assertEqual，P1 不編輯 golden
-- [ ] T1.3 `_new_state` 取代 `_locked` 內三份 literal，輸出 JSON 與現在位元組相同
-- [ ] T1.4 （已移除：`_open_private` / `_open_readable` 維持分開，見 SPEC F1）
-- [ ] T1.5 docstring 縮成指標
-- [ ] T1.5a S1.7、S1.8、S1.10 加入並全綠；P1 由 `security-executor` 實作
-- [ ] T1.6 重新產生 guard dist 副本與 `.sha256`；共同驗收 + 延遲 + fresh `verifier`
+- [x] T1.1 host 集合改單表，舊名稱由表衍生
+- [x] T1.2 三個 adapter 改 `AdapterSpec` 加共用 `adapt()`；`adapt_agy` 保持獨立；新輸出對 adapter golden 每筆 assertEqual，P1 不編輯 golden
+- [x] T1.3 `_new_state` 取代 `_locked` 內三份 literal，輸出 JSON 與現在位元組相同
+- [x] T1.4 （已移除：`_open_private` / `_open_readable` 維持分開，見 SPEC F1）
+- [x] T1.5 docstring 縮成指標
+- [x] T1.5a S1.7、S1.8、S1.10 加入並全綠；P1 由 `security-executor` 實作
+- [x] T1.6 重新產生 guard dist 副本與 `.sha256`；共同驗收 + 延遲 + fresh `verifier`（verifier 由 main 另派）
 
 ## P4 install.py 拆函式
 
