@@ -6,7 +6,7 @@ Cases are (name, setup, expected message) tables. Aborts raised after the pendin
 
 Sites that need a TOCTOU race are reproduced by wrapping the one primitive that observes the race. Not covered
 (unreachable or needs a second racing writer), by install.py line at this commit:
-  2088 legacy-V2-without-state: merge_config_text(migration_proven=False) always raises first
+  "legacy V2 migration requires a committed install state" (raise removed in P4): merge_config_text(migration_proven=False) always raises first
   2244 legacy V2 unapproved primary target, 2247 planned native config invalid, 2277 inventory target missing,
   2319 reconciliation target outside inventory, 2333/2336 reconciliation preimage/identity unavailable
        (state validation or earlier gates reject every input that could reach them)

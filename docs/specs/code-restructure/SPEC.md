@@ -62,6 +62,8 @@ shoal_update、install_hooks、install.py）不動。只做 in-file 整理：
 
 #### Rejected alternatives
 
+- **P5 `render.py` 資料化（D4 查表化，2026-10-19 Miyago 決定丟掉）**。實作後查表化反而 +38 行，且沒有可讀性收益；`validate_*` / `render_*` 維持原狀。
+
 - **D2 hook 登記收斂到 `install/hook_registration.py`（原 P3，2026-10-19 拿掉）**。原計畫讓 `apply_codex` 改呼叫 `merge_registration`，使 Codex `hooks.json` 只剩一條寫入路徑。否決原因：`apply_codex` 的 regex handler-level stripping 在 mixed group 內（`tools/install_hooks.py:181-210`、`255-277`）無法套用 `merge_registration` 的整 group 精確投影比對（`install/hook_registration.py:403-425`、`562-574`、`654-662`），要改就會改變行為（`tests/test_install_hooks.py:744-756`）；收益只約 50-80 行，不值得。因此 Codex 的兩條寫入路徑（`install.py` 與 `install_hooks.py`）維持現狀，不在本案範圍。
 
 - **guard 拆成 `hooks/shoal_guard/` package**（約 14 個模組、薄入口、`guard_bundle.py`、bundle manifest golden、
@@ -112,6 +114,8 @@ P4、P5 彼此獨立，可以平行或依序。
 階段編號刻意不重排（P2 已移除），讓既有引用穩定。
 
 **行數合計**：P1 -240、P4 0 到 -50、P5 -150 到 -200，約 **-390 到 -490**（不含 P0 新增的約 200 行測試）。
+
+**實際結果（2026-10-19）**：P1 guard 3181 -> 3080 行（-101）。P4 `install.py` 2773 -> 3067 行（+294），`install()` 692 -> 70 行、`_validate_committed_state` 404 -> 44 行，以行數換可讀性。P5 不做（+38 行，無可讀性收益，見 Rejected alternatives）。
 
 **共同驗收**：
 

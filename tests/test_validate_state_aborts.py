@@ -6,10 +6,10 @@ it), mutates one thing, and asserts (a) the exact message and (b) that no file n
 `site` is the line of the raise in install.py before P4 (documentation only, not asserted).
 
 Raise sites that no state can reach (so they have no case):
-  - line 1258 "install state rollback backup target is unknown": the set(rollback_backups) != required_backups gate
-    (1253) only admits keys drawn from accepted_targets and recorded, both already proven to be recorded targets.
-  - the two "raise HookRegistrationError" sites (998, 1007) are not InstallAbort; they surface as the wrapped 1010
-    message and are covered below.
+  - "install state rollback backup target is unknown" (raise removed in P4): the set(rollback_backups) != required_backups
+    gate only admits keys drawn from accepted_targets and recorded, both already proven to be recorded targets.
+  - the two "raise HookRegistrationError" sites ("owned hooks.json is missing", "guard projection state is malformed")
+    are not InstallAbort; they surface as the wrapped hook-registration message and are covered below.
 """
 
 from __future__ import annotations
