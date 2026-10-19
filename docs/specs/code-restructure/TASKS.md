@@ -6,10 +6,8 @@
 
 - [ ] T0.1 `tests/bench_hook_latency.py`：對 `run.sh` 入口各 200 次 `SessionStart`、`PreToolUse(Bash)`、`PreToolUse(Edit)`，輸出 p50 / p95（只服務 P1 前後對照）
 - [ ] T0.2 在現有 code 上量 baseline，數字寫入 PROGRESS.md
-- [ ] T0.3 在現有 code 產生 `tests/fixtures/adapter_golden.json`：每個 host、現有 shape fixtures（`tests/fixtures/*payload_shapes*.json`、`claude_subagent_tool_shapes.json`、opencode/grok shapes）與 `guard_vectors.json` 的每個 payload -> `adapt_*` 回傳的完整 dict（含 None）；main 上綠、改一個 tool-name 對照會轉紅
+- [ ] T0.3 在現有 code 產生 `tests/fixtures/adapter_golden.json`：每個 host、現有 shape fixtures（`tests/fixtures/*payload_shapes*.json`、`claude_subagent_tool_shapes.json`、grok shapes）與 `guard_vectors.json` 的每個 payload -> `adapt_*` 回傳的完整 dict（含 None）；main 上綠、改一個 tool-name 對照會轉紅
 - [ ] T0.4 列出 `install.py` 全部 `InstallAbort` 訊息，缺 test 的補上
-- [ ] T0.5 `install_hooks.apply_codex` characterization golden，輸入矩陣：無檔、空 hooks、只有 user group、user group + 舊 shoal group v1..v5、autoroute group 存在、command=None 移除
-
 - [ ] T0.6 Security 回歸測試 S1.5（Workflow 恆為 None）、S1.6（predicate 案例，加入 T0.3 golden 輸入）、S1.9（舊集合 literal、opencode 不在 HOST_DEFAULT_MODE）；在現有 code 全綠，且先於任何 P1 code 變更
 - [ ] T0.7 另開 security follow-up issue：F9（O_NONBLOCK、chain manifest uid 檢查），P1 不處理
 
@@ -22,12 +20,6 @@
 - [ ] T1.5 docstring 縮成指標
 - [ ] T1.5a S1.7、S1.8、S1.10 加入並全綠；P1 由 `security-executor` 實作
 - [ ] T1.6 重新產生 guard dist 副本與 `.sha256`；共同驗收 + 延遲 + fresh `verifier`
-
-## P3 hook 登記收斂
-
-- [ ] T3.2 `apply_codex` 改呼叫 `merge_registration`，輸出與 T0.5 golden 位元組相同；與 `install()` 的一致性測試只比 guard group 子集
-- [ ] T3.3 共同驗收
-- [ ] T3.4 `sync_global --json` 對同一 home 的 plan，`changes` 在 P3 前後相同
 
 ## P4 install.py 拆函式
 

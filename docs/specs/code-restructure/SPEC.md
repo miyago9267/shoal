@@ -22,7 +22,7 @@
 2. 行為不變：guard vectors、unittest、render `--check`、各 host 輸出逐位元組不變
    （P1 改了 guard 原始碼，所以 guard 的 dist 副本與其 `.sha256` golden 隨之更新，這是唯一允許的 golden 變動）。
 3. hook 啟動延遲不增加（目標：p50 不高於重構前 +1ms）。
-4. 淨行數下降，但這不是主要目標：預估合計約 -440 到 -570（guard -240、hook 登記 -50 到 -80、
+4. 淨行數下降，但這不是主要目標：預估合計約 -390 到 -490（guard -240、
    render -150 到 -200、install 0 到 -50；不含新增測試）。可讀性是主要驗收，行數只作回報。
 
 ## Non-goals
@@ -62,46 +62,14 @@ shoal_update、install_hooks、install.py）不動。只做 in-file 整理：
 
 #### Rejected alternatives
 
+- **D2 hook 登記收斂到 `install/hook_registration.py`（原 P3，2026-10-19 拿掉）**。原計畫讓 `apply_codex` 改呼叫 `merge_registration`，使 Codex `hooks.json` 只剩一條寫入路徑。否決原因：`apply_codex` 的 regex handler-level stripping 在 mixed group 內（`tools/install_hooks.py:181-210`、`255-277`）無法套用 `merge_registration` 的整 group 精確投影比對（`install/hook_registration.py:403-425`、`562-574`、`654-662`），要改就會改變行為（`tests/test_install_hooks.py:744-756`）；收益只約 50-80 行，不值得。因此 Codex 的兩條寫入路徑（`install.py` 與 `install_hooks.py`）維持現狀，不在本案範圍。
+
 - **guard 拆成 `hooks/shoal_guard/` package**（約 14 個模組、薄入口、`guard_bundle.py`、bundle manifest golden、
   staging 加 rename 安裝、消費者表）。否決原因：消費者機制要多約 +150 行（render、install_grok、shoal_update、
   install_hooks、install.py、golden、測試輔助全部改成處理多檔），並引入舊 state fingerprint 升級與半套安裝的風險，
   換到的行數減少很有限（約再 -50）。同名 `shoal_guard.py` 與 `shoal_guard/` 的 import 解析、lazy import 的延遲取捨
   也隨之不需要。2026-10-19 由 Miyago 決定不採用。
 - **由 package 產生單一檔再提交**：repo 內仍有 3000 行產物且需要 `render --check` 擋手改，沒有解決可讀性，同樣不採用。
-
-### D2 hook 登記收斂到 `install/hook_registration.py`
-
-現況（已讀程式驗證，與原假設有一處差異）：
-
-- `install/hook_registration.py`（696 行）已經是 Codex `hooks.json` 的 canonical projection
-  （`TRUSTED_PROJECTIONS`、`merge_registration`、`strip_projection`、digest）。
-- `install/install.py` `merge_config_text`（356-449）是 **Codex `config.toml`** 的 routing 設定，**不是** hook 登記，
-  不屬於 D2（事實，已驗證；若要連同整理另列 D5，不在本案）；Codex hook 登記在 `install()` 內 2236-2262 呼叫 `merge_registration`。
-- `tools/install_hooks.py`：`apply_claude`（213）寫 `settings.json` 六個事件；`apply_agy`（325）寫 agy `hooks.json`；
-  `apply_codex`（255）又用 `TRUSTED_PROJECTIONS` 加 `set_groups` 自己寫一次 Codex `hooks.json`。
-  所以 **Codex 有兩條寫入路徑**（`install.py` 與 `install_hooks.py`）。
-- 實際 call graph：一般 `--update --apply` 寫 Codex `hooks.json` 只經 `tools/sync_global.py:339-341` → `tools/install_hooks.py --host codex`（agy 在 515 同理）；`install.py` 從不呼叫 `sync_global`；`sync_global` 只在 pre-2.0 legacy migration 執行過 `install/install.py`（該路徑已移除）；`tools/shoal_update.py` 的 codex marketplace 只 import `_install_plugin`。
-- `shoal_install.py` 的 `do_install` per-host 路徑較舊（直接呼叫 `install_hooks.py`，335 行）。
-
-決定：
-
-D2.1 **單一 owner：`install/hook_registration.py`**。它已有 strict ownership 與 projection ID。
-`apply_codex` 改成呼叫 `merge_registration`（`with_autoroute=False`、`with_guard=...`），Codex 兩條路徑共用同一個 projection。
-`apply_claude`、`apply_agy`、regex 留在 `install_hooks.py`：搬過去只是 relocate 程式碼，不降低複雜度，不在本案。
-這是本案唯一可能改變輸出的地方：先用 characterization golden 固定 `apply_codex` 今天的輸出（輸入矩陣：無檔、空 hooks、
-只有 user group、user group + 舊 shoal group v1..v5、autoroute group 存在、command=None 移除），新實作必須與 golden 位元組相同。
-`install()` 與 `apply_codex` 的一致性只比對 guard group 子集（O3 因此解決，不再要求兩條路徑整份位元組相同）。
-
-D2.2 **call graph（維持現狀）**。
-
-```
-shoal_install.py (do_install) ──→ install_hooks.py            (per-host，較舊)
-shoal_update.py (run_update) ──→ sync_global.py ──subprocess──→ install_hooks.py --host codex|agy
-install.py install()  ──→ hook_registration.merge_registration   (不經 sync_global)
-install_hooks.apply_codex ──→ hook_registration.merge_registration  (本案改動)
-```
-
-`sync_global` 維持 subprocess 呼叫（保留 `--json` plan 介面與 env 隔離）。`install_grok.py` 的 hooks json 由 render 產生，不在 D2 範圍。
 
 ### D3 `install/install.py`：拆函式，不拆檔
 
@@ -134,17 +102,16 @@ install_hooks.apply_codex ──→ hook_registration.merge_registration  (本�
 
 | 階段 | 內容 | 預估行數變化 | 驗收（每階段都要） |
 | --- | --- | --- | --- |
-| P0 | 量測基準：`tests/bench_hook_latency.py`（P1 前後各量一次）；補 characterization tests（adapter golden、`InstallAbort` 訊息、`apply_codex` golden） | +200（測試） | 在現有 code 上全綠，baseline 數字存 PROGRESS.md |
+| P0 | 量測基準：`tests/bench_hook_latency.py`（P1 前後各量一次）；補 characterization tests（adapter golden、`InstallAbort` 訊息） | +200（測試） | 在現有 code 上全綠，baseline 數字存 PROGRESS.md |
 | P1 | D1：guard 單檔內整理（host 表、adapter 表、`_new_state`、docstring）。**仍是單一檔** | guard -240 | 見下方共同驗收；guard 的 dist 副本與 `.sha256` golden 隨之更新；沒有發佈單位變動，風險最低 |
-| P3 | D2：`apply_codex` 改走 `merge_registration` | -50 到 -80 | 共同驗收；`test_hook_registration`、`test_install_hooks`、`test_sync_global`、`test_shoal_update`；`apply_codex` golden 位元組相同；`sync_global --json` `changes` 前後相同 |
 | P4 | D3：`install.py` 拆函式 | 約 0 到 -50，最長函式 ≤ 120 行 | 共同驗收；`test_install` 全綠且不改斷言 |
 | P5 | D4：`render.py` table 化 | -150 到 -200 | 共同驗收；golden 全部不變 |
 
 順序理由：P1 先在單檔內降低 guard 的複雜度，且不動任何消費者；
-P3、P4、P5 彼此獨立，可以平行或依序，建議 P3 先於 P4（P4 的 `_plan_hooks` 依賴 P3 的 owner）。
+P4、P5 彼此獨立，可以平行或依序。
 階段編號刻意不重排（P2 已移除），讓既有引用穩定。
 
-**行數合計**：P1 -240、P3 -50 到 -80、P4 0 到 -50、P5 -150 到 -200，約 **-440 到 -570**（不含 P0 新增的約 200 行測試）。
+**行數合計**：P1 -240、P4 0 到 -50、P5 -150 到 -200，約 **-390 到 -490**（不含 P0 新增的約 200 行測試）。
 
 **共同驗收**：
 
@@ -178,11 +145,10 @@ P1 由 `security-executor` 實作，完成後 fresh `verifier`。F2、F3、F6 �
 | guard 變更是 security / trust 邊界（dispatch enforcement） | 依 Risk trigger：P1 實作前以 `plan-critic` 審 plan 並取得 Miyago 核准，完成後以 fresh `verifier` 驗一次；改動走 `security-reviewer` → 核准 → `security-executor`，不用一般 executor |
 | P1 的表衍生名稱與舊 frozenset 不一致 | T1.1 逐 host 比對舊成員；保留舊名稱 |
 | adapter 表化改變 normalized event | T0.3 先產生 adapter golden，T1.2 逐項 assertEqual；golden 不得編輯 |
-| `apply_codex` 改寫後輸出改變 | T0.5 golden 位元組比對；`install()` 只比 guard group 子集（O3 已解決） |
 
 ## Rollout
 
-- 每個 phase 一個 PR，各自過共同驗收。P1、P3、P4、P5 純內部、不改已安裝檔案配置，可併入 patch 或累積成批再發。
+- 每個 phase 一個 PR，各自過共同驗收。P1、P4、P5 純內部、不改已安裝檔案配置，可併入 patch 或累積成批再發。
 - 只修改 `hooks/shoal_guard.py`、`install/`、`tools/`、`tests/` 與 render 產物（guard 副本）；`docs/specs/code-restructure/` 的 TASKS.md 每步更新，
   PROGRESS.md 每 phase 記延遲數字。
 
@@ -201,8 +167,8 @@ P1 由 `security-executor` 實作，完成後 fresh `verifier`。F2、F3、F6 �
 
 - ~~O1 package 名稱~~：已解決，不拆 package，無此問題（2026-10-19 Miyago 決定）。
 - ~~O2 發佈單位~~：已解決，維持單檔，消費者不動（同上）。
-- ~~O5 `merge_config_text` 歸屬~~：已解決，是 Codex `config.toml` routing 而非 hook 登記，已寫入 D2 為事實。
-- ~~O3 Codex 兩條路徑~~：已解決，改用 `apply_codex` characterization golden（T0.5）；`install()` 一致性只比 guard group 子集。
+- ~~O5 `merge_config_text` 歸屬~~：已解決，是 Codex `config.toml` routing 而非 hook 登記。
+- ~~O3 Codex 兩條路徑~~：已解決（P3 拿掉）：兩條路徑維持現狀，不在本案。
 - ~~O6 mixin vs 單一 `guard.py`~~：已解決，`_Guard` 不搬動、不用 mixin。
 
 待決：
