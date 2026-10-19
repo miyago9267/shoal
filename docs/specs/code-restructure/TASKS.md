@@ -10,13 +10,17 @@
 - [ ] T0.4 列出 `install.py` 全部 `InstallAbort` 訊息，缺 test 的補上
 - [ ] T0.5 `install_hooks.apply_codex` characterization golden，輸入矩陣：無檔、空 hooks、只有 user group、user group + 舊 shoal group v1..v5、autoroute group 存在、command=None 移除
 
+- [ ] T0.6 Security 回歸測試 S1.5（Workflow 恆為 None）、S1.6（predicate 案例，加入 T0.3 golden 輸入）、S1.9（舊集合 literal、opencode 不在 HOST_DEFAULT_MODE）；在現有 code 全綠，且先於任何 P1 code 變更
+- [ ] T0.7 另開 security follow-up issue：F9（O_NONBLOCK、chain manifest uid 檢查），P1 不處理
+
 ## P1 guard 單檔內整理（plan-critic 前置）
 
 - [ ] T1.1 host 集合改單表，舊名稱由表衍生
 - [ ] T1.2 三個 adapter 改 `AdapterSpec` 加共用 `adapt()`；`adapt_agy` 保持獨立；新輸出對 adapter golden 每筆 assertEqual，P1 不編輯 golden
 - [ ] T1.3 `_new_state` 取代 `_locked` 內三份 literal，輸出 JSON 與現在位元組相同
-- [ ] T1.4 `_open_nofollow` 合併 `_open_private` / `_open_readable`
+- [ ] T1.4 （已移除：`_open_private` / `_open_readable` 維持分開，見 SPEC F1）
 - [ ] T1.5 docstring 縮成指標
+- [ ] T1.5a S1.7、S1.8、S1.10 加入並全綠；P1 由 `security-executor` 實作
 - [ ] T1.6 重新產生 guard dist 副本與 `.sha256`；共同驗收 + 延遲 + fresh `verifier`
 
 ## P3 hook 登記收斂

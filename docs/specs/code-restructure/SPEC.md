@@ -22,7 +22,7 @@
 2. 行為不變：guard vectors、unittest、render `--check`、各 host 輸出逐位元組不變
    （P1 改了 guard 原始碼，所以 guard 的 dist 副本與其 `.sha256` golden 隨之更新，這是唯一允許的 golden 變動）。
 3. hook 啟動延遲不增加（目標：p50 不高於重構前 +1ms）。
-4. 淨行數下降，但這不是主要目標：預估合計約 -450 到 -580（guard -250、hook 登記 -50 到 -80、
+4. 淨行數下降，但這不是主要目標：預估合計約 -440 到 -570（guard -240、hook 登記 -50 到 -80、
    render -150 到 -200、install 0 到 -50；不含新增測試）。可讀性是主要驗收，行數只作回報。
 
 ## Non-goals
@@ -52,10 +52,10 @@ shoal_update、install_hooks、install.py）不動。只做 in-file 整理：
   先在現有 code 產生 `tests/fixtures/adapter_golden.json`（全 host、全 payload 的 `adapt_*` 完整回傳）再重寫，P1 不得編輯該 golden（T0.3、T1.2）。
 - **`_new_state`**。`_Guard._locked`（1817-1915）中 3 份 9-key state literal 收成 `_new_state(**overrides)`；
   key 順序必須與現在寫出的 JSON 相同（`test_state_file_*` 與 vectors 驗證）。
-- **共用 open helper**。`_open_private`（457）與 `_open_readable`（3087）共用 `_open_nofollow(path, flags, mode)`。
+- **open helper 不合併**。`_open_private`（457）與 `_open_readable`（3087）維持分開（見 Security review F1）。
 - **docstring**。檔頭 78 行 docstring 改成約 10 行：用途、入口、指向 `docs/specs/dispatch-enforcement`、
   `guard-declared-direct`、`guard-every-gate`。
-- `_Guard` 類別維持原樣（不用 mixin、不搬方法）；只有上述四處與 docstring 會動。
+- `_Guard` 類別維持原樣（不用 mixin、不搬方法）；只有上述三處與 docstring 會動。
 - 延遲：單檔沒有新增 import，預期不變；仍以 P0 的 bench 在 P1 前後各量一次，p50 差 +1ms、p95 差 +3ms 內
   （O7）。
 - Python 3.9：不使用 `match`、括號式 context manager、`X | Y` 的 runtime 求值；`test_py39_compat` 照舊涵蓋。
@@ -135,7 +135,7 @@ install_hooks.apply_codex ──→ hook_registration.merge_registration  (本�
 | 階段 | 內容 | 預估行數變化 | 驗收（每階段都要） |
 | --- | --- | --- | --- |
 | P0 | 量測基準：`tests/bench_hook_latency.py`（P1 前後各量一次）；補 characterization tests（adapter golden、`InstallAbort` 訊息、`apply_codex` golden） | +200（測試） | 在現有 code 上全綠，baseline 數字存 PROGRESS.md |
-| P1 | D1：guard 單檔內整理（host 表、adapter 表、`_new_state`、`_open_nofollow`、docstring）。**仍是單一檔** | guard -250 | 見下方共同驗收；guard 的 dist 副本與 `.sha256` golden 隨之更新；沒有發佈單位變動，風險最低 |
+| P1 | D1：guard 單檔內整理（host 表、adapter 表、`_new_state`、docstring）。**仍是單一檔** | guard -240 | 見下方共同驗收；guard 的 dist 副本與 `.sha256` golden 隨之更新；沒有發佈單位變動，風險最低 |
 | P3 | D2：`apply_codex` 改走 `merge_registration` | -50 到 -80 | 共同驗收；`test_hook_registration`、`test_install_hooks`、`test_sync_global`、`test_shoal_update`；`apply_codex` golden 位元組相同；`sync_global --json` `changes` 前後相同 |
 | P4 | D3：`install.py` 拆函式 | 約 0 到 -50，最長函式 ≤ 120 行 | 共同驗收；`test_install` 全綠且不改斷言 |
 | P5 | D4：`render.py` table 化 | -150 到 -200 | 共同驗收；golden 全部不變 |
@@ -144,7 +144,7 @@ install_hooks.apply_codex ──→ hook_registration.merge_registration  (本�
 P3、P4、P5 彼此獨立，可以平行或依序，建議 P3 先於 P4（P4 的 `_plan_hooks` 依賴 P3 的 owner）。
 階段編號刻意不重排（P2 已移除），讓既有引用穩定。
 
-**行數合計**：P1 -250、P3 -50 到 -80、P4 0 到 -50、P5 -150 到 -200，約 **-450 到 -580**（不含 P0 新增的約 200 行測試）。
+**行數合計**：P1 -240、P3 -50 到 -80、P4 0 到 -50、P5 -150 到 -200，約 **-440 到 -570**（不含 P0 新增的約 200 行測試）。
 
 **共同驗收**：
 
@@ -157,7 +157,19 @@ P3、P4、P5 彼此獨立，可以平行或依序，建議 P3 先於 P4（P4 的
 
 ## Security review（P1）
 
-待 security-reviewer findings
+P1 由 `security-executor` 實作，完成後 fresh `verifier`。F2、F3、F6 的測試必須先在現有 code 寫好且全綠（P0），才可改 P1 code。證據行號為 `hooks/shoal_guard.py` 現況。
+
+| # | 嚴重度 | 證據 | 處置 | 測試 |
+| --- | --- | --- | --- | --- |
+| F1 | High | `_open_private`（457-472：O_NOFOLLOW、0600、fstat S_ISREG+uid、fchmod 0600）對 `_open_readable`（3087-3099：O_RDONLY + S_ISREG）；呼叫端 2342 `dispatch_guard_selected`、2374 `chain_members`、3063 settings.json。合併會 fail-open（symlink 的 modules.json 使 chain 被靜默略過）或改動使用者檔案權限 | 自 P1 移除：兩個 helper 維持分開（只省約 10 行，不值得） | S1.4 |
+| F2 | High | `dispatched_role` 只來自 claude `Agent`、grok `spawn_subagent`、codex `spawn_agent` / `collaborationspawn_agent`；claude `Workflow` 得 None（2685） | 不變式：Workflow 無論 tool_input（含 `subagent_type:"executor"`）一律 None | S1.5 |
+| F3 | High | 依內容分類必須維持 predicate、不進 name table：claude Bash `run_in_background=True` 先判 background_shell 再 shell（2664）；Post/PostFailure 排除背景 Bash（2658）；codex Bash/Post 要 str command（2741、2756）；grok `run_terminal_command` 要 str（2798）；grok stop 在 reason != end_turn 或來自 subagent 時回 None（2792） | 保留 predicate；上述案例明列進 adapter golden 輸入 | S1.6 |
+| F4 | Med | is_subagent：claude/codex `bool(agent_id)`、grok `subagentType is not None`（2637、2715、2779）；SubagentStart tid：claude=prompt_id，codex/grok None | 逐 host 保持 | S1.7 |
+| F5 | Med | 未知 tool 維持 other（2688、2769、2824 -> skip no_path，2133）；edit-name 集合不變（claude 4、grok 6；grok path-key 順序 file_path, path, target_file, filePath；codex apply_patch 走 patch_paths）；prompt 文字只供 direct/fast 判斷，不寫入 event 或 log（2649） | 保持；edit-name 集合凍結為 literal | S1.8 |
+| F6 | Med | host 表成員與現況相同：`HOST_DEFAULT_MODE` 維持 4 個 key（109-114）；opencode 只在 `PROMPT_DIRECT_HOSTS` 與 `DECLARE_HOSTS`（141、161），不照抄 TS port 的集合；START_UNLOCK 最敏感（1899-1903）；`set(ADAPTERS)` 維持 {claude, codex, grok, agy}（3163） | 每個舊集合名稱在 P0 凍結為 literal，P1 比對 | S1.9 |
+| F7 | Med | `_new_state` 只填固定預設、不合併舊 state；prompt boundary 重設 dispatched/declared/changed/checked/stop_blocked 為 False、pending 為 0（1832-1835、1849-1851）；keep 分支保留 edited+turn_id；第三處以 `is True` / `_pending()` 強制轉型（1867-1878）；role_changed/role_running 只在 changed 時寫（1879-1882）；fast 來源依路徑不同；direct_turns/agents/post_seen 經 `_carry_agents`（670） | 不得讓 `_new_state` 吃舊 state | S1.3、S1.10 |
+| F8 | Low | docstring 縮短；無 `__doc__` 使用 | 接受 | 無 |
+| F9 | Low（既有，範圍外） | `_open_*` 無 O_NONBLOCK（FIFO 可卡住 hook）；chain manifest 無 uid 檢查卻驅動指令執行（2387） | P1 不變更；另開 security follow-up | 無 |
 
 ## Risk
 

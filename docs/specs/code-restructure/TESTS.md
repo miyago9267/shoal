@@ -15,7 +15,14 @@
 - S1.1 WHEN host 表被讀取，THE SYSTEM SHALL 對每個既有 host 回傳與重構前相同的 default mode、role-aware、stop、conversation 等屬性（逐 host 比對舊 frozenset 的成員）。
 - S1.2 WHEN `tests/fixtures/adapter_golden.json` 的每個 payload 丟給新的 `adapt_*`（含 `adapt_agy`、opencode），THE SYSTEM SHALL assertEqual 回傳 golden 的完整 dict（含 None）；golden 在 P1 不得編輯，且 golden 測試於 main 為綠、改動任一 tool-name 對照後轉紅。
 - S1.3 WHEN `_Guard._locked` 建立新 state，THE SYSTEM SHALL 寫出與重構前位元組相同的 JSON（key 與順序）。
-- S1.4 IF 目標檔是 symlink，THEN `_open_nofollow` SHALL 拒絕開啟，行為與 `_open_private` / `_open_readable` 原本相同。
+- S1.4 IF 目標檔是 symlink，THEN `_open_private` SHALL 拒絕開啟、`_open_readable` SHALL 維持原行為（兩者不合併；symlink 的 modules.json 仍使 chain 依原行為處理，不 fail-open、不改使用者檔案權限）。
+- S1.5 WHEN claude `Workflow` 事件帶任何 tool_input（含 `subagent_type:"executor"`），THE SYSTEM SHALL 使 `dispatched_role` 為 None。
+- S1.6 WHEN 輸入為 claude Bash `run_in_background=True`、Post/PostFailure 背景 Bash、codex Bash/Post 非 str command、grok `run_terminal_command` 非 str、grok stop（reason != end_turn 或來自 subagent），THE SYSTEM SHALL 產生與 adapter golden 相同的結果（background_shell 先於 shell；stop 為 None）；這些案例須明列於 golden 輸入。
+- S1.7 WHEN 各 host 送入主 session payload，THE SYSTEM SHALL 使 `is_subagent` 為 False；SubagentStart 的 tid 於 claude 為 prompt_id、codex/grok 為 None。
+- S1.8 WHEN 輸入為未知 tool，THE SYSTEM SHALL 回傳 kind `other`；edit-name 集合 SHALL 等於凍結 literal（claude 4、grok 6），grok path-key 順序為 file_path, path, target_file, filePath；prompt 文字 SHALL NOT 出現在 event 或 log。
+- S1.9 THE SYSTEM SHALL 使每個舊 host 集合名稱等於 P0 凍結的 literal，`set(ADAPTERS)` 等於 {claude, codex, grok, agy}，且 `HOST_DEFAULT_MODE.get("opencode")` 為 None。
+- S1.10 WHEN prior state 為 {"dispatched":"yes","pending":3,"role_running":true,"changed":false} 且發生 prompt boundary，THE SYSTEM SHALL 使 dispatched 為 False、pending 為 0、無 role_running，且 JSON key 順序等於現行 golden。
+- S1.11 WHERE S1.5、S1.6、S1.9 屬 security 回歸，THE SYSTEM SHALL 在 P0 於現有 code 先全綠，才允許 P1 code 變更。
 
 ## Hook 登記（P3）
 
