@@ -35,3 +35,6 @@
 - 測試：`tests/test_relay_contract.py`、`tests/test_relay_runner.py` 共 32 個（假 codex binary，不呼叫真 codex），全套 `unittest discover` 1798 個 OK（skipped 1）；`render.py --check` 六個 target 全過，dist 無變動（S0.3）。S1.18 另做 mutation 檢查：關掉後代追蹤時 setsid 孫程序測試會失敗。
 - 已知限制：macOS 沒有 subreaper，setsid 後立刻被遺棄的孫程序只能靠每 0.5 秒的 `ps` 掃描抓到，在掃描間隔內就脫離的程序可能漏掉；Linux 用 `PR_SET_CHILD_SUBREAPER` 補上。
 
+## T1.3–T1.5 整合（2026-10-21）
+
+- 2026-10-21：`feat/cross-vendor-relay` 合併 7e5ba4c（guard `SHOAL_RELAY_ROLE`，T1.4）與 b489b54（render 外殼與 doctor，T1.3、T1.5）。整合修正：plugin 的 `hooks/shoal_guard.py` 是 compat shim，沒有 `_guard_dir`/`_open_private`，打包的 runner 建 nonce 失敗；render 在 relay 開啟時另打包 `plugins/claude/tools/shoal_guard.py`（`hooks/shoal_guard.py` 的副本，納入 `render --check` 與 golden `.sha256`），runner 先用同目錄副本、再退回 `hooks/shoal_guard.py`，載入後確認函式存在，建 nonce 的任何失敗都回 `blocked`。逾時改為 executor 540、applier 300 秒，render 拒絕 `[relay.timeouts]` 大於 540，外殼一律前景執行（Bash timeout = N+60 秒），移除 `run_in_background` 分支。已知限制：runner F9 在 macOS 沒有 subreaper，後代掃描有間隔漏洞；guard 只檢查 nonce 的 pid 是否存活，不檢查程序祖先關係；codex `hooks.json` 的 matcher 在 collaboration 工具中只涵蓋 `spawn_agent`。

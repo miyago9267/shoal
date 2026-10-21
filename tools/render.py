@@ -558,14 +558,16 @@ def validate_claude(core: dict, binding: dict) -> dict[str, Permission]:
 RELAY_HOST = "claude"
 RELAY_P1_ROLES = ("executor", "applier")  # phase 1 只開這兩個 write role
 RELAY_KEYS = {"roles", "shell_model", "timeouts"}
-# 與 tools/shoal_relay.py 的 DEFAULT_TIMEOUT、MAX_TIMEOUT 相同（tests 比對）；外殼一律明確傳 --timeout。
-RELAY_DEFAULT_TIMEOUT = {"executor": 1500, "applier": 600}
-RELAY_MAX_TIMEOUT = 3600
-BASH_LIMIT_SECONDS = 600  # Claude Bash 單次上限；runner 的 timeout 加 margin 超過它就改 run_in_background（F9）
+BASH_LIMIT_SECONDS = 600  # Claude Bash 單次上限；外殼一律前景執行，所以 runner timeout 加 margin 不可超過它（F9）
 BASH_MARGIN_SECONDS = 60
+# 與 tools/shoal_relay.py 的 DEFAULT_TIMEOUT、MAX_TIMEOUT 相同（tests 比對）；外殼一律明確傳 --timeout。
+RELAY_DEFAULT_TIMEOUT = {"executor": 540, "applier": 300}
+RELAY_MAX_TIMEOUT = BASH_LIMIT_SECONDS - BASH_MARGIN_SECONDS
 RELAY_SHELL_EFFORT = "low"
 # 打包進 plugin 的 runner 與它執行期讀的檔案；runner 由自己的位置推 ROOT，所以保持與 repo 相同的相對路徑。
 RELAY_PACKAGED = ("tools/shoal_relay.py", "core/vendors.toml", "core/contracts/handback.schema.json")
+# runner 建 nonce 用的 guard：plugin 的 hooks/shoal_guard.py 是 compat shim，所以另打包 hooks/shoal_guard.py 的副本。
+RELAY_GUARD_COPY = "tools/shoal_guard.py"
 RELAY_WRITE_RULES = (
     "This relay writes files. The caller must dispatch you with worktree isolation, so your working directory is a "
     "linked worktree. The runner returns `blocked` anywhere else; do not work around that (no `cd` elsewhere, no "
@@ -632,14 +634,9 @@ def relay_config(core: dict, binding: dict) -> Relay | None:
 
 
 def _relay_run_step(timeout: int) -> str:
-    """Bash 單次上限 10 分鐘；runner 的 timeout 加 margin 放得進去就前景執行，否則 run_in_background。"""
-    if timeout + BASH_MARGIN_SECONDS <= BASH_LIMIT_SECONDS:
-        return (f"Call Bash with `timeout: {(timeout + BASH_MARGIN_SECONDS) * 1000}` so it outlives the runner's "
-                f"{timeout}s limit.")
-    return (f"The runner's {timeout}s limit does not fit in one Bash call ({BASH_LIMIT_SECONDS * 1000} ms at most), "
-            'so call Bash with `run_in_background: true` and append ` > "<WORK>/handback.json"` to the command. '
-            'Wait for the completion notification, then `cat "<WORK>/handback.json"`. '
-            "Never start a second runner while the first is alive.")
+    """外殼一律前景執行；relay_config 已保證 timeout 加 margin 不超過 Bash 單次上限。"""
+    return (f"Call Bash with `timeout: {(timeout + BASH_MARGIN_SECONDS) * 1000}` so it outlives the runner's "
+            f"{timeout}s limit.")
 
 
 def relay_shell(name: str, vendor: str, relay: Relay, core: dict, spec: dict, host_dir: Path) -> bytes:
@@ -670,7 +667,7 @@ def diff_relay_packaging(root: Path, host: str) -> list[str]:
     if host != RELAY_HOST or not relay_roles(load_toml(root / "hosts" / host / "binding.toml")):
         return []
     return [f"缺少: {CLAUDE_PLUGIN}/{rel}（relay 外殼會呼叫它）"
-            for rel in RELAY_PACKAGED if not (root / CLAUDE_PLUGIN / rel).is_file()]
+            for rel in (*RELAY_PACKAGED, RELAY_GUARD_COPY) if not (root / CLAUDE_PLUGIN / rel).is_file()]
 
 
 def _frontmatter(name: str, spec: dict, perm: Permission, model: str) -> str:
@@ -1451,6 +1448,7 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
                 out[f"{CLAUDE_PLUGIN}/{rel}"] = (root / rel).read_bytes()
             except OSError as exc:
                 raise RenderError(f"無法讀取 {root / rel}: {exc}") from exc
+        out[f"{CLAUDE_PLUGIN}/{RELAY_GUARD_COPY}"] = _guard_script(root)
     src = root / CLAUDE_PLUGIN_SRC / "emit-sessionstart.sh"
     try:
         out[f"{CLAUDE_PLUGIN}/hooks/emit-sessionstart.sh"] = src.read_bytes()

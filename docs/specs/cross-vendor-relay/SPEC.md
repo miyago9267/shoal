@@ -82,6 +82,7 @@ Phase 1 只做 Claude host 把 `executor`、`applier` 交給 Codex。
 - F3：relay 使用真實 `~/.codex`（guard hook 才會載入）。worktree 內存在 `.codex/`（任何層級的追蹤或未追蹤檔）時，runner 回 `blocked`、不 spawn。另記錄：`codex exec -s workspace-write` 會自動把未登記的 repo 以 `trusted` 寫入 `~/.codex/config.toml`（依 main repo root 判定），runner 不改使用者 config，doctor 列出 relay 造成的項目供使用者清理。
 - F6：不 pin `forced_login_method`（pin 時若環境有 API key，codex 會登出並刪除 auth.json）；靠 env allowlist 排除 `OPENAI_API_KEY`、`CODEX_API_KEY`，doctor 警告。
 - 其他：runner 以絕對路徑執行 codex（`core/vendors.toml` 記錄解析方式），不經 shell alias（使用者的 `codex` alias 帶 bypass 旗標）；`--ephemeral` 一律開啟（F12：不寫 sessions rollout）；MCP 以 `mcp_servers.<id>.enabled=false`（id 由 `codex mcp list --json` 取得）加 `features.plugins=false` 關閉；`--output-schema` 必須是 strict schema；exit 0 且 `-o` 為 0 byte 視為 failed、逾時 exit 124 視為 failed。
+- P1 relay 逾時上限 540 秒（executor 540、applier 300），外殼一律前景執行；超過 Bash 600 秒上限的長任務留待之後評估。
 
 ## Phases
 

@@ -550,5 +550,36 @@ class RelayRunner(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
 
 
+    # 打包的 runner 先用同目錄的 tools/shoal_guard.py，沒有可用的再退回 hooks/shoal_guard.py；
+    # 建 nonce 的任何失敗都回 blocked 且不呼叫 vendor。
+    def sibling_guard(self, text: str):
+        (self.root / "tools" / "shoal_guard.py").write_text(text, encoding="utf-8")
+
+    def test_nonce_prefers_the_sibling_guard(self):
+        real = (ROOT / "hooks" / "shoal_guard.py").read_text(encoding="utf-8")
+        self.sibling_guard(real + "\n\ndef _open_private(path, flags):\n    raise RuntimeError('boom')\n")
+        self.assert_no_spawn(self.run_relay(), "nonce")
+
+    def test_nonce_falls_back_when_the_sibling_is_a_shim(self):
+        shim = ROOT / "hosts" / "claude" / "plugin-src" / "shoal_guard_compat.py"
+        self.sibling_guard(shim.read_text(encoding="utf-8"))
+        self.assertEqual(self.run_relay()["status"], "done")
+
+    def test_nonce_blocked_without_a_usable_guard(self):
+        shim = ROOT / "hosts" / "claude" / "plugin-src" / "shoal_guard_compat.py"
+        shutil.copy2(shim, self.root / "hooks" / "shoal_guard.py")
+        self.assert_no_spawn(self.run_relay(), "guard")
+        self.sibling_guard("raise SystemExit(3)\n")
+        self.assert_no_spawn(self.run_relay(), "guard")
+        (self.root / "hooks" / "shoal_guard.py").unlink()
+        (self.root / "tools" / "shoal_guard.py").unlink()
+        self.assert_no_spawn(self.run_relay(), "guard")
+
+    def test_nonce_blocked_when_the_guard_dir_is_unusable(self):
+        real = (ROOT / "hooks" / "shoal_guard.py").read_text(encoding="utf-8")
+        self.sibling_guard(real + "\n\ndef _guard_dir(env, home):\n    raise OSError('boom')\n")
+        self.assert_no_spawn(self.run_relay(), "guard state dir")
+
+
 if __name__ == "__main__":
     unittest.main()

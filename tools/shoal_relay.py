@@ -8,7 +8,8 @@
   就拒跑；這些情況回 blocked 且不呼叫 vendor。
 - vendor 以 core/vendors.toml 解析出的絕對路徑 exec，argv 用 list、stdin 為 /dev/null，env 只給 allowlist
   加上每次新建的 TMPDIR、SHOAL_RELAY_ROLE、SHOAL_RELAY_NONCE。nonce 檔建在 guard state dir
-  （hooks/shoal_guard.py 的 _guard_dir，以子程序的 env 計算）下的 `relay-<nonce>`，結束時刪除。
+  （guard 的 _guard_dir，以子程序的 env 計算）下的 `relay-<nonce>`，結束時刪除。guard 先用同目錄的
+  shoal_guard.py（plugin 內由 render 打包的副本），沒有可用的再用 hooks/shoal_guard.py；都不可用就回 blocked。
 - 逾時、SIGTERM/HUP/INT 或 parent 死亡時結束 vendor 的整棵程序樹（含 setsid 的後代），一律回 failed，
   不自動重跑、不改回 native。
 - changed_files 由 `git status --porcelain -z` 計算，與 vendor 自報不同時 files_mismatch 為 true。
@@ -37,14 +38,16 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 ROOT = Path(__file__).resolve().parent.parent
 VENDORS_FILE = ROOT / "core" / "vendors.toml"
 SCHEMA_FILE = ROOT / "core" / "contracts" / "handback.schema.json"
-GUARD_FILE = ROOT / "hooks" / "shoal_guard.py"
+# plugin 的 hooks/shoal_guard.py 是 compat shim，沒有這些函式；render 另把真正的 guard 打包在 runner 旁。
+GUARD_FILES = (Path(__file__).resolve().parent / "shoal_guard.py", ROOT / "hooks" / "shoal_guard.py")
+GUARD_API = ("_guard_dir", "_open_private")
 
 RELAY_ROLES = {
     "executor": "write",
     "applier": "write",
 }  # 與 core/roles.toml 的 access 一致（測試比對）
-DEFAULT_TIMEOUT = {"executor": 1500, "applier": 600}  # D10
-MAX_TIMEOUT = 3600
+DEFAULT_TIMEOUT = {"executor": 540, "applier": 300}  # D10；P1 外殼前景執行，Bash 上限 600 秒減 60 秒 margin
+MAX_TIMEOUT = 540
 MAX_BRIEF_BYTES = 64 * 1024
 MAX_OUTPUT_BYTES = 1024 * 1024
 MAX_EVENTS_BYTES = 8 * 1024 * 1024
@@ -741,25 +744,46 @@ def _preflight(
     return ids  # type: ignore[return-value]
 
 
+def _load_guard() -> Any:
+    """GUARD_FILES 中第一個能載入且有 GUARD_API 的 guard；都沒有就 Blocked。"""
+    for path in GUARD_FILES:
+        if not path.is_file():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location("shoal_guard_for_relay", str(path))
+            guard = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(guard)  # type: ignore[union-attr]
+        except (Exception, SystemExit):
+            continue
+        if all(callable(getattr(guard, name, None)) for name in GUARD_API):
+            return guard
+    raise Blocked("no usable shoal guard (tools/shoal_guard.py or hooks/shoal_guard.py) to create the relay nonce")
+
+
 def _create_nonce(env: Dict[str, str], role: str) -> Path:
     """F5：在 guard state dir 建 relay-<nonce>（0600、O_EXCL、O_NOFOLLOW），guard 以此確認 SHOAL_RELAY_ROLE。"""
+    guard = _load_guard()
     try:
-        spec = importlib.util.spec_from_file_location(
-            "shoal_guard_for_relay", str(GUARD_FILE)
-        )
-        guard = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-        spec.loader.exec_module(guard)  # type: ignore[union-attr]
+        guard_dir = guard._guard_dir(env, Path(env["HOME"]))
     except Exception:
-        raise Blocked("cannot load hooks/shoal_guard.py") from None
-    guard_dir = guard._guard_dir(env, Path(env["HOME"]))
+        guard_dir = None
     if guard_dir is None:
         raise Blocked("guard state dir is missing or not private")
     path = guard_dir / f"relay-{env['SHOAL_RELAY_NONCE']}"
-    fd = guard._open_private(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-    if fd is None:
+    try:
+        fd = guard._open_private(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+    except Exception:
+        fd = None
+    if not isinstance(fd, int) or isinstance(fd, bool):
         raise Blocked("cannot create the relay nonce file")
     try:
         os.write(fd, json.dumps({"role": role, "pid": os.getpid()}).encode())
+    except OSError:
+        try:
+            os.unlink(str(path))
+        except OSError:
+            pass
+        raise Blocked("cannot write the relay nonce file") from None
     finally:
         os.close(fd)
     return path

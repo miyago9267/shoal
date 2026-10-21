@@ -18,10 +18,11 @@ import render  # noqa: E402
 RENDER = ROOT / "tools" / "render.py"
 
 
-# golden 內只存 sha256 的檔案（golden 根目錄起算的路徑）。這兩份是 hooks/shoal_guard.py 的完整副本，
-# 存全文只會讓每次改 guard 都多兩份 3000 行的 diff。golden 改存 <path>.sha256，一行 hex digest。
+# golden 內只存 sha256 的檔案（golden 根目錄起算的路徑）。這些是 hooks/shoal_guard.py 的完整副本，
+# 存全文只會讓每次改 guard 都多幾份 3000 行的 diff。golden 改存 <path>.sha256，一行 hex digest。
 GOLDEN_HASHED = frozenset({
     "plugins/claude-guard/hooks/shoal_guard.py",
+    "plugins/claude/tools/shoal_guard.py",  # 只在 relay 開啟時輸出（render.RELAY_GUARD_COPY）
     "hooks/shoal-grok/shoal_guard.py",
 })
 GUARD_SOURCE = "hooks/shoal_guard.py"

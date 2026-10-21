@@ -17,8 +17,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import render  # noqa: E402
 import shoal_relay  # noqa: E402
+from repo_fixtures import git  # noqa: E402
+from test_relay_runner import FAKE, SCHEMA, report  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "relay" / "relay.binding.toml"
 POLICY_DOC = "skills/shoal-orchestration/references/orchestration-policy.md"
@@ -27,6 +30,7 @@ RELAY_FILES = (
     "core/vendors.toml",
     "core/contracts/handback.schema.json",
 )
+GUARD_COPY = "tools/shoal_guard.py"  # hooks/shoal_guard.py 的副本；plugin 的 hooks/shoal_guard.py 是 compat shim
 HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 
 
@@ -104,7 +108,9 @@ class RelayOffTests(unittest.TestCase):
             [
                 rel
                 for rel in files
-                if "shoal_relay" in rel or rel.endswith("vendors.toml")
+                if "shoal_relay" in rel
+                or rel.endswith("vendors.toml")
+                or rel.endswith(GUARD_COPY)
             ]
         )
         self.assertFalse((ROOT / render.CLAUDE_PLUGIN / "tools").exists())
@@ -186,11 +192,12 @@ class RelayShellTests(TempCase):
             render.render_host(ROOT, "claude")["agents/applier.md"],
         )
 
-    def test_long_runs_go_to_the_background(self) -> None:
-        executor = self.dist["agents/executor.md"].decode("utf-8")
-        self.assertIn("--timeout 1500", executor)
-        self.assertIn("run_in_background: true", executor)
-        self.assertNotIn("`timeout: ", executor)
+    def test_default_timeouts_run_in_the_foreground(self) -> None:
+        for name, seconds, bash_ms in (("executor", 540, 600000), ("applier", 300, 360000)):
+            text = self.dist[f"agents/{name}.md"].decode("utf-8")
+            self.assertIn(f"--timeout {seconds}", text)
+            self.assertIn(f"`timeout: {bash_ms}`", text)
+            self.assertNotIn("run_in_background", text)
 
     def test_short_runs_get_a_bash_timeout_above_the_runner_limit(self) -> None:
         root = self.relay_root(extra="\n[relay.timeouts]\napplier = 300\n")
@@ -203,9 +210,22 @@ class RelayShellTests(TempCase):
         self.assertEqual(render.RELAY_DEFAULT_TIMEOUT, shoal_relay.DEFAULT_TIMEOUT)
         self.assertEqual(render.RELAY_MAX_TIMEOUT, shoal_relay.MAX_TIMEOUT)
         self.assertEqual(set(render.RELAY_P1_ROLES), set(shoal_relay.RELAY_ROLES))
-        for name, seconds in render.RELAY_DEFAULT_TIMEOUT.items():
-            if seconds + render.BASH_MARGIN_SECONDS > render.BASH_LIMIT_SECONDS:
-                self.assertIn("run_in_background", render._relay_run_step(seconds))
+        self.assertEqual(render.RELAY_DEFAULT_TIMEOUT, {"executor": 540, "applier": 300})
+        self.assertEqual(render.RELAY_MAX_TIMEOUT + render.BASH_MARGIN_SECONDS, render.BASH_LIMIT_SECONDS)
+        for seconds in (1, *render.RELAY_DEFAULT_TIMEOUT.values(), render.RELAY_MAX_TIMEOUT):
+            step = render._relay_run_step(seconds)
+            self.assertNotIn("run_in_background", step)
+            self.assertIn(f"`timeout: {(seconds + render.BASH_MARGIN_SECONDS) * 1000}`", step)
+
+    def test_max_timeout_is_accepted_and_one_more_is_rejected(self) -> None:
+        root = self.relay_root(extra="\n[relay.timeouts]\nexecutor = 540\n")
+        executor = render.RENDERERS["claude"](root)["agents/executor.md"].decode("utf-8")
+        self.assertIn("`timeout: 600000`", executor)
+        for seconds in (541, 600, 1500):
+            root = self.relay_root(extra=f"\n[relay.timeouts]\nexecutor = {seconds}\n")
+            result = run_render(root, "claude", "--check")
+            self.assertEqual(result.returncode, 2, seconds)
+            self.assertIn("540", result.stderr)
 
 
 class RelayPackagingTests(TempCase):
@@ -226,6 +246,10 @@ class RelayPackagingTests(TempCase):
                 (self.plugin / rel).read_bytes(), (ROOT / rel).read_bytes(), rel
             )
         self.assertEqual(
+            (self.plugin / GUARD_COPY).read_bytes(),
+            (ROOT / "hooks" / "shoal_guard.py").read_bytes(),
+        )
+        self.assertEqual(
             run_render(self.root, "claude-plugin", "--check").returncode, 0
         )
         self.assertEqual(run_render(self.root, "claude", "--check").returncode, 0)
@@ -239,8 +263,15 @@ class RelayPackagingTests(TempCase):
         self.assertEqual(host.returncode, 1)
         self.assertIn("plugins/claude/tools/shoal_relay.py", host.stderr)
 
+    def test_check_fails_when_the_guard_copy_is_missing(self) -> None:
+        (self.plugin / GUARD_COPY).unlink()
+        result = run_render(self.root, "claude-plugin", "--check")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"缺少: plugins/claude/{GUARD_COPY}", result.stderr)
+        self.assertEqual(run_render(self.root, "claude", "--check").returncode, 1)
+
     def test_check_fails_when_a_packaged_data_file_changes(self) -> None:
-        for rel in RELAY_FILES:
+        for rel in (*RELAY_FILES, GUARD_COPY):
             target = self.plugin / rel
             original = target.read_bytes()
             target.write_bytes(original + b"\n")
@@ -274,6 +305,68 @@ class RelayPackagingTests(TempCase):
             "schema", hand_back["reason"]
         )  # schema 與 vendors.toml 都從 plugin 內讀到
 
+    def fake_vendor(self) -> tuple[Path, Path, Path, dict[str, str]]:
+        """把 plugin 的 vendors.toml 指向假 codex，建 linked worktree；回傳 (bin, worktree, brief, env)。"""
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "codex"
+        fake.write_text(f"#!{sys.executable}\n{FAKE}", encoding="utf-8")
+        fake.chmod(0o755)
+        (bin_dir / "mode.json").write_text(
+            json.dumps({"handback": report(), "write": ["a.txt"], "mcp": []}), encoding="utf-8"
+        )
+        vendors = self.plugin / "core" / "vendors.toml"
+        text = re.sub(r"^paths = .*$", f"paths = [{json.dumps(str(fake))}]",
+                      vendors.read_text(encoding="utf-8"), flags=re.M)
+        vendors.write_text(re.sub(r"^search_path = true$", "search_path = false", text, flags=re.M),
+                           encoding="utf-8")
+        main, wt = self.tmp / "main", self.tmp / "wt"
+        main.mkdir()
+        (main / "README").write_text("r")
+        git(main, "init", "-q")
+        git(main, "add", "README")
+        git(main, "commit", "-q", "-m", "init")
+        git(main, "worktree", "add", "-q", "-b", "relay", str(wt))
+        brief = self.tmp / "brief.md"
+        brief.write_text("Implement the thing.\n", encoding="utf-8")
+        home, tmpdir = self.tmp / "home", self.tmp / "t"
+        home.mkdir()
+        tmpdir.mkdir()
+        env = {"PATH": os.environ["PATH"], "HOME": str(home), "LANG": "C.UTF-8", "TMPDIR": str(tmpdir)}
+        return bin_dir, wt, brief, env
+
+    def run_packaged(self, wt: Path, brief: Path, env: dict[str, str]) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(self.plugin / "tools" / "shoal_relay.py"), "--vendor", "codex",
+             "--role", "executor", "--cwd", str(wt), "--brief", str(brief), "--timeout", "60"],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env, timeout=120,
+        )
+        lines = result.stdout.splitlines()
+        self.assertEqual(len(lines), 1, result.stdout + result.stderr)
+        hand_back = json.loads(lines[0])
+        self.assertIsNone(shoal_relay.schema_error(SCHEMA, hand_back))
+        return hand_back
+
+    def test_packaged_runner_relays_through_the_fake_vendor(self) -> None:
+        bin_dir, wt, brief, env = self.fake_vendor()
+        hand_back = self.run_packaged(wt, brief, env)
+        self.assertEqual(hand_back["status"], "done", hand_back)
+        self.assertEqual(hand_back["changed_files"], ["a.txt"])
+        calls = [json.loads(line) for line in (bin_dir / "calls.jsonl").read_text().splitlines()]
+        exec_call = [c for c in calls if c["argv"][:1] == ["exec"]][0]
+        self.assertEqual(exec_call["nonce_body"]["role"], "executor")  # nonce 由打包的 guard 副本建立
+        self.assertEqual(exec_call["nonce_mode"], "0o600")
+        self.assertFalse(os.path.exists(exec_call["nonce_path"]))  # 結束時刪除
+
+    def test_shim_only_layout_returns_blocked(self) -> None:
+        # 回歸：plugin 的 hooks/shoal_guard.py 是沒有 _guard_dir/_open_private 的 compat shim
+        bin_dir, wt, brief, env = self.fake_vendor()
+        (self.plugin / GUARD_COPY).unlink()
+        hand_back = self.run_packaged(wt, brief, env)
+        self.assertEqual(hand_back["status"], "blocked", hand_back)
+        self.assertIn("guard", hand_back["reason"])
+        self.assertFalse((bin_dir / "calls.jsonl").exists())  # 沒有呼叫 vendor
+
     def test_relay_files_are_removed_by_write_when_relay_is_off(self) -> None:
         other = self.tmp / "off"
         other.mkdir()
@@ -282,6 +375,7 @@ class RelayPackagingTests(TempCase):
         self.assertEqual(run_render(off, "claude-plugin", "--check").returncode, 1)
         self.assertEqual(run_render(off, "claude-plugin", "--write").returncode, 0)
         self.assertFalse((off / render.CLAUDE_PLUGIN / "tools" / "shoal_relay.py").exists())
+        self.assertFalse((off / render.CLAUDE_PLUGIN / GUARD_COPY).exists())
         self.assertEqual(run_render(off, "claude-plugin", "--check").returncode, 0)
 
 
