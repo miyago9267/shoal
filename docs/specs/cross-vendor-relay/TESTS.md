@@ -6,7 +6,7 @@
 
 - S0.1 WHEN P1 的變更完成，THE SYSTEM SHALL 通過 `python3 -m unittest discover -s tests`。
 - S0.2 WHEN P1 的變更完成，THE SYSTEM SHALL 讓 `python3 tools/render.py --check` 對所有 host 與 claude-plugin 通過。
-- S0.3 WHERE binding 沒有 `[relay.roles]`，THE SYSTEM SHALL 產出與變更前位元組相同的 dist（relay 關閉時零影響）。
+- S0.3 WHERE binding 沒有 `[relay.roles]`，THE SYSTEM SHALL 產出與變更前位元組相同的 dist（relay 關閉時零影響）。guard 的逐字副本（`hosts/grok/dist/hooks/shoal-grok/shoal_guard.py`、`plugins/claude-guard/hooks/shoal_guard.py`）隨 S1.11 的 guard 變更而更新，不在此條範圍；其行為不變由 S0.4 保證。
 - S0.4 THE SYSTEM SHALL NOT 讓 `tests/fixtures/guard_vectors.json` 與 `adapter_golden.json` 的任何既有結果改變。
 
 ## Runner（P1）

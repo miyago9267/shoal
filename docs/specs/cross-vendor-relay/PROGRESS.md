@@ -25,6 +25,7 @@
 
 副作用：探測期間 codex 自行在 `~/.codex/config.toml` 新增 `[projects."/private/tmp/claude-501/-Users-miyago-dotfile/9662e93b-f41d-41d1-90d3-a42fd412e160/scratchpad/t10/repo"]`（trusted），我沒有手動改該檔，也未清除，請 Miyago 自行刪該 table。
 待 Miyago 決定（T1.2 前）：F2/F4 改用 catalog 覆寫；F3 在「dedicated home 無 guard」與「真 home 被自動 trust」之間取捨（建議 runner 在 worktree 含 `.codex/` 時拒絕，或 hook trust hash 解出後用 dedicated home）；F6 不 pin。
+
 - 2026-10-21 Miyago 決定：F2/F4 由 guard 擋 `spawn_agent`（不採 catalog 覆寫）、F3 有 `.codex/` 就拒跑、F6 不 pin。`~/.codex/config.toml` 中 T1.0 probe 自動加入的 scratch trusted table 已移除。
 
 ## T1.1、T1.2（2026-10-21）
@@ -38,3 +39,4 @@
 ## T1.3–T1.5 整合（2026-10-21）
 
 - 2026-10-21：`feat/cross-vendor-relay` 合併 7e5ba4c（guard `SHOAL_RELAY_ROLE`，T1.4）與 b489b54（render 外殼與 doctor，T1.3、T1.5）。整合修正：plugin 的 `hooks/shoal_guard.py` 是 compat shim，沒有 `_guard_dir`/`_open_private`，打包的 runner 建 nonce 失敗；render 在 relay 開啟時另打包 `plugins/claude/tools/shoal_guard.py`（`hooks/shoal_guard.py` 的副本，納入 `render --check` 與 golden `.sha256`），runner 先用同目錄副本、再退回 `hooks/shoal_guard.py`，載入後確認函式存在，建 nonce 的任何失敗都回 `blocked`。逾時改為 executor 540、applier 300 秒，render 拒絕 `[relay.timeouts]` 大於 540，外殼一律前景執行（Bash timeout = N+60 秒），移除 `run_in_background` 分支。已知限制：runner F9 在 macOS 沒有 subreaper，後代掃描有間隔漏洞；guard 只檢查 nonce 的 pid 是否存活，不檢查程序祖先關係；codex `hooks.json` 的 matcher 在 collaboration 工具中只涵蓋 `spawn_agent`。
+- 2026-10-21：fresh verifier 對 T1.1–T1.5 回 CONFIRMED（1866 tests OK；S0.1–S0.4、S1.1–S1.12、S1.14–S1.19 逐項有 evidence）；advisory A1 已以 S0.3 範圍說明處理；未驗：grok host 帶有效 nonce 時沒有 relay log（行為不變）。
