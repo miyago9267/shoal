@@ -26,3 +26,12 @@
 副作用：探測期間 codex 自行在 `~/.codex/config.toml` 新增 `[projects."/private/tmp/claude-501/-Users-miyago-dotfile/9662e93b-f41d-41d1-90d3-a42fd412e160/scratchpad/t10/repo"]`（trusted），我沒有手動改該檔，也未清除，請 Miyago 自行刪該 table。
 待 Miyago 決定（T1.2 前）：F2/F4 改用 catalog 覆寫；F3 在「dedicated home 無 guard」與「真 home 被自動 trust」之間取捨（建議 runner 在 worktree 含 `.codex/` 時拒絕，或 hook trust hash 解出後用 dedicated home）；F6 不 pin。
 - 2026-10-21 Miyago 決定：F2/F4 由 guard 擋 `spawn_agent`（不採 catalog 覆寫）、F3 有 `.codex/` 就拒跑、F6 不 pin。`~/.codex/config.toml` 中 T1.0 probe 自動加入的 scratch trusted table 已移除。
+
+## T1.1、T1.2（2026-10-21）
+
+- 新增 `core/contracts/handback.schema.json`（D4 欄位加 runner 欄位 `reported_files`、`files_mismatch`、`reason`、`exit_code`、`stderr_tail`、`partial_output`；每層 `additionalProperties:false`、全 required、字串 `maxLength`、陣列 `maxItems`）與 `core/vendors.toml`（codex 絕對路徑解析、access -> sandbox、T1.0 確認的 `-c` pin、`mcp_servers.<id>.enabled=false` 加 `features.plugins=false`、`--ephemeral --strict-config`、min 0.160.1、env allowlist）。
+- 新增 `tools/shoal_relay.py`（`security-executor`）：F1 linked worktree 根目錄檢查、F3 `.codex` 拒跑（worktree 任何層級、main checkout 根、HOME 以外的祖先）、F5 nonce 檔 `<guard_dir>/relay-<nonce>`（沿用 `hooks/shoal_guard.py` 的 `_guard_dir`、`_open_private`，以子程序 env 計算，結束時刪除；內容 `{"role","pid"}`，供 T1.4 讀取）、F6 env allowlist、F7 遮蔽、F8 `git status --porcelain -z` 比對、F9 程序樹清理、F10 sandbox 失敗不重跑、F11 brief/`-o`/schema 處理。
+- 交給 codex 的 `--output-schema` 是 schema 的 vendor 子集（status、summary、changed_files、checks、unverified），只留 T1.0 實測可用的 strict 關鍵字；`maxLength`/`maxItems` 由 runner 收到輸出後檢查，超出即 failed。`maxLength` 在 Codex strict 模式是否被接受未實測。
+- 測試：`tests/test_relay_contract.py`、`tests/test_relay_runner.py` 共 32 個（假 codex binary，不呼叫真 codex），全套 `unittest discover` 1798 個 OK（skipped 1）；`render.py --check` 六個 target 全過，dist 無變動（S0.3）。S1.18 另做 mutation 檢查：關掉後代追蹤時 setsid 孫程序測試會失敗。
+- 已知限制：macOS 沒有 subreaper，setsid 後立刻被遺棄的孫程序只能靠每 0.5 秒的 `ps` 掃描抓到，在掃描間隔內就脫離的程序可能漏掉；Linux 用 `PR_SET_CHILD_SUBREAPER` 補上。
+
