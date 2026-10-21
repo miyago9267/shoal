@@ -213,7 +213,14 @@ def load_core(root: Path) -> dict:
         core.update(load_toml(root / "core" / f"{name}.toml"))
     core["contracts"] = load_contracts(root, core["roles"])
     core["policy"] = load_policy(root)
+    core["vendors"] = load_vendors(root)
     return core
+
+
+def load_vendors(root: Path) -> dict:
+    """core/vendors.toml 的 [vendors.<name>]；沒有這個檔代表沒有 vendor 可 relay。"""
+    path = root / "core" / "vendors.toml"
+    return load_toml(path).get("vendors", {}) if path.is_file() else {}
 
 
 def load_contracts(root: Path, roles: dict) -> dict[str, list[contracts.Clause]]:
@@ -380,9 +387,13 @@ def policy_files(core: dict, binding: dict, host_dir: Path) -> dict[str, bytes]:
     if stray:
         raise RenderError(f"policy-addenda/{', '.join(stray)}: core/policy 沒有對應的文件")
     out: dict[str, bytes] = {}
+    relay_dir = host_dir / "relay" / "policy-addenda"
+    relayed = relay_config(core, binding) is not None
     for doc, clauses in core["policy"]["docs"].items():
         try:
             addenda = contracts.load_addenda(addenda_dir / f"{doc}.toml")
+            if relayed:  # D3a：relay-only addendum 只在 [relay.roles] 非空時併入
+                addenda += contracts.load_addenda(relay_dir / f"{doc}.toml")
             body = contracts.compose_policy(doc, clauses, addenda, omitted, values)
             if body is None:
                 continue
@@ -543,6 +554,125 @@ def validate_claude(core: dict, binding: dict) -> dict[str, Permission]:
     return perms
 
 
+# ---- cross-vendor-relay：binding 的 [relay.roles] 把 role 交給別家 CLI（docs/specs/cross-vendor-relay D1–D3a）----
+RELAY_HOST = "claude"
+RELAY_P1_ROLES = ("executor", "applier")  # phase 1 只開這兩個 write role
+RELAY_KEYS = {"roles", "shell_model", "timeouts"}
+# 與 tools/shoal_relay.py 的 DEFAULT_TIMEOUT、MAX_TIMEOUT 相同（tests 比對）；外殼一律明確傳 --timeout。
+RELAY_DEFAULT_TIMEOUT = {"executor": 1500, "applier": 600}
+RELAY_MAX_TIMEOUT = 3600
+BASH_LIMIT_SECONDS = 600  # Claude Bash 單次上限；runner 的 timeout 加 margin 超過它就改 run_in_background（F9）
+BASH_MARGIN_SECONDS = 60
+RELAY_SHELL_EFFORT = "low"
+# 打包進 plugin 的 runner 與它執行期讀的檔案；runner 由自己的位置推 ROOT，所以保持與 repo 相同的相對路徑。
+RELAY_PACKAGED = ("tools/shoal_relay.py", "core/vendors.toml", "core/contracts/handback.schema.json")
+RELAY_WRITE_RULES = (
+    "This relay writes files. The caller must dispatch you with worktree isolation, so your working directory is a "
+    "linked worktree. The runner returns `blocked` anywhere else; do not work around that (no `cd` elsewhere, no "
+    "`git worktree add`). The caller must follow every write relay with a fresh verifier before trusting the "
+    "hand-back.\n\n"
+)
+
+
+@dataclass(frozen=True)
+class Relay:
+    """[relay] 驗證後的設定：role -> vendor、外殼模型、每個 role 傳給 runner 的 timeout（秒）。"""
+    roles: dict[str, str]
+    shell_model: str
+    timeouts: dict[str, int]
+
+
+def relay_roles(binding: dict) -> dict:
+    """binding 的 [relay.roles]；沒有或為空代表 relay 關閉。不驗證內容（給只問開關的呼叫端）。"""
+    relay = binding.get("relay")
+    roles = relay.get("roles") if isinstance(relay, dict) else None
+    return roles if isinstance(roles, dict) and roles else {}
+
+
+def relay_config(core: dict, binding: dict) -> Relay | None:
+    """[relay.roles] 為空或不存在回傳 None（relay 關閉，輸出與沒有這個功能時位元組相同）；否則驗證並回傳 Relay。"""
+    relay = binding.get("relay")
+    if relay is None:
+        return None
+    if not isinstance(relay, dict):
+        raise RenderError("[relay] 必須是 table")
+    unknown = sorted(set(relay) - RELAY_KEYS)
+    if unknown:
+        raise RenderError(f"[relay]: 未知欄位 {', '.join(unknown)}")
+    roles = relay.get("roles")
+    if not roles:
+        return None
+    if not isinstance(roles, dict) or not all(isinstance(v, str) for v in roles.values()):
+        raise RenderError("[relay.roles] 必須是 role -> vendor 的字串 table")
+    catalog, vendors = core["roles"], core.get("vendors", {})
+    for name, vendor in roles.items():
+        where = f"[relay.roles].{name}"
+        if name not in catalog:
+            raise RenderError(f"{where}: roles.toml 沒有 role {name}")
+        if catalog[name].get("security"):
+            raise RenderError(f"{where}: security role 不可 relay")
+        if name not in RELAY_P1_ROLES:
+            raise RenderError(f"{where}: phase 1 只能 relay {', '.join(RELAY_P1_ROLES)}")
+        if name not in binding["roles"]:
+            raise RenderError(f"{where}: 此 host 沒有提供 role {name}（列在 omitted_roles）")
+        if vendor not in vendors:
+            raise RenderError(f"{where}: core/vendors.toml 沒有 vendor {vendor!r}（有：{', '.join(sorted(vendors)) or '無'}）")
+    if policy_text_mode(binding) != "core":
+        raise RenderError('[relay]: relay 的 policy 條款只在 [policy].policy_text = "core" 時輸出，必須使用 core')
+    shell_model = relay.get("shell_model")
+    if not isinstance(shell_model, str) or shell_model not in set(binding.get("models", {}).values()):
+        raise RenderError(f"[relay].shell_model {shell_model!r} 必須是 [models] 內的模型 alias（{', '.join(sorted(set(binding.get('models', {}).values())))}）")
+    overrides = relay.get("timeouts", {})
+    if not isinstance(overrides, dict) or set(overrides) - set(roles):
+        raise RenderError("[relay.timeouts] 必須是 table，且只能列 [relay.roles] 內的 role")
+    for name, seconds in overrides.items():
+        if not isinstance(seconds, int) or isinstance(seconds, bool) or not 0 < seconds <= RELAY_MAX_TIMEOUT:
+            raise RenderError(f"[relay.timeouts].{name} 必須是 1 到 {RELAY_MAX_TIMEOUT} 的整數秒")
+    return Relay(dict(roles), shell_model, {n: overrides.get(n, RELAY_DEFAULT_TIMEOUT[n]) for n in roles})
+
+
+def _relay_run_step(timeout: int) -> str:
+    """Bash 單次上限 10 分鐘；runner 的 timeout 加 margin 放得進去就前景執行，否則 run_in_background。"""
+    if timeout + BASH_MARGIN_SECONDS <= BASH_LIMIT_SECONDS:
+        return (f"Call Bash with `timeout: {(timeout + BASH_MARGIN_SECONDS) * 1000}` so it outlives the runner's "
+                f"{timeout}s limit.")
+    return (f"The runner's {timeout}s limit does not fit in one Bash call ({BASH_LIMIT_SECONDS * 1000} ms at most), "
+            'so call Bash with `run_in_background: true` and append ` > "<WORK>/handback.json"` to the command. '
+            'Wait for the completion notification, then `cat "<WORK>/handback.json"`. '
+            "Never start a second runner while the first is alive.")
+
+
+def relay_shell(name: str, vendor: str, relay: Relay, core: dict, spec: dict, host_dir: Path) -> bytes:
+    """被 relay 的 role 的 agent 檔：frontmatter 釘 shell_model 與 tools: Bash，body 取自 hosts/<host>/relay/shell.md。"""
+    path = host_dir / "relay" / "shell.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RenderError(f"無法讀取 {path}: {exc}") from exc
+    writes = core["roles"][name]["access"] != "read-only"
+    timeout = relay.timeouts[name]
+    values = {"role": name, "vendor": vendor, "timeout": str(timeout),
+              "write_rules": RELAY_WRITE_RULES if writes else "", "run_step": _relay_run_step(timeout)}
+    for key, value in values.items():
+        text = text.replace("{{" + key + "}}", value)
+    if "{{" in text:
+        raise RenderError(f"{path}: 有未替換的 placeholder")
+    description = f"{spec['description']} Runs on {vendor} through the shoal relay."
+    if writes:
+        description += " Dispatch it with worktree isolation and follow it with a fresh verifier."
+    fields = {"name": name, "description": description, "model": relay.shell_model, "effort": RELAY_SHELL_EFFORT}
+    head = "---\n" + "\n".join(f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS) + "\ntools: Bash\n---\n\n"
+    return (head + text).encode("utf-8")
+
+
+def diff_relay_packaging(root: Path, host: str) -> list[str]:
+    """claude 開 relay 時 plugin 輸出必須帶 runner 與它讀的檔案（S1.8）；缺少代表外殼會呼叫不存在的檔案。"""
+    if host != RELAY_HOST or not relay_roles(load_toml(root / "hosts" / host / "binding.toml")):
+        return []
+    return [f"缺少: {CLAUDE_PLUGIN}/{rel}（relay 外殼會呼叫它）"
+            for rel in RELAY_PACKAGED if not (root / CLAUDE_PLUGIN / rel).is_file()]
+
+
 def _frontmatter(name: str, spec: dict, perm: Permission, model: str) -> str:
     kind, tools = _claude_tools(name, perm)
     fields = {"name": name, "description": spec["description"], "model": model, "effort": spec["effort"]}
@@ -559,7 +689,11 @@ def render_claude(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     def agent(name: str, spec: dict, model: str, body: bytes) -> None:
         out[f"agents/{name}.md"] = _frontmatter(name, spec, perms[name], model).encode("utf-8") + body
 
+    relay = relay_config(core, binding)
     for name in core["roles"]:
+        if relay and name in relay.roles:
+            out[f"agents/{name}.md"] = relay_shell(name, relay.roles[name], relay, core, binding["roles"][name], src.parent)
+            continue
         agent(name, binding["roles"][name], resolve_model(name, core, binding),
               role_body(name, core, binding, src, lambda n=name: _legacy_body(src, "agents", n)))
     for name, spec in binding.get("extra_roles", {}).items():
@@ -1157,6 +1291,8 @@ DIST_DIRS = {"claude": "hosts/claude/dist", "codex": "templates", "agy": "hosts/
 
 def render_host(root: Path, host: str) -> dict[str, bytes]:
     """既有五個 host 用各自的 renderer；其他 host 一律是 generic-md。"""
+    if host != RELAY_HOST and relay_roles(load_toml(root / "hosts" / host / "binding.toml")):
+        raise RenderError(f"hosts/{host}/binding.toml: [relay.roles] phase 1 只支援 {RELAY_HOST} host")
     if host in RENDERERS:
         return RENDERERS[host](root)
     host_dir = root / "hosts" / host
@@ -1309,6 +1445,12 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
         if rel.startswith("agents/") or rel.startswith("skills/"):
             out[f"{CLAUDE_PLUGIN}/{rel}"] = data
     out[f"{CLAUDE_PLUGIN}/policy/claude-md.bootstrap.md"] = claude["claude-md.bootstrap.md"]
+    if relay_roles(load_toml(root / "hosts" / RELAY_HOST / "binding.toml")):  # D3：只有開 relay 才打包 runner
+        for rel in RELAY_PACKAGED:
+            try:
+                out[f"{CLAUDE_PLUGIN}/{rel}"] = (root / rel).read_bytes()
+            except OSError as exc:
+                raise RenderError(f"無法讀取 {root / rel}: {exc}") from exc
     src = root / CLAUDE_PLUGIN_SRC / "emit-sessionstart.sh"
     try:
         out[f"{CLAUDE_PLUGIN}/hooks/emit-sessionstart.sh"] = src.read_bytes()
@@ -1559,7 +1701,7 @@ def main(argv: list[str] | None = None) -> int:
         write_mirrors(args.root, args.host, files)
         print(f"已寫入 {len(files)} 個檔案到 {dist}")
         return 0
-    problems = diff_dist(dist, files) + diff_mirrors(args.root, args.host, files)
+    problems = diff_dist(dist, files) + diff_mirrors(args.root, args.host, files) + diff_relay_packaging(args.root, args.host)
     if problems:
         print(f"{dist} 與 render 結果不同：", file=sys.stderr)
         for line in problems:
