@@ -1,6 +1,6 @@
 # cross-vendor-relay：讓 role 交給別家的 agent 執行
 
-狀態：草稿，待 Miyago 核准。
+狀態：Miyago 2026-10-21 核准。
 
 ## Background
 

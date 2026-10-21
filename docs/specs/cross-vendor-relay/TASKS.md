@@ -8,7 +8,7 @@
 
 ## P1 Claude host -> Codex（executor、applier）
 
-- [ ] T1.0 實測：在 Claude Code subagent 裡跑 `codex exec --sandbox workspace-write --json -o <f>`（stdin 關閉），記錄巢狀 sandbox 是否成功與需要的設定；確認 D6 各 `-c` key 的實際名稱；記錄 `--ignore-user-config` 下 AGENTS.md、hooks、`spawn_agent` 何者仍在；確認 F2、F3、F6、F12 標「實測」的項目並跑 S1.20 canary。任何一項無法達成就停下回報。結果寫入 PROGRESS.md
+- [x] T1.0 實測：在 Claude Code subagent 裡跑 `codex exec --sandbox workspace-write --json -o <f>`（stdin 關閉），記錄巢狀 sandbox 是否成功與需要的設定；確認 D6 各 `-c` key 的實際名稱；記錄 `--ignore-user-config` 下 AGENTS.md、hooks、`spawn_agent` 何者仍在；確認 F2、F3、F6、F12 標「實測」的項目並跑 S1.20 canary。任何一項無法達成就停下回報。結果寫入 PROGRESS.md（完成；F2 `multi_agent` pin 與 F3 兩項 BLOCKED，T1.2 前待 Miyago 決定，見 PROGRESS.md）
 - [ ] T1.1 `core/contracts/handback.schema.json` 與 `core/vendors.toml`（codex：指令、access -> sandbox 對應、固定旗標、最低版本）
 - [ ] T1.2 `tools/shoal_relay.py`：組指令（含 D6 固定旗標與 D7 brief 標記）、關 stdin、逾時 kill、讀 `-o` 檔、驗 schema、印正規化 hand-back，含 Security review F1、F6–F11；以假 vendor binary 測試（S1.1–S1.7、S1.14–S1.19）；由 `security-executor` 實作
 - [ ] T1.3 `tools/render.py` 讀 `[relay.roles]` 與 `[relay] shell_model`：產出同名 relay 外殼 subagent、把 runner 打包進 plugin、relay-only addendum 只在啟用時併入、拒絕 security role 與未知 vendor；`render --check` 涵蓋（S0.3、S1.8–S1.10）
