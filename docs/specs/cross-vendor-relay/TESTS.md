@@ -28,11 +28,12 @@
 
 ## Guard 與 doctor（P1）
 
-- S1.11 WHEN host 為 codex、`SHOAL_RELAY_ROLE` 屬於 {executor, applier}、且 guard_dir 下有對應 `SHOAL_RELAY_NONCE` 的檔，THE SYSTEM SHALL 把整個 session 視為該 named role：允許改檔、不要求派工、不允許再派 subagent。IF 只有 env 沒有 nonce 檔，或 host 不是 codex，THEN 行為與變更前相同（新增 guard vectors 覆蓋，既有 vectors 不變）；採用與忽略都寫 log。
+- S1.11 WHEN host 為 codex、`SHOAL_RELAY_ROLE` 屬於 {executor, applier}、且 guard_dir 下有對應 `SHOAL_RELAY_NONCE` 的檔，THE SYSTEM SHALL 把整個 session 視為該 named role：允許改檔、不要求派工、不允許再派 subagent。IF 只有 env 沒有 nonce 檔，或 host 不是 codex，THEN 行為與變更前相同（新增 guard vectors 覆蓋，既有 vectors 不變）；採用與忽略都寫 log。WHEN 該 session 呼叫 `spawn_agent` 或其他派工工具，guard SHALL 拒絕。
 
 ## Security（P1，對應 SPEC Security review）
 
 - S1.14 IF `realpath(cwd)` 不是 linked worktree，或 role 不屬於 {executor, applier}，THEN runner SHALL 回 `blocked` 且不 spawn vendor（F1）。
+- S1.14a IF worktree 內存在 `.codex/`，THEN runner SHALL 回 `blocked` 且不 spawn vendor（F3）。
 - S1.15 WHEN runner spawn vendor，THE SYSTEM SHALL 只傳 env allowlist 內的變數，並帶上 F2、F6 的 pin；用假 binary 斷言 child env 與 argv（F2、F6）。
 - S1.16 THE SYSTEM SHALL NOT 讓 fixture 裡的 secret 值出現在 runner stdout，含部分輸出與 stderr 尾段（F7）。
 - S1.17 WHEN 回傳 hand-back，THE SYSTEM SHALL 以 `git status --porcelain -z` 計算 `changed_files`，與 vendor 自報不一致時標出；schema 拒絕額外欄位與超長字串（F8）。

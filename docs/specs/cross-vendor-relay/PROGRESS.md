@@ -25,3 +25,4 @@
 
 副作用：探測期間 codex 自行在 `~/.codex/config.toml` 新增 `[projects."/private/tmp/claude-501/-Users-miyago-dotfile/9662e93b-f41d-41d1-90d3-a42fd412e160/scratchpad/t10/repo"]`（trusted），我沒有手動改該檔，也未清除，請 Miyago 自行刪該 table。
 待 Miyago 決定（T1.2 前）：F2/F4 改用 catalog 覆寫；F3 在「dedicated home 無 guard」與「真 home 被自動 trust」之間取捨（建議 runner 在 worktree 含 `.codex/` 時拒絕，或 hook trust hash 解出後用 dedicated home）；F6 不 pin。
+- 2026-10-21 Miyago 決定：F2/F4 由 guard 擋 `spawn_agent`（不採 catalog 覆寫）、F3 有 `.codex/` 就拒跑、F6 不 pin。`~/.codex/config.toml` 中 T1.0 probe 自動加入的 scratch trusted table 已移除。
