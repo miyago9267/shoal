@@ -486,7 +486,21 @@ class WriteRelayIsolationTests(TempCase):
         policy = policy[policy.index("Relayed roles") :]
         self.assertIn("`landing.landed` is true they are already there", policy)
         self.assertIn("`landing.worktree`", policy)
-        self.assertIn('diff --cached --binary HEAD | git apply --3way', policy)
+        self.assertIn("diff --cached --binary HEAD | git apply`", policy)
+        self.assertNotIn("--3way", policy)
+
+    def test_policy_limits_the_merge_fallback(self) -> None:
+        """M1：只有 reason 以 `patch does not apply` 開頭才給合併指令；其他先檢查 worktree；非 done 不合併。M2：寫明 revert 指令。"""
+        dist = render.RENDERERS["claude"](self.relay_root())
+        policy = dist[POLICY_DOC].decode("utf-8")
+        policy = policy[policy.index("Relayed roles") :]
+        self.assertIn("starts with `patch does not apply`", policy)
+        self.assertIn("inspect that worktree first", policy)
+        self.assertIn("is not `done`, do not merge", policy)
+        self.assertIn("git diff --binary <tree> <head> | git -C <primary> apply", policy)
+        for name in ("executor", "applier"):
+            text = dist[f"agents/{name}.md"].decode("utf-8")
+            self.assertNotIn("--3way", text)
 
     def test_shell_has_only_the_bash_tool_and_no_write_tools(self) -> None:
         dist = render.RENDERERS["claude"](self.relay_root())

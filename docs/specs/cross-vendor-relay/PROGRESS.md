@@ -178,3 +178,7 @@
 - 測試：`tests/test_relay_runner.py` 的 `RelayLanding`（tracked edit、新檔含 binary、刪檔、拒絕路徑、
   apply 衝突維持 done 且 landed false、非 done 不落地）、`test_relay_contract.py` 的 `LandingPaths`、
   render 與 bench 的對應測試。relay arm 需重跑才能看到效果。
+
+## 2026-10-22 landing 安全強化（`fix/relay-landing-hardening`）
+
+- 2026-10-22：依 security review 補 landing 拒絕條件（H1 指令檔／自動執行設定／exec bit、M2 primary HEAD 與 clean 檢查、M3 git-dir 重驗與 `GIT_ATTR_SOURCE`、L1 mismatch、L2 5 MiB 上限、L3 `worktree list -z`），`landing` 加 `head`、`tree` 與 revert 指令；fallback 合併只限 `patch does not apply` 且移除 `--3way`。

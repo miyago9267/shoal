@@ -72,11 +72,13 @@
     "landing": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "required": ["landed", "reason", "worktree"],
+      "required": ["landed", "reason", "worktree", "head", "tree"],
       "properties": {
         "landed": {"type": "boolean"},
         "reason": {"type": ["string", "null"], "maxLength": 1000},
-        "worktree": {"type": "string", "maxLength": 4096}
+        "worktree": {"type": "string", "maxLength": 4096},
+        "head": {"type": ["string", "null"], "maxLength": 64},
+        "tree": {"type": ["string", "null"], "maxLength": 64}
       }
     }
   }

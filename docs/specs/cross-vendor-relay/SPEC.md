@@ -65,7 +65,7 @@ Decisions 衝突時，以此節為準。
 
 | # | 區域 / 嚴重度 | finding | 處置 |
 | --- | --- | --- | --- |
-| F1 | D5 / High | 任何 Bash 都能直接呼叫 runner，`-C` 填錯會寫進 main checkout | runner 在 `realpath(cwd)` 不是 linked worktree（`git rev-parse --git-dir` 等於 `--git-common-dir`）時回 `blocked`、不 spawn；只接受 `executor`、`applier` |
+| F1 | D5 / High | 任何 Bash 都能直接呼叫 runner，`-C` 填錯會寫進 main checkout | runner 只在 linked worktree spawn，只接受 executor、applier。vendor 回 done 後，runner 是唯一會寫 primary 的元件，只用 `git apply`（不 commit、不動 index）。落地前提：primary HEAD 等於 worktree base；受影響路徑在 primary 是 clean；`files_mismatch` 為 false；不含 `.git`、`.codex`、`.claude`、agent 指令檔或自動執行設定檔、symlink、submodule、exec-bit 變更；大小在上限內。任一條不成立就整份不落地，留給 main 檢查。`landing` 回報 head 和 tree 供 revert。verifier 通過前，落地內容一律視為未信任。 |
 | F2 | D6 / High | 只 pin sandbox 不夠：`multi_agent` 預設開、apps 流量繞過 proxy、`web_search` 預設 cached、`/tmp` 與 `$TMPDIR` 可寫、MCP 沒有全域開關 | 加 pin `features.multi_agent=false`、`features.apps=false`、`web_search="disabled"`、`sandbox_workspace_write.exclude_slash_tmp=true`；`TMPDIR` 設成每次新建的 mkdtemp；MCP 關法以實測生效的 key 為準。T1.0 跑 canary（寫 worktree 外、寫 `/tmp`、`curl`、`spawn_agent`、列 MCP tools）全部要失敗 |
 | F3 | D6 / Medium | trusted project 會載入 repo 的 `.codex/config.toml`、hooks、rules，未 pin 的 key 由 repo 決定 | 實測 worktree 的 trust 判定；能做到就強制 relay 為 untrusted，並確認 user 層 shoal guard hook 仍載入；repo 內的 `.codex/hooks.json` 不得觸發 |
 | F4 | D7 / Medium | brief 標記只是 prompt；codex host 預設 enforce，沒有 `SHOAL_RELAY_ROLE` 時 relay session 被當成 main，R1 會擋它改檔 | 主要控制改為 `multi_agent=false`；`SHOAL_RELAY_ROLE` 從備援改為必要條件（S1.11） |
