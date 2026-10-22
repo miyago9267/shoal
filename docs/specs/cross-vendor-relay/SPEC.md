@@ -138,3 +138,14 @@ Decisions 衝突時，以此節為準。
 - 輸出脆弱：stdin 一律關閉、`-o` 與 schema 同時檢查、逾時強制結束，都要有
   測試覆蓋（TESTS.md S1.3–S1.6）。
 - CLI 版本漂移：`core/vendors.toml` 記錄驗證過的最低版本，doctor 比對。
+
+## 啟用 relay（opt-in）
+
+relay 預設關閉，committed binding 不會開啟它。用 `--overlay` 在記憶體中把 overlay 合併進 claude binding 後再 render，不寫回 `hosts/*/binding.toml`。`--root` 請指向完整 repo 副本，否則會覆寫 committed `plugins/claude`：
+
+```sh
+python3 tools/render.py --host claude-plugin --write --root <repo 副本> --overlay bench/ab/relay.binding.toml
+```
+
+- overlay 重複定義既有 key，或指定 security role，render 都會失敗（S1.9）。
+- 讓已安裝的 plugin 指向這個輸出：沒有既有路徑。`tools/shoal_install.py` 不接受 plugin 目錄（`--update` 只匯出 committed HEAD）。
