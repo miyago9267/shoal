@@ -193,3 +193,7 @@
 - 判定：S1.13 未達標。通過數 13 < 14（差 1，在 2 reps 的雜訊範圍內）；時間 1.96x，超過 1.5x 的上限。依 TASKS，T1.7 不開始，P2 不開始。
 - 後續可能方向（未核准）：main 在 relay 執行期間不要動同一批檔案；縮小給 Codex 的 context；只對長任務 relay。
 - 2026-10-22 Miyago 決定放寬 S1.13（通過數 ≥ shoal 減 1、時間中位數 ≤ 2.0x，原為 ≥ shoal 且 ≤ 1.5x），理由是 Claude 端成本約低 15%，並准許開始 T1.7。relay-v2c 符合放寬後的 S1.13：通過數 13 ≥ 14 - 1，時間 1.96x ≤ 2.0x。T1.7 的實作先停在 prompt lock 的 renewal（見 TASKS T1.7）。
+
+## 2026-10-22 T1.7 決定
+
+- 2026-10-22 Miyago 決定 relay 維持 opt-in：預設 `hosts/claude/binding.toml` 不啟用，prompt LOCK 不變。原因：啟用後 `executor.md`、`applier.md` 與 `orchestration-policy.md` 會超過 `prompt-document-lock` 的行數、位元組與變更預算，需要 lock renewal。
