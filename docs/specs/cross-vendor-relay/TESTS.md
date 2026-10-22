@@ -70,7 +70,7 @@
 - S1.16 THE SYSTEM SHALL NOT 讓 fixture 裡的 secret 值出現在 runner stdout，含
   部分輸出與 stderr 尾段（F7）。
 - S1.17 WHEN 回傳 hand-back，THE SYSTEM SHALL 以 `git status --porcelain -z`
-  計算 `changed_files`；vendor 自報路徑剝掉 ` (deleted)` 類註記與 `./`、`a -> b`
+  計算 `changed_files`；vendor 自報路徑剝掉 `(deleted)` 類註記與 `./`、`a -> b`
   兩邊都算後仍不一致時標出、不改 status；schema 拒絕額外欄位與超長字串（F8）。
 - S1.18 WHEN runner 逾時或收到 SIGTERM/HUP/INT，THE SYSTEM SHALL 結束所有後代
   程序，包括 setsid 且忽略 SIGTERM 的孫程序；事後沒有殘留（F9）。

@@ -59,7 +59,8 @@ python3 bench/ab/run_ab.py --summarize bench/ab/results/ab.json
 
 `--arms shoal,shoal-relay`：`shoal` 是 relay 關閉的對照；`shoal-relay` 把 `relay.binding.toml`
 （`executor`/`applier` 走 Codex、外殼 `haiku`）接在 committed HEAD 的 `hosts/claude/binding.toml`
-後面，用 `tools/render.py --host claude-plugin --write --root <temp>` render 成該 arm 自己的
+後面，用 `tools/render.py --host claude-plugin --write --root <temp>` render 成該 arm
+自己的
 plugin-dir（committed binding 不動）。`--dry-run` 會印每個 arm 的 plugin-dir 與 `relay=on|off`。
 
 - 該 arm 用 `--output-format stream-json --verbose`，才看得到 subagent 內 Bash 印出的 hand-back；

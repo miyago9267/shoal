@@ -226,5 +226,6 @@ currently justify Astra's cost over Sol, while tool-heavy, MCP, computer-use,
 and cross-system work can justify a capability-triggered candidate. This spec
 therefore treats `quality` as stronger evidence and review, not as an automatic
 Astra switch. The completed
-[`astra-main-session-budget`](../../archive/specs/astra-main-session-budget/SPEC.md) spec remains
+[`astra-main-session-budget`](../../archive/specs/astra-main-session-budget/SPEC.md)
+spec remains
 the authority for explicit Astra main-session activation.
