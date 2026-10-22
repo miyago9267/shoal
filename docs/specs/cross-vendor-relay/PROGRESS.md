@@ -114,8 +114,9 @@
     就停下來問使用者；Codex 未執行（無 `relay_adopt`）。
   - f-refactor-split x2：計數器漏算（H3 的窄版）。Codex 其實跑了（hand-back 的
     usage 為 393,636 / 363,852 input，`relay_adopt` 兩個 session 對得上）。runner
-    回 `status: blocked, files_mismatch: true`（Codex 自報 `app/core.py (deleted)`，
-    與 `git status` 的 `app/core.py` 字串不同）並以 exit 1 結束，Bash tool_result 變成
+    回 `status: blocked, files_mismatch: true`；`blocked` 是 Codex 自己回報的（rep1
+    環境沒有 pytest，rep2 想 git commit 被 sandbox 擋），不是 runner 的 files_mismatch
+    造成（更正：見 fix/relay-mismatch）。runner 以 exit 1 結束，Bash tool_result 變成
     `Exit code 1\n{...}`，`relay_handbacks()` 的 `json.loads` 失敗而略過。
     以去掉前綴的方式重跑計數器可得 1 筆/run。
   - H3 的寬版（stream-json 不暴露 subagent 的 Bash 結果）不成立：a、c、d、h rep1
@@ -128,8 +129,8 @@
   rep2 main 已 commit 合併，故也是 0 但 pass，bench 低估 commit 後的改動量。
 - 建議修正（皆未實作，本任務不動 relay/runtime）：(1) `relay_handbacks()` 先剝
   `Exit code N\n` 前綴，並只計有 `session_id` 或 `usage` 的 hand-back（避免把
-  worktree 拒絕算成呼叫）；(2) runner 的 `files_mismatch` 比對前先剝
-  ` (deleted)` 之類的註記，且僅路徑註記差異不應讓 `done` 變 `blocked`；
+  worktree 拒絕算成呼叫）；(2) 已修：runner 比對前剝 ` (deleted)` 類註記
+  （7522f1d），brief 開頭寫明不碰 git、check 跑不了回 `done` 加 `unverified`；
   (3) bootstrap/agent 描述把 `isolation: worktree` 寫成必填，或 guard 在派工時直接
   deny 缺少 isolation 的 relay role；(4) bench 的 relay arm 對 main 直接改檔的
   run 標記 `no_dispatch`，並在 prompt 或 guard 補上 Bash 寫檔偵測，否則小任務

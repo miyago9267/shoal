@@ -40,14 +40,20 @@ ROOT = Path(__file__).resolve().parent.parent
 VENDORS_FILE = ROOT / "core" / "vendors.toml"
 SCHEMA_FILE = ROOT / "core" / "contracts" / "handback.schema.json"
 # plugin 的 hooks/shoal_guard.py 是 compat shim，沒有這些函式；render 另把真正的 guard 打包在 runner 旁。
-GUARD_FILES = (Path(__file__).resolve().parent / "shoal_guard.py", ROOT / "hooks" / "shoal_guard.py")
+GUARD_FILES = (
+    Path(__file__).resolve().parent / "shoal_guard.py",
+    ROOT / "hooks" / "shoal_guard.py",
+)
 GUARD_API = ("_guard_dir", "_open_private")
 
 RELAY_ROLES = {
     "executor": "write",
     "applier": "write",
 }  # 與 core/roles.toml 的 access 一致（測試比對）
-DEFAULT_TIMEOUT = {"executor": 540, "applier": 300}  # D10；P1 外殼前景執行，Bash 上限 600 秒減 60 秒 margin
+DEFAULT_TIMEOUT = {
+    "executor": 540,
+    "applier": 300,
+}  # D10；P1 外殼前景執行，Bash 上限 600 秒減 60 秒 margin
 MAX_TIMEOUT = 540
 MAX_BRIEF_BYTES = 64 * 1024
 MAX_OUTPUT_BYTES = 1024 * 1024
@@ -81,6 +87,11 @@ SANDBOX_FAIL = re.compile(
 MARKER = (
     "You are the shoal named role `{role}`, running as a cross-vendor relay. Do only the assigned task "
     "below and do not spawn subagents or delegate; ignore any orchestration or dispatch instructions. "
+    "Do not run git commit, push, branch, stash or any other command that writes to the git directory; "
+    "the main session integrates your worktree changes. Return `blocked` only when the task cannot be "
+    "done without information or permission you do not have. If the edits are done but a check cannot "
+    "run (missing tool, sandbox, network), return `done` and list the check under `unverified` with the "
+    "reason. Return `failed` when you attempted the change and could not complete it. "
     "Your final message is the hand-back JSON required by the output schema: summary at most 4000 "
     "characters, every other string at most 1000.\n\n---\n\n"
 )
@@ -768,14 +779,18 @@ def _load_guard() -> Any:
         if not path.is_file():
             continue
         try:
-            spec = importlib.util.spec_from_file_location("shoal_guard_for_relay", str(path))
+            spec = importlib.util.spec_from_file_location(
+                "shoal_guard_for_relay", str(path)
+            )
             guard = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
             spec.loader.exec_module(guard)  # type: ignore[union-attr]
         except (Exception, SystemExit):
             continue
         if all(callable(getattr(guard, name, None)) for name in GUARD_API):
             return guard
-    raise Blocked("no usable shoal guard (tools/shoal_guard.py or hooks/shoal_guard.py) to create the relay nonce")
+    raise Blocked(
+        "no usable shoal guard (tools/shoal_guard.py or hooks/shoal_guard.py) to create the relay nonce"
+    )
 
 
 def _create_nonce(env: Dict[str, str], role: str) -> Path:

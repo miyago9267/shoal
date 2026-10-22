@@ -300,6 +300,15 @@ class RelayRunner(unittest.TestCase):
         )
         self.assertIn("do not spawn subagents", prompt)
         self.assertTrue(prompt.endswith("Implement the thing.\n"))
+        preamble = prompt.split("\n\n---\n\n", 1)[0]
+        for rule in (
+            "Do not run git commit, push, branch, stash",
+            "writes to the git directory",
+            "`blocked` only when the task cannot be done without information or permission you do not have",
+            "return `done` and list the check under `unverified` with the reason",
+            "`failed` when you attempted the change and could not complete it",
+        ):
+            self.assertIn(rule, preamble)
 
     def test_s1_15_env_allowlist_tmpdir_and_nonce(self):
         self.run_relay()
