@@ -36,17 +36,13 @@ If the main session edits a file without dispatching a writable role, or a subag
 
 The main session turns a big change into a spec, then hands the slices to roles in parallel.
 
-![Large cross-module change demo](docs/assets/reel-big-change/out-en/scene.gif)
-
-[mp4](docs/assets/reel-big-change/out-en/scene.mp4)
+The demo recording was removed from the repo to keep it small; it remains in git history.
 
 ### A security-sensitive change takes the rigorous path
 
 Changes to auth, secrets or permissions get a reviewed Plan first, then a security role carries it out.
 
-![Security-sensitive change demo](docs/assets/reel-security/out-en/scene.gif)
-
-[mp4](docs/assets/reel-security/out-en/scene.mp4)
+![Security-sensitive change demo](docs/assets/demo-security-en.gif)
 
 ## Quick start
 
