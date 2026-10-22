@@ -37,7 +37,7 @@ ARMS = ("shoal", "shoal-fast", "shoal-workflow", "shoal-relay", "baseline")
 SHOAL_ARMS = ("shoal", "shoal-fast", "shoal-workflow", "shoal-relay")
 RELAY_BINDING = HERE / "relay.binding.toml"
 # Everything tools/render.py needs to render the claude plugins from a committed tree.
-RELAY_RENDER_PATHS = ("core", "hosts/claude", "hooks", "tools", "VERSION", "plugins", ".claude-plugin")
+RELAY_RENDER_PATHS = ("core", "prompts", "hosts/claude", "hooks", "tools", "VERSION", "plugins", ".claude-plugin")
 # shoal-fast: same plugins, prompt starts with `#fast` (main may edit small work directly).
 FAST_PREFIX = "#fast\n\n"
 # shoal-workflow: same plugins; the user explicitly asks for a Workflow whose agents are shoal roles.
