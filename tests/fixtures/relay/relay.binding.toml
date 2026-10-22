@@ -1,0 +1,8 @@
+
+# 測試用：附加在 hosts/claude/binding.toml 之後，開啟 relay（repo 的 binding 不開）。
+[relay]
+shell_model = "haiku"
+
+[relay.roles]
+executor = "codex"
+applier = "codex"

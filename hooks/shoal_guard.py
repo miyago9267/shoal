@@ -191,6 +191,14 @@ LANE_ROLES = {
 LANE_RE = re.compile(r"^\s*\[(fast|complex|rigorous)\]")
 
 CLASSIFIED_ROLE = {"judgment": "executor", "mechanical": "applier"}
+
+# Cross-vendor relay (docs/specs/cross-vendor-relay S1.11, Security review F4/F5): tools/shoal_relay.py runs a role in
+# `codex exec` with SHOAL_RELAY_ROLE / SHOAL_RELAY_NONCE set and a `<guard dir>/relay-<nonce>` file holding
+# {"role", "pid"}.  Only when all of it checks out is the whole session that named role; the env alone changes nothing.
+RELAY_HOST = "codex"
+RELAY_ROLES = frozenset({"executor", "applier"})
+RELAY_NONCE_RE = re.compile(r"[0-9a-f]{32}")
+RELAY_NONCE_MAX_BYTES = 4096
 DISPATCH_NAME = {
     "claude": "Agent",
     "codex": "spawn_agent",
@@ -228,6 +236,10 @@ MESSAGES = {
         "LEAF": (
             "Shoal dispatch guard: subagents are leaf workers and must not dispatch other "
             "agents. Finish the task yourself and report back to the parent."
+        ),
+        "RELAY": (
+            "Shoal dispatch guard: this session runs the relayed shoal role `{role}` and must not dispatch "
+            "or message other agents. Finish the task yourself and report back in the hand-back."
         ),
         "VERIFY_EDIT": (
             "Shoal dispatch guard: verify-level roles must not edit files with editing tools. "
@@ -296,6 +308,10 @@ MESSAGES = {
             "`applier` / `executor`；否則直接做下去也可以。"
         ),
         "LEAF": "Shoal dispatch guard：subagent 是 leaf worker，不可再派其他 agent。請自己完成並回報給上層。",
+        "RELAY": (
+            "Shoal dispatch guard：這個 session 是 relay 過來的 shoal role `{role}`，不可派出或聯繫其他 agent。"
+            "請自己完成並在 hand-back 回報。"
+        ),
         "VERIFY_EDIT": "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
         "R1": (
             "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。"
@@ -1386,6 +1402,63 @@ class _Guard:
         except Exception:
             return
 
+    # -- cross-vendor relay (S1.11) ------------------------------------------
+    def relay_check(self) -> Tuple[Optional[str], Optional[str]]:
+        """(role, None) when this session is a relayed named role; (None, reason) when relay env is present but not
+        trusted; (None, None) when there is no relay env.  Trusted only on codex, for executor / applier, with the
+        runner's `relay-<nonce>` file: opened without following symlinks, regular, ours, exactly {"role", "pid"}
+        with the same role and a live pid.  Read-only; any doubt is a rejection."""
+        role, nonce = self.env.get("SHOAL_RELAY_ROLE"), self.env.get("SHOAL_RELAY_NONCE")
+        if role is None and nonce is None:
+            return None, None
+        if self.host != RELAY_HOST:
+            return None, "relay_host"
+        if role not in RELAY_ROLES:
+            return None, "relay_role"
+        if not isinstance(nonce, str) or RELAY_NONCE_RE.fullmatch(nonce) is None:
+            return None, "relay_nonce_format"
+        guard = self.guard_dir
+        if guard is None:
+            return None, "state_unavailable"
+        fd = _open_private(guard / ("relay-" + nonce), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        if fd is None:
+            return None, "relay_nonce_file"
+        try:
+            data = json.loads(os.read(fd, RELAY_NONCE_MAX_BYTES))
+        except (OSError, ValueError):
+            return None, "relay_nonce_content"
+        finally:
+            os.close(fd)
+        if not isinstance(data, dict) or set(data) != {"role", "pid"} or not _is_int(data["pid"]) or data["pid"] <= 1:
+            return None, "relay_nonce_content"
+        if data["role"] != role:
+            return None, "relay_role_mismatch"
+        try:
+            os.kill(data["pid"], 0)
+        except OSError:  # gone, or a recycled pid we may not signal: not our runner
+            return None, "relay_pid_dead"
+        return role, None
+
+    def relay(self) -> Optional[Dict[str, Any]]:
+        """An adopted relay session is judged as a subagent of its role (edits allowed, no dispatch required); a
+        dispatch or any other collaboration tool is denied whatever the mode (it replaces Codex's ineffective
+        `features.multi_agent=false`, SPEC "T1.0 後的決策").  None: judge the event as usual."""
+        role, reason = self.relay_check()
+        if reason is not None:
+            if self.mode != "off":  # an off guard writes nothing, as before
+                self.log("relay_ignore", rule="RELAY", skip_reason=reason, tool=None)  # vectors: no tool name
+            return None
+        if role is None:
+            return None
+        self.event = dict(self.event, is_subagent=True, role=role)
+        self.log("relay_adopt", rule="RELAY")
+        tool = self.event.get("tool_name")
+        if self.event.get("kind") == "tool" and (
+            self.event.get("tool_kind") == "dispatch" or (isinstance(tool, str) and tool.startswith("collaboration"))
+        ):
+            return self.result("deny", "RELAY", reason=_text(self.env, "RELAY", role=role))
+        return None
+
     def _none(self) -> Dict[str, Any]:
         return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
 
@@ -2191,7 +2264,7 @@ def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str
     """Decide on a normalized event: shoal's own decision, then the guard chain.  Raises only on
     programming/OS errors (caller fails open); a chain failure never changes shoal's decision."""
     guard = _Guard(event, env, home)
-    result = _decide(guard, event)
+    result = guard.relay() or _decide(guard, guard.event)
     try:
         result = _apply_chain(guard, event, result)
     except BaseException:

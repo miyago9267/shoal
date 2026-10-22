@@ -1,0 +1,51 @@
+# cross-vendor-relay 的 vendor 定義：host 中立，由 tools/shoal_relay.py 讀取，doctor 比對 min_version。
+# 依據 docs/specs/cross-vendor-relay（D6、Security review F2/F3/F6/F12 與「T1.0 後的決策」）。
+# runner 會拒絕任何含 danger-full-access、dangerously、bypass 的 argv，這裡不得出現這類旗標。
+
+[vendors.codex]
+# T1.0 實測過的最低版本（codex-cli 0.160.1）。
+min_version = "0.160.1"
+
+# 解析方式：只用絕對路徑 exec，不經 shell，因此不受使用者的 `codex` alias（帶 bypass 旗標）影響。
+# 先依序找 paths（開頭 ~/ 以 HOME 展開），都沒有才在 PATH 的絕對路徑目錄找；結果取 realpath，
+# 必須是可執行的一般檔案。
+binary = "codex"
+paths = ["~/.local/bin/codex", "/opt/homebrew/bin/codex", "/usr/local/bin/codex"]
+search_path = true
+
+version_args = ["--version"]
+login_args = ["login", "status"]
+# MCP 沒有全域開關：先列出 config 定義的 server，逐一以 mcp_disable 關閉；plugin 提供的 server 由
+# features.plugins=false 關閉（pins）。id 不符 [A-Za-z0-9_-] 或列舉失敗時 runner 回 blocked。
+mcp_list_args = ["mcp", "list", "--json", "-c", "features.plugins=false"]
+mcp_disable = "mcp_servers.{id}.enabled=false"
+
+# 固定的 exec 旗標；runner 另外帶 --output-schema、-o、--sandbox、-C 與 brief。
+# --ephemeral：不寫 ~/.codex/sessions rollout（F12）；--strict-config：-c key 打錯時報錯而不是被忽略。
+exec_args = ["exec", "--json", "--ephemeral", "--strict-config"]
+
+# 每次呼叫都以 `-c <pin>` 帶上，不讓 ~/.codex/config.toml 放寬邊界（D6、F2、F6；key 名由 T1.0 實測）。
+# features.multi_agent=false 實測不會移除 spawn_agent，只是附帶；實際控制由 guard 擋派工工具（T1.4）。
+# 不 pin forced_login_method：pin 時若環境有 API key，codex 會登出並刪除 auth.json（T1.0 第 5 項）。
+pins = [
+    'approval_policy="never"',
+    'sandbox_workspace_write.writable_roots=[]',
+    'sandbox_workspace_write.network_access=false',
+    'sandbox_workspace_write.exclude_slash_tmp=true',
+    'web_search="disabled"',
+    'features.apps=false',
+    'features.plugins=false',
+    'features.multi_agent=false',
+    'shell_environment_policy.inherit="core"',
+    'shell_environment_policy.ignore_default_excludes=false',
+]
+
+# 子程序只拿到這些變數（F6）；runner 另外設每次新建的 TMPDIR 與 SHOAL_RELAY_ROLE、SHOAL_RELAY_NONCE。
+# OPENAI_API_KEY、CODEX_API_KEY 因此不會傳入，codex 固定走使用者的訂閱登入。
+env = ["PATH", "HOME", "USER", "LANG", "TERM", "CODEX_HOME"]
+
+# role access -> --sandbox（D6）。永不對應到 danger-full-access。
+[vendors.codex.sandbox]
+read-only = "read-only"
+write = "workspace-write"
+verify = "workspace-write"
