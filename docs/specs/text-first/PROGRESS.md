@@ -29,7 +29,7 @@ created: 2026-10-22
 
 ## Phase 1: 刪除死檔
 
-> Status: in-progress（等 PR CI 三平台綠燈）
+> Status: complete（PR #35，CI 三平台綠燈，待合併）
 
 - 目標：53 檔刪除、R3 防回歸、`render_equiv.py`。
 - 基準雜湊（main `8da4d0f`，`render_equiv.py` 輸出）：

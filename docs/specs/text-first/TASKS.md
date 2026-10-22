@@ -103,7 +103,7 @@ created: 2026-10-22
   `hosts/opencode/**`、`prompts/**`（兩處），並新增獨立步驟，對六個 host 與
   claude-plugin 執行 `render --check`（失敗訊息直接，成本小於 5 秒；輸出在 P1
   不變，所以立即可用）
-- [ ] T1.8 共同驗收；PR 描述貼 `render_equiv.py` 的總雜湊（預設與 relay 各一）
+- [x] T1.8 共同驗收；PR 描述貼 `render_equiv.py` 的總雜湊（預設與 relay 各一）
 
 ### 驗收
 
