@@ -786,14 +786,14 @@ class RelayLanding(RelayBase):
         self.assertEqual((self.main / "notes.txt").read_text(), "mine\n")
 
     def test_m2_revert_command_restores_primary(self):
-        """M2：addendum 寫的 `git diff --binary <tree> <head> | git -C <primary> apply` 能把落地內容整份撤回。"""
+        """M2：addendum 寫的 `git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ <tree> <head> | git -C <primary> apply` 能把落地內容整份撤回。"""
         hb = self.relay_files(
             {"README": "edited\n", "pkg/new.py": "x\n", "img.bin": "hex:" + self.BINARY}
         )
         self.assert_landed(hb)
         tree, head = hb["landing"]["tree"], hb["landing"]["head"]
         done = subprocess.run(
-            f"git diff --binary {tree} {head} | git -C '{self.main}' apply",
+            f"git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ {tree} {head} | git -C '{self.main}' apply",
             shell=True,
             cwd=self.main,
             env={**self.env(), "GIT_CONFIG_NOSYSTEM": "1"},
@@ -805,7 +805,7 @@ class RelayLanding(RelayBase):
         self.assertEqual(self.primary_status(), "")
         self.assertEqual((self.main / "README").read_text(), "r")
         policy = (ROOT / "hosts" / "claude" / "relay" / "policy-addenda" / "orchestration.toml").read_text()
-        self.assertIn("git diff --binary <tree> <head> | git -C <primary> apply", policy)
+        self.assertIn("git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ <tree> <head> | git -C <primary> apply", policy)
 
     def test_apply_failure_keeps_done_and_leaves_primary_untouched(self):
         # primary 有被 ignore 的同名檔：status 看不到，但 git apply 仍會拒絕覆寫

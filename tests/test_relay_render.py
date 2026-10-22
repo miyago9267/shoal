@@ -497,7 +497,7 @@ class WriteRelayIsolationTests(TempCase):
         self.assertIn("starts with `patch does not apply`", policy)
         self.assertIn("inspect that worktree first", policy)
         self.assertIn("is not `done`, do not merge", policy)
-        self.assertIn("git diff --binary <tree> <head> | git -C <primary> apply", policy)
+        self.assertIn("git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ <tree> <head> | git -C <primary> apply", policy)
         for name in ("executor", "applier"):
             text = dist[f"agents/{name}.md"].decode("utf-8")
             self.assertNotIn("--3way", text)
