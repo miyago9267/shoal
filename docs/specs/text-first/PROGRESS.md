@@ -29,10 +29,14 @@ created: 2026-10-22
 
 ## Phase 1: 刪除死檔
 
-> Status: not-started
+> Status: in-progress（等 PR CI 三平台綠燈）
 
 - 目標：53 檔刪除、R3 防回歸、`render_equiv.py`。
-- 基準雜湊：（P1 開始時由 `render_equiv.py` 填入）
+- 基準雜湊（main `8da4d0f`，`render_equiv.py` 輸出）：
+  - 預設（103 檔）：`f0a3f34becf2342d21322e0ecb60de411b088b924f9ccdfddb213c1c68a71057`
+  - relay（27 檔）：`87d4a9a4aaed55028a9316573d91d5422370c42fa3dc24cb0c6ebdde4040ac59`
+- 2026-10-23：`render_equiv.py --base 8da4d0f --head HEAD` 退出 0，兩組雜湊與基準相同；
+  刪除 53 檔（155,618 bytes）；全套測試 1920 個、約 297 秒；lock（不帶旗標）通過。
 
 ## Phase 2: 文字搬到 `prompts/`
 

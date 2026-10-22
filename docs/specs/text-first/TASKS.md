@@ -66,22 +66,22 @@ created: 2026-10-22
 
 ### 任務
 
-- [ ] T1.1 先寫 `tools/render_equiv.py` 與測試（Red：對刻意改一個位元組的 temp
+- [x] T1.1 先寫 `tools/render_equiv.py` 與測試（Red：對刻意改一個位元組的 temp
   ref 必須非 0）；除了六個 host 的預設輸出，還要對每個 ref 的 relay root 執行
   `--host claude-plugin --write --overlay tests/fixtures/relay/relay.binding.toml`
   （兩個 ref 各一個獨立目錄，不與預設輸出共用），把 relay 輸出併入雜湊比較；
   測試另含「只改 relay 路徑（例如 `relay/shell.md` 一個位元組）也必須非 0」。
   在 main 對 main 自證退出 0
-- [ ] T1.2 新增測試（R3，Red 先行）：temp root 放入 `hosts/agy/src/rules/
+- [x] T1.2 新增測試（R3，Red 先行）：temp root 放入 `hosts/agy/src/rules/
   shoal-agy.md`，另一個放入 `hosts/claude/src/agents/scout.md`，render 皆須非 0
   結束且 stderr 含該路徑；再加 `hosts/claude/src/claude-md.bootstrap.md` 與
   opencode `hosts/opencode/src/roles/scout.md` 的案例；另一個案例確認真實樹
   （P1 刪檔後）render 退出 0，且 grok 的 `src/rules/shoal-grok.md`、claude 的
   `src/agents/Explore.md`、codex 的 `src/agents/sol-executor.md` 不觸發
-- [ ] T1.3 `merge_core_policy` 加檔案系統檢查（見上）；`render_agy` 移除
+- [x] T1.3 `merge_core_policy` 加檔案系統檢查（見上）；`render_agy` 移除
   `_versioned_rules`
-- [ ] T1.4 刪 53 檔
-- [ ] T1.5 修復 35 個因讀死檔而失敗的測試（粗暴刪除實測，10 個模組）：
+- [x] T1.4 刪 53 檔
+- [x] T1.5 修復 35 個因讀死檔而失敗的測試（粗暴刪除實測，10 個模組）：
   `test_render_agy`（12，改為 marker 取自 dist 並等於 `VERSION`）、
   `test_role_contracts`（8，legacy fixture 改用 `tests/fixtures/legacy-src/`
   最小樣本，不再複製 `hosts/claude/src/agents/scout.md`）、
@@ -91,8 +91,15 @@ created: 2026-10-22
   `test_core_policy`（2，刪「core 等於 legacy」的比對測試）、
   `test_relay_render`、`test_generic_md_render`、`test_direction_milestone`
   （各 1，後者的 legacy 比對改讀 dist）
-- [ ] T1.6 `docs/` 與 `core/README.md` 內提到上述路徑的說明更新
-- [ ] T1.7 `python-tests.yml`：paths 補 `hosts/agy/**`、`hosts/grok/**`、
+  實作紀錄（2026-10-23）：實際失敗為 `test_render_agy`、`test_role_contracts`（6）、
+  `test_render_claude`（2）、`test_core_policy`（2）、`test_direction_milestone`、
+  `test_render_opencode`（2，`hosts/opencode/src` 整個目錄消失）；其餘模組的失敗
+  在 R3 與 render 修改後不再發生。legacy 樣本由 `TempHost.legacy_sources` 在測試內
+  產生（含 grok 要求的 `model:` frontmatter），沒有新增 `tests/fixtures/legacy-src/`；
+  `test_core_and_addenda_reassemble_the_legacy_text` 與 core 對 legacy 的 wording
+  比對一併刪除（比對對象已不存在）。
+- [x] T1.6 `docs/` 與 `core/README.md` 內提到上述路徑的說明更新
+- [x] T1.7 `python-tests.yml`：paths 補 `hosts/agy/**`、`hosts/grok/**`、
   `hosts/opencode/**`、`prompts/**`（兩處），並新增獨立步驟，對六個 host 與
   claude-plugin 執行 `render --check`（失敗訊息直接，成本小於 5 秒；輸出在 P1
   不變，所以立即可用）
