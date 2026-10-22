@@ -413,8 +413,11 @@ class PolicyIdentity(Base):
         # same path, new inode (identity comparison before the digest)
         link.unlink()
         link.symlink_to(target)
-        target.unlink()
-        target.write_bytes(b"# p\n")
+        # Replace atomically so the new file is allocated while the old inode
+        # is still live; unlink + rewrite lets ext4 hand the same inode back.
+        fresh = self.root / "fresh.md"
+        fresh.write_bytes(b"# p\n")
+        os.replace(fresh, target)
         self.assertAborts(message, installer._assert_policy_identity, identity)
         # same inode, different content (digest comparison)
         identity = installer._capture_policy_identity(link, follow_policy_symlink=True, policy_root=self.root)
