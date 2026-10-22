@@ -6,7 +6,6 @@ core/policy 與各 host 的 binding / policy-addenda，變更要同時改這裡�
 
 from __future__ import annotations
 
-import difflib
 import json
 import re
 import shutil
@@ -141,12 +140,6 @@ EXPECTED_REQUIRED = {
     "ext-no-authority",
 }
 EXPECTED_DOCS = ("bootstrap", "extensions", "orchestration", "skill")
-
-# Claude 的 core 輸出與 legacy 原文逐字（忽略空白）相同，只有這些因禁字詞而改寫的地方（P1 對照表有說明）。
-KNOWN_WORDING_CHANGES = [
-    ("workflow", "procedure"),
-    ("workflow", "policy"),
-]
 
 
 def rewrite_policy_sections(root: Path, host: str, policy_toml: str, frame: bool = False) -> None:
@@ -405,29 +398,6 @@ class RepoPolicyTests(unittest.TestCase):
         ).items():
             self.assertNotIn("{{", data.decode("utf-8"), rel)
 
-    def test_claude_core_preview_equals_legacy_apart_from_known_wording(self) -> None:
-        """P1 的行為等價檢查：忽略空白後逐詞相同，只允許 KNOWN_WORDING_CHANGES。"""
-        files = render.policy_files(
-            self.core, self.bindings["claude"], ROOT / "hosts" / "claude"
-        )
-        self.assertEqual(
-            sorted(files),
-            sorted(self.bindings["claude"]["policy"]["documents"].values()),
-        )
-        changes: list[tuple[str, str]] = []
-        for rel, data in files.items():
-            legacy = (
-                (ROOT / "hosts" / "claude" / "src" / rel)
-                .read_text(encoding="utf-8")
-                .split()
-            )
-            core = data.decode("utf-8").split()
-            matcher = difflib.SequenceMatcher(None, legacy, core, autojunk=False)
-            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-                if tag != "equal":
-                    changes.append((" ".join(legacy[i1:i2]), " ".join(core[j1:j2])))
-        self.assertEqual(changes, KNOWN_WORDING_CHANGES)
-
     def test_claude_core_preview_keeps_lock_required_fragments(self) -> None:
         """Decision 4：core 條款保留各 lock surface 的 required_fragments 原文。"""
         lock = json.loads(
@@ -491,16 +461,14 @@ class PolicyRenderCase(unittest.TestCase):
     def test_legacy_is_byte_identical_to_dist(self) -> None:
         self.assertEqual(self.render("--check").returncode, 0)
 
-    def test_core_replaces_exactly_the_four_policy_documents(self) -> None:
+    def test_core_adds_exactly_the_policy_documents(self) -> None:
+        # legacy 原文已刪（死檔）：legacy 模式輸出不含 policy 文件，core 模式只多出這些文件，其餘逐位元組相同。
         legacy = render.render_host(self.root, "claude")
         self.core_mode()
         core = render.render_host(self.root, "claude")
         documents = set(render.load_toml(self.binding)["policy"]["documents"].values())
-        self.assertEqual(sorted(core), sorted(legacy))
-        self.assertTrue(all(core[p] == legacy[p] for p in core if p not in documents))
-        self.assertNotEqual(
-            core["claude-md.bootstrap.md"], legacy["claude-md.bootstrap.md"]
-        )
+        self.assertEqual(set(core) - set(legacy), documents)
+        self.assertTrue(all(core[p] == legacy[p] for p in legacy))
 
     def test_core_check_fails_until_dist_is_rewritten(self) -> None:
         self.core_mode()

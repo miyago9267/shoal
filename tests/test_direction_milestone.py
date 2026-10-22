@@ -57,8 +57,8 @@ class MilestoneDirectionTests(unittest.TestCase):
         core = (ROOT / "core/policy/extensions.toml").read_text(encoding="utf-8")
         self.assertIn('id = "cost-unbounded-continuation"', core)
         self.assertIn(block, core)
-        legacy = ROOT / "hosts/claude/src/skills/shoal-orchestration/references/workflow-extensions.md"
-        self.assertIn(block, legacy.read_text(encoding="utf-8"))
+        dist = ROOT / "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md"
+        self.assertIn(block, dist.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
