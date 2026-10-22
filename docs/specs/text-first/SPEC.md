@@ -61,9 +61,9 @@ claude-plugin，輸出雜湊改變才算 live（168 個檔，104 live、64 dead�
 | `hosts/agy/dist`、`hosts/grok/dist`、`hosts/opencode/dist` | runtime 會讀：`shoal_install.py` symlink 或複製 agy dist、`install_grok.py` 對 HEAD 做 `git archive`、`opencode_global.py` 從 ref 讀、`modules.json` 列為安裝路徑；dotfile 的 `check_agent_rule_sync.sh` 與 `setup_gemini.sh` 也讀 | D3 不能停止 commit 這三份 |
 | `templates/` | codex 的安裝輸入：`install.py`、`validate_agents.py`、`verify_dispatch.py`、`sync_global.py`、`install.sh`、dotfile `setup_codex.sh` 都讀；也是 lock 的 surface | 保留 |
 | `plugins/claude*`、`.claude-plugin/` | `shoal_update.py` 對 HEAD 做 `git archive`，Claude plugin 由此同步 | 保留 |
-| `hosts/claude/dist` | 與 `plugins/claude/{agents,skills,policy}` 逐位元組相同（`diff -r` 驗證）；runtime 只讀 `agents/Explore.md`（`shoal_install.py:49`、`shoal_update.py:425`、`modules.json:53`）；lock 有 13 個 surface 指向它；dotfile `check_agent_rule_sync.sh:239` 讀它的 `SKILL.md` | 唯一可停止 commit 的 dist，但要 lock renewal 加 dotfile 一行修改（P3b，已延後） |
+| `hosts/claude/dist` | 與 `plugins/claude/{agents,skills,policy}` 逐位元組相同（`diff -r` 驗證）；runtime 只讀 `agents/Explore.md`（`shoal_install.py:49`、`shoal_update.py:425`、`modules.json:53`）；lock 有 13 個 surface 指向它；dotfile `check_agent_rule_sync.sh:239` 讀它的 `SKILL.md` | 唯一可停止 commit 的 dist，但要 lock renewal 加 dotfile 一行修改（P3b，已核准，排在 P3a 之後） |
 | `tests/golden` | 只有測試與 `tools/refresh_golden.py` 讀；內容等於 dist 的 regression 副本 | 可刪 |
-| prompt lock | surface 全是輸出路徑（`templates/`、`plugins/codex/`、`hosts/claude/dist/`、`INSTALL_PROMPT.md`），沒有任何 `core/*.toml` | P1、P2、P4 不動輸出路徑，**不需要 renewal**；只有 P3b 要 |
+| prompt lock | surface 全是輸出路徑（`templates/`、`plugins/codex/`、`hosts/claude/dist/`、`INSTALL_PROMPT.md`），沒有任何 `core/*.toml` | P1、P2、P3a、P4 不動輸出路徑，**不需要 renewal**；只有 P3b 要 |
 | CI paths filter | `python-tests.yml` 的 paths 沒有 agy、grok、opencode 的 `hosts/` 路徑，也沒有 `prompts/**`（新） | 已決定：P1 補 `hosts/{agy,grok,opencode}/**` 與 `prompts/**` |
 | CI 沒有獨立的 `render --check` | 只經由單元測試（`test_every_host_matches_its_committed_dist` 等）執行 | 已決定：P1 加明確步驟（輸出在 P1 不變，所以可立即生效） |
 | bench 耦合 | bench 單向依賴 shoal：`install/{verify_dispatch,stage_smoke_home,routing_contract}.py`、`hooks/shoal_autoroute_gate.py`、`tools/`、`docs/benchmarks/`（`benchmark_routing.py`、`claude_eval_smoke.py`、`role_fitness_claude.py` 與 3 個測試讀它，`FROZEN_MANIFEST_V2_HASH` 釘它的 hash）；shoal 的 runtime 不 import bench。移除 bench 後 28 個測試模組無法 import，另有 1 個測試（`test_relay_render.py` 的 `OVERLAY`）讀 `bench/ab/relay.binding.toml` | D5 的「指回 shoal」要用 `SHOAL_ROOT`，不只是 `SHOAL_AB_PLUGIN_REF`；`docs/benchmarks` 列為相容面 |
@@ -108,8 +108,8 @@ claude-plugin，輸出雜湊改變才算 live（168 個檔，104 live、64 dead�
   shoal-bench 經 `SHOAL_ROOT` 讀它，見 D5）。
 - 不碰已結案 spec。`docs/archive` 與 `docs/assets/reel-*` 已由 PR #34 刪除，
   不在本案範圍。
-- 不做 P3b（停止 commit `hosts/claude/dist`）：2026-10-23 決定延後，不在本案
-  範圍；P1 到 P4 完成後再另案評估。
+- P3b（停止 commit `hosts/claude/dist`）在本案範圍內（Miyago 2026-10-23
+  核准），排在 P3a 之後；含 lock renewal 與 dotfile 修改。
 - 不開 PR（本 spec 只 commit 並 push 到 `docs/text-first-spec`）。
 
 ## Alternatives Considered
@@ -232,12 +232,13 @@ HEAD、全部 host `--write` 後與 working tree 的 9 個輸出目錄 `diff -r`
 ### Lock 與 renewal 的位置（D6）
 
 ```text
-P1 -> P2 -> P3a -> [ R -> P3b ] -> P4
-                     延後，不在本案範圍
+P1 -> P2 -> P3a -> R -> P3b -> P4
+                   已核准（2026-10-23）；P4 最後
 ```
 
-P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b 時才存在，
-且必須在 P3b 之前先上 main：
+P4 排在最後：必須在 P1 到 P3b 全部合併、且 render 輸出與基準逐位元組相同之後
+才做（2026-10-23 核准），避免 bench 搬出與輸出變更互相干擾。renewal `R`
+因 P3b 而存在，必須在 P3b 之前先上 main：
 
 - R 的內容：`LOCK.json` 把 13 個 `hosts/claude/dist/...` surface 的 `path`
   改為內容相同的 `plugins/claude/...`（`Explore.md` 同理），同步
@@ -250,7 +251,11 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
   push 到 main（CI 讀 push 事件的 head commit message）；不走 PR merge。
   本機先以 `validate_prompt_lock.py --base-ref origin/main --allow-lock-update`
   通過、且不帶旗標時失敗來確認。
-- 若不做 P3b，整個計畫不需要 renewal。
+- R 是 main 歷史上不可逆的一步：Miyago 已核准 P3b，但**在 push 這個 commit
+  之前必須先告知他**（見 TASKS TR.4）。
+- dotfile 修改（`check_agent_rule_sync.sh:239`）在 P3b 之前先上；實測 dotfile
+  只有這一處讀 `hosts/claude/dist`；`setup_gemini.sh` 讀的是 agy dist，P3b 不
+  影響，但執行時仍以 grep 重新確認。
 
 ## ADR
 
@@ -293,14 +298,14 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
 
 - 決策：保留 `templates/`、`plugins/*`、`.claude-plugin/`、`hosts/{agy,grok,
   opencode}/dist`；停止 commit `tests/golden/`（P3a）；`hosts/claude/dist` 列為
-  延後的 P3b。CI 對所有輸出執行 `render --check`。
+  P3b（排在 P3a 之後）。CI 對所有輸出執行 `render --check`。
 - 原因：事實表逐一列出消費者。與原假設不同，agy / grok / opencode 的 dist 是
   runtime 輸入（含 repo 外的 dotfile），不是 CI 專用副本。
-- P3b 已延後（2026-10-23），不在本案範圍。若日後評估，代價為：lock
+- P3b 已於 2026-10-23 核准，納入本案。代價為：lock
   renewal、dotfile 一行修改（`check_agent_rule_sync.sh:239`
   改指 `plugins/claude/skills/...`）、`EXPLORE_DIST` 改指
   `plugins/claude/agents/Explore.md`、claude host 的 `--check` 改為只驗證不比對
-  dist；收益只有 15 個檔。已於 2026-10-23 決定延後。
+  dist；收益只有 15 個檔。renewal commit 的 push 前須告知 Miyago。
 
 ### D4 文字內容測試收斂
 
@@ -337,8 +342,8 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
 - 留在 shoal：`install/verify_dispatch.py`、`stage_smoke_home.py`、
   `routing_contract.py`、`probe_hybrid_runtime.py`（`AGENT-INSTALL.md` 與 CI
   使用）、`tests/bench_hook_latency.py`（量 guard 延遲，與 bench 無關）。
-- 建立 private repo 屬外部操作，P4 因此設閘：需 Miyago 當下明確同意才開始
-  建立與 push（已決定：計畫保留 P4，閘門見 TASKS）。
+- 建立 private repo 屬外部操作；Miyago 已於 2026-10-23 核准，P4 最後執行
+  （在 P1 到 P3b 輸出逐位元組相同之後）。
 - relay overlay：shoal 內 `tests/fixtures/relay/relay.binding.toml` 已存在且
   內容與 `bench/ab/relay.binding.toml` 相同，所以 shoal 側不必搬檔；
   `test_relay_render.py` 的 `OVERLAY` 在 P4 改指該 fixture，測試保留。
@@ -356,8 +361,8 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
 | P1 | 刪 53 個死檔、R3 防回歸、`render_equiv.py`（含 relay）、CI paths 補齊與獨立 `render --check` 步驟 | 是 | 否 |
 | P2 | 文字搬到 `prompts/` | 是（建議在 P1 之後） | 否 |
 | P3a | 刪 `tests/golden`、收斂文字測試 | 是 | 否 |
-| R + P3b | 停止 commit `hosts/claude/dist`（延後，不在本案範圍） | R 先於 P3b | 是（R） |
-| P4 | bench 搬出（閘門：建立 private repo 需 Miyago 明確同意） | 是 | 否 |
+| R + P3b | 停止 commit `hosts/claude/dist`（已核准，排在 P3a 之後；R 的 push 前須告知 Miyago） | R 先於 P3b | 是（R） |
+| P4 | bench 搬出（已核准 2026-10-23；最後執行） | 否（排在 P3b 之後） | 否 |
 
 每個 phase 一個 PR，合併前跑：全套測試、`render_equiv.py`、lock（不帶旗標）、
 `npm run lint:md`、三 OS CI。細節見 TASKS.md。
@@ -379,12 +384,11 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
 
 已決定（2026-10-23）：
 
-- P3b（停止 commit `hosts/claude/dist`）延後，不在本案範圍。
+- P3b（停止 commit `hosts/claude/dist`）納入本案，排在 P3a 之後；含 lock
+  renewal 與 dotfile 修改。
 - `python-tests.yml` 補 agy、grok、opencode 的 `hosts/` 路徑與 `prompts/**`，
   並加獨立的 `render --check` 步驟，兩者都放 P1。
-- P4 保留在計畫內但設閘。
+- P4 bench 拆成 private repo `miyago9267/shoal-bench` 已核准，最後執行（P1
+  到 P3b 輸出逐位元組相同之後）。
 
-仍待決：
-
-1. 建立 `miyago9267/shoal-bench` private repo 與 `filter-repo` 後的第一次 push，
-   需要你當下同意（外部操作）；未同意前 P4 不開始。
+仍待決：無。唯一的互動點是 R 的 push 前須告知 Miyago。

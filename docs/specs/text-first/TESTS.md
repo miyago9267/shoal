@@ -9,7 +9,7 @@ created: 2026-10-22
 > Spec: `docs/specs/text-first/SPEC.md`
 
 編號 R1 到 R8 對應 SPEC 的 Requirements。`Shall` 為驗收條件；「每個 phase」
-指 P1、P2、P3a、P4（P3b 已延後）。
+指 P1、P2、P3a、P3b、P4。
 
 ## 驗收條件 (EARS)
 
@@ -56,21 +56,29 @@ created: 2026-10-22
 
 ### R4：只 commit 有消費者的生成物
 
-- **When**: P3a 完成（P3b 已延後，不在本案範圍）。
+- **When**: P3a 與 P3b 完成。
 - **Shall**: `tests/golden/` 不存在；`templates/`、`plugins/*`、
-  `.claude-plugin/`、`hosts/*/dist`（含 claude）仍被 commit 且 `render --check`
-  通過。
+  `.claude-plugin/`、agy / grok / opencode dist 仍被 commit 且 `render --check`
+  通過；P3b 後 `hosts/claude/dist` 不存在且 `EXPLORE_DIST` 指向存在的檔。
 - **驗證方式**: `test_render_check.py`；CI 的獨立 render check 步驟（P1 加入）；
-  刻意改 `prompts/` 一個字而不 `--write`，兩者皆紅。
+  刻意改 `prompts/` 一個字而不 `--write`，兩者皆紅；`shoal_install.py --update`
+  在 temp HOME 的 dry-run 通過；dotfile 的 `check_agent_rule_sync.sh` 通過。
 - **狀態**: [ ] 未驗證
 
 ### R5：lock 有效、renewal 乾淨
 
-- **When**: P1、P2、P3a、P4（P3b 與 renewal R 已延後，不在本案範圍）。
+- **When**: P1、P2、P3a、P3b、P4。
 - **Shall**: `validate_prompt_lock.py --base-ref origin/main` 不帶旗標通過，
-  `LOCK.json` 與所有 surface 檔案無 diff。
+  `LOCK.json` 與所有 surface 檔案無 diff（R 已上 main 之後，P3b 與 P4 相對新
+  基準仍成立）。
 - **驗證方式**: 該指令退出 0，且 `git diff origin/main --stat -- LOCK.json
   docs/specs/prompt-document-lock templates plugins/codex` 為空。
+- **When**: P3b 的 renewal commit R。
+- **Shall**: R 只含 `LOCK.json`、`validate_prompt_lock.py` 與測試；訊息含獨立
+  一行 `Lock-Renewal: approved`；不改 `VERSION` 與任何 prompt 內容；push 前已
+  告知 Miyago。
+- **驗證方式**: `git show --stat R` 的檔案清單；不帶旗標的 validator 在 R 上
+  失敗、帶 `--allow-lock-update` 通過；push 後 CI 的 lock 步驟綠。
 - **狀態**: [ ] 未驗證
 
 ### R6：行為測試保留
@@ -90,7 +98,7 @@ created: 2026-10-22
   歷史並在 `SHOAL_ROOT` 指向 shoal 時測試全綠；`docs/benchmarks` 仍在 shoal，
   shoal-bench 內每個引用都經 `shoal_root.py` 解析；`test_relay_render.py` 保留，
   `OVERLAY` 指向 `tests/fixtures/relay/relay.binding.toml`。建立 private repo
-  需 Miyago 明確同意（閘門）。
+  已核准（2026-10-23），最後執行。
 - **驗證方式**: shoal 的全套測試綠且 `git ls-files bench` 為空；shoal-bench
   的 `git log --follow bench/ab/run_ab.py` 保留原 commit；shoal-bench CI 綠；
   `SHOAL_AB_PLUGIN_REF` 指向 branch 時 `export_tree` 取得該 branch 的 plugin；

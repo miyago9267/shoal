@@ -25,12 +25,12 @@ created: 2026-10-22
 - [ ] `bun install --frozen-lockfile`（取得 repo 釘住的 markdownlint 0.23.0）
 - [ ] 每個 phase 從最新 `origin/main` 開分支（基準 `8da4d0f`，已含 PR #34）；
       不碰已結案 spec
-- [ ] 範圍外：P3b（停止 commit `hosts/claude/dist`）已於 2026-10-23 決定
-      延後，下文 R + P3b 一節僅保留作未來評估的草案，不排入本案
-- [ ] P4 閘門：建立 private repo `miyago9267/shoal-bench` 與第一次 push
-      屬外部操作，需 Miyago 當下明確同意；T4.1 到 T4.4 只在本機 fresh clone 做，
-      可先行，T4.5（建立 repo 與 push）與 T4.6（shoal 側刪除 `bench/`）在同意前
-      不得開始
+- [ ] P3b（停止 commit `hosts/claude/dist`）已於 2026-10-23 核准，納入本案，
+      排在 P3a 之後。lock renewal R 是 main 上單獨一個直接 commit（trailer
+      `Lock-Renewal: approved`、不含 prompt 內容）；**push 前先告知 Miyago**
+- [ ] P4 bench 拆分已於 2026-10-23 核准（含建立 private repo
+      `miyago9267/shoal-bench`），最後執行：P1 到 P3b 全部合併且
+      `render_equiv.py` 對基準輸出逐位元組相同之後才開始
 
 ## P1：刪除死檔
 
@@ -228,10 +228,10 @@ relay、plugin）數量不減；故意改 `prompts/` 一個字而不 `--write` �
 其實保護的是 lock 沒涵蓋的行為契約，會失去回歸保護；保守原則：有疑問就轉成
 結構斷言而不是刪。
 
-## R + P3b（延後，不在本案範圍）：停止 commit `hosts/claude/dist`
+## R + P3b：停止 commit `hosts/claude/dist`
 
-2026-10-23 決定延後；以下僅保留草案，供 P1 到 P4 完成後評估，不排入本案任何
-PR，也不計入共同驗收。
+2026-10-23 Miyago 核准，排在 P3a 之後、P4 之前。順序：dotfile 修改 -> R（直接
+push 到 main）-> P3b PR。
 
 ### Lock renewal R（先上 main）
 
@@ -245,8 +245,8 @@ PR，也不計入共同驗收。
 - [ ] TR.3 本機驗證：`validate_prompt_lock.py --base-ref origin/main
   --allow-lock-update` 通過；不帶旗標時失敗並指出 `LOCK.json changed`
 - [ ] TR.4 單一 commit，message 含獨立一行 `Lock-Renewal: approved`，無 AI
-  署名；直接 push 到 main（需 Miyago 當下同意）；確認 push 事件的 CI lock
-  步驟綠
+  署名；**push 前先告知 Miyago**（P3b 已核准，但這是 main 歷史上不可逆的一步），
+  再直接 push 到 main；確認 push 事件的 CI lock 步驟綠
 
 ### P3b
 
@@ -258,7 +258,13 @@ PR，也不計入共同驗收。
   `tests/test_generic_md_render.py:691-699`、`tests/test_render_claude.py`、
   `.gitignore`；repo 外：dotfile `script/common/check_agent_rule_sync.sh:239`
   改指 `plugins/claude/skills/shoal-orchestration/SKILL.md`。
-- [ ] TB.1 dotfile 修改先上（舊路徑在 P3b 前仍存在，所以順序安全）
+- [ ] TB.1 dotfile 修改先上（舊路徑在 P3b 前仍存在，所以順序安全）：在
+  `~/dotfile` 把 `script/common/check_agent_rule_sync.sh:239` 改指
+  `plugins/claude/skills/shoal-orchestration/SKILL.md`。動手前以
+  `grep -rn "claude/dist" ~/dotfile`（排除 `docs/specs`）重新確認讀取者；
+  2026-10-23 實測只有這一處，`setup_gemini.sh` 讀的是 agy dist，不受影響。
+  dotfile commit 無 AI 署名；`check_agent_rule_sync.sh` 在 shoal 舊路徑仍存在時
+  必須通過
 - [ ] TB.2 repoint `EXPLORE_DIST` 與測試
 - [ ] TB.3 刪 `hosts/claude/dist/`，調整 claude host 的 `--check` / `--write`
 - [ ] TB.4 共同驗收；`shoal_install.py --update`（dry-run）在 temp HOME 通過
@@ -278,8 +284,8 @@ dotfile。收益小（15 檔），這也是列為選配的原因。
 
 目標：R7。
 
-閘門：T4.5 之前（建立 private repo、第一次 push）與 T4.6 之前（shoal 刪除
-`bench/`）需要 Miyago 當下明確同意；沒有同意就停在 T4.4，shoal 保持原樣。
+已核准（Miyago 2026-10-23），最後執行：P1 到 P3b 全部合併且 `render_equiv.py`
+對基準輸出逐位元組相同之後才開始。
 
 ### 檔案
 
@@ -327,8 +333,8 @@ dotfile。收益小（15 檔），這也是列為選配的原因。
   `tests/fixtures/benchmark_routing`（`benchmark_routing.py:38`）依 T4.2 的結果
   同樣處理。在 shoal-bench 跑搬出的 28 個模組全綠，其中 `SHOAL_ROOT` 指向 shoal
   main
-- [ ] T4.5 （閘門）建立 private repo 並 push（需 Miyago 當下同意）
-- [ ] T4.6 （閘門）shoal 側刪除與修改；共同驗收；PR 描述貼兩邊的測試結果
+- [ ] T4.5 建立 private repo 並 push（已核准 2026-10-23）
+- [ ] T4.6 shoal 側刪除與修改；共同驗收；PR 描述貼兩邊的測試結果
 
 ### 驗收
 

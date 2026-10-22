@@ -21,9 +21,11 @@ created: 2026-10-22
 - 2026-10-23 rebase 到 main `8da4d0f`（PR #34 只刪 `docs/archive`、
   `docs/assets/reel-*`；`tools/`、`tests/`、`hosts/`、`core/` 無變動，量測仍有效；
   `docs/benchmarks` 仍存在）。
-- 2026-10-23 決定：P3b 延後；CI paths 補齊與獨立 `render --check` 放 P1；P4
-  保留但建立 private repo 設閘。plan-critic REVISE 的三項 blocker 已併入 spec。
-- 待決：建立 `miyago9267/shoal-bench`（Open Question 1）。
+- 2026-10-23 決定（Miyago）：P3b 納入本案，排在 P3a 之後（含 lock renewal 與
+  dotfile 修改；R 的 push 前須告知 Miyago）；P4 bench 拆分已核准，最後執行
+  （P1 到 P3b 輸出逐位元組相同之後）；CI paths 補齊與獨立 `render --check`
+  放 P1。plan-critic REVISE 的三項 blocker 已併入 spec。
+- 待決：無。
 
 ## Phase 1: 刪除死檔
 
@@ -47,15 +49,16 @@ created: 2026-10-22
 - 記錄：triage 表（每個測試 keep / drop / convert 與理由）、測試數與行數
   前後對照。
 
-## Phase R + 3b（延後）: lock renewal 與停止 commit claude dist
+## Phase R + 3b: lock renewal 與停止 commit claude dist
 
-> Status: deferred（2026-10-23 決定，不在本案範圍）
+> Status: not-started（2026-10-23 已核准；排在 P3a 之後、P4 之前）
 
-- 記錄：renewal commit sha、CI lock 步驟結果、dotfile 修改 commit。
+- 記錄：renewal commit sha、告知 Miyago 的時間、CI lock 步驟結果、dotfile
+  修改 commit。
 
 ## Phase 4: bench 拆出
 
-> Status: not-started
+> Status: not-started（已核准 2026-10-23；最後執行，P1 到 P3b 完成後）
 
 - 目標：R7。
 - 記錄：`filter-repo` 路徑清單、shoal-bench 初始 commit sha、兩邊測試結果。
