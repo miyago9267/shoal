@@ -81,6 +81,14 @@ for line in mode.get("stderr", []):
     print(line, file=sys.stderr, flush=True)
 for name in mode.get("write", []):
     (cwd / name).write_text("x")
+for name, body in mode.get("files", {}).items():
+    if body is None:
+        (cwd / name).unlink()
+        continue
+    (cwd / name).parent.mkdir(parents=True, exist_ok=True)
+    (cwd / name).write_bytes(bytes.fromhex(body[4:]) if body.startswith("hex:") else body.encode())
+for name, target in mode.get("links", {}).items():
+    os.symlink(target, cwd / name)
 behavior = mode.get("exec", "ok")
 if behavior == "sleep":
     time.sleep(120)
@@ -126,7 +134,7 @@ def alive(pid: int) -> bool:
     return True
 
 
-class RelayRunner(unittest.TestCase):
+class RelayBase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(os.path.realpath(self._tmp.name))
@@ -252,6 +260,8 @@ class RelayRunner(unittest.TestCase):
             time.sleep(0.05)
         self.fail("fake vendor never started its grandchild")
 
+
+class RelayRunner(RelayBase):
     # S1.1 / S1.2 / S1.2a / S1.15
     def test_s1_1_command_shape_stdin_and_success(self):
         hb = self.run_relay()
@@ -621,6 +631,103 @@ class RelayRunner(unittest.TestCase):
         real = (ROOT / "hooks" / "shoal_guard.py").read_text(encoding="utf-8")
         self.sibling_guard(real + "\n\ndef _guard_dir(env, home):\n    raise OSError('boom')\n")
         self.assert_no_spawn(self.run_relay(), "guard state dir")
+
+
+class RelayLanding(RelayBase):
+    """fix/relay-landing：done 且有改動時，runner 把 worktree 的改動以 git apply 落到 primary checkout（不 commit）。"""
+
+    BINARY = "00ff10807f0d0a00c3"
+
+    def heads(self):
+        return [git(p, "rev-parse", "HEAD").strip() for p in (self.main, self.wt)]
+
+    def relay_files(self, files, links=None, status="done"):
+        self.set_mode(
+            handback=report(files=list(files) + list(links or {}), status=status),
+            files=files,
+            links=links or {},
+        )
+        before = self.heads()
+        hb = self.run_relay()
+        self.assertEqual(self.heads(), before)  # 兩邊都沒有 commit
+        self.assertEqual(git(self.main, "diff", "--cached", "--name-only"), "")  # primary index 不動
+        return hb
+
+    def assert_landed(self, hb):
+        self.assertEqual(hb["status"], "done", hb)
+        self.assertEqual(hb["landing"], {"landed": True, "reason": None, "worktree": str(self.wt)})
+
+    def assert_not_landed(self, hb, needle, status="done"):
+        self.assertEqual(hb["status"], status, hb)
+        self.assertIs(hb["landing"]["landed"], False, hb)
+        self.assertEqual(hb["landing"]["worktree"], str(self.wt))
+        self.assertIn(needle, hb["landing"]["reason"])
+
+    def primary_status(self):
+        return git(self.main, "status", "--porcelain", "--untracked-files=all")
+
+    def test_tracked_edit_lands_in_primary(self):
+        self.assert_landed(self.relay_files({"README": "edited\n"}))
+        self.assertEqual((self.main / "README").read_text(), "edited\n")
+        self.assertEqual(self.primary_status(), " M README\n")
+
+    def test_new_text_and_binary_files_land_untracked(self):
+        hb = self.relay_files({"pkg/new.py": "print('hi')\n", "img.bin": "hex:" + self.BINARY})
+        self.assert_landed(hb)
+        self.assertEqual((self.main / "pkg" / "new.py").read_text(), "print('hi')\n")
+        self.assertEqual((self.main / "img.bin").read_bytes(), bytes.fromhex(self.BINARY))
+        self.assertEqual(self.primary_status(), "?? img.bin\n?? pkg/new.py\n")
+
+    def test_deleted_file_lands(self):
+        self.assert_landed(self.relay_files({"README": None}))
+        self.assertFalse((self.main / "README").exists())
+
+    def test_refused_paths_are_not_landed(self):
+        for files, links in (
+            ({".claude/settings.json": "{}", "ok.txt": "ok"}, None),
+            ({"sub/.Claude/x": "x"}, None),
+            ({"deep/.codex/config.toml": "x"}, None),
+            ({}, {"escape": "../../outside"}),
+        ):
+            with self.subTest(files=files, links=links):
+                git(self.wt, "reset", "-q", "--hard")
+                git(self.wt, "clean", "-qfdx")
+                self.assert_not_landed(self.relay_files(files, links), "refused")
+                self.assertEqual(self.primary_status(), "")
+
+    def test_apply_conflict_keeps_done_and_leaves_primary_untouched(self):
+        (self.main / "README").write_text("primary edit\n")
+        marker = "CONTENT-MARKER-0f9e"
+        self.set_mode(
+            handback=report(files=["README", "new.txt"]),
+            files={"README": marker + "\n", "new.txt": marker},
+        )
+        done = subprocess.run(self.argv(), env=self.env(), capture_output=True, text=True, timeout=60)
+        hb = self.parse(done.stdout)
+        self.assertEqual(done.returncode, 0)
+        self.assert_not_landed(hb, "does not apply")
+        self.assertNotIn(marker, done.stdout + done.stderr)  # 不轉印檔案內容
+        self.assertEqual((self.main / "README").read_text(), "primary edit\n")
+        self.assertFalse((self.main / "new.txt").exists())  # 全有或全無
+        self.assertEqual((self.wt / "new.txt").read_text(), marker)  # 改動仍在 worktree
+
+    def test_only_done_is_landed(self):
+        for status in ("failed", "blocked"):
+            with self.subTest(status=status):
+                hb = self.relay_files({"README": "half\n"}, status=status)
+                self.assert_not_landed(hb, f"status is {status}", status=status)
+                self.assertEqual((self.main / "README").read_text(), "r")
+
+    def test_no_changes_means_no_landing(self):
+        self.set_mode(handback=report(files=[]))
+        hb = self.run_relay()
+        self.assertEqual(hb["status"], "done", hb)
+        self.assertIsNone(hb["landing"])
+
+    def test_blocked_before_run_has_no_landing(self):
+        hb = self.run_relay(role="verifier")
+        self.assertEqual(hb["status"], "blocked")
+        self.assertIsNone(hb["landing"])
 
 
 if __name__ == "__main__":

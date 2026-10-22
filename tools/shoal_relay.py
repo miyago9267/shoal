@@ -14,6 +14,10 @@
   不自動重跑、不改回 native。
 - changed_files 由 `git status --porcelain -z` 計算；vendor 自報的路徑剝掉 ` (deleted)` 類註記、`./`，
   `a -> b` 兩邊都算，正規化後仍不同時 files_mismatch 為 true。不一致只標出，不改 status。
+- status 為 done 且有改動時，把 worktree 對 HEAD 的改動（含未追蹤檔、binary）以 `git apply` 落到
+  primary worktree（`git worktree list --porcelain` 的第一筆），兩邊都不 commit、primary 的 index 不動。
+  路徑含 `.git`、`.codex`、`.claude` 元件、symlink 或 submodule 的 patch 整份拒絕；套不上時整份不套。
+  結果寫在 `landing`（landed、reason、worktree）；落地失敗不改 status。
 - 輸出前遮蔽名稱含 KEY/SECRET/TOKEN/PASSWORD 的環境變數值，並依 core/contracts/handback.schema.json 截斷。
 結束碼：status 為 done 時 0，否則 1。
 """
@@ -80,6 +84,9 @@ PATH_NOTE = re.compile(r"\s+\(([^()]*)\)$")
 RENAMED_FROM = re.compile(r"(?:renamed|moved) from (.+)", re.I)
 MCP_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 VERSION_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+LAND_REFUSED_NAMES = {".git", ".codex", ".claude"}
+LAND_REFUSED_MODES = {"120000", "160000"}  # symlink、submodule
+LAND_REASON_CHARS = 200
 SANDBOX_FAIL = re.compile(
     r"sandbox_apply|sandbox-exec:|failed to apply sandbox|sandbox (?:setup|apply) failed",
     re.I,
@@ -102,6 +109,10 @@ _SUBREAPER = False
 
 
 class Blocked(Exception):
+    pass
+
+
+class NotLanded(Exception):
     pass
 
 
@@ -215,9 +226,11 @@ def _load_vendor(name: str) -> Dict[str, Any]:
     return vendors[name]
 
 
-def _git(cwd: Path, env: Dict[str, str], *args: str) -> Optional[str]:
+def _git_run(
+    cwd: Path, env: Dict[str, str], *args: str
+) -> Optional[subprocess.CompletedProcess]:
     try:
-        done = subprocess.run(
+        return subprocess.run(
             ["git", "-C", str(cwd), "-c", "core.fsmonitor=false", *args],
             stdin=subprocess.DEVNULL,
             capture_output=True,
@@ -226,9 +239,13 @@ def _git(cwd: Path, env: Dict[str, str], *args: str) -> Optional[str]:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return (
-        done.stdout.decode("utf-8", "surrogateescape") if done.returncode == 0 else None
-    )
+
+
+def _git(cwd: Path, env: Dict[str, str], *args: str) -> Optional[str]:
+    done = _git_run(cwd, env, *args)
+    if done is None or done.returncode != 0:
+        return None
+    return done.stdout.decode("utf-8", "surrogateescape")
 
 
 def _check_worktree(cwd: str, env: Dict[str, str], home: str) -> Path:
@@ -670,6 +687,7 @@ def _handback(
         "exit_code": None,
         "stderr_tail": None,
         "partial_output": None,
+        "landing": None,
     }
     hb.update(fields)
     return hb
@@ -911,7 +929,9 @@ def _relay(
             deadline,
             parent,
         )
-        return _collect(vendor, rc, reason, top, env, private, out_path, check_schema)
+        hb = _collect(vendor, rc, reason, top, env, private, out_path, check_schema)
+        hb["landing"] = _land(hb, top, env, private)
+        return hb
     finally:
         if nonce_path is not None:
             try:
@@ -982,6 +1002,131 @@ def _collect(
             "stderr_tail": None,
         },
     )
+
+
+# ---------- 落地到 primary checkout ----------
+
+
+def _primary_worktree(top: Path, env: Dict[str, str]) -> Path:
+    """`git worktree list --porcelain` 的第一筆；必須是同一個 repo 的非 bare main worktree。"""
+    out = _git(top, env, "worktree", "list", "--porcelain")
+    first = out.split("\n\n", 1)[0].splitlines() if out else []
+    if not first or not first[0].startswith("worktree ") or "bare" in first:
+        raise NotLanded("cannot find a non-bare primary worktree")
+    primary = Path(os.path.realpath(first[0][len("worktree ") :]))
+    common = _git(top, env, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    found = _git(
+        primary,
+        env,
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-dir",
+        "--git-common-dir",
+        "--show-toplevel",
+    )
+    lines = [os.path.realpath(p) for p in found.splitlines()] if found else []
+    if (
+        primary == top
+        or common is None
+        or len(lines) != 3
+        or lines[0] != lines[1]
+        or lines[1] != os.path.realpath(common.strip())
+        or lines[2] != str(primary)
+    ):
+        raise NotLanded("primary worktree does not match this repository")
+    return primary
+
+
+def _refused_landing_path(path: str) -> bool:
+    parts = path.split("/")
+    return path.startswith("/") or any(
+        p in ("", ".", "..") or p.casefold() in LAND_REFUSED_NAMES for p in parts
+    )
+
+
+def _check_landing_diff(raw: str) -> None:
+    """`git diff-tree -r -z --no-renames` 的 raw 輸出：任何一筆不安全就整份拒絕。"""
+    parts = raw.split("\0")
+    for meta, path in zip(parts[0::2], parts[1::2]):
+        fields = meta.lstrip(":").split()
+        if len(fields) != 5:
+            raise NotLanded("refused: cannot parse the worktree diff")
+        if LAND_REFUSED_MODES & set(fields[:2]):
+            raise NotLanded("refused: the diff adds or changes a symlink or submodule")
+        if _refused_landing_path(path):
+            raise NotLanded(
+                "refused: the diff touches .git, .codex, .claude or a path outside the repo"
+            )
+
+
+def _apply_to_primary(top: Path, env: Dict[str, str], private: Path) -> None:
+    primary = _primary_worktree(top, env)
+    head = _git(top, env, "rev-parse", "--verify", "HEAD^{commit}")
+    if head is None:
+        raise NotLanded("worktree has no HEAD commit")
+    head = head.strip()
+    staged = {**env, "GIT_INDEX_FILE": str(private / "landing.index")}
+    tree = None
+    if _git(top, staged, "read-tree", head) is not None and _git(
+        top, staged, "add", "-A", "--", "."
+    ) is not None:
+        tree = _git(top, staged, "write-tree")
+    if tree is None:
+        raise NotLanded("cannot snapshot the worktree changes")
+    diff = ("diff-tree", "-r", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color")
+    raw = _git(top, env, *diff, "-z", head, tree.strip())
+    if raw is None:
+        raise NotLanded("cannot diff the worktree changes")
+    if not raw:
+        raise NotLanded("no diff against HEAD to land")
+    _check_landing_diff(raw)
+    patch = _git_run(
+        top,
+        env,
+        *diff,
+        "-p",
+        "--binary",
+        "--full-index",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        head,
+        tree.strip(),
+    )
+    if patch is None or patch.returncode != 0 or not patch.stdout:
+        raise NotLanded("cannot build the worktree patch")
+    patch_path = private / "landing.patch"
+    patch_path.write_bytes(patch.stdout)
+    done = _git_run(primary, env, "apply", "--whitespace=nowarn", str(patch_path))
+    if done is None or done.returncode != 0:
+        errors = (
+            done.stderr.decode("utf-8", "replace").splitlines() if done else []
+        )
+        first = next((e for e in errors if e.startswith("error:")), "")
+        raise NotLanded(
+            "patch does not apply to the primary checkout"
+            + (f" ({_redact(first)[:LAND_REASON_CHARS]})" if first else "")
+        )
+
+
+def _land(
+    hb: Dict[str, Any], top: Path, env: Dict[str, str], private: Path
+) -> Optional[Dict[str, Any]]:
+    """status 為 done 且有改動時，把 worktree 的改動套到 primary worktree；沒有改動回 None。不改 status。"""
+    if not hb["changed_files"]:
+        return None
+    landing: Dict[str, Any] = {"landed": False, "reason": None, "worktree": str(top)}
+    if hb["status"] != "done":
+        landing["reason"] = f"status is {hb['status']}; changes were not landed"
+        return landing
+    try:
+        _apply_to_primary(top, env, private)
+    except NotLanded as exc:
+        landing["reason"] = str(exc)
+    except Exception as exc:  # 落地失敗不影響 vendor 的結果
+        landing["reason"] = f"landing error: {type(exc).__name__}"
+    else:
+        landing["landed"] = True
+    return landing
 
 
 def main(argv: Optional[List[str]] = None) -> int:

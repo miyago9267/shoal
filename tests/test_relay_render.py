@@ -475,6 +475,19 @@ class WriteRelayIsolationTests(TempCase):
         )
         self.assertIn("fresh `verifier`", policy)
 
+    def test_shell_and_policy_explain_landing(self) -> None:
+        """fix/relay-landing：landed 為 true 時改動已在 primary checkout；false 時給 worktree 路徑與合併指令。"""
+        dist = render.RENDERERS["claude"](self.relay_root())
+        for name in ("executor", "applier"):
+            text = dist[f"agents/{name}.md"].decode("utf-8")
+            self.assertIn("`landing`", text)
+            self.assertIn("Do not commit, merge, apply or copy anything", text)
+        policy = dist[POLICY_DOC].decode("utf-8")
+        policy = policy[policy.index("Relayed roles") :]
+        self.assertIn("`landing.landed` is true they are already there", policy)
+        self.assertIn("`landing.worktree`", policy)
+        self.assertIn('diff --cached --binary HEAD | git apply --3way', policy)
+
     def test_shell_has_only_the_bash_tool_and_no_write_tools(self) -> None:
         dist = render.RENDERERS["claude"](self.relay_root())
         for name in ("executor", "applier"):

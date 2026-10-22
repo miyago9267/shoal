@@ -418,14 +418,26 @@ def split_handbacks(hand_backs: list[dict[str, Any]]) -> tuple[list[dict[str, An
     return ran, blocked
 
 
+def handback_detail(hand_back: dict[str, Any]) -> dict[str, Any]:
+    landing = hand_back.get("landing") if isinstance(hand_back.get("landing"), dict) else {}
+    return {
+        "status": hand_back.get("status"),
+        "reason": str(hand_back.get("reason") or hand_back.get("summary") or "")[:200],
+        "landed": landing.get("landed"),
+        "landing_reason": landing.get("reason"),
+    }
+
+
 def codex_usage(hand_backs: list[dict[str, Any]]) -> dict[str, Any]:
     """Codex side of the bill, kept apart from Claude's ``total_cost_usd``: tokens only (no USD, spec D10).
 
-    ``hand_backs`` are the ones where the vendor ran (see ``split_handbacks``).
+    ``hand_backs`` are the ones where the vendor ran (see ``split_handbacks``). ``handbacks`` keeps each call's
+    status, reason (or summary) cut to 200 characters as the runner already redacted it, and the landing outcome.
     """
     total: dict[str, Any] = {
         "calls": len(hand_backs),
         "statuses": [h.get("status") for h in hand_backs],
+        "handbacks": [handback_detail(h) for h in hand_backs],
         "input_tokens": 0,
         "cached_input_tokens": 0,
         "output_tokens": 0,
@@ -628,7 +640,7 @@ def benchmark(
                 record["error"] = f"runner: {type(error).__name__}: {error}"
                 record["pass"] = False
             finally:
-                if args.keep_workdirs:
+                if keep_workdir(args, record):
                     record["workdir"] = str(parent)
                 else:
                     shutil.rmtree(parent, ignore_errors=True)
@@ -778,7 +790,12 @@ def summarize(path: Path) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def keep_workdir(args: argparse.Namespace, record: dict[str, Any]) -> bool:
+    """--keep-failed keeps only runs that did not pass (with or without --keep-workdirs); --keep-workdirs keeps all."""
+    return record.get("pass") is not True if args.keep_failed else args.keep_workdirs
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tasks", default="all", help="comma list of task ids, or all")
     parser.add_argument("--arms", default="shoal,baseline")
@@ -812,7 +829,14 @@ def main(argv: list[str] | None = None) -> int:
         "--retry-errors", action="store_true", help="re-run records that have an error"
     )
     parser.add_argument("--keep-workdirs", action="store_true")
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--keep-failed", action="store_true", help="keep only the workdirs of runs that did not pass"
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     if args.summarize:
         return summarize(Path(args.summarize))

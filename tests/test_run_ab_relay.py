@@ -100,6 +100,35 @@ class HandbackCountingTests(unittest.TestCase):
         self.assertEqual(blocked, [{"status": "failed", "reason": "no hand-back"}])
 
 
+class HandbackDetailTests(unittest.TestCase):
+    """fix/relay-landing: each relay call keeps status, a short reason and the landing outcome for later diagnosis."""
+
+    def test_codex_block_keeps_per_call_status_reason_and_landing(self) -> None:
+        landed = {**RAN, "summary": "s" * 500, "landing": {"landed": True, "reason": None, "worktree": "/w/a"}}
+        stuck = {**RAN, "reason": "timeout", "landing": {"landed": False, "reason": "patch does not apply", "worktree": "/w/b"}}
+        plain = {**RAN, "summary": "no changes"}
+        usage = run_ab.codex_usage([landed, stuck, plain])
+        self.assertEqual(usage["handbacks"], [
+            {"status": "done", "reason": "s" * 200, "landed": True, "landing_reason": None},
+            {"status": "done", "reason": "timeout", "landed": False, "landing_reason": "patch does not apply"},
+            {"status": "done", "reason": "no changes", "landed": None, "landing_reason": None},
+        ])
+
+
+class KeepWorkdirTests(unittest.TestCase):
+    def keep(self, *flags: str, passed: object) -> bool:
+        args = run_ab.build_parser().parse_args(list(flags))
+        return run_ab.keep_workdir(args, {"pass": passed})
+
+    def test_keep_failed_keeps_only_failed_runs(self) -> None:
+        self.assertFalse(self.keep(passed=False))
+        self.assertTrue(self.keep("--keep-workdirs", passed=True))
+        for flags in (("--keep-failed",), ("--keep-workdirs", "--keep-failed")):
+            self.assertTrue(self.keep(*flags, passed=False))
+            self.assertTrue(self.keep(*flags, passed=None))
+            self.assertFalse(self.keep(*flags, passed=True))
+
+
 class DispatchTests(unittest.TestCase):
     def test_main_dispatches_by_subagent_type_ignore_subagent_events(self) -> None:
         """(c) only events without parent_tool_use_id are main's."""

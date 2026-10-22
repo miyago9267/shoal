@@ -50,6 +50,7 @@ def valid_handback():
         "exit_code": 0,
         "stderr_tail": None,
         "partial_output": None,
+        "landing": None,
     }
 
 
@@ -118,6 +119,39 @@ class HandbackSchemaIsStrict(unittest.TestCase):
         missing = valid_handback()
         del missing["usage"]
         self.assertIn("missing field", shoal_relay.schema_error(SCHEMA, missing))
+
+    def test_landing_is_runner_only_and_closed(self):
+        landing = {"landed": False, "reason": "patch does not apply", "worktree": "/r/.claude/worktrees/a"}
+        self.assertIsNone(shoal_relay.schema_error(SCHEMA, {**valid_handback(), "landing": landing}))
+        self.assertIn(
+            "unexpected field",
+            shoal_relay.schema_error(SCHEMA, {**valid_handback(), "landing": {**landing, "x": 1}}),
+        )
+        self.assertNotIn("landing", shoal_relay.vendor_schemas(SCHEMA)[1]["properties"])
+
+
+class LandingPaths(unittest.TestCase):
+    """fix/relay-landing：diff-tree raw 輸出中任何一筆不安全，整份 patch 拒絕落地。"""
+
+    OK = ":100644 100644 aaa bbb M"
+
+    def check(self, *entries):
+        return shoal_relay._check_landing_diff("".join(f"{m}\0{p}\0" for m, p in entries))
+
+    def test_plain_paths_pass(self):
+        self.check((self.OK, "src/a.py"), (":000000 100755 000 ccc A", "bin/run"), (":100644 000000 aaa 000 D", "old.txt"))
+
+    def test_refused_names_and_paths_outside_the_repo(self):
+        for path in (".git/config", "a/.GIT/hooks/x", ".codex/config.toml", "x/.Claude/settings.json",
+                     "../outside", "/etc/passwd", "a//b", "./a"):
+            with self.subTest(path=path), self.assertRaises(shoal_relay.NotLanded) as ctx:
+                self.check((self.OK, "ok.txt"), (self.OK, path))
+            self.assertIn("refused", str(ctx.exception))
+
+    def test_symlinks_and_submodules_are_refused(self):
+        for meta in (":000000 120000 000 ccc A", ":100644 120000 aaa ccc T", ":000000 160000 000 ccc A", ":160000 000000 ccc 000 D"):
+            with self.subTest(meta=meta), self.assertRaises(shoal_relay.NotLanded):
+                self.check((meta, "link"))
 
 
 class VendorsToml(unittest.TestCase):

@@ -152,3 +152,29 @@
   `no_dispatch` 計數。
 - `bench/ab/results/relay-v2.json` 沒存事件流，沒有 `dispatches` 與 blocked 原因，無法離線重算；
   需重跑 relay arm 才有新欄位。
+
+## 2026-10-22 relay 改動落地到 primary checkout（`fix/relay-landing`）
+
+- 診斷（`bench/ab/results/relay-v2b.json`）：relay 外殼 frontmatter 帶 `isolation: worktree`，Codex 在
+  `.claude/worktrees/` 下的 linked worktree 改檔，回 `done` 後改動只留在該 worktree，要 main 自己合併。
+  7 個失敗的 relay run 中有 5 個是 Codex 回 `done`（或已派 executor），primary checkout 的
+  `files_changed` 卻是 0、hidden tests 失敗；`shoal` arm 的 executor 直接改 primary checkout，兩個 arm
+  不可比。
+- 修正：`tools/shoal_relay.py` 在 status 為 `done` 且 `changed_files` 非空時，用暫存 index
+  （`GIT_INDEX_FILE` 在 runner 的 0700 private dir）`read-tree HEAD`、`add -A`、`write-tree` 取得
+  worktree 快照，`git diff-tree -r --no-renames --binary --full-index` 產生 patch，再於 primary worktree
+  （`git worktree list --porcelain` 第一筆，須為同一 repo 的非 bare main worktree）跑 `git apply`。
+  兩邊都不 commit，worktree 與 primary 的 index 都不動。路徑任一元件是 `.git`、`.codex`、`.claude`
+  （不分大小寫）、絕對路徑或 `..`，或含 symlink、submodule 時整份拒絕。不用 `--3way`：它隱含
+  `--index`，primary 有未提交改動時直接失敗，衝突時還會留下 conflict marker；一般 `git apply`
+  全有或全無。結果寫在 hand-back 新欄位 `landing`（`landed`、`reason`、`worktree`），只屬 runner
+  輸出，不在交給 Codex 的 strict schema；落地失敗不改 status，reason 只帶 git 的第一行 `error:`
+  （路徑，不含檔案內容），並經 redaction。
+- 外殼與 relay-only addendum：`landed` 為 true 時告訴 main 改動已在 primary checkout，不要再合併；
+  false 時給 `landing.worktree` 與合併指令（`refused` 時先檢查 worktree）。repo binding 沒開 relay，
+  relay-off dist 位元組不變（S0.3）。
+- bench：`codex.handbacks` 逐次記 status、reason（≤200 字）、`landed`、`landing_reason`；新增
+  `--keep-failed`，只保留沒通過的 run 的工作目錄。
+- 測試：`tests/test_relay_runner.py` 的 `RelayLanding`（tracked edit、新檔含 binary、刪檔、拒絕路徑、
+  apply 衝突維持 done 且 landed false、非 done 不落地）、`test_relay_contract.py` 的 `LandingPaths`、
+  render 與 bench 的對應測試。relay arm 需重跑才能看到效果。

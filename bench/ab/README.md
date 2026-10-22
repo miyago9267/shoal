@@ -21,7 +21,7 @@ python3 bench/ab/run_ab.py --summarize bench/ab/results/ab.json
 ```
 
 其他選項：`--max-budget-usd`（每次 run 的上限）、`--retry-errors`（重跑帶 error 的紀錄）、
-`--keep-workdirs`、`--auth auto|token|keychain`、`--claude-bin`、`--tasks-dir`。
+`--keep-workdirs`、`--keep-failed`（只保留沒通過的 run 的工作目錄）、`--auth auto|token|keychain`、`--claude-bin`、`--tasks-dir`。
 
 ## 每次 run
 
@@ -65,6 +65,8 @@ plugin-dir（committed binding 不動）。`--dry-run` 會印每個 arm 的 plug
 - 該 arm 用 `--output-format stream-json --verbose`，才看得到 subagent 內 Bash 印出的 hand-back；
   紀錄的 `codex` 欄位是各次 relay 的 token 加總（`calls`、`statuses`、`input_tokens`、
   `cached_input_tokens`、`output_tokens`），與 Claude 的 `total_cost_usd` 分開，不換算美元。
+  `codex.handbacks` 逐次記 `status`、`reason`（沒有就用 `summary`，取前 200 字，runner 已遮蔽）、
+  `landed` 與 `landing_reason`（runner 是否已把 worktree 改動落到工作目錄）。
   `codex.calls == 0` 代表 main 沒有走 relay。
 - relay 寫入 role 要在 linked worktree 跑（main 以 `isolation: "worktree"` 派工）。task 工作目錄本來就是
   `git init` 過的 repo，所以可用；`.claude/worktrees/` 已加進 `.git/info/exclude`，不算改動。
