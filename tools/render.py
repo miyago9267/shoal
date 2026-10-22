@@ -429,6 +429,7 @@ def merge_core_policy(out: dict[str, bytes], core: dict, binding: dict, host_dir
     if policy_text_mode(binding) != "core":
         return
     for path in binding["policy"]["documents"].values():
+        _reject_dead_src(host_dir / "src", path)
         out.pop(path, None)
     out.update(policy_files(core, binding, host_dir))
 
@@ -462,19 +463,28 @@ def explain_policy(root: Path, host: str) -> str:
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+def _reject_dead_src(src: Path, rel: str) -> None:
+    """core 會產生的輸出，src/ 內不能有同路徑的檔案：它不會進 dist，只會讓人改了卻沒效果。"""
+    if (src / rel).exists():
+        raise RenderError(f"hosts/{src.parent.name}/src/{rel}: core 已產生此輸出，src 內的同名檔案是死檔，請刪除")
+
+
 def role_text_mode(name: str, binding: dict) -> str:
     """[roles.<name>].role_text 覆寫 binding 頂層的 role_text。"""
     return binding["roles"][name].get("role_text", binding["role_text"])
 
 
 def role_body(name: str, core: dict, binding: dict, src: Path,
-              legacy: Callable[[], bytes]) -> bytes:
+              legacy: Callable[[], bytes], folder: str | None = "agents") -> bytes:
     """role 的正文 bytes：legacy 時是 src 原文，core 時是 frame + 依序排列的條款與 addenda。
 
     frames/ 與 addenda/ 在 hosts/<host>/ 底下、src/ 之外，不會被 passthrough 帶進 dist。
+    folder 是 legacy 原文所在的 src 子目錄；core 時該路徑存在即為死檔（None 表示此 host 沒有 legacy 原文）。
     """
     if role_text_mode(name, binding) == "legacy":
         return legacy()
+    if folder:
+        _reject_dead_src(src, f"{folder}/{name}.md")
     clauses = core["contracts"].get(name)
     if clauses is None:
         raise RenderError(f'{name}: role_text = "core"，但 core/contracts/{name}.toml 不存在')
@@ -853,7 +863,6 @@ def _versioned_rules(src: Path, rel: str, tag: str) -> bytes:
 
 # ---- agy（Gemini / Antigravity）----
 AGY_MODELS = {"flash", "pro", "inherit"}
-AGY_RULES_PATH = "rules/shoal-agy.md"
 AGY_READ_ONLY_FORBIDDEN_TOOLS = {"run_command"}
 
 
@@ -895,7 +904,6 @@ def render_agy(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         model = resolve_model(name, core, binding)
         out[f"agents/{name}/agent.md"] = _agy_frontmatter(name, binding["roles"][name], perms[name], model).encode("utf-8") + body
     _passthrough(src, out, {"agents", "rules"})
-    out[AGY_RULES_PATH] = _versioned_rules(src, AGY_RULES_PATH, "shoal-agy")
     merge_core_policy(out, core, binding, src.parent)
     return out
 
@@ -1004,7 +1012,7 @@ def render_opencode(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     if stray:
         raise RenderError(f"src/roles 有 binding 沒有的 role: {', '.join(stray)}")
     out = {f"roles/{name}.md": role_body(name, core, binding, src,
-                                         lambda n=name: _legacy_body(src, "roles", n))
+                                         lambda n=name: _legacy_body(src, "roles", n), "roles")
            for name in names}
 
     agents, routes = {}, {}
@@ -1256,7 +1264,7 @@ def render_generic(host: str, core: dict, binding: dict, host_dir: Path) -> dict
     pattern = binding["output"]["path"]
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):
-        body = role_body(name, core, binding, host_dir / "src", _no_legacy)
+        body = role_body(name, core, binding, host_dir / "src", _no_legacy, None)
         head = _generic_frontmatter(host, name, core, binding, perms[name])
         out[pattern.replace("{role}", name)] = head.encode("utf-8") + body
     return out

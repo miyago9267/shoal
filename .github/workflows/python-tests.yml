@@ -17,6 +17,10 @@ on:
       - "CHANGELOG.md"
       - "hosts/claude/**"
       - "hosts/codex/**"
+      - "hosts/agy/**"
+      - "hosts/grok/**"
+      - "hosts/opencode/**"
+      - "prompts/**"
       - "docs/README.*.md"
       - "docs/specs/dispatch-verification/**"
       - "docs/specs/prompt-document-lock/**"
@@ -40,6 +44,10 @@ on:
       - "CHANGELOG.md"
       - "hosts/claude/**"
       - "hosts/codex/**"
+      - "hosts/agy/**"
+      - "hosts/grok/**"
+      - "hosts/opencode/**"
+      - "prompts/**"
       - "docs/README.*.md"
       - "docs/specs/dispatch-verification/**"
       - "docs/specs/prompt-document-lock/**"
@@ -78,6 +86,14 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      # 輸出與 render 結果不同時直接指名檔案；不到 5 秒，先於整套測試之外單獨報錯。
+      - name: Render check for all hosts
+        shell: bash
+        run: |
+          for host in claude codex agy grok opencode claude-plugin; do
+            python tools/render.py --host "${host}" --check
+          done
 
       # PR：ubuntu 跑完整套件，macOS / Windows 只跑跨平台敏感子集（清單集中在
       # tests/ci_cross_platform.txt）。push main、tag、nightly 三平台都跑完整套件。

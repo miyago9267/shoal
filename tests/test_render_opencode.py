@@ -17,7 +17,7 @@ class OpencodeRenderTests(rh.HostRenderCase):
     GOLDEN_COUNT = 11
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.md"
-    SRC_FILE = "../frames/executor.md"  # core 模式下 src/roles 不參與 render，改改外框（路徑相對 src/）
+    SRC_FILE = ""  # core 模式下 hosts/opencode/src 已不存在；改來源的測試覆寫成改 frames/executor.md
 
     def test_every_core_role_is_rendered_and_none_is_omitted(self) -> None:
         rendered = render.RENDERERS["opencode"](ROOT)
@@ -84,8 +84,15 @@ class OpencodeRenderTests(rh.HostRenderCase):
         self.edit(self.binding, 'supported = ["tools", "streaming"]', 'supported = ["tools"]')
         self.assert_rejected("streaming")
 
+    def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
+        frame = self.root / "hosts" / "opencode" / "frames" / "executor.md"
+        frame.write_text(frame.read_text(encoding="utf-8") + "extra line\n", encoding="utf-8", newline="\n")
+        self.assertEqual(self.check().returncode, 1)
+
     def test_stray_role_md_is_rejected(self) -> None:
-        (self.root / "hosts" / "opencode" / "src" / "roles" / "ghost.md").write_text("x\n", encoding="utf-8", newline="\n")
+        ghost = self.root / "hosts" / "opencode" / "src" / "roles" / "ghost.md"
+        ghost.parent.mkdir(parents=True, exist_ok=True)
+        ghost.write_text("x\n", encoding="utf-8", newline="\n")
         self.assert_rejected("ghost.md")
 
 

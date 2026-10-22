@@ -63,15 +63,15 @@ class HostVersionTests(unittest.TestCase):
     def test_version_file_format(self) -> None:
         self.assertRegex(self.VERSION, r"^\d+\.\d+\.\d+(?:-beta)?$")
 
-    def test_skill_marker_equals_version_in_src_dist_and_golden(self) -> None:
+    def test_skill_marker_equals_version_in_dist_and_golden(self) -> None:
         marker = f"<!-- shoal-claude v{self.VERSION} -->"
-        for base in (ROOT / "hosts" / "claude" / "src", ROOT / "hosts" / "claude" / "dist", GOLDEN):
+        for base in (ROOT / "hosts" / "claude" / "dist", GOLDEN):
             lines = (base / self.SKILL).read_text(encoding="utf-8").splitlines()
             self.assertEqual([x for x in lines if x.startswith("<!-- shoal-claude v")], [marker], base)
 
-    def test_bootstrap_marker_equals_version_in_src_dist_and_golden(self) -> None:
+    def test_bootstrap_marker_equals_version_in_dist_and_golden(self) -> None:
         first = f"<!-- shoal-claude v{self.VERSION} -->"
-        for base in (ROOT / "hosts" / "claude" / "src", ROOT / "hosts" / "claude" / "dist", GOLDEN):
+        for base in (ROOT / "hosts" / "claude" / "dist", GOLDEN):
             text = (base / "claude-md.bootstrap.md").read_text(encoding="utf-8")
             self.assertEqual(text.splitlines()[0], first, base)
 

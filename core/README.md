@@ -104,11 +104,16 @@ core（規格見
   分隔（預設沿用前一段原本的 `sep`），用於把 host 的句子接在 core 段落結尾的
   同一行，core 本身在那裡是換段。
 - `frames/` 與 `addenda/` 刻意放在 `src/` 之外，不會被 passthrough 帶進 dist。
+- core 會產生的輸出，`src/` 內不可有同路徑的檔案（`role_text = "core"` 的
+  role 的 `src/agents/<role>.md` 或 `src/roles/<role>.md`，與
+  `policy_text = "core"` 的 `[policy.documents]` 路徑）：這種檔案不會進 dist，
+  改了也沒效果，render 會直接失敗並指名該路徑。
 - 切到 `core` 的 host，每個 role 必須逐字包含每個未被 `replace` 的條款，
   每個 host 的 replace 清單由測試鎖定（新增 replace 要同時改測試）。
 - 五個 host 都已經是 `core`：條款由 Codex 1.8.1 的原文切出，所以 Codex 的
   輸出與切換前逐位元組相同。各 host 專屬的句子放在各自的 `addenda/`；
-  host 專屬 role（`Explore`、`sol-executor`）維持 `src/agents` 的原文。
+  host 專屬 role（`Explore`、`sol-executor`）維持 `src/agents` 的原文；
+  core role 的 legacy 原文已刪除，`role_text = "legacy"` 只剩 host 專屬 role 使用。
   對照表在 `docs/specs/role-contracts/MAPPING-*.md`。
 
 ## policy 條款（core/policy）
