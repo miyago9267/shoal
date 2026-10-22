@@ -2,8 +2,9 @@
 """A/B benchmark runner: each task once with shoal, once without, same scoring.
 
 Arms differ only in two ``--plugin-dir`` flags pointing at the shoal plugins
-exported from the repo's committed HEAD.  Both arms are cut off from the
-user's personal Claude setup (see README.md, "Isolation").
+exported from the repo's committed HEAD.  All arms are cut off from the
+user's personal Claude setup (see README.md, "Isolation").  The ``shoal-relay``
+arm renders its own plugin-dir from HEAD plus ``relay.binding.toml``.
 
 Python 3 stdlib only.
 """
@@ -29,7 +30,12 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 TASKS_DIR = HERE / "tasks"
-ARMS = ("shoal", "shoal-fast", "shoal-workflow", "baseline")
+ARMS = ("shoal", "shoal-fast", "shoal-workflow", "shoal-relay", "baseline")
+# Arms that load shoal plugins; shoal-relay gets its own relay-enabled render, the others share one export.
+SHOAL_ARMS = ("shoal", "shoal-fast", "shoal-workflow", "shoal-relay")
+RELAY_BINDING = HERE / "relay.binding.toml"
+# Everything tools/render.py needs to render the claude plugins from a committed tree.
+RELAY_RENDER_PATHS = ("core", "hosts/claude", "hooks", "tools", "VERSION", "plugins", ".claude-plugin")
 # shoal-fast: same plugins, prompt starts with `#fast` (main may edit small work directly).
 FAST_PREFIX = "#fast\n\n"
 # shoal-workflow: same plugins; the user explicitly asks for a Workflow whose agents are shoal roles.
@@ -103,7 +109,8 @@ def init_workdir(task: dict[str, Any], parent: Path) -> Path:
     # Bytecode the agent creates by running tests is not a change to the project.
     git(work, "init", "-q")
     (work / ".git" / "info").mkdir(parents=True, exist_ok=True)
-    (work / ".git" / "info" / "exclude").write_text("__pycache__/\n*.pyc\n")
+    # .claude/worktrees: linked worktrees that Agent isolation creates inside the repo (shoal-relay arm).
+    (work / ".git" / "info" / "exclude").write_text("__pycache__/\n*.pyc\n.claude/worktrees/\n")
     git(work, "config", "user.email", "bench@example.invalid")
     git(work, "config", "user.name", "bench")
     git(work, "config", "commit.gpgsign", "false")
@@ -112,22 +119,63 @@ def init_workdir(task: dict[str, Any], parent: Path) -> Path:
     return work
 
 
-def export_plugins(dest: Path) -> tuple[list[Path], str]:
-    """Export the shoal plugins from committed HEAD (no WIP leaks into the arm)."""
+def export_tree(dest: Path, paths: tuple[str, ...]) -> str:
+    """Extract ``paths`` of the committed tree into ``dest``; returns the commit."""
     # SHOAL_AB_PLUGIN_REF: benchmark a branch's plugins without checking it out.
     ref = os.environ.get("SHOAL_AB_PLUGIN_REF", "HEAD")
     head = git(ROOT, "rev-parse", ref).strip()
     archive = subprocess.run(
-        ["git", "archive", head, *PLUGIN_PATHS],
-        cwd=ROOT,
-        capture_output=True,
-        check=True,
+        ["git", "archive", head, *paths], cwd=ROOT, capture_output=True, check=True
     )
+    dest.mkdir(parents=True, exist_ok=True)
     subprocess.run(["tar", "-x", "-C", str(dest)], input=archive.stdout, check=True)
+    return head
+
+
+def export_plugins(dest: Path, relay: bool = False) -> tuple[list[Path], str]:
+    """Export the shoal plugins from committed HEAD (no WIP leaks into the arm).
+
+    ``relay``: render them from HEAD with ``relay.binding.toml`` appended to the claude binding,
+    so executor/applier become Codex relay shells.  The committed binding itself stays relay-off.
+    """
+    if relay:
+        head = export_tree(dest, RELAY_RENDER_PATHS)
+        binding = dest / "hosts" / "claude" / "binding.toml"
+        base = binding.read_text(encoding="utf-8")
+        if "[relay" in base:
+            raise RuntimeError("committed claude binding already enables relay; overlay would conflict")
+        binding.write_text(base.rstrip("\n") + "\n\n" + RELAY_BINDING.read_text(encoding="utf-8"), encoding="utf-8")
+        done = subprocess.run(
+            [sys.executable, str(dest / "tools" / "render.py"), "--host", "claude-plugin", "--write", "--root", str(dest)],
+            capture_output=True, text=True, check=False,
+        )
+        if done.returncode != 0:
+            raise RuntimeError(f"relay render failed: {(done.stderr or done.stdout).strip()[-300:]}")
+    else:
+        head = export_tree(dest, PLUGIN_PATHS)
     dirs = [dest / path for path in PLUGIN_PATHS]
     for path in dirs:
         if not (path / ".claude-plugin" / "plugin.json").is_file():
             raise RuntimeError(f"exported plugin has no manifest: {path}")
+    return dirs, head
+
+
+def relay_enabled(plugin_dirs: list[Path]) -> bool:
+    """A rendered plugin carries the relay runner only when its binding enabled [relay.roles] (render D3)."""
+    return bool(plugin_dirs) and (plugin_dirs[0] / "tools" / "shoal_relay.py").is_file()
+
+
+def arm_plugins(plugin_root: Path, arms: list[str]) -> tuple[dict[str, list[Path]], str]:
+    """{arm: plugin dirs}: shoal-family arms share one relay-off export, shoal-relay has its own, baseline none."""
+    dirs: dict[str, list[Path]] = {arm: [] for arm in arms}
+    head = ""
+    if any(arm in SHOAL_ARMS and arm != "shoal-relay" for arm in arms):
+        shared, head = export_plugins(plugin_root / "shoal")
+        for arm in arms:
+            if arm in SHOAL_ARMS and arm != "shoal-relay":
+                dirs[arm] = shared
+    if "shoal-relay" in arms:
+        dirs["shoal-relay"], head = export_plugins(plugin_root / "shoal-relay", relay=True)
     return dirs, head
 
 
@@ -242,12 +290,14 @@ def score(task: dict[str, Any], work: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------- claude
 
 
-def claude_command(args: argparse.Namespace, plugin_dirs: list[Path]) -> list[str]:
+def claude_command(args: argparse.Namespace, plugin_dirs: list[Path], stream: bool = False) -> list[str]:
+    """``stream``: event stream (needed to see the relay hand-backs inside subagent tool results)."""
     command = [
         args.claude_bin,
         "-p",
         "--output-format",
-        "json",
+        "stream-json" if stream else "json",
+        *(["--verbose"] if stream else []),
         "--model",
         args.model,
         "--permission-mode",
@@ -264,13 +314,15 @@ def claude_command(args: argparse.Namespace, plugin_dirs: list[Path]) -> list[st
     return command
 
 
-def claude_env(auth: str, private: Path) -> dict[str, str]:
+def claude_env(auth: str, private: Path, relay: bool = False) -> dict[str, str]:
     """Token mode: private config dir + home.  Keychain mode: user env, scrubbed."""
     if auth == "token":
         for name in ("config", "home", "tmp"):
             (private / name).mkdir(mode=0o700, exist_ok=True)
         return {
             **{key: os.environ[key] for key in PASSTHROUGH_ENV if key in os.environ},
+            # The relay runner reads the user's Codex login; a private HOME would hide it.
+            **({"CODEX_HOME": os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")} if relay else {}),
             "HOME": str(private / "home"),
             "TMPDIR": str(private / "tmp"),
             "CLAUDE_CONFIG_DIR": str(private / "config"),
@@ -299,6 +351,69 @@ def resolve_auth(choice: str) -> str:
     return choice
 
 
+def parse_claude_output(stdout: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """(result event, all events).  Accepts one json object, an event array, or stream-json lines."""
+    text = stdout.strip()
+    try:
+        parsed = json.loads(text)
+        events = parsed if isinstance(parsed, list) else [parsed]
+    except ValueError:
+        events = []
+        for line in text.splitlines():
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                continue
+    events = [e for e in events if isinstance(e, dict)]
+    if not events:
+        raise ValueError("no json events")
+    result = next((e for e in reversed(events) if e.get("type") == "result"), None)
+    return (result if result is not None else (events[0] if len(events) == 1 else {})), events
+
+
+def relay_handbacks(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Codex hand-back objects the relay runner printed, read from Bash tool results in the event stream."""
+    found = []
+    for event in events:
+        content = (event.get("message") or {}).get("content") if event.get("type") == "user" else None
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            body = block.get("content")
+            texts = [body] if isinstance(body, str) else [
+                b.get("text", "") for b in body if isinstance(b, dict)
+            ] if isinstance(body, list) else []
+            for text in texts:
+                try:
+                    hand_back = json.loads(text.strip())
+                except ValueError:
+                    continue
+                if isinstance(hand_back, dict) and hand_back.get("vendor") == "codex" and "status" in hand_back:
+                    found.append(hand_back)
+    return found
+
+
+def codex_usage(hand_backs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Codex side of the bill, kept apart from Claude's ``total_cost_usd``: tokens only (no USD, spec D10)."""
+    total: dict[str, Any] = {
+        "calls": len(hand_backs),
+        "statuses": [h.get("status") for h in hand_backs],
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "calls_without_usage": 0,
+    }
+    for hand_back in hand_backs:
+        usage = hand_back.get("usage")
+        if not isinstance(usage, dict):
+            total["calls_without_usage"] += 1
+            continue
+        for key in ("input_tokens", "cached_input_tokens", "output_tokens"):
+            if isinstance(usage.get(key), int):
+                total[key] += usage[key]
+    return total
+
+
 def run_claude(
     args: argparse.Namespace,
     task: dict[str, Any],
@@ -312,8 +427,9 @@ def run_claude(
         prompt = FAST_PREFIX + prompt
     elif arm == "shoal-workflow":
         prompt = WORKFLOW_PREFIX + prompt
-    command = claude_command(args, plugin_dirs)
-    env = claude_env(args.auth_mode, private)
+    relay = arm == "shoal-relay"
+    command = claude_command(args, plugin_dirs, stream=relay)
+    env = claude_env(args.auth_mode, private, relay=relay)
     out: dict[str, Any] = {"error": None}
     started = time.monotonic()
     proc = subprocess.Popen(
@@ -339,17 +455,9 @@ def run_claude(
     out["claude_rc"] = proc.returncode
     result: dict[str, Any] = {}
     try:
-        parsed = json.loads(stdout)
-        if isinstance(parsed, list):  # tolerate the event-array shape
-            parsed = next(
-                (
-                    e
-                    for e in reversed(parsed)
-                    if isinstance(e, dict) and e.get("type") == "result"
-                ),
-                {},
-            )
-        result = parsed if isinstance(parsed, dict) else {}
+        result, events = parse_claude_output(stdout)
+        if relay:
+            out["codex"] = codex_usage(relay_handbacks(events))
     except ValueError:
         if not out["error"]:
             out["error"] = (
@@ -417,7 +525,7 @@ def benchmark(
     ]
     print(f"{len(todo)} runs to do, {len(done)} already in {out_path}", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="shoal-ab-plugins-") as plugin_root:
-        shoal_dirs, head = export_plugins(Path(plugin_root))
+        arm_dirs, head = arm_plugins(Path(plugin_root), arms)
         lock = threading.Lock()
         finished = [0]
 
@@ -430,6 +538,7 @@ def benchmark(
                 "model": args.model,
                 "auth": args.auth_mode,
                 "shoal_head": head,
+                "relay": relay_enabled(arm_dirs[arm]),
                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             }
             # Not under /tmp or $TMPDIR: the shoal guard exempts those, so the shoal arm would be a no-op.
@@ -442,7 +551,7 @@ def benchmark(
                         args,
                         task,
                         work,
-                        shoal_dirs if arm in ("shoal", "shoal-fast", "shoal-workflow") else [],
+                        arm_dirs[arm],
                         parent / "private",
                         arm,
                     )
@@ -465,6 +574,8 @@ def benchmark(
                 print(
                     f"[{finished[0]}/{len(todo)}] {task['id']} {arm} rep{rep} "
                     f"pass={record.get('pass')} cost={record.get('total_cost_usd')} "
+                    f"codex={(record.get('codex') or {}).get('calls', '-')} calls/"
+                    f"{(record.get('codex') or {}).get('output_tokens', '-')} out "
                     f"wall={record.get('wall_s')} err={record.get('error')}",
                     file=sys.stderr,
                 )
@@ -546,6 +657,17 @@ def summarize(path: Path) -> int:
     arms = sorted({r["arm"] for r in runs})
     for arm in arms:
         print(row(arm, [r for r in runs if r["arm"] == arm]))
+    relayed = [r for r in runs if r.get("codex")]
+    if relayed:  # Codex tokens are a separate bill: never folded into cost_avg above.
+        calls = [r["codex"]["calls"] for r in relayed]
+        print(
+            f"\ncodex (shoal-relay, {len(relayed)} runs): relay calls avg {statistics.mean(calls):.1f}, "
+            f"runs with 0 calls {calls.count(0)}; tokens avg/run "
+            + ", ".join(
+                f"{key} {statistics.mean(r['codex'][key] for r in relayed):,.0f}"
+                for key in ("input_tokens", "cached_input_tokens", "output_tokens")
+            )
+        )
     print()
     for category in sorted({r.get("category", "?") for r in runs}):
         for arm in arms:
@@ -609,13 +731,17 @@ def main(argv: list[str] | None = None) -> int:
         args.auth_mode = resolve_auth(args.auth)
         done = {run_key(r) for r in load_results(Path(args.out))["runs"]}
         print(
-            "(shoal --plugin-dir paths are exported from git HEAD into a temp dir at run time)"
+            "(shoal --plugin-dir paths are exported from git HEAD into a temp dir at run time; "
+            "shoal-relay is rendered from HEAD + relay.binding.toml)"
         )
         print(f"auth={args.auth_mode} model={args.model or '<missing>'} out={args.out}")
-        for arm in arms:
-            print(
-                f"  {arm}: {' '.join(claude_command(args, [ROOT / p for p in PLUGIN_PATHS] if arm == 'shoal' else []))}"
-            )
+        with tempfile.TemporaryDirectory(prefix="shoal-ab-plugins-") as plugin_root:
+            arm_dirs, head = arm_plugins(Path(plugin_root), arms)
+            for arm in arms:
+                dirs = arm_dirs[arm]
+                print(f"  {arm}: relay={'on' if relay_enabled(dirs) else 'off'} head={head[:7] or '-'}")
+                print(f"    plugin-dirs: {', '.join(str(d) for d in dirs) or 'none'}")
+                print(f"    {' '.join(claude_command(args, dirs, stream=arm == 'shoal-relay'))}")
         for task, arm, rep in plan(args, tasks, arms):
             mark = "skip (in --out)" if (task["id"], arm, rep) in done else "run"
             print(

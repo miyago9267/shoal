@@ -55,8 +55,24 @@ python3 bench/ab/run_ab.py --summarize bench/ab/results/ab.json
   temp cwd 專屬的新目錄。`~/.claude/CLAUDE.md` 是否被載入無法從 init 確認，
   需要完全隔離時用 token mode。
 
+## shoal-relay arm
+
+`--arms shoal,shoal-relay`：`shoal` 是 relay 關閉的對照；`shoal-relay` 把 `relay.binding.toml`
+（`executor`/`applier` 走 Codex、外殼 `haiku`）接在 committed HEAD 的 `hosts/claude/binding.toml`
+後面，用 `tools/render.py --host claude-plugin --write --root <temp>` render 成該 arm 自己的
+plugin-dir（committed binding 不動）。`--dry-run` 會印每個 arm 的 plugin-dir 與 `relay=on|off`。
+
+- 該 arm 用 `--output-format stream-json --verbose`，才看得到 subagent 內 Bash 印出的 hand-back；
+  紀錄的 `codex` 欄位是各次 relay 的 token 加總（`calls`、`statuses`、`input_tokens`、
+  `cached_input_tokens`、`output_tokens`），與 Claude 的 `total_cost_usd` 分開，不換算美元。
+  `codex.calls == 0` 代表 main 沒有走 relay。
+- relay 寫入 role 要在 linked worktree 跑（main 以 `isolation: "worktree"` 派工）。task 工作目錄本來就是
+  `git init` 過的 repo，所以可用；`.claude/worktrees/` 已加進 `.git/info/exclude`，不算改動。
+- token mode 下 HOME 是私有的，runner 找不到 Codex 登入，所以該 arm 會多傳 `CODEX_HOME`
+  （預設 `~/.codex`）。
+
 ## 評分欄位
 
 `pass`、`hidden`、`visible`、`protected_violations`、`changed_files`、`files_changed`、
 `lines_added`、`lines_removed`、`total_cost_usd`、`duration_ms`、`num_turns`、`wall_s`、
-`claude_rc`、`error`。
+`claude_rc`、`error`；`shoal-relay` 另有 `relay`（plugin 是否帶 runner）與 `codex`。
