@@ -33,4 +33,8 @@
   寫入 PROGRESS.md（S1.13）（S1.13 未達標，見 PROGRESS 2026-10-22）
 - [ ] T1.7 S1.13 達標後才做：`hosts/claude/binding.toml` 啟用
   `executor = "codex"`、`applier = "codex"`，重新 render dist 與 `.sha256`
+  （S1.13 已於 2026-10-22 放寬並達標。阻塞：relay 開啟後 `hosts/claude/dist` 的
+  `agents/executor.md`、`agents/applier.md` 與 `orchestration-policy.md` 超過
+  `docs/specs/prompt-document-lock/LOCK.json` 的行數、位元組與變更預算，需要
+  Miyago 核准的 lock renewal；待核准前不改 binding。）
 - [ ] T1.8 共同驗收（S0.x）與 fresh `verifier`

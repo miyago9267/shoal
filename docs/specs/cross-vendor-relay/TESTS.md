@@ -89,5 +89,6 @@
 - S1.13a WHEN 執行 `run_ab.py --arms shoal,shoal-relay --dry-run`，THE SYSTEM
   SHALL 顯示兩個不同的 plugin-dir，且 `shoal` arm 的 relay 為關閉。
 - S1.13 WHEN bench/ab 以 v2 任務比較 `shoal-relay` 與 `shoal`，THE SYSTEM SHALL
-  使 relay 的通過數 ≥ shoal、時間中位數 ≤ shoal 的 1.5 倍；兩家的 token / 成本
-  分開記錄。未達標時 P2 不開始。
+  使 relay 的通過數 ≥ shoal 的通過數減 1、時間中位數 ≤ shoal 的 2.0 倍；兩家的
+  token / 成本分開記錄。未達標時 P2 不開始。
+  （2026-10-22 Miyago 決定放寬，原為通過數 ≥ shoal 且 ≤ 1.5x）

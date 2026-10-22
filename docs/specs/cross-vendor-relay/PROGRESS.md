@@ -129,7 +129,7 @@
   rep2 main 已 commit 合併，故也是 0 但 pass，bench 低估 commit 後的改動量。
 - 建議修正（皆未實作，本任務不動 relay/runtime）：(1) `relay_handbacks()` 先剝
   `Exit code N\n` 前綴，並只計有 `session_id` 或 `usage` 的 hand-back（避免把
-  worktree 拒絕算成呼叫）；(2) 已修：runner 比對前剝 ` (deleted)` 類註記
+  worktree 拒絕算成呼叫）；(2) 已修：runner 比對前剝 `(deleted)` 類註記
   （7522f1d），brief 開頭寫明不碰 git、check 跑不了回 `done` 加 `unverified`；
   (3) bootstrap/agent 描述把 `isolation: worktree` 寫成必填，或 guard 在派工時直接
   deny 缺少 isolation 的 relay role；(4) bench 的 relay arm 對 main 直接改檔的
@@ -192,3 +192,4 @@
 - 公平性：worktree 改動已由 runner 自動落地，失敗原因都有紀錄，判定這次比較已公平。剩下的差距主要是時間：每次 relay 都要冷啟動 Codex，並重新讀約 35 萬 token 的 context，外層還多一層 haiku 外殼。
 - 判定：S1.13 未達標。通過數 13 < 14（差 1，在 2 reps 的雜訊範圍內）；時間 1.96x，超過 1.5x 的上限。依 TASKS，T1.7 不開始，P2 不開始。
 - 後續可能方向（未核准）：main 在 relay 執行期間不要動同一批檔案；縮小給 Codex 的 context；只對長任務 relay。
+- 2026-10-22 Miyago 決定放寬 S1.13（通過數 ≥ shoal 減 1、時間中位數 ≤ 2.0x，原為 ≥ shoal 且 ≤ 1.5x），理由是 Claude 端成本約低 15%，並准許開始 T1.7。relay-v2c 符合放寬後的 S1.13：通過數 13 ≥ 14 - 1，時間 1.96x ≤ 2.0x。T1.7 的實作先停在 prompt lock 的 renewal（見 TASKS T1.7）。
