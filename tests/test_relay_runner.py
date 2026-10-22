@@ -433,6 +433,39 @@ class RelayRunner(unittest.TestCase):
         self.set_mode(handback=report(files=[str(self.wt / "a.txt")]), write=["a.txt"])
         self.assertFalse(self.run_relay()["files_mismatch"])
 
+    # S1.17：自報路徑的註記、./、rename 寫法正規化後才比對；不一致只標出、不改 status
+    def test_s1_17_annotated_paths_are_not_a_mismatch(self):
+        (self.wt / "README").unlink()
+        for files in (
+            ["README (deleted)", "a.txt (new)"],
+            ["./a.txt", "./README"],
+            ["README -> a.txt"],
+            ["a.txt (renamed from README)"],
+            [str(self.wt / "a.txt") + " (modified)", "README (deleted)"],
+        ):
+            with self.subTest(files=files):
+                self.set_mode(handback=report(files=files), write=["a.txt"])
+                hb = self.run_relay()
+                self.assertEqual(hb["status"], "done", hb)
+                self.assertEqual(
+                    (hb["changed_files"], hb["reported_files"], hb["files_mismatch"]),
+                    (["README", "a.txt"], files, False),
+                )
+
+    def test_s1_17_mismatch_never_changes_status(self):
+        for status in ("done", "failed", "blocked"):
+            with self.subTest(status=status):
+                self.set_mode(
+                    handback=report(files=["b.txt (new)"], status=status),
+                    write=["a.txt"],
+                )
+                hb = self.run_relay()
+                self.assertEqual(hb["status"], status, hb)
+                self.assertEqual(
+                    (hb["changed_files"], hb["reported_files"], hb["files_mismatch"]),
+                    (["a.txt"], ["b.txt (new)"], True),
+                )
+
     def test_s1_17_vendor_extra_field_or_long_string_fails(self):
         for handback in (report(note="x"), report(summary="y" * 4001)):
             with self.subTest(keys=sorted(handback)):

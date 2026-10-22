@@ -12,7 +12,8 @@
   shoal_guard.py（plugin 內由 render 打包的副本），沒有可用的再用 hooks/shoal_guard.py；都不可用就回 blocked。
 - 逾時、SIGTERM/HUP/INT 或 parent 死亡時結束 vendor 的整棵程序樹（含 setsid 的後代），一律回 failed，
   不自動重跑、不改回 native。
-- changed_files 由 `git status --porcelain -z` 計算，與 vendor 自報不同時 files_mismatch 為 true。
+- changed_files 由 `git status --porcelain -z` 計算；vendor 自報的路徑剝掉 ` (deleted)` 類註記、`./`，
+  `a -> b` 兩邊都算，正規化後仍不同時 files_mismatch 為 true。不一致只標出，不改 status。
 - 輸出前遮蔽名稱含 KEY/SECRET/TOKEN/PASSWORD 的環境變數值，並依 core/contracts/handback.schema.json 截斷。
 結束碼：status 為 done 時 0，否則 1。
 """
@@ -69,6 +70,8 @@ STRICT_KEYS = {
 SECRET_NAME = re.compile(r"KEY|SECRET|TOKEN|PASSWORD", re.I)
 MIN_SECRET_LEN = 6
 FORBIDDEN_ARG = re.compile(r"danger-full-access|dangerously|bypass", re.I)
+PATH_NOTE = re.compile(r"\s+\(([^()]*)\)$")
+RENAMED_FROM = re.compile(r"(?:renamed|moved) from (.+)", re.I)
 MCP_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 VERSION_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 SANDBOX_FAIL = re.compile(
@@ -600,6 +603,21 @@ def _normalize_path(path: str, top: Path) -> str:
     return os.path.normpath(path)
 
 
+def _reported_paths(entry: str, top: Path, changed: Set[str]) -> Set[str]:
+    path = _normalize_path(entry, top)
+    if path in changed:
+        return {path}
+    sources = []
+    note = PATH_NOTE.search(entry)
+    if note:
+        entry = entry[: note.start()]
+        renamed = RENAMED_FROM.fullmatch(note.group(1).strip())
+        if renamed:
+            sources.append(renamed.group(1))
+    sources += entry.split(" -> ")
+    return {_normalize_path(p.strip(), top) for p in sources}
+
+
 def _read_output(path: Path) -> Tuple[Optional[Any], Optional[str]]:
     try:
         fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -929,7 +947,11 @@ def _collect(
             vendor, "failed", "git status failed after the vendor run", **base
         )
     reported = report["changed_files"]
-    mismatch = {_normalize_path(p, top) for p in reported} != set(changed)
+    changed_set = set(changed)
+    claimed: Set[str] = set()
+    for entry in reported:
+        claimed |= _reported_paths(entry, top, changed_set)
+    mismatch = claimed != changed_set
     return _handback(
         vendor,
         report["status"],
