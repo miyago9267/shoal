@@ -87,3 +87,50 @@
 - 2026-10-21：fresh verifier 對 T1.1–T1.5 回 CONFIRMED（1866 tests OK；
   S0.1–S0.4、S1.1–S1.12、S1.14–S1.19 逐項有 evidence）；advisory A1 已以 S0.3
   範圍說明處理；未驗：grok host 帶有效 nonce 時沒有 relay log（行為不變）。
+
+## T1.6 bench 結果（2026-10-22）
+
+- 數字（`bench/ab/results/relay-v2.json`，8 任務 x 2 rep，shoal vs shoal-relay）：
+  shoal 14/16，median 89 s，$0.323/run；relay 13/16，median 173 s（1.94x），
+  $0.331/run Claude + avg 150,724 input（137,360 cached）/ 2,378 output Codex
+  tokens；relay runs with codex>0: 7，pass 6，median 207 s；on the four tasks
+  where relay used Codex (a,c,d,h): shoal 7/8 median 138 s $0.426，relay 7/8
+  median 193 s $0.344。
+- S1.13 未達標（通過數 13 < 14、時間 1.94 倍 > 1.5 倍），依 D11 停在 P1 檢討，
+  不進 T1.7。
+- 診斷 `codex.calls = 0` 的 9 個 run：直接讀原 run 留在 `~/.claude/projects/
+  *shoal-ab-v2-*-shoal-relay-*` 的 transcript（含 subagents/），對照 guard.jsonl
+  的 `relay_adopt`（Codex 端事件，每個 Codex session 一組 session hash）。
+  - b-bug-hunt x2、g-feature-across-layers x2：H1 成立。main 完全沒派工，用
+    `python3 - <<EOF` 的 Bash heredoc 自己改檔（bootstrap 要求 main 不編輯，除非
+    `#direct`）；guard 對這些 main session 只記到 prompt state，沒有 tool 事件。
+    relay 的 shell 根本沒被觸發。b rep2 的 736 s、$0.135：main 的收尾指令
+    `rm /tmp/t.json` 卡在互動確認，被丟背景，`claude -p` 等到該 shell 結束才收尾，
+    屬 wall 虛增，與 relay 無關。
+  - e-security-hardening x2：預期內，派 `security-reviewer` 路徑的
+    `security-executor`，不走 relay。
+  - h rep2：H1 + H2。main 先自己改完 `pool.py`，再派 applier 改測試但沒帶
+    `isolation: worktree`，runner 回 `blocked: cwd is not a linked worktree`，main 沒重派
+    就停下來問使用者；Codex 未執行（無 `relay_adopt`）。
+  - f-refactor-split x2：計數器漏算（H3 的窄版）。Codex 其實跑了（hand-back 的
+    usage 為 393,636 / 363,852 input，`relay_adopt` 兩個 session 對得上）。runner
+    回 `status: blocked, files_mismatch: true`（Codex 自報 `app/core.py (deleted)`，
+    與 `git status` 的 `app/core.py` 字串不同）並以 exit 1 結束，Bash tool_result 變成
+    `Exit code 1\n{...}`，`relay_handbacks()` 的 `json.loads` 失敗而略過。
+    以去掉前綴的方式重跑計數器可得 1 筆/run。
+  - H3 的寬版（stream-json 不暴露 subagent 的 Bash 結果）不成立：a、c、d、h rep1
+    共 8 筆乾淨 JSON hand-back 全被計到，和 `relay_adopt` 的 10 個 bench session
+    扣掉 f 的 2 個後剛好一致。
+- 修正後的 codex>0 run 是 9 個，不是 7 個（a x2、c x2、d x2、f x2、h rep1）。
+- 附帶觀察：第一次派 executor/applier 沒帶 `isolation: worktree` 而被擋，發生在
+  c rep2、d x2、f x2、h x2（共 7 run），多數會重派，每次多繳一輪（d rep1 812 s）。
+  f 的 score 用 `git diff` 計 files_changed：rep1 改動留在 worktree 故 0 且 fail；
+  rep2 main 已 commit 合併，故也是 0 但 pass，bench 低估 commit 後的改動量。
+- 建議修正（皆未實作，本任務不動 relay/runtime）：(1) `relay_handbacks()` 先剝
+  `Exit code N\n` 前綴，並只計有 `session_id` 或 `usage` 的 hand-back（避免把
+  worktree 拒絕算成呼叫）；(2) runner 的 `files_mismatch` 比對前先剝
+  ` (deleted)` 之類的註記，且僅路徑註記差異不應讓 `done` 變 `blocked`；
+  (3) bootstrap/agent 描述把 `isolation: worktree` 寫成必填，或 guard 在派工時直接
+  deny 缺少 isolation 的 relay role；(4) bench 的 relay arm 對 main 直接改檔的
+  run 標記 `no_dispatch`，並在 prompt 或 guard 補上 Bash 寫檔偵測，否則小任務
+  永遠繞過 relay；(5) 重跑 relay arm 前先決定 S1.13 是否改成只比有派工的任務。
