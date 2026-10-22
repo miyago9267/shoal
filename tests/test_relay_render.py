@@ -480,6 +480,7 @@ class WriteRelayIsolationTests(TempCase):
         for name in ("executor", "applier"):
             fields = frontmatter(dist[f"agents/{name}.md"])
             self.assertEqual(fields["tools"], "Bash")
+            self.assertEqual(fields["isolation"], "worktree")
             self.assertFalse(
                 re.search(r"\b(Write|Edit|MultiEdit|NotebookEdit)\b", fields["tools"])
             )
