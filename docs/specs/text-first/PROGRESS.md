@@ -263,7 +263,31 @@ created: 2026-10-22
 
 ### 結果
 
-（完成後補。）
+- 測試數：1942 -> 1895。原 ID 消失 64 個（含 convert 後改名或合併者），
+  新增 17 個，另有 10 個只改類別或測試名。triage 的 drop 39、
+  convert 35（其中 33 個個別列出）、keep 236（含 4 個個別列出）。
+- 新增 17 個：`test_render_check` 7、`test_policy` 9（協定符號 3、行為契約 2、role 邊界 4）、
+  `test_direction_milestone` 1。
+- 行數：`git diff --shortstat origin/main HEAD` 為 132 個檔、+589 / -7120。
+  其中 `tests/golden/`（107 檔、337,521 bytes）與
+  `tools/refresh_golden.py`（123 行）整個刪除；`tests/*.py` 與 `tools/*.py`
+  淨減 1,140 行（+381 / -1,521）。
+- 行為測試分類（validation、`--check` / `--write`、權限推導、installer、
+  guard、relay、plugin）：被刪的測試只屬於 golden、wording、
+  refresh_golden 三類。installer、guard、relay、access derivation 的模組
+  沒有任何變動；plugin 類只少 `test_claude_plugin` 的 byte-identical
+  golden 一個。
+- T3.5 紅燈驗證：改 `prompts/roles/scout.md` 一個字且不 `--write`，
+  六個 host 的 `render --check` 全部 exit 1。
+- 2026-10-23 `render_equiv.py --base origin/main --head HEAD` 退出 0，兩組雜湊與 P1 基準相同：
+  - 預設（103 檔）：`f0a3f34becf2342d21322e0ecb60de411b088b924f9ccdfddb213c1c68a71057`
+  - relay（27 檔）：`87d4a9a4aaed55028a9316573d91d5422370c42fa3dc24cb0c6ebdde4040ac59`
+- 全套測試 1895 個、約 295 秒、OK（skipped=1）；lock（不帶旗標）通過；
+  `npm run lint:md` 通過（`#tests/golden` 已自 `package.json` 移除）。
+- 已知殘留（非本 phase 範圍）：`tests/test_generic_hosts.py` 的
+  `load_addenda` 仍指向舊的 `hosts/<host>/addenda/<role>.toml`。repo 沒有
+  generic-md host 所以空轉；日後出現 generic host 時會壞，需要另案改成
+  `prompts/hosts/<host>/addenda/<role>.md`。
 
 ## Phase R + 3b: lock renewal 與停止 commit claude dist
 
