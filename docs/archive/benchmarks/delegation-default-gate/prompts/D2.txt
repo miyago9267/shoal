@@ -1,1 +1,0 @@
-I need two short explanations. First: how does inventory/ decide that a product needs restocking? Second, independent of the first: how does reports/ build the weekly summary? Do not modify any file.

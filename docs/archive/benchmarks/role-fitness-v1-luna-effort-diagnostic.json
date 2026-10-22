@@ -1,8 +1,0 @@
-{
-  "version": "role-fitness-luna-effort-diagnostic-v1",
-  "generated": "2026-08-05",
-  "formal_claim": false,
-  "cohort": {"risk_cases": 4, "accepted_arms": 8, "baseline": "gpt-5.6-luna/medium", "switched": "gpt-5.6-luna/xhigh"},
-  "score": {"additional_findings": -2, "quality_delta": -16.666666666675, "quality_ci": [-48.33333333335, 15.0], "extra_weighted_tokens": 383, "weighted_token_premium": 0.006361640140454483, "p95_wall_premium": 0.047046058117688805, "switch_value": -522.1932114882507, "score": 5, "proven": false},
-  "interpretation": "Same-model reasoning escalation was cheap but quality-negative on this bounded risk diagnostic; it does not justify changing the formal Sol/high route."
-}

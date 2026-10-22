@@ -1,1 +1,0 @@
-In src/greeter.py there is one obvious typo in a comment (the word "Retruns"). Fix that typo and nothing else.

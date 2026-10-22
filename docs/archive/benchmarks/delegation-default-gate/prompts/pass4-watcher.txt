@@ -1,1 +1,0 @@
-Run the long check script named long_check.sh in the scripts folder and tell me its result line. It takes a while to finish; I only need the final status it prints.
