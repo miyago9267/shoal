@@ -17,6 +17,7 @@ import threading
 import fnmatch
 import json
 import os
+import re
 import shutil
 import signal
 import statistics
@@ -24,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -291,7 +293,7 @@ def score(task: dict[str, Any], work: Path) -> dict[str, Any]:
 
 
 def claude_command(args: argparse.Namespace, plugin_dirs: list[Path], stream: bool = False) -> list[str]:
-    """``stream``: event stream (needed to see the relay hand-backs inside subagent tool results)."""
+    """``stream``: event stream (needed to see dispatches and the relay hand-backs inside subagent tool results)."""
     command = [
         args.claude_bin,
         "-p",
@@ -371,8 +373,16 @@ def parse_claude_output(stdout: str) -> tuple[dict[str, Any], list[dict[str, Any
     return (result if result is not None else (events[0] if len(events) == 1 else {})), events
 
 
+EXIT_PREFIX = re.compile(r"\AExit code -?\d+\n")
+WRITE_ROLES = ("executor", "applier", "security-executor")
+MAIN_EDIT_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+
+
 def relay_handbacks(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Codex hand-back objects the relay runner printed, read from Bash tool results in the event stream."""
+    """Codex hand-back objects the relay runner printed, read from Bash tool results in the event stream.
+
+    A non-zero runner exit reaches the tool result as ``Exit code N\\n{json}``; the prefix is not part of the JSON.
+    """
     found = []
     for event in events:
         content = (event.get("message") or {}).get("content") if event.get("type") == "user" else None
@@ -385,7 +395,7 @@ def relay_handbacks(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             ] if isinstance(body, list) else []
             for text in texts:
                 try:
-                    hand_back = json.loads(text.strip())
+                    hand_back = json.loads(EXIT_PREFIX.sub("", text.strip(), count=1))
                 except ValueError:
                     continue
                 if isinstance(hand_back, dict) and hand_back.get("vendor") == "codex" and "status" in hand_back:
@@ -393,8 +403,26 @@ def relay_handbacks(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return found
 
 
+def split_handbacks(hand_backs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(ran, blocked): a hand-back counts as a relay call only when the vendor ran (it has a session_id or usage).
+
+    The rest were refused before Codex started (not a linked worktree, missing runner, ...); blocked keeps status and reason.
+    """
+    ran, blocked = [], []
+    for hand_back in hand_backs:
+        if hand_back.get("session_id") or isinstance(hand_back.get("usage"), dict):
+            ran.append(hand_back)
+        else:
+            reason = hand_back.get("reason") or hand_back.get("summary") or ""
+            blocked.append({"status": hand_back.get("status"), "reason": str(reason)[:200]})
+    return ran, blocked
+
+
 def codex_usage(hand_backs: list[dict[str, Any]]) -> dict[str, Any]:
-    """Codex side of the bill, kept apart from Claude's ``total_cost_usd``: tokens only (no USD, spec D10)."""
+    """Codex side of the bill, kept apart from Claude's ``total_cost_usd``: tokens only (no USD, spec D10).
+
+    ``hand_backs`` are the ones where the vendor ran (see ``split_handbacks``).
+    """
     total: dict[str, Any] = {
         "calls": len(hand_backs),
         "statuses": [h.get("status") for h in hand_backs],
@@ -414,6 +442,39 @@ def codex_usage(hand_backs: list[dict[str, Any]]) -> dict[str, Any]:
     return total
 
 
+def main_activity(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """What the main session itself did: Agent/Task dispatches by subagent_type, and its own file-edit tool calls.
+
+    Subagent events carry ``parent_tool_use_id``; only events without it are main's.
+    """
+    dispatches: dict[str, int] = {}
+    edits = 0
+    for event in events:
+        if event.get("type") != "assistant" or event.get("parent_tool_use_id"):
+            continue
+        content = (event.get("message") or {}).get("content")
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            if block.get("name") in ("Agent", "Task"):
+                kind = str((block.get("input") or {}).get("subagent_type") or "?")
+                dispatches[kind] = dispatches.get(kind, 0) + 1
+            elif block.get("name") in MAIN_EDIT_TOOLS:
+                edits += 1
+    return {"dispatches": dispatches, "main_edits": edits}
+
+
+def dispatched_write_role(record: dict[str, Any]) -> bool:
+    return any(kind.rsplit(":", 1)[-1] in WRITE_ROLES for kind in record.get("dispatches") or {})
+
+
+def flag_no_dispatch(record: dict[str, Any]) -> None:
+    """``no_dispatch``: main changed files (diff or its own edit tools) but never dispatched a write role."""
+    if "dispatches" in record:
+        changed = bool(record.get("files_changed")) or bool(record.get("main_edits"))
+        record["no_dispatch"] = changed and not dispatched_write_role(record)
+
+
 def run_claude(
     args: argparse.Namespace,
     task: dict[str, Any],
@@ -428,7 +489,7 @@ def run_claude(
     elif arm == "shoal-workflow":
         prompt = WORKFLOW_PREFIX + prompt
     relay = arm == "shoal-relay"
-    command = claude_command(args, plugin_dirs, stream=relay)
+    command = claude_command(args, plugin_dirs, stream=True)
     env = claude_env(args.auth_mode, private, relay=relay)
     out: dict[str, Any] = {"error": None}
     started = time.monotonic()
@@ -456,8 +517,11 @@ def run_claude(
     result: dict[str, Any] = {}
     try:
         result, events = parse_claude_output(stdout)
+        out.update(main_activity(events))
         if relay:
-            out["codex"] = codex_usage(relay_handbacks(events))
+            ran, blocked = split_handbacks(relay_handbacks(events))
+            out["codex"] = codex_usage(ran)
+            out["relay_blocked"] = blocked
     except ValueError:
         if not out["error"]:
             out["error"] = (
@@ -557,6 +621,7 @@ def benchmark(
                     )
                 )
                 record.update(score(task, work))
+                flag_no_dispatch(record)
                 if record.get("error"):
                     record["pass"] = False
             except Exception as error:  # keep going; the record carries the failure
@@ -574,7 +639,9 @@ def benchmark(
                 print(
                     f"[{finished[0]}/{len(todo)}] {task['id']} {arm} rep{rep} "
                     f"pass={record.get('pass')} cost={record.get('total_cost_usd')} "
+                    f"dispatch={record.get('dispatches', '-')}{' NO_DISPATCH' if record.get('no_dispatch') else ''} "
                     f"codex={(record.get('codex') or {}).get('calls', '-')} calls/"
+                    f"{len(record.get('relay_blocked') or [])} blocked/"
                     f"{(record.get('codex') or {}).get('output_tokens', '-')} out "
                     f"wall={record.get('wall_s')} err={record.get('error')}",
                     file=sys.stderr,
@@ -625,6 +692,20 @@ def self_test(args: argparse.Namespace, tasks: list[dict[str, Any]]) -> int:
     return 1 if failures or not tasks else 0
 
 
+def both_dispatched(runs: list[dict[str, Any]], arms: list[str]) -> set[tuple[str, int]] | None:
+    """(task, rep) pairs where every shoal-family arm in the file dispatched a write role; None without dispatch data."""
+    if not any("dispatches" in r for r in runs):
+        return None
+    shoal_arms = [a for a in arms if a in SHOAL_ARMS]
+    if len(shoal_arms) < 2:
+        return None
+    per_arm = [
+        {(r["task"], r["rep"]) for r in runs if r["arm"] == arm and dispatched_write_role(r)}
+        for arm in shoal_arms
+    ]
+    return set.intersection(*per_arm)
+
+
 def summarize(path: Path) -> int:
     runs = load_results(path)["runs"]
     if not runs:
@@ -660,14 +741,30 @@ def summarize(path: Path) -> int:
     relayed = [r for r in runs if r.get("codex")]
     if relayed:  # Codex tokens are a separate bill: never folded into cost_avg above.
         calls = [r["codex"]["calls"] for r in relayed]
+        blocked = [b for r in relayed for b in r.get("relay_blocked") or []]
         print(
-            f"\ncodex (shoal-relay, {len(relayed)} runs): relay calls avg {statistics.mean(calls):.1f}, "
-            f"runs with 0 calls {calls.count(0)}; tokens avg/run "
+            f"\ncodex (shoal-relay, {len(relayed)} runs): relay calls {sum(calls)} (vendor ran; avg {statistics.mean(calls):.1f}/run), "
+            f"runs with 0 calls {calls.count(0)}, blocked hand-backs {len(blocked)}; tokens avg/run "
             + ", ".join(
                 f"{key} {statistics.mean(r['codex'][key] for r in relayed):,.0f}"
                 for key in ("input_tokens", "cached_input_tokens", "output_tokens")
             )
         )
+        for reason, count in sorted(Counter(f"{b['status']}: {b['reason'][:70]}" for b in blocked).items()):
+            print(f"  blocked x{count}  {reason}")
+    flagged = {arm: [r for r in runs if r["arm"] == arm and "no_dispatch" in r] for arm in arms}
+    if any(flagged.values()):
+        print("\nno_dispatch (main changed files but dispatched no write role): "
+              + ", ".join(f"{arm} {sum(r['no_dispatch'] for r in rs)}/{len(rs)}" for arm, rs in flagged.items() if rs))
+    subset = both_dispatched(runs, arms)
+    if subset is None:
+        print("\nboth-arms-dispatched subset: n/a (needs `dispatches` data and at least two shoal arms)")
+    else:
+        print(f"\nsubset: (task, rep) pairs where every shoal arm dispatched a write role: {len(subset)}")
+        for arm in arms:
+            group = [r for r in runs if r["arm"] == arm and (r["task"], r["rep"]) in subset]
+            if group:
+                print(row(f"{arm} (both dispatched)", group))
     print()
     for category in sorted({r.get("category", "?") for r in runs}):
         for arm in arms:
@@ -741,7 +838,7 @@ def main(argv: list[str] | None = None) -> int:
                 dirs = arm_dirs[arm]
                 print(f"  {arm}: relay={'on' if relay_enabled(dirs) else 'off'} head={head[:7] or '-'}")
                 print(f"    plugin-dirs: {', '.join(str(d) for d in dirs) or 'none'}")
-                print(f"    {' '.join(claude_command(args, dirs, stream=arm == 'shoal-relay'))}")
+                print(f"    {' '.join(claude_command(args, dirs, stream=True))}")
         for task, arm, rep in plan(args, tasks, arms):
             mark = "skip (in --out)" if (task["id"], arm, rep) in done else "run"
             print(

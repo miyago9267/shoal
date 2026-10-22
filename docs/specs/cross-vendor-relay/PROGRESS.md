@@ -135,3 +135,20 @@
   deny 缺少 isolation 的 relay role；(4) bench 的 relay arm 對 main 直接改檔的
   run 標記 `no_dispatch`，並在 prompt 或 guard 補上 Bash 寫檔偵測，否則小任務
   永遠繞過 relay；(5) 重跑 relay arm 前先決定 S1.13 是否改成只比有派工的任務。
+
+## T1.6 bench 公平性修正（2026-10-22，`fix/relay-bench-fair`）
+
+- 隔離：render 對 write role（executor、applier）的 relay 外殼 frontmatter 輸出
+  `isolation: worktree`，caller 不必再記得帶。已用 plugin-dir 實測（relay overlay render 後
+  `claude -p --plugin-dir`，main 派 `shoal:applier` 不帶 isolation）：外殼在
+  `<repo>/.claude/worktrees/agent-*` 的 linked worktree 內執行，runner 沒有回
+  「not a linked worktree」，Codex 實際執行（有 `session_id`、`usage`），`hello.txt` 出現在該
+  worktree，主 checkout `git status` 乾淨。plugin agent 會遵守此欄位，故不需要外殼自檢 fallback。
+- bench 計數（`bench/ab/run_ab.py`）：`relay_handbacks()` 先剝 `Exit code N\n`；只有帶
+  `session_id` 或 `usage` 的 hand-back 算 relay call，其餘記入 `relay_blocked`（含原因）；每個
+  run 記 `dispatches`（main 的 Agent/Task 依 `subagent_type`）、`main_edits`，並在 main 改了檔
+  卻沒派 write role 時標 `no_dispatch: true`（所有 arm）；所有 arm 改用 stream-json 以取得這些事件；
+  `--summarize` 另印兩個 shoal arm 都派了 write role 的 (task, rep) 子集、relay call/blocked 數與
+  `no_dispatch` 計數。
+- `bench/ab/results/relay-v2.json` 沒存事件流，沒有 `dispatches` 與 blocked 原因，無法離線重算；
+  需重跑 relay arm 才有新欄位。

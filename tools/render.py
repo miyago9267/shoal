@@ -658,7 +658,8 @@ def relay_shell(name: str, vendor: str, relay: Relay, core: dict, spec: dict, ho
     if writes:
         description += " Dispatch it with worktree isolation and follow it with a fresh verifier."
     fields = {"name": name, "description": description, "model": relay.shell_model, "effort": RELAY_SHELL_EFFORT}
-    head = "---\n" + "\n".join(f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS) + "\ntools: Bash\n---\n\n"
+    isolation = "\nisolation: worktree" if writes else ""  # write role 的外殼一律在自己的 linked worktree 跑，不靠 caller 記得帶
+    head = "---\n" + "\n".join(f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS) + f"\ntools: Bash{isolation}\n---\n\n"
     return (head + text).encode("utf-8")
 
 
