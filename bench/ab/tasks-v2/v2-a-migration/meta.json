@@ -1,0 +1,9 @@
+{
+  "id": "v2-a-migration",
+  "category": "migration",
+  "protected": [
+    "shelf/errors.py",
+    "shelf/__main__.py"
+  ],
+  "timeout_s": 1200
+}

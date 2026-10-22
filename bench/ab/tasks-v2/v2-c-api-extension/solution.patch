@@ -1,0 +1,290 @@
+diff --git a/README.md b/README.md
+index 70adbf3..5614093 100644
+--- a/README.md
++++ b/README.md
+@@ -14,17 +14,25 @@ responses carry `error` (`bad_request`, `not_found`, `wrong_type` or
+ |------------|---------------------------|--------------------------------------------|
+ | `ping`     |                           | `{"ok": true, "pong": true}`               |
+ | `get`      | `key`                     | `{"ok": true, "value": ...}` or not_found  |
+-| `set`      | `key`, `value`            | `{"ok": true}`                             |
++| `set`      | `key`, `value`, opt `ttl` | `{"ok": true}`                             |
+ | `delete`   | `key`                     | `{"ok": true}` or not_found                |
+ | `exists`   | `key`                     | `{"ok": true, "exists": bool}`             |
+ | `incr`     | `key`, optional `by` (int)| `{"ok": true, "value": int}`               |
+ | `mget`     | `keys` (list)             | `{"ok": true, "values": {key: value/null}}`|
+ | `keys`     | optional `prefix`         | `{"ok": true, "keys": [sorted keys]}`      |
++| `ttl`      | `key`                     | `{"ok": true, "ttl": seconds or null}`     |
++| `stats`    |                           | `{"ok": true, "hits", "misses", "expired", "keys"}` |
+ | `snapshot` |                           | `{"ok": true, "count": n}`                 |
+ 
+ Keys are non-empty strings; values are any JSON value. `incr` treats a missing
+ key as 0 and fails with `wrong_type` when the value is not an integer.
+ 
++`ttl` is a positive number of seconds. A key set at `t` with `ttl` T expires at
++`t + T` (store clock) and then behaves like a missing key everywhere. `set`
++without `ttl` clears the expiry; `incr` keeps it. `stats` reports `get`/`mget`
++hits and misses, the number of keys that expired (each once) and live keys;
++counters are not saved in snapshots.
++
+ ## Python API
+ 
+ ```python
+@@ -45,9 +53,13 @@ behaviour testable.
+ ## Snapshot format
+ 
+ ```json
+-{"version": 1, "entries": [{"key": "a", "value": 1, "updated_at": 1700000000.0}]}
++{"version": 1, "entries": [{"key": "a", "value": 1, "updated_at": 1700000000.0,
++                            "expires_at": 1700000060.0}]}
+ ```
+ 
++`expires_at` is absolute and only present for keys with a TTL. Expired keys are
++not written and are dropped on load.
++
+ ## Tests
+ 
+ ```sh
+diff --git a/kvsvc/handler.py b/kvsvc/handler.py
+index d0fc318..5a00f77 100644
+--- a/kvsvc/handler.py
++++ b/kvsvc/handler.py
+@@ -18,6 +18,8 @@ class Handler:
+             "mget": self.op_mget,
+             "keys": self.op_keys,
+             "snapshot": self.op_snapshot,
++            "ttl": self.op_ttl,
++            "stats": self.op_stats,
+         }
+ 
+     def handle(self, request):
+@@ -40,7 +42,8 @@ class Handler:
+ 
+     def op_set(self, request):
+         key = protocol.require_key(request)
+-        self.store.set(key, protocol.require_value(request))
++        value = protocol.require_value(request)
++        self.store.set(key, value, ttl=protocol.optional_ttl(request))
+         return protocol.ok()
+ 
+     def op_delete(self, request):
+@@ -65,6 +68,12 @@ class Handler:
+             raise BadRequest("'prefix' must be a string")
+         return protocol.ok(keys=self.store.keys(prefix))
+ 
++    def op_ttl(self, request):
++        return protocol.ok(ttl=self.store.ttl(protocol.require_key(request)))
++
++    def op_stats(self, request):
++        return protocol.ok(**self.store.stats())
++
+     def op_snapshot(self, request):
+         if not self.snapshot_path:
+             raise NoSnapshotPath("handler has no snapshot path")
+diff --git a/kvsvc/protocol.py b/kvsvc/protocol.py
+index d393b04..f2ad52a 100644
+--- a/kvsvc/protocol.py
++++ b/kvsvc/protocol.py
+@@ -34,6 +34,16 @@ def optional_int(request, field, default):
+     return value
+ 
+ 
++def optional_ttl(request):
++    """``ttl``: absent, or a positive int/float number of seconds."""
++    if "ttl" not in request:
++        return None
++    ttl = request["ttl"]
++    if not isinstance(ttl, (int, float)) or isinstance(ttl, bool) or not ttl > 0:
++        raise BadRequest("'ttl' must be a positive number of seconds")
++    return ttl
++
++
+ def require_value(request):
+     if "value" not in request:
+         raise BadRequest("'value' is required")
+diff --git a/kvsvc/snapshot.py b/kvsvc/snapshot.py
+index a9a0e26..aab5668 100644
+--- a/kvsvc/snapshot.py
++++ b/kvsvc/snapshot.py
+@@ -11,10 +11,12 @@ VERSION = 1
+ 
+ def save_snapshot(store, path):
+     """Atomically write every entry of ``store``; returns the entry count."""
+-    entries = [
+-        {"key": key, "value": entry.value, "updated_at": entry.updated_at}
+-        for key, entry in store.entries()
+-    ]
++    entries = []
++    for key, entry in store.entries():
++        item = {"key": key, "value": entry.value, "updated_at": entry.updated_at}
++        if entry.expires_at is not None:
++            item["expires_at"] = entry.expires_at
++        entries.append(item)
+     tmp = f"{path}.tmp"
+     with open(tmp, "w", encoding="utf-8") as fh:
+         json.dump({"version": VERSION, "entries": entries}, fh)
+@@ -23,7 +25,7 @@ def save_snapshot(store, path):
+ 
+ 
+ def load_snapshot(path, clock=time.time):
+-    """Build a new KVStore from ``path``."""
++    """Build a new KVStore from ``path``; already-expired entries are dropped."""
+     try:
+         with open(path, encoding="utf-8") as fh:
+             payload = json.load(fh)
+@@ -32,6 +34,11 @@ def load_snapshot(path, clock=time.time):
+     if payload.get("version") != VERSION:
+         raise KVError(f"unsupported snapshot version {payload.get('version')!r}")
+     store = KVStore(clock=clock)
++    now = store.now()
+     for item in payload.get("entries", []):
+-        store.load_entry(item["key"], Entry(item["value"], item.get("updated_at", 0.0)))
++        expires_at = item.get("expires_at")
++        if expires_at is not None and now >= expires_at:
++            continue
++        store.load_entry(item["key"], Entry(item["value"], item.get("updated_at", 0.0),
++                                            expires_at))
+     return store
+diff --git a/kvsvc/store.py b/kvsvc/store.py
+index 7d4df60..795d5a8 100644
+--- a/kvsvc/store.py
++++ b/kvsvc/store.py
+@@ -11,42 +11,84 @@ _MISSING = object()
+ class Entry:
+     value: object
+     updated_at: float
++    expires_at: "float | None" = None
+ 
+ 
+ class KVStore:
+-    """A dict of key -> Entry with a pluggable clock (``() -> float`` seconds)."""
++    """A dict of key -> Entry with a pluggable clock (``() -> float`` seconds).
++
++    Expired entries are removed lazily on access and by ``sweep()``; every
++    removal due to expiry is counted exactly once in ``expired``.
++    """
+ 
+     def __init__(self, clock=time.time):
+         self._clock = clock
+         self._data = {}
++        self.hits = 0
++        self.misses = 0
++        self.expired = 0
+ 
+     def now(self):
+         return self._clock()
+ 
++    def _live(self, key):
++        """The live Entry for ``key`` or None; drops it if it has expired."""
++        entry = self._data.get(key)
++        if entry is not None and entry.expires_at is not None \
++                and self.now() >= entry.expires_at:
++            del self._data[key]
++            self.expired += 1
++            return None
++        return entry
++
++    def sweep(self):
++        """Drop every expired entry."""
++        now = self.now()
++        dead = [key for key, entry in self._data.items()
++                if entry.expires_at is not None and now >= entry.expires_at]
++        for key in dead:
++            del self._data[key]
++        self.expired += len(dead)
++
+     def __len__(self):
++        self.sweep()
+         return len(self._data)
+ 
+     def __contains__(self, key):
+-        return key in self._data
++        return self._live(key) is not None
+ 
+     def get(self, key, default=_MISSING):
+-        entry = self._data.get(key)
++        entry = self._live(key)
+         if entry is None:
++            self.misses += 1
+             if default is _MISSING:
+                 raise NotFound(key)
+             return default
++        self.hits += 1
+         return entry.value
+ 
+-    def set(self, key, value):
+-        self._data[key] = Entry(value, self.now())
++    def set(self, key, value, ttl=None):
++        self._live(key)
++        now = self.now()
++        expires_at = None if ttl is None else now + ttl
++        self._data[key] = Entry(value, now, expires_at)
+ 
+     def delete(self, key):
+-        if key not in self._data:
++        if self._live(key) is None:
+             raise NotFound(key)
+         del self._data[key]
+ 
++    def ttl(self, key):
++        """Seconds until ``key`` expires, or None when it has no expiry."""
++        entry = self._live(key)
++        if entry is None:
++            raise NotFound(key)
++        if entry.expires_at is None:
++            return None
++        return entry.expires_at - self.now()
++
+     def incr(self, key, by=1):
+-        entry = self._data.get(key)
++        entry = self._live(key)
+         current = 0 if entry is None else entry.value
+         if not isinstance(current, int) or isinstance(current, bool):
+             raise WrongType(key)
+@@ -59,12 +101,19 @@ class KVStore:
+         return current
+ 
+     def keys(self, prefix=""):
++        self.sweep()
+         return sorted(key for key in self._data if key.startswith(prefix))
+ 
+     def entries(self):
+-        """``(key, Entry)`` pairs in key order (used by snapshots)."""
++        """Live ``(key, Entry)`` pairs in key order (used by snapshots)."""
++        self.sweep()
+         return [(key, self._data[key]) for key in sorted(self._data)]
+ 
++    def stats(self):
++        self.sweep()
++        return {"hits": self.hits, "misses": self.misses,
++                "expired": self.expired, "keys": len(self._data)}
++
+     def load_entry(self, key, entry):
+         """Insert an entry as-is (used when restoring a snapshot)."""
+         self._data[key] = entry
+diff --git a/tests/test_ttl.py b/tests/test_ttl.py
+new file mode 100644
+index 0000000..cd33c89
+--- /dev/null
++++ b/tests/test_ttl.py
+@@ -0,0 +1,21 @@
++import unittest
++
++from kvsvc.handler import Handler
++from kvsvc.store import KVStore
++
++
++class TtlTest(unittest.TestCase):
++    def test_expiry_and_stats(self):
++        now = [0.0]
++        h = Handler(KVStore(clock=lambda: now[0]))
++        h.handle({"op": "set", "key": "a", "value": 1, "ttl": 2})
++        self.assertEqual(h.handle({"op": "get", "key": "a"})["value"], 1)
++        now[0] = 2.0
++        self.assertEqual(h.handle({"op": "get", "key": "a"})["error"], "not_found")
++        self.assertEqual(h.handle({"op": "stats"}),
++                         {"ok": True, "hits": 1, "misses": 1, "expired": 1, "keys": 0})
++
++    def test_bad_ttl(self):
++        h = Handler(KVStore())
++        self.assertEqual(h.handle({"op": "set", "key": "a", "value": 1, "ttl": 0})["error"],
++                         "bad_request")

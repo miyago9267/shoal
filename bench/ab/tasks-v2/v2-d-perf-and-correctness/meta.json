@@ -1,0 +1,10 @@
+{
+  "id": "v2-d-perf-and-correctness",
+  "category": "perf",
+  "protected": [
+    "logpipe/report.py",
+    "logpipe/cli.py",
+    "logpipe/__main__.py"
+  ],
+  "timeout_s": 1200
+}

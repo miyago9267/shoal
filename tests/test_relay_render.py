@@ -24,6 +24,7 @@ from repo_fixtures import git  # noqa: E402
 from test_relay_runner import FAKE, SCHEMA, report  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "relay" / "relay.binding.toml"
+OVERLAY = ROOT / "bench" / "ab" / "relay.binding.toml"
 POLICY_DOC = "skills/shoal-orchestration/references/orchestration-policy.md"
 RELAY_FILES = (
     "tools/shoal_relay.py",
@@ -475,14 +476,96 @@ class WriteRelayIsolationTests(TempCase):
         )
         self.assertIn("fresh `verifier`", policy)
 
+    def test_shell_and_policy_explain_landing(self) -> None:
+        """fix/relay-landing：landed 為 true 時改動已在 primary checkout；false 時給 worktree 路徑與合併指令。"""
+        dist = render.RENDERERS["claude"](self.relay_root())
+        for name in ("executor", "applier"):
+            text = dist[f"agents/{name}.md"].decode("utf-8")
+            self.assertIn("`landing`", text)
+            self.assertIn("Do not commit, merge, apply or copy anything", text)
+        policy = dist[POLICY_DOC].decode("utf-8")
+        policy = policy[policy.index("Relayed roles") :]
+        self.assertIn("`landing.landed` is true they are already there", policy)
+        self.assertIn("`landing.worktree`", policy)
+        self.assertIn("diff --cached --binary HEAD | git apply`", policy)
+        self.assertNotIn("--3way", policy)
+
+    def test_policy_limits_the_merge_fallback(self) -> None:
+        """M1：只有 reason 以 `patch does not apply` 開頭才給合併指令；其他先檢查 worktree；非 done 不合併。M2：寫明 revert 指令。"""
+        dist = render.RENDERERS["claude"](self.relay_root())
+        policy = dist[POLICY_DOC].decode("utf-8")
+        policy = policy[policy.index("Relayed roles") :]
+        self.assertIn("starts with `patch does not apply`", policy)
+        self.assertIn("inspect that worktree first", policy)
+        self.assertIn("is not `done`, do not merge", policy)
+        self.assertIn("git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ <tree> <head> | git -C <primary> apply", policy)
+        for name in ("executor", "applier"):
+            text = dist[f"agents/{name}.md"].decode("utf-8")
+            self.assertNotIn("--3way", text)
+
     def test_shell_has_only_the_bash_tool_and_no_write_tools(self) -> None:
         dist = render.RENDERERS["claude"](self.relay_root())
         for name in ("executor", "applier"):
             fields = frontmatter(dist[f"agents/{name}.md"])
             self.assertEqual(fields["tools"], "Bash")
+            self.assertEqual(fields["isolation"], "worktree")
             self.assertFalse(
                 re.search(r"\b(Write|Edit|MultiEdit|NotebookEdit)\b", fields["tools"])
             )
+
+
+class OverlayTests(TempCase):
+    """--overlay：claude-plugin 在記憶體中把 overlay 合併進 claude binding 再 render；不寫回 hosts/*/binding.toml。"""
+
+    def test_overlay_renders_relay_shell_and_runner(self) -> None:
+        root = make_root(self.tmp, relay=None)
+        result = run_render(root, "claude-plugin", "--write", "--overlay", str(OVERLAY))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plugin = root / render.CLAUDE_PLUGIN
+        self.assertIn("tools: Bash", (plugin / "agents" / "executor.md").read_text(encoding="utf-8"))
+        self.assertTrue((plugin / "tools" / "shoal_relay.py").is_file())
+        self.assertEqual(
+            (root / "hosts" / "claude" / "binding.toml").read_bytes(),
+            (ROOT / "hosts" / "claude" / "binding.toml").read_bytes(),
+        )
+
+    def test_without_overlay_output_matches_committed_plugin(self) -> None:
+        root = make_root(self.tmp, relay=None)
+        result = run_render(root, "claude-plugin", "--write")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path in (root / render.CLAUDE_PLUGIN).rglob("*"):
+            if path.is_file():
+                rel = path.relative_to(root).as_posix()
+                self.assertEqual(path.read_bytes(), (ROOT / rel).read_bytes(), rel)
+
+    def test_check_without_overlay_passes_on_the_repo(self) -> None:
+        self.assertEqual(run_render(ROOT, "claude-plugin", "--check").returncode, 0)
+
+    def test_overlay_naming_a_security_role_fails(self) -> None:
+        overlay = self.tmp / "security.binding.toml"
+        overlay.write_text(
+            '[relay]\nshell_model = "haiku"\n\n[relay.roles]\nsecurity-reviewer = "codex"\n',
+            encoding="utf-8",
+        )
+        root = make_root(self.tmp, relay=None)
+        result = run_render(root, "claude-plugin", "--check", "--overlay", str(overlay))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("security-reviewer", result.stderr)
+        self.assertIn("security", result.stderr)
+
+    def test_overlay_redefining_an_existing_key_fails(self) -> None:
+        overlay = self.tmp / "clash.binding.toml"
+        overlay.write_text('role_text = "core"\n', encoding="utf-8")
+        root = make_root(self.tmp, relay=None)
+        result = run_render(root, "claude-plugin", "--check", "--overlay", str(overlay))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("role_text", result.stderr)
+
+    def test_overlay_is_only_for_claude_plugin(self) -> None:
+        root = make_root(self.tmp, relay=None)
+        result = run_render(root, "claude", "--check", "--overlay", str(OVERLAY))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("claude-plugin", result.stderr)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1 @@
+Our new hosting platform injects the database connection string as the environment variable `APP_DATABASE_URL`. Please make `appcfg` honor it: when it is set it should win over the URL from the config file, the same way the other env overrides work. Also update the README so ops can find the new variable alongside the existing ones.

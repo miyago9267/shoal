@@ -1,0 +1,13 @@
+diff --git a/pager/paginate.py b/pager/paginate.py
+index c3ceba2..24ca821 100644
+--- a/pager/paginate.py
++++ b/pager/paginate.py
+@@ -19,7 +19,7 @@ def page_count(total_items, page_size):
+     """Number of pages needed to show ``total_items`` items."""
+     if total_items <= 0:
+         return 0
+-    return (total_items + page_size) // page_size
++    return (total_items + page_size - 1) // page_size
+ 
+ 
+ def page_bounds(page, page_size):

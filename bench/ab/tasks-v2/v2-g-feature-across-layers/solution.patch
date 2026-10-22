@@ -1,0 +1,191 @@
+diff -ruN -x __pycache__ a/README.md b/README.md
+--- a/README.md	2026-10-16 11:16:29
++++ b/README.md	2026-10-16 11:16:29
+@@ -12,9 +12,10 @@
+ `clock` is a zero-argument callable returning an aware `datetime`.
+ 
+ Notes are always listed newest first (by `created_at`, ties broken by the
+-higher id first). Listing currently pages with `limit`/`offset`:
++higher id first). Listing pages with an opaque keyset cursor that stays
++stable while notes are added or deleted:
+ 
+-    GET /notes?limit=20&offset=40&tag=work
+-    -> {"items": [...], "total": 123}
++    GET /notes?limit=20&cursor=<next_cursor>&tag=work
++    -> {"items": [...], "next_cursor": "..." | null}
+ 
+ Run tests: `python3 -m unittest discover -s tests -t .`
+diff -ruN -x __pycache__ a/notes/cli.py b/notes/cli.py
+--- a/notes/cli.py	2026-10-16 11:16:29
++++ b/notes/cli.py	2026-10-16 11:16:29
+@@ -19,7 +19,7 @@
+     ls = sub.add_parser("list", help="list notes, newest first")
+     ls.add_argument("--tag")
+     ls.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+-    ls.add_argument("--offset", type=int, default=0)
++    ls.add_argument("--cursor", help="value printed as 'next cursor' by a previous call")
+ 
+     show = sub.add_parser("show", help="print one note")
+     show.add_argument("id", type=int)
+@@ -43,11 +43,12 @@
+             note = service.create_note(args.title, args.body, args.tag)
+             print(f"created {note.id}", file=out)
+         elif args.command == "list":
+-            notes, total = service.list_notes(tag=args.tag, limit=args.limit,
+-                                              offset=args.offset)
++            notes, next_cursor = service.list_notes(tag=args.tag, limit=args.limit,
++                                                    cursor=args.cursor)
+             for note in notes:
+                 print(format_line(note), file=out)
+-            print(f"({len(notes)} of {total})", file=out)
++            if next_cursor:
++                print(f"next cursor: {next_cursor}", file=out)
+         elif args.command == "show":
+             note = service.get_note(args.id)
+             print(format_line(note), file=out)
+diff -ruN -x __pycache__ a/notes/http.py b/notes/http.py
+--- a/notes/http.py	2026-10-16 11:16:29
++++ b/notes/http.py	2026-10-16 11:16:29
+@@ -44,6 +44,6 @@
+ 
+ def _list(service, query):
+     limit = _int_param(query, "limit", DEFAULT_LIMIT)
+-    offset = _int_param(query, "offset", 0)
+-    notes, total = service.list_notes(tag=query.get("tag"), limit=limit, offset=offset)
+-    return 200, {"items": [n.to_dict() for n in notes], "total": total}
++    notes, next_cursor = service.list_notes(tag=query.get("tag"), limit=limit,
++                                            cursor=query.get("cursor") or None)
++    return 200, {"items": [n.to_dict() for n in notes], "next_cursor": next_cursor}
+diff -ruN -x __pycache__ a/notes/repository.py b/notes/repository.py
+--- a/notes/repository.py	2026-10-16 11:16:29
++++ b/notes/repository.py	2026-10-16 11:16:29
+@@ -43,12 +43,18 @@
+             return "", []
+         return " WHERE id IN (SELECT note_id FROM note_tags WHERE tag = ?)", [tag]
+ 
+-    def list(self, tag=None, limit=None, offset=0):
++    def list(self, tag=None, limit=None, before=None):
++        """Newest first. ``before`` is a ``(created_at, id)`` keyset position."""
+         where, args = self._where(tag)
++        if before is not None:
++            created_at, note_id = before
++            where += " AND " if where else " WHERE "
++            where += "(created_at < ? OR (created_at = ? AND id < ?))"
++            args += [_to_db(created_at), _to_db(created_at), note_id]
+         sql = "SELECT * FROM notes" + where + " ORDER BY created_at DESC, id DESC"
+         if limit is not None:
+-            sql += " LIMIT ? OFFSET ?"
+-            args += [limit, offset]
++            sql += " LIMIT ?"
++            args.append(limit)
+         return self._hydrate(self.conn.execute(sql, args).fetchall())
+ 
+     def count(self, tag=None):
+diff -ruN -x __pycache__ a/notes/service.py b/notes/service.py
+--- a/notes/service.py	2026-10-16 11:16:29
++++ b/notes/service.py	2026-10-16 11:16:29
+@@ -1,4 +1,7 @@
+ """Business rules: validation, defaults and listing."""
++import base64
++import binascii
++import json
+ import re
+ from datetime import datetime, timezone
+ 
+@@ -15,6 +18,23 @@
+     return datetime.now(timezone.utc)
+ 
+ 
++def encode_cursor(note):
++    raw = json.dumps([note.created_at.isoformat(), note.id]).encode()
++    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
++
++
++def decode_cursor(cursor):
++    try:
++        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
++        created_at, note_id = json.loads(raw)
++        when = datetime.fromisoformat(created_at)
++        if when.tzinfo is None or not isinstance(note_id, int):
++            raise ValueError
++    except (binascii.Error, UnicodeDecodeError, TypeError, ValueError):
++        raise ValueError("invalid cursor") from None
++    return when, note_id
++
++
+ class NoteService:
+     def __init__(self, repo, clock=None):
+         self.repo = repo
+@@ -43,14 +63,20 @@
+         if not self.repo.delete(note_id):
+             raise NotFound(note_id)
+ 
+-    def list_notes(self, tag=None, limit=DEFAULT_LIMIT, offset=0):
+-        """Return ``(notes, total)`` for one page, newest first."""
++    def list_notes(self, tag=None, limit=DEFAULT_LIMIT, cursor=None):
++        """Return ``(notes, next_cursor)`` for one page, newest first.
++
++        The cursor is a keyset position, so pages stay stable while notes are
++        added or deleted between requests. ``next_cursor`` is None at the end.
++        """
+         limit = self._check_limit(limit)
+-        if offset < 0:
+-            raise ValueError("offset must not be negative")
+         if tag is not None:
+             tag = self._check_tag(tag)
+-        return self.repo.list(tag=tag, limit=limit, offset=offset), self.repo.count(tag)
++        before = decode_cursor(cursor) if cursor else None
++        rows = self.repo.list(tag=tag, limit=limit + 1, before=before)
++        page = rows[:limit]
++        next_cursor = encode_cursor(page[-1]) if len(rows) > limit else None
++        return page, next_cursor
+ 
+     @staticmethod
+     def _check_limit(limit):
+diff -ruN -x __pycache__ a/tests/test_http.py b/tests/test_http.py
+--- a/tests/test_http.py	2026-10-16 11:16:29
++++ b/tests/test_http.py	2026-10-16 11:16:29
+@@ -10,6 +10,10 @@
+         status, body = handle(svc, "GET", "/notes", {"limit": "2"})
+         self.assertEqual(status, 200)
+         self.assertEqual([n["title"] for n in body["items"]], ["note 5", "note 4"])
++        status, body = handle(svc, "GET", "/notes", {"limit": "4", "cursor": body["next_cursor"]})
++        self.assertEqual([n["title"] for n in body["items"]], ["note 3", "note 2", "note 1"])
++        self.assertIsNone(body["next_cursor"])
++        self.assertEqual(handle(svc, "GET", "/notes", {"cursor": "%%"})[0], 400)
+ 
+     def test_create_get_delete(self):
+         svc = seeded(0)
+diff -ruN -x __pycache__ a/tests/test_service.py b/tests/test_service.py
+--- a/tests/test_service.py	2026-10-16 11:16:29
++++ b/tests/test_service.py	2026-10-16 11:16:29
+@@ -6,17 +6,23 @@
+ 
+ 
+ class ServiceTest(unittest.TestCase):
+-    def test_newest_first_with_offset(self):
++    def test_newest_first_with_cursor(self):
+         svc = seeded(5)
+-        notes, total = svc.list_notes(limit=2, offset=1)
+-        self.assertEqual([n.title for n in notes], ["note 4", "note 3"])
+-        self.assertEqual(total, 5)
++        first, cursor = svc.list_notes(limit=2)
++        self.assertEqual([n.title for n in first], ["note 5", "note 4"])
++        svc.create_note("newer")
++        notes, cursor = svc.list_notes(limit=2, cursor=cursor)
++        self.assertEqual([n.title for n in notes], ["note 3", "note 2"])
++        notes, cursor = svc.list_notes(limit=2, cursor=cursor)
++        self.assertEqual(([n.title for n in notes], cursor), (["note 1"], None))
++        with self.assertRaises(ValueError):
++            svc.list_notes(cursor="bogus")
+ 
+     def test_tag_filter(self):
+         svc = seeded(6, tags_every=2)
+-        notes, total = svc.list_notes(tag="WORK")
++        notes, cursor = svc.list_notes(tag="WORK")
+         self.assertEqual([n.title for n in notes], ["note 6", "note 4", "note 2"])
+-        self.assertEqual(total, 3)
++        self.assertIsNone(cursor)
+ 
+     def test_validation(self):
+         svc = seeded(0)

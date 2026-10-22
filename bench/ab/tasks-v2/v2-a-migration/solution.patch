@@ -1,0 +1,377 @@
+diff --git a/README.md b/README.md
+index 070e2dc..76b3a7a 100644
+--- a/README.md
++++ b/README.md
+@@ -4,9 +4,10 @@ A tiny personal library tracker. Books live in a single JSON file
+ (`library.json` by default) and are managed with a small CLI.
+ 
+ ```sh
+-python3 -m shelf --db library.json add "Dune" --author "Frank Herbert" --year 1965
++python3 -m shelf --db library.json add "Dune" --author "Frank Herbert" --published 1965 --format ebook
+ python3 -m shelf --db library.json list
+ python3 -m shelf --db library.json list --author herbert
++python3 -m shelf --db library.json list --format ebook
+ python3 -m shelf --db library.json show 1
+ python3 -m shelf --db library.json remove 1
+ ```
+@@ -18,12 +19,14 @@ from shelf.model import Book
+ from shelf.storage import load, save
+ 
+ lib = load("library.json")          # missing file -> empty Library
+-lib.add(Book(id=0, title="Dune", author="Frank Herbert", year=1965))
++lib.add(Book(id=0, title="Dune", author="Frank Herbert", published=1965, format="print"))
+ save(lib, "library.json")
+ ```
+ 
+ `Library.add` assigns the next free id when `id` is 0. See
+ [docs/FORMAT.md](docs/FORMAT.md) for the on-disk format.
++The file uses schema 2; schema 1 files still load and are upgraded the
++next time the library is saved. `--year` is kept as an alias of `--published`.
+ 
+ ## Tests
+ 
+diff --git a/docs/FORMAT.md b/docs/FORMAT.md
+index eaadec7..add8081 100644
+--- a/docs/FORMAT.md
++++ b/docs/FORMAT.md
+@@ -1,23 +1,34 @@
+ # On-disk format
+ 
+-The library file is a JSON object:
++The library file is a JSON object (schema 2):
+ 
+ ```json
+ {
+-  "schema": 1,
++  "schema": 2,
+   "books": [
+-    {"id": 1, "title": "Dune", "author": "Frank Herbert", "year": 1965}
++    {"id": 1, "title": "Dune", "author": "Frank Herbert",
++     "published": 1965, "format": "print"}
+   ]
+ }
+ ```
+ 
+-| field    | type   | notes                                  |
+-|----------|--------|----------------------------------------|
+-| `id`     | int    | positive, unique within the file       |
+-| `title`  | string | non-empty                              |
+-| `author` | string | non-empty                              |
+-| `year`   | int    | publication year, `null` when unknown  |
++| field       | type   | notes                                        |
++|-------------|--------|----------------------------------------------|
++| `id`        | int    | positive, unique within the file             |
++| `title`     | string | non-empty                                    |
++| `author`    | string | non-empty                                    |
++| `published` | int    | publication year, `null` when unknown        |
++| `format`    | string | required: `print`, `ebook` or `audio`        |
+ 
+-`schema` is the format version. Files with any other `schema` value are
+-rejected with `StorageError`. Writes go to a temporary file first and are then
+-renamed over the target, so a crash never leaves a half-written library.
++`schema` is the format version. `load` accepts schema 1 and 2; any other
++value is rejected with `StorageError`. `save` always writes schema 2.
++
++## Migration from schema 1
++
++Schema 1 records used `year` instead of `published` and had no `format`.
++They are migrated in memory on load: `year` becomes `published` and `format`
++becomes `"print"`. Loading never rewrites the file; it is upgraded the next
++time the library is saved (for example by `add` or `remove`).
++
++Writes go to a temporary file first and are then renamed over the target, so
++a crash never leaves a half-written library.
+diff --git a/shelf/cli.py b/shelf/cli.py
+index d5007ba..33219d9 100644
+--- a/shelf/cli.py
++++ b/shelf/cli.py
+@@ -4,7 +4,7 @@ import sys
+ 
+ from . import formatting, storage
+ from .errors import ShelfError
+-from .model import Book
++from .model import FORMATS, Book
+ 
+ 
+ def build_parser():
+@@ -15,11 +15,15 @@ def build_parser():
+     add = sub.add_parser("add", help="add a book")
+     add.add_argument("title")
+     add.add_argument("--author", required=True)
+-    add.add_argument("--year", type=int)
++    add.add_argument("--published", "--year", dest="published", type=int,
++                     help="publication year (--year is an alias)")
++    add.add_argument("--format", choices=FORMATS, default="print")
+ 
+     lst = sub.add_parser("list", help="list books")
+     lst.add_argument("--author", help="filter by author substring")
+-    lst.add_argument("--year", type=int, help="only books from this year")
++    lst.add_argument("--published", "--year", dest="published", type=int,
++                     help="only books published in this year")
++    lst.add_argument("--format", choices=FORMATS, help="only books in this format")
+ 
+     show = sub.add_parser("show", help="show one book")
+     show.add_argument("id", type=int)
+@@ -33,15 +37,18 @@ def build_parser():
+ 
+ 
+ def cmd_add(lib, args):
+-    book = lib.add(Book(id=0, title=args.title, author=args.author, year=args.year))
++    book = lib.add(Book(id=0, title=args.title, author=args.author,
++                        published=args.published, format=args.format))
+     print(f"added #{book.id}: {book.title}")
+     return True
+ 
+ 
+ def cmd_list(lib, args):
+     books = lib.by_author(args.author) if args.author else lib.all()
+-    if args.year is not None:
+-        books = [book for book in books if book.year == args.year]
++    if args.published is not None:
++        books = [book for book in books if book.published == args.published]
++    if args.format:
++        books = [book for book in books if book.format == args.format]
+     print(formatting.table(books))
+     return False
+ 
+diff --git a/shelf/formatting.py b/shelf/formatting.py
+index 0249165..d626cf3 100644
+--- a/shelf/formatting.py
++++ b/shelf/formatting.py
+@@ -1,6 +1,7 @@
+ """Plain-text rendering for the CLI."""
+ 
+-COLUMNS = (("id", "ID"), ("title", "TITLE"), ("author", "AUTHOR"), ("year", "YEAR"))
++COLUMNS = (("id", "ID"), ("title", "TITLE"), ("author", "AUTHOR"),
++           ("published", "PUBLISHED"), ("format", "FORMAT"))
+ 
+ 
+ def _cell(value):
+@@ -21,5 +22,5 @@ def table(books, columns=COLUMNS):
+ def detail(book):
+     lines = []
+     for attr, title in COLUMNS:
+-        lines.append(f"{title.lower():>7}: {_cell(getattr(book, attr))}")
++        lines.append(f"{title.lower():>9}: {_cell(getattr(book, attr))}")
+     return "\n".join(lines)
+diff --git a/shelf/library.py b/shelf/library.py
+index fce546a..0c8543f 100644
+--- a/shelf/library.py
++++ b/shelf/library.py
+@@ -45,7 +45,7 @@ class Library:
+         return [book for book in self.all() if needle in book.author.casefold()]
+ 
+     def in_year(self, year):
+-        return [book for book in self.all() if book.year == year]
++        return [book for book in self.all() if book.published == year]
+ 
+     def search(self, text):
+         needle = text.casefold()
+diff --git a/shelf/model.py b/shelf/model.py
+index c45bcf5..b16b605 100644
+--- a/shelf/model.py
++++ b/shelf/model.py
+@@ -3,7 +3,9 @@ from dataclasses import dataclass
+ 
+ from .errors import ValidationError
+ 
+-FIELDS = ("id", "title", "author", "year")
++FIELDS = ("id", "title", "author", "published", "format")
++FORMATS = ("print", "ebook", "audio")
++DEFAULT_FORMAT = "print"
+ 
+ 
+ @dataclass
+@@ -11,7 +13,8 @@ class Book:
+     id: int
+     title: str
+     author: str
+-    year: "int | None" = None
++    published: "int | None" = None
++    format: str = DEFAULT_FORMAT
+ 
+     def validate(self):
+         """Raise ValidationError when the record breaks a model rule."""
+@@ -21,28 +24,43 @@ class Book:
+             raise ValidationError("title must be a non-empty string")
+         if not isinstance(self.author, str) or not self.author.strip():
+             raise ValidationError("author must be a non-empty string")
+-        if self.year is not None:
+-            if not isinstance(self.year, int) or isinstance(self.year, bool):
+-                raise ValidationError(f"year must be an integer: {self.year!r}")
+-            if not 0 < self.year < 3000:
+-                raise ValidationError(f"year out of range: {self.year}")
++        if self.published is not None:
++            if not isinstance(self.published, int) or isinstance(self.published, bool):
++                raise ValidationError(f"published must be an integer: {self.published!r}")
++            if not 0 < self.published < 3000:
++                raise ValidationError(f"published out of range: {self.published}")
++        if self.format not in FORMATS:
++            raise ValidationError(
++                f"format must be one of {', '.join(FORMATS)}: {self.format!r}")
+         return self
+ 
+     def to_dict(self):
+         return {"id": self.id, "title": self.title, "author": self.author,
+-                "year": self.year}
++                "published": self.published, "format": self.format}
+ 
+     @classmethod
+     def from_dict(cls, data):
+-        """Build a Book from one record of the on-disk format."""
++        """Build a Book from one schema 2 record."""
+         if not isinstance(data, dict):
+             raise ValidationError(f"record must be an object, got {type(data).__name__}")
+-        missing = [name for name in ("id", "title", "author") if name not in data]
++        missing = [name for name in ("id", "title", "author", "format") if name not in data]
+         if missing:
+             raise ValidationError(f"record is missing {', '.join(missing)}")
+         unknown = sorted(set(data) - set(FIELDS))
+         if unknown:
+             raise ValidationError(f"unknown field(s): {', '.join(unknown)}")
+         book = cls(id=data["id"], title=data["title"], author=data["author"],
+-                   year=data.get("year"))
++                   published=data.get("published"), format=data["format"])
+         return book.validate()
++
++
++def migrate_v1(data):
++    """Turn one schema 1 record into a schema 2 record (pure; no I/O)."""
++    if not isinstance(data, dict):
++        raise ValidationError(f"record must be an object, got {type(data).__name__}")
++    record = dict(data)
++    if "published" in record or "format" in record:
++        raise ValidationError("schema 1 record has schema 2 fields")
++    record["published"] = record.pop("year", None)
++    record["format"] = DEFAULT_FORMAT
++    return record
+diff --git a/shelf/storage.py b/shelf/storage.py
+index 9868b09..24d3607 100644
+--- a/shelf/storage.py
++++ b/shelf/storage.py
+@@ -5,13 +5,17 @@ import tempfile
+ 
+ from .errors import StorageError, ValidationError
+ from .library import Library
+-from .model import Book
++from .model import Book, migrate_v1
+ 
+-SCHEMA_VERSION = 1
++SCHEMA_VERSION = 2
++MIGRATIONS = {1: migrate_v1}
+ 
+ 
+ def load(path):
+-    """Read ``path``; a missing file is an empty library."""
++    """Read ``path`` (schema 1 or 2); a missing file is an empty library.
++
++    Schema 1 records are migrated in memory only; the file is untouched.
++    """
+     if not os.path.exists(path):
+         return Library()
+     try:
+@@ -22,19 +26,22 @@ def load(path):
+     if not isinstance(payload, dict):
+         raise StorageError(f"{path}: top level must be an object")
+     version = payload.get("schema")
+-    if version != SCHEMA_VERSION:
++    if version != SCHEMA_VERSION and version not in MIGRATIONS:
+         raise StorageError(f"{path}: unsupported schema {version!r}")
+     records = payload.get("books", [])
+     if not isinstance(records, list):
+         raise StorageError(f"{path}: 'books' must be a list")
++    migrate = MIGRATIONS.get(version)
+     try:
++        if migrate:
++            records = [migrate(record) for record in records]
+         return Library(Book.from_dict(record) for record in records)
+     except ValidationError as exc:
+         raise StorageError(f"{path}: {exc}") from exc
+ 
+ 
+ def save(library, path):
+-    """Atomically write ``library`` to ``path``."""
++    """Atomically write ``library`` to ``path`` as schema 2."""
+     payload = {
+         "schema": SCHEMA_VERSION,
+         "books": [book.to_dict() for book in library.all()],
+diff --git a/tests/test_library.py b/tests/test_library.py
+index 448753f..74a4034 100644
+--- a/tests/test_library.py
++++ b/tests/test_library.py
+@@ -7,9 +7,9 @@ from shelf.model import Book
+ 
+ def sample():
+     lib = Library()
+-    lib.add(Book(id=0, title="Dune", author="Frank Herbert", year=1965))
+-    lib.add(Book(id=0, title="Emma", author="Jane Austen", year=1815))
+-    lib.add(Book(id=0, title="Persuasion", author="Jane Austen", year=1817))
++    lib.add(Book(id=0, title="Dune", author="Frank Herbert", published=1965))
++    lib.add(Book(id=0, title="Emma", author="Jane Austen", published=1815))
++    lib.add(Book(id=0, title="Persuasion", author="Jane Austen", published=1817))
+     return lib
+ 
+ 
+diff --git a/tests/test_model.py b/tests/test_model.py
+index 0fb90b9..136e276 100644
+--- a/tests/test_model.py
++++ b/tests/test_model.py
+@@ -6,17 +6,22 @@ from shelf.model import Book
+ 
+ class BookTest(unittest.TestCase):
+     def test_round_trip(self):
+-        book = Book(id=3, title="Dune", author="Frank Herbert", year=1965)
++        book = Book(id=3, title="Dune", author="Frank Herbert", published=1965)
+         self.assertEqual(Book.from_dict(book.to_dict()), book)
+ 
+-    def test_year_optional(self):
+-        book = Book.from_dict({"id": 1, "title": "Beowulf", "author": "Unknown"})
+-        self.assertIsNone(book.year)
++    def test_published_optional(self):
++        book = Book.from_dict({"id": 1, "title": "Beowulf", "author": "Unknown",
++                              "format": "audio"})
++        self.assertIsNone(book.published)
+ 
+     def test_rejects_empty_title(self):
+         with self.assertRaises(ValidationError):
+             Book(id=1, title="  ", author="x").validate()
+ 
++    def test_requires_format(self):
++        with self.assertRaises(ValidationError):
++            Book.from_dict({"id": 1, "title": "t", "author": "a"})
++
+     def test_rejects_unknown_field(self):
+         with self.assertRaises(ValidationError):
+             Book.from_dict({"id": 1, "title": "t", "author": "a", "isbn": "1"})
+diff --git a/tests/test_storage.py b/tests/test_storage.py
+index 604110b..c486f36 100644
+--- a/tests/test_storage.py
++++ b/tests/test_storage.py
+@@ -21,7 +21,7 @@ class StorageTest(unittest.TestCase):
+         self.assertEqual(len(load(self.path)), 0)
+ 
+     def test_save_then_load(self):
+-        lib = Library([Book(id=1, title="Dune", author="Frank Herbert", year=1965)])
++        lib = Library([Book(id=1, title="Dune", author="Frank Herbert", published=1965)])
+         save(lib, self.path)
+         again = load(self.path)
+         self.assertEqual(again.get(1).title, "Dune")
+@@ -34,6 +34,17 @@ class StorageTest(unittest.TestCase):
+ 
+     def test_rejects_bad_record(self):
+         with open(self.path, "w") as fh:
+-            json.dump({"schema": 1, "books": [{"id": 1, "title": ""}]}, fh)
++            json.dump({"schema": 2, "books": [{"id": 1, "title": ""}]}, fh)
+         with self.assertRaises(StorageError):
+             load(self.path)
++
++
++class MigrationTest(unittest.TestCase):
++    def test_v1_file_loads(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = os.path.join(tmp, "lib.json")
++            with open(path, "w") as fh:
++                json.dump({"schema": 1, "books": [
++                    {"id": 1, "title": "Dune", "author": "F", "year": 1965}]}, fh)
++            book = load(path).get(1)
++        self.assertEqual((book.published, book.format), (1965, "print"))

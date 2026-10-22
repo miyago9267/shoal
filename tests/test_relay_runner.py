@@ -81,6 +81,16 @@ for line in mode.get("stderr", []):
     print(line, file=sys.stderr, flush=True)
 for name in mode.get("write", []):
     (cwd / name).write_text("x")
+for name, body in mode.get("files", {}).items():
+    if body is None:
+        (cwd / name).unlink()
+        continue
+    (cwd / name).parent.mkdir(parents=True, exist_ok=True)
+    (cwd / name).write_bytes(bytes.fromhex(body[4:]) if body.startswith("hex:") else body.encode())
+for name, target in mode.get("links", {}).items():
+    os.symlink(target, cwd / name)
+for name, perm in mode.get("chmod", {}).items():
+    os.chmod(cwd / name, int(perm, 8))
 behavior = mode.get("exec", "ok")
 if behavior == "sleep":
     time.sleep(120)
@@ -126,7 +136,7 @@ def alive(pid: int) -> bool:
     return True
 
 
-class RelayRunner(unittest.TestCase):
+class RelayBase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(os.path.realpath(self._tmp.name))
@@ -252,6 +262,8 @@ class RelayRunner(unittest.TestCase):
             time.sleep(0.05)
         self.fail("fake vendor never started its grandchild")
 
+
+class RelayRunner(RelayBase):
     # S1.1 / S1.2 / S1.2a / S1.15
     def test_s1_1_command_shape_stdin_and_success(self):
         hb = self.run_relay()
@@ -300,6 +312,15 @@ class RelayRunner(unittest.TestCase):
         )
         self.assertIn("do not spawn subagents", prompt)
         self.assertTrue(prompt.endswith("Implement the thing.\n"))
+        preamble = prompt.split("\n\n---\n\n", 1)[0]
+        for rule in (
+            "Do not run git commit, push, branch, stash",
+            "writes to the git directory",
+            "`blocked` only when the task cannot be done without information or permission you do not have",
+            "return `done` and list the check under `unverified` with the reason",
+            "`failed` when you attempted the change and could not complete it",
+        ):
+            self.assertIn(rule, preamble)
 
     def test_s1_15_env_allowlist_tmpdir_and_nonce(self):
         self.run_relay()
@@ -432,6 +453,39 @@ class RelayRunner(unittest.TestCase):
         )
         self.set_mode(handback=report(files=[str(self.wt / "a.txt")]), write=["a.txt"])
         self.assertFalse(self.run_relay()["files_mismatch"])
+
+    # S1.17：自報路徑的註記、./、rename 寫法正規化後才比對；不一致只標出、不改 status
+    def test_s1_17_annotated_paths_are_not_a_mismatch(self):
+        (self.wt / "README").unlink()
+        for files in (
+            ["README (deleted)", "a.txt (new)"],
+            ["./a.txt", "./README"],
+            ["README -> a.txt"],
+            ["a.txt (renamed from README)"],
+            [str(self.wt / "a.txt") + " (modified)", "README (deleted)"],
+        ):
+            with self.subTest(files=files):
+                self.set_mode(handback=report(files=files), write=["a.txt"])
+                hb = self.run_relay()
+                self.assertEqual(hb["status"], "done", hb)
+                self.assertEqual(
+                    (hb["changed_files"], hb["reported_files"], hb["files_mismatch"]),
+                    (["README", "a.txt"], files, False),
+                )
+
+    def test_s1_17_mismatch_never_changes_status(self):
+        for status in ("done", "failed", "blocked"):
+            with self.subTest(status=status):
+                self.set_mode(
+                    handback=report(files=["b.txt (new)"], status=status),
+                    write=["a.txt"],
+                )
+                hb = self.run_relay()
+                self.assertEqual(hb["status"], status, hb)
+                self.assertEqual(
+                    (hb["changed_files"], hb["reported_files"], hb["files_mismatch"]),
+                    (["a.txt"], ["b.txt (new)"], True),
+                )
 
     def test_s1_17_vendor_extra_field_or_long_string_fails(self):
         for handback in (report(note="x"), report(summary="y" * 4001)):
@@ -579,6 +633,261 @@ class RelayRunner(unittest.TestCase):
         real = (ROOT / "hooks" / "shoal_guard.py").read_text(encoding="utf-8")
         self.sibling_guard(real + "\n\ndef _guard_dir(env, home):\n    raise OSError('boom')\n")
         self.assert_no_spawn(self.run_relay(), "guard state dir")
+
+
+class RelayLanding(RelayBase):
+    """fix/relay-landing：done 且有改動時，runner 把 worktree 的改動以 git apply 落到 primary checkout（不 commit）。"""
+
+    BINARY = "00ff10807f0d0a00c3"
+    SHA = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
+
+    def heads(self):
+        return [git(p, "rev-parse", "HEAD").strip() for p in (self.main, self.wt)]
+
+    def relay_files(self, files, links=None, status="done", chmod=None, reported=None):
+        self.set_mode(
+            handback=report(
+                files=list(files) + list(links or {}) if reported is None else reported,
+                status=status,
+            ),
+            files=files,
+            links=links or {},
+            chmod=chmod or {},
+        )
+        before = self.heads()
+        hb = self.run_relay()
+        self.assertEqual(self.heads(), before)  # 兩邊都沒有 commit
+        self.assertEqual(git(self.main, "diff", "--cached", "--name-only"), "")  # primary index 不動
+        return hb
+
+    def assert_landed(self, hb):
+        self.assertEqual(hb["status"], "done", hb)
+        landing = hb["landing"]
+        self.assertEqual(
+            {k: landing[k] for k in ("landed", "reason", "worktree")},
+            {"landed": True, "reason": None, "worktree": str(self.wt)},
+        )
+        self.assertEqual(landing["head"], git(self.main, "rev-parse", "HEAD").strip())
+        self.assertRegex(landing["tree"], self.SHA)
+        self.assertEqual(git(self.main, "cat-file", "-t", landing["tree"]).strip(), "tree")
+
+    def assert_not_landed(self, hb, needle, status="done"):
+        self.assertEqual(hb["status"], status, hb)
+        self.assertIs(hb["landing"]["landed"], False, hb)
+        self.assertEqual(hb["landing"]["worktree"], str(self.wt))
+        self.assertIn(needle, hb["landing"]["reason"])
+
+    def assert_refused(self, hb, status="done"):
+        self.assert_not_landed(hb, "refused", status=status)
+        self.assertTrue(hb["landing"]["reason"].startswith("refused"), hb["landing"])
+
+    def reset_worktree(self):
+        git(self.wt, "reset", "-q", "--hard")
+        git(self.wt, "clean", "-qfdx")
+
+    def primary_status(self):
+        return git(self.main, "status", "--porcelain", "--untracked-files=all")
+
+    def test_tracked_edit_lands_in_primary(self):
+        self.assert_landed(self.relay_files({"README": "edited\n"}))
+        self.assertEqual((self.main / "README").read_text(), "edited\n")
+        self.assertEqual(self.primary_status(), " M README\n")
+
+    def test_new_text_and_binary_files_land_untracked(self):
+        hb = self.relay_files({"pkg/new.py": "print('hi')\n", "img.bin": "hex:" + self.BINARY})
+        self.assert_landed(hb)
+        self.assertEqual((self.main / "pkg" / "new.py").read_text(), "print('hi')\n")
+        self.assertEqual((self.main / "img.bin").read_bytes(), bytes.fromhex(self.BINARY))
+        self.assertEqual(self.primary_status(), "?? img.bin\n?? pkg/new.py\n")
+
+    def test_deleted_file_lands(self):
+        self.assert_landed(self.relay_files({"README": None}))
+        self.assertFalse((self.main / "README").exists())
+
+    def test_refused_paths_are_not_landed(self):
+        for files, links in (
+            ({".claude/settings.json": "{}", "ok.txt": "ok"}, None),
+            ({"sub/.Claude/x": "x"}, None),
+            ({"deep/.codex/config.toml": "x"}, None),
+            ({}, {"escape": "../../outside"}),
+        ):
+            with self.subTest(files=files, links=links):
+                self.reset_worktree()
+                self.assert_refused(self.relay_files(files, links))
+                self.assertEqual(self.primary_status(), "")
+
+    def test_h1_agent_instruction_and_autorun_files_are_refused(self):
+        """H1：agent 指令檔與自動執行設定檔（NFKC、去 Cf、casefold 後比對）整份拒絕。"""
+        for path in (
+            "CLAUDE.md",
+            "docs/claude.md",
+            "CLAUDE.local.md",
+            "pkg/AGENTS.md",
+            "GEMINI.md",
+            "ＡＧＥＮＴＳ.md",  # 全形，NFKC 後是 AGENTS.md
+            "CLAUDE‍.md",  # U+200D 是 Cf
+            ".mcp.json",
+            ".gitattributes",
+            "sub/.gitattributes",
+            ".gitmodules",
+            ".envrc",
+            ".vscode/settings.json",
+            ".husky/pre-commit",
+            "tools/.githooks/pre-push",
+            ".pre-commit-config.yaml",
+        ):
+            with self.subTest(path=path):
+                self.reset_worktree()
+                self.assert_refused(self.relay_files({path: "x\n", "ok.txt": "ok\n"}))
+                self.assertEqual(self.primary_status(), "")
+
+    def test_h1_exec_bit_is_refused(self):
+        """H1：新檔 mode 100755，或既有檔改成 100755，都整份拒絕。"""
+        for files, chmod in (
+            ({"run.sh": "echo hi\n"}, {"run.sh": "755"}),
+            ({"README": "edited\n"}, {"README": "755"}),
+            ({}, {"README": "755"}),
+        ):
+            with self.subTest(files=files, chmod=chmod):
+                self.reset_worktree()
+                reported = sorted(set(files) | set(chmod))
+                self.assert_refused(self.relay_files(files, chmod=chmod, reported=reported))
+                self.assertEqual(self.primary_status(), "")
+                self.assertEqual((self.main / "README").read_text(), "r")
+
+    def test_m2_primary_head_must_equal_worktree_base(self):
+        (self.main / "later.txt").write_text("later\n")
+        git(self.main, "add", "later.txt")
+        git(self.main, "commit", "-q", "-m", "later")
+        self.assert_refused(self.relay_files({"README": "edited\n"}))
+        self.assertEqual((self.main / "README").read_text(), "r")
+        self.assertEqual(self.primary_status(), "")
+
+    def test_m2_dirty_affected_path_in_primary_is_refused(self):
+        for setup, files in (
+            ({"README": "primary edit\n"}, {"README": "worktree edit\n"}),
+            ({"new.txt": "primary untracked\n"}, {"new.txt": "worktree\n"}),
+        ):
+            with self.subTest(setup=setup):
+                self.reset_worktree()
+                git(self.main, "checkout", "-q", "--", "README")
+                git(self.main, "clean", "-qfdx")
+                for name, body in setup.items():
+                    (self.main / name).write_text(body)
+                before = self.primary_status()
+                self.assert_refused(self.relay_files(files))
+                self.assertEqual(self.primary_status(), before)
+                for name, body in setup.items():
+                    self.assertEqual((self.main / name).read_text(), body)
+
+    def test_m2_unrelated_dirty_path_still_lands(self):
+        (self.main / "notes.txt").write_text("mine\n")
+        self.assert_landed(self.relay_files({"README": "edited\n"}))
+        self.assertEqual((self.main / "notes.txt").read_text(), "mine\n")
+
+    def test_m2_revert_command_restores_primary(self):
+        """M2：addendum 寫的 `git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ <tree> <head> | git -C <primary> apply` 能把落地內容整份撤回。"""
+        hb = self.relay_files(
+            {"README": "edited\n", "pkg/new.py": "x\n", "img.bin": "hex:" + self.BINARY}
+        )
+        self.assert_landed(hb)
+        tree, head = hb["landing"]["tree"], hb["landing"]["head"]
+        done = subprocess.run(
+            f"git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ {tree} {head} | git -C '{self.main}' apply",
+            shell=True,
+            cwd=self.main,
+            env={**self.env(), "GIT_CONFIG_NOSYSTEM": "1"},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.primary_status(), "")
+        self.assertEqual((self.main / "README").read_text(), "r")
+        policy = (ROOT / "hosts" / "claude" / "relay" / "policy-addenda" / "orchestration.toml").read_text()
+        self.assertIn("git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ <tree> <head> | git -C <primary> apply", policy)
+
+    def test_apply_failure_keeps_done_and_leaves_primary_untouched(self):
+        # primary 有被 ignore 的同名檔：status 看不到，但 git apply 仍會拒絕覆寫
+        (self.main / "sub").mkdir()
+        (self.main / "sub" / ".gitignore").write_text("new.txt\n.gitignore\n")
+        (self.main / "sub" / "new.txt").write_text("primary\n")
+        marker = "CONTENT-MARKER-0f9e"
+        self.set_mode(
+            handback=report(files=["README", "sub/new.txt"]),
+            files={"README": marker + "\n", "sub/new.txt": marker},
+        )
+        done = subprocess.run(self.argv(), env=self.env(), capture_output=True, text=True, timeout=60)
+        hb = self.parse(done.stdout)
+        self.assertEqual(done.returncode, 0)
+        self.assert_not_landed(hb, "does not apply")
+        self.assertTrue(hb["landing"]["reason"].startswith("patch does not apply"))
+        self.assertNotIn(marker, done.stdout + done.stderr)  # 不轉印檔案內容
+        self.assertEqual((self.main / "README").read_text(), "r")  # 全有或全無
+        self.assertEqual((self.main / "sub" / "new.txt").read_text(), "primary\n")
+        self.assertEqual((self.wt / "sub" / "new.txt").read_text(), marker)  # 改動仍在 worktree
+
+    def test_m3_git_dir_swapped_during_run_is_refused(self):
+        """M3：vendor 把 worktree 的 .git 指到別的 repo，post-run 任何 git 呼叫前就拒絕。"""
+        other = self.tmp / "other"
+        other.mkdir()
+        (other / "README").write_text("o")
+        git(other, "init", "-q")
+        git(other, "add", "README")
+        git(other, "commit", "-q", "-m", "init")
+        git(other, "worktree", "add", "-q", "-b", "evil", str(self.tmp / "other-wt"))
+        pointer = (self.tmp / "other-wt" / ".git").read_text()
+        self.set_mode(
+            handback=report(files=["README"]),
+            files={"README": "edited\n", ".git": pointer},
+        )
+        hb = self.run_relay()
+        self.assert_refused(hb, status="failed")
+        self.assertEqual(hb["changed_files"], [])
+        self.assertEqual((self.main / "README").read_text(), "r")
+        self.assertEqual(self.primary_status(), "")
+
+    def test_l1_files_mismatch_is_refused(self):
+        hb = self.relay_files({"README": "edited\n", "extra.txt": "x\n"}, reported=["README"])
+        self.assertIs(hb["files_mismatch"], True)
+        self.assert_refused(hb)
+        self.assertEqual((self.main / "README").read_text(), "r")
+        self.assertEqual(self.primary_status(), "")
+
+    def test_l2_total_size_over_cap_is_refused(self):
+        big = "a" * (3 * 1024 * 1024)
+        self.assert_refused(self.relay_files({"big1.txt": big, "big2.txt": big}))
+        self.assertEqual(self.primary_status(), "")
+
+    def test_only_done_is_landed(self):
+        for status in ("failed", "blocked"):
+            with self.subTest(status=status):
+                hb = self.relay_files({"README": "half\n"}, status=status)
+                self.assert_not_landed(hb, f"status is {status}", status=status)
+                self.assertEqual((self.main / "README").read_text(), "r")
+
+    def test_no_changes_means_no_landing(self):
+        self.set_mode(handback=report(files=[]))
+        hb = self.run_relay()
+        self.assertEqual(hb["status"], "done", hb)
+        self.assertIsNone(hb["landing"])
+
+    def test_blocked_before_run_has_no_landing(self):
+        hb = self.run_relay(role="verifier")
+        self.assertEqual(hb["status"], "blocked")
+        self.assertIsNone(hb["landing"])
+
+
+class LandingHelpers(unittest.TestCase):
+    """M3 / L3：GIT_ATTR_SOURCE 只在 git 2.40+ 設定；worktree list 以 -z 解析。"""
+
+    def test_attr_source_only_on_new_git(self):
+        self.assertEqual(
+            shoal_relay._attr_env({"A": "1"}, "abc", (2, 40, 0)),
+            {"A": "1", "GIT_ATTR_SOURCE": "abc"},
+        )
+        self.assertEqual(shoal_relay._attr_env({"A": "1"}, "abc", (2, 39, 5)), {"A": "1"})
+        self.assertEqual(shoal_relay._attr_env({"A": "1"}, "abc", None), {"A": "1"})
 
 
 if __name__ == "__main__":

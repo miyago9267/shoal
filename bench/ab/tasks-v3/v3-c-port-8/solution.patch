@@ -1,0 +1,267 @@
+diff --git a/fmtkit/bitmap.py b/fmtkit/bitmap.py
+index 637abf7..bb6a5e8 100644
+--- a/fmtkit/bitmap.py
++++ b/fmtkit/bitmap.py
+@@ -3,22 +3,22 @@
+ A short pixel block is tolerated and zero padded; extra bytes are ignored.
+ """
+ from .errors import ParseError
+-from .reader import Reader, ReaderError
++from .reader_v2 import Cursor, Truncated
+ 
+ MAX_PIXELS = 1 << 20
+ 
+ 
+ def parse(data):
+-    r = Reader(data)
++    r = Cursor(data, endian="big")
+     try:
+-        width = r.u16()
+-        height = r.u16()
+-    except ReaderError as exc:
++        width = r.uint(2)
++        height = r.uint(2)
++    except Truncated as exc:
+         raise ParseError(str(exc)) from None
+     need = width * height
+     if need > MAX_PIXELS:
+         raise ParseError("bitmap too large")
+-    pixels = r.read(need)
++    pixels = r.take_upto(need)
+     if len(pixels) < need:
+         pixels = pixels + bytes(need - len(pixels))
+     return {"width": width, "height": height, "pixels": pixels}
+diff --git a/fmtkit/chunks.py b/fmtkit/chunks.py
+index e036add..72e7492 100644
+--- a/fmtkit/chunks.py
++++ b/fmtkit/chunks.py
+@@ -2,29 +2,27 @@
+ import zlib
+ 
+ from .errors import ParseError
+-from .reader import Reader, ReaderError
++from .reader_v2 import Cursor, Truncated
+ 
+ 
+ def parse(data):
+     """Return [(tag, payload)] including the END chunk; bytes after END are ignored."""
+-    r = Reader(data)
++    r = Cursor(data, endian="big")
+     out = []
+     try:
+         while True:
+-            if r.peek() is None:
++            if not r.peek():
+                 raise ParseError("missing END chunk")
+-            length = r.u32()
+-            tag = r.read(4)
+-            payload = r.read(length)
+-            crc = r.u32()
+-            if len(tag) != 4 or len(payload) != length:
+-                raise ParseError("chunk %d is cut short" % len(out))
++            length = r.uint(4)
++            tag = r.take(4)
++            payload = r.take(length)
++            crc = r.uint(4)
+             if zlib.crc32(tag + payload) != crc:
+                 raise ParseError("chunk %d: bad crc" % len(out))
+             out.append((tag, payload))
+             if tag == b"END ":
+                 return out
+-    except ReaderError as exc:
++    except Truncated as exc:
+         raise ParseError(str(exc)) from None
+ 
+ 
+diff --git a/fmtkit/cstrings.py b/fmtkit/cstrings.py
+index f06eb2c..3e396fc 100644
+--- a/fmtkit/cstrings.py
++++ b/fmtkit/cstrings.py
+@@ -1,14 +1,14 @@
+ """cstrings: NUL-terminated latin-1 strings, last one may be unterminated."""
+ from .errors import ParseError
+-from .reader import Reader
++from .reader_v2 import Cursor
+ 
+ 
+ def parse(data):
+     """Return the list of strings. Empty input gives an empty list."""
+-    r = Reader(data)
++    r = Cursor(data)
+     out = []
+-    while not r.at_end():
+-        raw = r.until(b"\0")
++    while not r.done():
++        raw = r.take_until(b"\0", require=False)
+         out.append(raw.decode("latin-1"))
+         if len(out) > 10_000:
+             raise ParseError("too many strings")
+diff --git a/fmtkit/header.py b/fmtkit/header.py
+index 42dadc2..8168776 100644
+--- a/fmtkit/header.py
++++ b/fmtkit/header.py
+@@ -1,24 +1,22 @@
+ """header: magic, version, flags, payload length, payload."""
+ from .errors import ParseError
+-from .reader import Reader, ReaderError
++from .reader_v2 import Cursor, Truncated
+ 
+ MAGIC = b"FMT1"
+ 
+ 
+ def parse(data):
+-    r = Reader(data)
++    r = Cursor(data, endian="big")
+     try:
+-        magic = r.read(4)
++        magic = r.take_upto(4)
+         if magic != MAGIC:
+             raise ParseError("bad magic %r" % magic)
+-        version = r.u8()
+-        flags = r.u16()
+-        length = r.u32()
+-    except ReaderError as exc:
++        version = r.uint(1)
++        flags = r.uint(2)
++        length = r.uint(4)
++        payload = r.take(length)
++    except Truncated as exc:
+         raise ParseError(str(exc)) from None
+-    payload = r.read(length)
+-    if len(payload) != length:
+-        raise ParseError("payload is %d bytes short" % (length - len(payload)))
+     return {"version": version, "flags": flags, "payload": payload}
+ 
+ 
+diff --git a/fmtkit/kv.py b/fmtkit/kv.py
+index 8a7b94a..b988d42 100644
+--- a/fmtkit/kv.py
++++ b/fmtkit/kv.py
+@@ -1,16 +1,16 @@
+ """kv: ``key=value`` lines in latin-1; the last line may lack a newline."""
+ from .errors import ParseError
+-from .reader import Reader
++from .reader_v2 import Cursor
+ 
+ 
+ def parse(data):
+     """Return a dict. Blank lines are skipped, a line without = is an error."""
+-    r = Reader(data)
++    r = Cursor(data)
+     out = {}
+     lineno = 0
+-    while not r.at_end():
++    while not r.done():
+         lineno += 1
+-        line = r.until(b"\n").decode("latin-1").rstrip("\r")
++        line = r.take_until(b"\n", require=False).decode("latin-1").rstrip("\r")
+         if not line.strip():
+             continue
+         key, sep, value = line.partition("=")
+diff --git a/fmtkit/pascal.py b/fmtkit/pascal.py
+index f387646..125348a 100644
+--- a/fmtkit/pascal.py
++++ b/fmtkit/pascal.py
+@@ -1,23 +1,21 @@
+ """pascal: u16 count, then that many u8-length-prefixed latin-1 strings."""
+ from .errors import ParseError
+-from .reader import Reader, ReaderError
++from .reader_v2 import Cursor, Truncated
+ 
+ 
+ def parse(data):
+-    r = Reader(data)
++    r = Cursor(data, endian="big")
+     try:
+-        count = r.u16()
++        count = r.uint(2)
+         out = []
+         for index in range(count):
+-            size = r.u8()
+-            text = r.string(size)
+-            if len(text) != size:
+-                raise ParseError("string %d is cut short" % index)
++            size = r.uint(1)
++            text = r.text(size, "latin-1")
+             out.append(text)
+-    except ReaderError as exc:
++    except Truncated as exc:
+         raise ParseError(str(exc)) from None
+-    if not r.at_end():
+-        raise ParseError("%d trailing bytes" % (len(data) - r.tell()))
++    if not r.done():
++        raise ParseError("%d trailing bytes" % r.remaining)
+     return out
+ 
+ 
+diff --git a/fmtkit/tables.py b/fmtkit/tables.py
+index 5c1e584..e147bca 100644
+--- a/fmtkit/tables.py
++++ b/fmtkit/tables.py
+@@ -3,24 +3,22 @@
+ The two reserved bytes of the final row may be missing.
+ """
+ from .errors import ParseError
+-from .reader import Reader, ReaderError
++from .reader_v2 import Cursor, Truncated
+ 
+ 
+ def parse(data):
+-    r = Reader(data)
++    r = Cursor(data, endian="big")
+     try:
+-        count = r.u32()
++        count = r.uint(4)
+         rows = []
+         for index in range(count):
+-            ident = r.u16()
+-            flag = r.u8()
+-            size = r.u8()
+-            name = r.string(size)
+-            if len(name) != size:
+-                raise ParseError("row %d: name is cut short" % index)
+-            r.skip(2)
++            ident = r.uint(2)
++            flag = r.uint(1)
++            size = r.uint(1)
++            name = r.text(size, "latin-1")
++            r.take_upto(2)
+             rows.append({"id": ident, "flag": flag, "name": name})
+-    except ReaderError as exc:
++    except Truncated as exc:
+         raise ParseError(str(exc)) from None
+     return rows
+ 
+diff --git a/fmtkit/tlv.py b/fmtkit/tlv.py
+index fa395df..fe1657b 100644
+--- a/fmtkit/tlv.py
++++ b/fmtkit/tlv.py
+@@ -1,21 +1,19 @@
+ """tlv: repeated (type u8, length u16, value) records."""
+ from .errors import ParseError
+-from .reader import Reader, ReaderError
++from .reader_v2 import Cursor, Truncated
+ 
+ 
+ def parse(data):
+     """Return a list of (type, value-bytes)."""
+-    r = Reader(data)
++    r = Cursor(data, endian="big")
+     items = []
+     try:
+-        while not r.at_end():
+-            kind = r.u8()
+-            size = r.u16()
+-            value = r.read(size)
+-            if len(value) != size:
+-                raise ParseError("record %d: value is cut short" % len(items))
++        while not r.done():
++            kind = r.uint(1)
++            size = r.uint(2)
++            value = r.take(size)
+             items.append((kind, value))
+-    except ReaderError as exc:
++    except Truncated as exc:
+         raise ParseError(str(exc)) from None
+     return items
+ 

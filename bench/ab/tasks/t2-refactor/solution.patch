@@ -1,0 +1,129 @@
+diff --git a/README.md b/README.md
+index e6fa7f2..d4a000c 100644
+--- a/README.md
++++ b/README.md
+@@ -7,9 +7,9 @@ Configuration is a JSON file merged over `relay.config.DEFAULTS`:
+ | key            | default | meaning                                  |
+ |----------------|---------|------------------------------------------|
+ | `max_attempts` | 5       | attempts before an event is dead-lettered |
+-| `backoff_base` | 1.0     | seconds to wait after the first failure  |
++| `retry_base_delay` | 1.0 | seconds to wait after the first failure  |
+ | `max_delay`    | 60.0    | upper bound for any single wait          |
+ 
+-Waits double on every failed attempt: see `relay.backoff.compute_backoff`.
++Waits double on every failed attempt: see `relay.backoff.retry_delay`.
+ 
+ Run tests: `python3 -m unittest discover -s tests -t .`
+diff --git a/relay/__init__.py b/relay/__init__.py
+index 3f3f0db..a5bc149 100644
+--- a/relay/__init__.py
++++ b/relay/__init__.py
+@@ -1,4 +1,4 @@
+-from .backoff import compute_backoff
++from .backoff import retry_delay
+ from .config import DEFAULTS, load_config
+ 
+-__all__ = ["compute_backoff", "DEFAULTS", "load_config"]
++__all__ = ["retry_delay", "DEFAULTS", "load_config"]
+diff --git a/relay/backoff.py b/relay/backoff.py
+index 089e1e1..7c51904 100644
+--- a/relay/backoff.py
++++ b/relay/backoff.py
+@@ -1,17 +1,17 @@
+ """Retry wait calculation."""
+ 
+ 
+-def compute_backoff(attempt, config):
++def retry_delay(attempt, config):
+     """Seconds to wait after failed ``attempt`` (1-based).
+ 
+-    Doubles from ``backoff_base`` and is capped at ``max_delay``.
++    Doubles from ``retry_base_delay`` and is capped at ``max_delay``.
+     """
+     if attempt < 1:
+         raise ValueError("attempt is 1-based")
+-    delay = config["backoff_base"] * (2 ** (attempt - 1))
++    delay = config["retry_base_delay"] * (2 ** (attempt - 1))
+     return min(delay, config["max_delay"])
+ 
+ 
+ def schedule(config):
+     """Full list of waits used between attempts for one event."""
+-    return [compute_backoff(n, config) for n in range(1, config["max_attempts"])]
++    return [retry_delay(n, config) for n in range(1, config["max_attempts"])]
+diff --git a/relay/config.py b/relay/config.py
+index f577d10..35d0a09 100644
+--- a/relay/config.py
++++ b/relay/config.py
+@@ -3,7 +3,7 @@ import json
+ 
+ DEFAULTS = {
+     "max_attempts": 5,
+-    "backoff_base": 1.0,
++    "retry_base_delay": 1.0,
+     "max_delay": 60.0,
+ }
+ 
+@@ -20,6 +20,6 @@ def load_config(path=None, overrides=None):
+         cfg.update(data)
+     if overrides:
+         cfg.update(overrides)
+-    if cfg["backoff_base"] < 0:
+-        raise ValueError("backoff_base must be >= 0")
++    if cfg["retry_base_delay"] < 0:
++        raise ValueError("retry_base_delay must be >= 0")
+     return cfg
+diff --git a/relay/sender.py b/relay/sender.py
+index 86fc154..f52f545 100644
+--- a/relay/sender.py
++++ b/relay/sender.py
+@@ -1,7 +1,7 @@
+ """Deliver one event, retrying failed sends."""
+ import time
+ 
+-from .backoff import compute_backoff
++from .backoff import retry_delay
+ 
+ 
+ class DeliveryFailed(Exception):
+@@ -24,5 +24,5 @@ class Sender:
+             except OSError as exc:
+                 last_error = exc
+                 if attempt < self.config["max_attempts"]:
+-                    self.sleep(compute_backoff(attempt, self.config))
++                    self.sleep(retry_delay(attempt, self.config))
+         raise DeliveryFailed(str(last_error))
+diff --git a/tests/test_relay.py b/tests/test_relay.py
+index c8fb944..ce90b88 100644
+--- a/tests/test_relay.py
++++ b/tests/test_relay.py
+@@ -3,15 +3,15 @@ import os
+ import tempfile
+ import unittest
+ 
+-from relay.backoff import compute_backoff, schedule
++from relay.backoff import retry_delay, schedule
+ from relay.config import load_config
+ from relay.worker import drain, worst_case_wait
+ 
+ 
+ class BackoffTest(unittest.TestCase):
+     def test_doubles_and_caps(self):
+-        cfg = load_config(overrides={"backoff_base": 2.0, "max_delay": 10.0})
+-        self.assertEqual([compute_backoff(n, cfg) for n in (1, 2, 3, 4)],
++        cfg = load_config(overrides={"retry_base_delay": 2.0, "max_delay": 10.0})
++        self.assertEqual([retry_delay(n, cfg) for n in (1, 2, 3, 4)],
+                          [2.0, 4.0, 8.0, 10.0])
+ 
+     def test_schedule(self):
+@@ -23,8 +23,8 @@ class BackoffTest(unittest.TestCase):
+         with tempfile.TemporaryDirectory() as d:
+             path = os.path.join(d, "relay.json")
+             with open(path, "w") as fh:
+-                json.dump({"backoff_base": 0.5}, fh)
+-            self.assertEqual(load_config(path)["backoff_base"], 0.5)
++                json.dump({"retry_base_delay": 0.5}, fh)
++            self.assertEqual(load_config(path)["retry_base_delay"], 0.5)
+ 
+ 
+ class DrainTest(unittest.TestCase):

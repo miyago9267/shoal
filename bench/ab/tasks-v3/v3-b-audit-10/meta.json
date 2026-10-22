@@ -1,0 +1,9 @@
+{
+  "id": "v3-b-audit-10",
+  "category": "bugfix",
+  "protected": [
+    "hq/errors.py",
+    "hq/router.py"
+  ],
+  "timeout_s": 1200
+}

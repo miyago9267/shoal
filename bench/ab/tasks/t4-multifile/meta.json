@@ -1,0 +1,10 @@
+{
+  "id": "t4-multifile",
+  "category": "multifile",
+  "protected": [
+    "tests/**",
+    "README.md",
+    "shop/__init__.py"
+  ],
+  "timeout_s": 900
+}

@@ -1,0 +1,543 @@
+"""Core domain logic for the shop backend.
+
+Everything lives here for historical reasons: configuration, errors, money
+helpers, validation, the domain models, pricing and discounts, inventory,
+the order service, reports and (de)serialisation.
+"""
+from __future__ import annotations
+
+import re
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Callable
+
+__all__ = [
+    "CONFIG", "configure", "get_setting",
+    "ShopError", "ValidationError", "OutOfStockError", "UnknownProductError",
+    "OrderStateError",
+    "to_cents", "format_money",
+    "validate_sku", "validate_quantity", "validate_email",
+    "Product", "LineItem", "Customer", "Order", "PriceBreakdown",
+    "DISCOUNT_RULES", "register_discount", "apply_discounts", "compute_tax",
+    "order_total",
+    "Inventory",
+    "OrderService",
+    "sales_summary", "top_products", "render_invoice",
+    "order_to_dict", "order_from_dict",
+]
+
+# --------------------------------------------------------------------------
+# configuration
+# --------------------------------------------------------------------------
+
+CONFIG = {
+    "currency": "EUR",
+    "tax_rate": "0.20",
+    "bulk_threshold": 10,
+    "bulk_percent": 5,
+    "loyalty_percent": 3,
+    "loyalty_min_orders": 5,
+    "max_quantity": 500,
+}
+
+
+def configure(**settings):
+    """Update settings in place; unknown keys are rejected."""
+    unknown = set(settings) - set(CONFIG)
+    if unknown:
+        raise KeyError(f"unknown settings: {', '.join(sorted(unknown))}")
+    CONFIG.update(settings)
+
+
+def get_setting(name):
+    return CONFIG[name]
+
+
+# --------------------------------------------------------------------------
+# errors
+# --------------------------------------------------------------------------
+
+
+class ShopError(Exception):
+    """Base class for every domain error."""
+
+
+class ValidationError(ShopError):
+    pass
+
+
+class OutOfStockError(ShopError):
+    def __init__(self, sku, wanted, available):
+        super().__init__(f"{sku}: wanted {wanted}, only {available} available")
+        self.sku = sku
+        self.wanted = wanted
+        self.available = available
+
+
+class UnknownProductError(ShopError):
+    pass
+
+
+class OrderStateError(ShopError):
+    pass
+
+
+# --------------------------------------------------------------------------
+# money helpers (all amounts are integer cents)
+# --------------------------------------------------------------------------
+
+_CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
+
+
+def to_cents(amount):
+    """Convert ``"12.34"``, ``12.34`` or ``Decimal`` to integer cents."""
+    if isinstance(amount, int):
+        return amount * 100
+    value = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return int(value * 100)
+
+
+def format_money(cents, currency=None):
+    currency = currency or CONFIG["currency"]
+    sign = "-" if cents < 0 else ""
+    whole, frac = divmod(abs(cents), 100)
+    symbol = _CURRENCY_SYMBOLS.get(currency, currency + " ")
+    return f"{sign}{symbol}{whole:,}.{frac:02d}"
+
+
+def _percent_of(cents, percent):
+    value = (Decimal(cents) * Decimal(str(percent)) / Decimal(100))
+    return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+# --------------------------------------------------------------------------
+# validation
+# --------------------------------------------------------------------------
+
+_SKU_RE = re.compile(r"^[A-Z]{2,4}-\d{3,6}$")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.IGNORECASE)
+
+
+def validate_sku(sku):
+    if not isinstance(sku, str) or not _SKU_RE.match(sku):
+        raise ValidationError(f"invalid sku: {sku!r}")
+    return sku
+
+
+def validate_quantity(quantity):
+    if not isinstance(quantity, int) or isinstance(quantity, bool):
+        raise ValidationError(f"quantity must be an integer, got {quantity!r}")
+    if quantity <= 0:
+        raise ValidationError("quantity must be positive")
+    if quantity > CONFIG["max_quantity"]:
+        raise ValidationError(f"quantity above limit of {CONFIG['max_quantity']}")
+    return quantity
+
+
+def validate_email(email):
+    if not isinstance(email, str) or not _EMAIL_RE.match(email):
+        raise ValidationError(f"invalid email: {email!r}")
+    return email.lower()
+
+
+# --------------------------------------------------------------------------
+# models
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Product:
+    sku: str
+    name: str
+    price_cents: int
+    taxable: bool = True
+
+    def __post_init__(self):
+        validate_sku(self.sku)
+        if self.price_cents < 0:
+            raise ValidationError("price must not be negative")
+
+
+@dataclass
+class LineItem:
+    product: Product
+    quantity: int
+
+    def __post_init__(self):
+        validate_quantity(self.quantity)
+
+    @property
+    def sku(self):
+        return self.product.sku
+
+    @property
+    def gross_cents(self):
+        return self.product.price_cents * self.quantity
+
+
+@dataclass
+class Customer:
+    email: str
+    name: str = ""
+    completed_orders: int = 0
+
+    def __post_init__(self):
+        self.email = validate_email(self.email)
+
+
+ORDER_STATES = ("draft", "placed", "cancelled", "shipped")
+
+
+@dataclass
+class Order:
+    order_id: str
+    customer: Customer
+    items: list = field(default_factory=list)
+    coupon: str | None = None
+    state: str = "draft"
+
+    def add(self, product, quantity=1):
+        if self.state != "draft":
+            raise OrderStateError(f"order {self.order_id} is {self.state}")
+        for item in self.items:
+            if item.sku == product.sku:
+                item.quantity = validate_quantity(item.quantity + quantity)
+                return item
+        item = LineItem(product, quantity)
+        self.items.append(item)
+        return item
+
+    def quantity_of(self, sku):
+        return sum(i.quantity for i in self.items if i.sku == sku)
+
+    @property
+    def unit_count(self):
+        return sum(i.quantity for i in self.items)
+
+    def subtotal_cents(self):
+        return sum(i.gross_cents for i in self.items)
+
+    def breakdown(self):
+        return order_total(self)
+
+    def total_cents(self):
+        return order_total(self).total_cents
+
+
+@dataclass(frozen=True)
+class PriceBreakdown:
+    subtotal_cents: int
+    discounts: tuple
+    discount_cents: int
+    tax_cents: int
+    total_cents: int
+
+
+# --------------------------------------------------------------------------
+# pricing and discounts
+# --------------------------------------------------------------------------
+
+DISCOUNT_RULES: dict[str, Callable[[Order, int], int]] = {}
+
+
+def register_discount(name):
+    """Decorator: register ``fn(order, running_cents) -> discount_cents``."""
+    def decorator(fn):
+        if name in DISCOUNT_RULES:
+            raise ValueError(f"discount {name!r} already registered")
+        DISCOUNT_RULES[name] = fn
+        return fn
+    return decorator
+
+
+@register_discount("bulk")
+def _bulk_discount(order, running):
+    if order.unit_count >= CONFIG["bulk_threshold"]:
+        return _percent_of(running, CONFIG["bulk_percent"])
+    return 0
+
+
+@register_discount("loyalty")
+def _loyalty_discount(order, running):
+    if order.customer.completed_orders >= CONFIG["loyalty_min_orders"]:
+        return _percent_of(running, CONFIG["loyalty_percent"])
+    return 0
+
+
+_COUPONS = {"WELCOME10": ("percent", 10), "FIVEOFF": ("fixed", 500)}
+
+
+@register_discount("coupon")
+def _coupon_discount(order, running):
+    if not order.coupon:
+        return 0
+    kind, value = _COUPONS.get(order.coupon.upper(), (None, 0))
+    if kind == "percent":
+        return _percent_of(running, value)
+    if kind == "fixed":
+        return min(value, running)
+    raise ValidationError(f"unknown coupon {order.coupon!r}")
+
+
+def apply_discounts(order, subtotal):
+    """Apply every registered rule in order; each sees the running amount."""
+    applied = []
+    running = subtotal
+    for name, rule in DISCOUNT_RULES.items():
+        amount = rule(order, running)
+        if amount:
+            amount = min(amount, running)
+            applied.append((name, amount))
+            running -= amount
+    return applied, subtotal - running
+
+
+def compute_tax(order, discounted_total):
+    """Tax only the taxable share of the discounted total."""
+    subtotal = order.subtotal_cents()
+    if subtotal == 0:
+        return 0
+    taxable = sum(i.gross_cents for i in order.items if i.product.taxable)
+    taxable_share = Decimal(discounted_total) * Decimal(taxable) / Decimal(subtotal)
+    tax = taxable_share * Decimal(CONFIG["tax_rate"])
+    return int(tax.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def order_total(order):
+    if not isinstance(order, Order):
+        raise TypeError("order_total expects an Order")
+    subtotal = order.subtotal_cents()
+    applied, discount = apply_discounts(order, subtotal)
+    discounted = subtotal - discount
+    tax = compute_tax(order, discounted)
+    return PriceBreakdown(
+        subtotal_cents=subtotal,
+        discounts=tuple(applied),
+        discount_cents=discount,
+        tax_cents=tax,
+        total_cents=discounted + tax,
+    )
+
+
+# --------------------------------------------------------------------------
+# inventory
+# --------------------------------------------------------------------------
+
+
+class Inventory:
+    """Stock levels plus per-order reservations."""
+
+    def __init__(self):
+        self._products = {}
+        self._stock = Counter()
+        self._reserved = defaultdict(Counter)
+
+    def add_product(self, product, quantity=0):
+        self._products[product.sku] = product
+        self._stock[product.sku] += quantity
+        return product
+
+    def product(self, sku):
+        try:
+            return self._products[sku]
+        except KeyError:
+            raise UnknownProductError(sku) from None
+
+    def products(self):
+        return sorted(self._products.values(), key=lambda p: p.sku)
+
+    def on_hand(self, sku):
+        self.product(sku)
+        return self._stock[sku]
+
+    def reserved(self, sku):
+        return sum(r[sku] for r in self._reserved.values())
+
+    def available(self, sku):
+        return self.on_hand(sku) - self.reserved(sku)
+
+    def restock(self, sku, quantity):
+        validate_quantity(quantity)
+        self.product(sku)
+        self._stock[sku] += quantity
+
+    def reserve(self, order):
+        """Reserve every line of ``order`` or nothing at all."""
+        for item in order.items:
+            available = self.available(item.sku)
+            if item.quantity > available:
+                raise OutOfStockError(item.sku, item.quantity, available)
+        for item in order.items:
+            self._reserved[order.order_id][item.sku] += item.quantity
+
+    def release(self, order_id):
+        self._reserved.pop(order_id, None)
+
+    def commit(self, order_id):
+        """Turn a reservation into a real stock decrement (on shipping)."""
+        reservation = self._reserved.pop(order_id, Counter())
+        for sku, quantity in reservation.items():
+            self._stock[sku] -= quantity
+
+    def low_stock(self, threshold=5):
+        return [p.sku for p in self.products() if self.available(p.sku) < threshold]
+
+
+# --------------------------------------------------------------------------
+# order service
+# --------------------------------------------------------------------------
+
+
+class OrderService:
+    """Coordinates orders, inventory and pricing; emits simple events."""
+
+    def __init__(self, inventory):
+        self.inventory = inventory
+        self.orders = {}
+        self._listeners = defaultdict(list)
+        self._next_id = 1
+
+    def on(self, event, callback):
+        self._listeners[event].append(callback)
+
+    def _emit(self, event, order):
+        for callback in self._listeners[event]:
+            callback(event, order)
+
+    def new_order(self, customer, coupon=None):
+        order_id = f"O{self._next_id:05d}"
+        self._next_id += 1
+        order = Order(order_id, customer, coupon=coupon)
+        self.orders[order_id] = order
+        return order
+
+    def get(self, order_id):
+        try:
+            return self.orders[order_id]
+        except KeyError:
+            raise ShopError(f"unknown order {order_id}") from None
+
+    def add_item(self, order_id, sku, quantity=1):
+        order = self.get(order_id)
+        return order.add(self.inventory.product(sku), quantity)
+
+    def place(self, order_id):
+        order = self.get(order_id)
+        if order.state != "draft":
+            raise OrderStateError(f"order {order_id} is {order.state}")
+        if not order.items:
+            raise ValidationError("cannot place an empty order")
+        order_total(order)  # surfaces coupon errors before reserving
+        self.inventory.reserve(order)
+        order.state = "placed"
+        self._emit("placed", order)
+        return order.breakdown()
+
+    def cancel(self, order_id):
+        order = self.get(order_id)
+        if order.state not in ("draft", "placed"):
+            raise OrderStateError(f"cannot cancel a {order.state} order")
+        self.inventory.release(order_id)
+        order.state = "cancelled"
+        self._emit("cancelled", order)
+
+    def ship(self, order_id):
+        order = self.get(order_id)
+        if order.state != "placed":
+            raise OrderStateError(f"cannot ship a {order.state} order")
+        self.inventory.commit(order_id)
+        order.state = "shipped"
+        order.customer.completed_orders += 1
+        self._emit("shipped", order)
+
+    def by_state(self, state):
+        if state not in ORDER_STATES:
+            raise ValueError(f"unknown state {state!r}")
+        return [o for o in self.orders.values() if o.state == state]
+
+
+# --------------------------------------------------------------------------
+# reports
+# --------------------------------------------------------------------------
+
+
+def sales_summary(orders):
+    """Totals over placed or shipped orders."""
+    counted = [o for o in orders if o.state in ("placed", "shipped")]
+    totals = [order_total(o) for o in counted]
+    return {
+        "orders": len(counted),
+        "units": sum(o.unit_count for o in counted),
+        "gross_cents": sum(t.subtotal_cents for t in totals),
+        "discount_cents": sum(t.discount_cents for t in totals),
+        "tax_cents": sum(t.tax_cents for t in totals),
+        "revenue_cents": sum(t.total_cents for t in totals),
+    }
+
+
+def top_products(orders, limit=3):
+    units = Counter()
+    for order in orders:
+        if order.state in ("placed", "shipped"):
+            for item in order.items:
+                units[item.sku] += item.quantity
+    return sorted(units.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
+
+
+def render_invoice(order):
+    breakdown = order_total(order)
+    lines = [f"Invoice {order.order_id} for {order.customer.email}"]
+    for item in order.items:
+        lines.append(
+            f"  {item.quantity:>3} x {item.product.name:<20} "
+            f"{format_money(item.gross_cents):>12}"
+        )
+    lines.append(f"  {'subtotal':<26}{format_money(breakdown.subtotal_cents):>12}")
+    for name, amount in breakdown.discounts:
+        lines.append(f"  {'- ' + name:<26}{format_money(-amount):>12}")
+    lines.append(f"  {'tax':<26}{format_money(breakdown.tax_cents):>12}")
+    lines.append(f"  {'TOTAL':<26}{format_money(breakdown.total_cents):>12}")
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# serialisation
+# --------------------------------------------------------------------------
+
+
+def order_to_dict(order):
+    return {
+        "order_id": order.order_id,
+        "state": order.state,
+        "coupon": order.coupon,
+        "customer": {
+            "email": order.customer.email,
+            "name": order.customer.name,
+            "completed_orders": order.customer.completed_orders,
+        },
+        "items": [
+            {
+                "sku": i.product.sku,
+                "name": i.product.name,
+                "price_cents": i.product.price_cents,
+                "taxable": i.product.taxable,
+                "quantity": i.quantity,
+            }
+            for i in order.items
+        ],
+        "total_cents": order_total(order).total_cents,
+    }
+
+
+def order_from_dict(data):
+    customer = Customer(**data["customer"])
+    order = Order(data["order_id"], customer, coupon=data.get("coupon"))
+    for raw in data["items"]:
+        product = Product(raw["sku"], raw["name"], raw["price_cents"], raw.get("taxable", True))
+        order.items.append(LineItem(product, raw["quantity"]))
+    state = data.get("state", "draft")
+    if state not in ORDER_STATES:
+        raise ValidationError(f"unknown state {state!r}")
+    order.state = state
+    return order

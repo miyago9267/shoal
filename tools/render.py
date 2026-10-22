@@ -80,6 +80,26 @@ def load_toml(path: Path) -> dict:
         raise RenderError(f"無法讀取 {path}: {exc}") from exc
 
 
+def load_binding(path: Path, overlay: Path | None = None) -> dict:
+    """binding.toml；給 overlay 時在記憶體中合併，不寫回檔案。"""
+    binding = load_toml(path)
+    return binding if overlay is None else merge_overlay(binding, load_toml(overlay), "")
+
+
+def merge_overlay(base: dict, extra: dict, where: str) -> dict:
+    """overlay 的 key 不可與 base 重複；兩邊都是 table 時遞迴合併。沒有重複時等同把 overlay 接在檔尾。"""
+    merged = dict(base)
+    for key, value in extra.items():
+        path = f"{where}.{key}" if where else key
+        if key not in merged:
+            merged[key] = value
+        elif isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = merge_overlay(merged[key], value, path)
+        else:
+            raise RenderError(f"overlay 重複定義 {path}（binding 已有此 key）")
+    return merged
+
+
 @dataclass
 class Permission:
     """一個 role 在某個 host 推導出的權限欄位，以及推導過程（給 --explain 與驗證用）。"""
@@ -658,7 +678,8 @@ def relay_shell(name: str, vendor: str, relay: Relay, core: dict, spec: dict, ho
     if writes:
         description += " Dispatch it with worktree isolation and follow it with a fresh verifier."
     fields = {"name": name, "description": description, "model": relay.shell_model, "effort": RELAY_SHELL_EFFORT}
-    head = "---\n" + "\n".join(f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS) + "\ntools: Bash\n---\n\n"
+    isolation = "\nisolation: worktree" if writes else ""  # write role 的外殼一律在自己的 linked worktree 跑，不靠 caller 記得帶
+    head = "---\n" + "\n".join(f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS) + f"\ntools: Bash{isolation}\n---\n\n"
     return (head + text).encode("utf-8")
 
 
@@ -1256,9 +1277,9 @@ def discover_generic_hosts(root: Path) -> list[str]:
 
 
 # 多 host 擴充點：每個 host 一個 renderer，簽名 (root) -> {相對路徑: bytes}。
-def _claude(root: Path) -> dict[str, bytes]:
+def _claude(root: Path, overlay: Path | None = None) -> dict[str, bytes]:
     host = root / "hosts" / "claude"
-    return render_claude(load_core(root), load_toml(host / "binding.toml"), host / "src")
+    return render_claude(load_core(root), load_binding(host / "binding.toml", overlay), host / "src")
 
 
 def _codex(root: Path) -> dict[str, bytes]:
@@ -1433,16 +1454,16 @@ def _guard_plugin_hooks() -> dict:
     }
 
 
-def render_claude_plugin(root: Path) -> dict[str, bytes]:
+def render_claude_plugin(root: Path, overlay: Path | None = None) -> dict[str, bytes]:
     """{相對 repo 根的路徑: bytes}。agents 與 skills 取自 claude 的 render 結果，guard 是 hooks/shoal_guard.py 的逐位元組副本。"""
     version = product_version(root)
-    claude = RENDERERS["claude"](root)
+    claude = _claude(root, overlay)
     out: dict[str, bytes] = {}
     for rel, data in claude.items():
         if rel.startswith("agents/") or rel.startswith("skills/"):
             out[f"{CLAUDE_PLUGIN}/{rel}"] = data
     out[f"{CLAUDE_PLUGIN}/policy/claude-md.bootstrap.md"] = claude["claude-md.bootstrap.md"]
-    if relay_roles(load_toml(root / "hosts" / RELAY_HOST / "binding.toml")):  # D3：只有開 relay 才打包 runner
+    if relay_roles(load_binding(root / "hosts" / RELAY_HOST / "binding.toml", overlay)):  # D3：只有開 relay 才打包 runner
         for rel in RELAY_PACKAGED:
             try:
                 out[f"{CLAUDE_PLUGIN}/{rel}"] = (root / rel).read_bytes()
@@ -1604,7 +1625,7 @@ def plugin_main(args: argparse.Namespace) -> int:
         print("render 失敗: claude-plugin 沒有選模過程可 --explain（用 --host claude --explain）", file=sys.stderr)
         return 2
     try:
-        files = render_claude_plugin(args.root)
+        files = render_claude_plugin(args.root, args.overlay)
     except (RenderError, OSError, KeyError) as exc:
         print(f"render 失敗: host {args.host}: {exc}", file=sys.stderr)
         return 2
@@ -1671,8 +1692,13 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--policy-preview", type=Path, metavar="DIR",
                       help="把 core 組出來的 policy 文件寫到 DIR（不碰 dist）")
     parser.add_argument("--root", type=Path, default=REPO, help="repo 根目錄（測試用）")
+    parser.add_argument("--overlay", type=Path, metavar="FILE",
+                        help="在記憶體中把 TOML 合併進 claude binding 再 render（只給 claude-plugin；不寫回 hosts/*/binding.toml）")
     args = parser.parse_args(argv)
 
+    if args.overlay is not None and args.host != CLAUDE_PLUGIN_HOST:
+        print(f"render 失敗: --overlay 只支援 --host {CLAUDE_PLUGIN_HOST}", file=sys.stderr)
+        return 2
     if args.host == CLAUDE_PLUGIN_HOST:
         return plugin_main(args)
 

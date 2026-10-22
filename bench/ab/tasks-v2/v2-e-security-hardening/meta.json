@@ -1,0 +1,10 @@
+{
+  "id": "v2-e-security-hardening",
+  "category": "security",
+  "protected": [
+    "deskapi/http.py",
+    "deskapi/router.py",
+    "deskapi/store.py"
+  ],
+  "timeout_s": 1200
+}

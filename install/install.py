@@ -507,8 +507,10 @@ def _plugin_source_digest(source_root: Path) -> str:
 
 def _codex_cli() -> str:
     for candidate in ("codex", "codex.exe", "codex.cmd"):
-        if shutil.which(candidate):
-            return candidate
+        found = shutil.which(candidate)
+        if found:
+            # Windows PATHEXT resolves bare "codex" to a .cmd shim, but CreateProcess does not.
+            return found if os.name == "nt" and candidate == "codex" else candidate
     return "codex"
 
 

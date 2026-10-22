@@ -17,7 +17,8 @@
     "reason",
     "exit_code",
     "stderr_tail",
-    "partial_output"
+    "partial_output",
+    "landing"
   ],
   "properties": {
     "status": {"type": "string", "enum": ["done", "blocked", "failed"]},
@@ -67,6 +68,18 @@
     "reason": {"type": ["string", "null"], "maxLength": 1000},
     "exit_code": {"type": ["integer", "null"]},
     "stderr_tail": {"type": ["string", "null"], "maxLength": 4000},
-    "partial_output": {"type": ["string", "null"], "maxLength": 4000}
+    "partial_output": {"type": ["string", "null"], "maxLength": 4000},
+    "landing": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["landed", "reason", "worktree", "head", "tree"],
+      "properties": {
+        "landed": {"type": "boolean"},
+        "reason": {"type": ["string", "null"], "maxLength": 1000},
+        "worktree": {"type": "string", "maxLength": 4096},
+        "head": {"type": ["string", "null"], "maxLength": 64},
+        "tree": {"type": ["string", "null"], "maxLength": 64}
+      }
+    }
   }
 }

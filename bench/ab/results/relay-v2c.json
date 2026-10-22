@@ -1,0 +1,1855 @@
+{
+  "schema": "shoal-ab-v1",
+  "runs": [
+    {
+      "task": "v2-a-migration",
+      "category": "migration",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T17:14:17+0800",
+      "error": null,
+      "wall_s": 164.94,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:plan-critic": 1,
+        "shoal:executor": 1,
+        "shoal:verifier": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.9685606999999999,
+      "duration_ms": 6397,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "docs/FORMAT.md",
+        "shelf/cli.py",
+        "shelf/formatting.py",
+        "shelf/library.py",
+        "shelf/model.py",
+        "shelf/storage.py",
+        "tests/test_cli.py",
+        "tests/test_library.py",
+        "tests/test_model.py",
+        "tests/test_storage.py"
+      ],
+      "files_changed": 11,
+      "lines_added": 189,
+      "lines_removed": 39,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.041s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........................\n----------------------------------------------------------------------\nRan 26 tests in 0.057s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-a-migration",
+      "category": "migration",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T17:17:02+0800",
+      "error": null,
+      "wall_s": 209.21,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1,
+        "shoal:verifier": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "已完成 schema 2、schema 1 唯讀遷移、CLI 篩選、文件與測試；未提交。完整測試結果：Ran 22 tests in 0.015s — OK。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 372346,
+        "cached_input_tokens": 341376,
+        "output_tokens": 6500,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.43622977999999996,
+      "duration_ms": 4804,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "docs/FORMAT.md",
+        "shelf/cli.py",
+        "shelf/formatting.py",
+        "shelf/library.py",
+        "shelf/model.py",
+        "shelf/storage.py",
+        "tests/test_cli.py",
+        "tests/test_library.py",
+        "tests/test_model.py",
+        "tests/test_storage.py"
+      ],
+      "files_changed": 11,
+      "lines_added": 204,
+      "lines_removed": 54,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.017s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "......................\n----------------------------------------------------------------------\nRan 22 tests in 0.016s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-b-bug-hunt",
+      "category": "bugfix",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T17:20:32+0800",
+      "error": null,
+      "wall_s": 22.72,
+      "claude_rc": 0,
+      "dispatches": {},
+      "main_edits": 0,
+      "total_cost_usd": 0.12633530000000004,
+      "duration_ms": 21062,
+      "num_turns": 6,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tick/dates.py",
+        "tick/export.py",
+        "tick/ordering.py"
+      ],
+      "files_changed": 3,
+      "lines_added": 14,
+      "lines_removed": 9,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.050s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.026s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": true
+    },
+    {
+      "task": "v2-b-bug-hunt",
+      "category": "bugfix",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T17:20:55+0800",
+      "error": null,
+      "wall_s": 23.73,
+      "claude_rc": 0,
+      "dispatches": {},
+      "main_edits": 0,
+      "codex": {
+        "calls": 0,
+        "statuses": [],
+        "handbacks": [],
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.12341740000000001,
+      "duration_ms": 21649,
+      "num_turns": 6,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tick/dates.py",
+        "tick/export.py",
+        "tick/ordering.py"
+      ],
+      "files_changed": 3,
+      "lines_added": 13,
+      "lines_removed": 9,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.044s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.029s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": true
+    },
+    {
+      "task": "v2-c-api-extension",
+      "category": "feature",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T17:21:19+0800",
+      "error": null,
+      "wall_s": 166.52,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.47857,
+      "duration_ms": 11874,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "kvsvc/handler.py",
+        "kvsvc/protocol.py",
+        "kvsvc/snapshot.py",
+        "kvsvc/store.py",
+        "tests/test_handler.py",
+        "tests/test_snapshot.py",
+        "tests/test_store.py"
+      ],
+      "files_changed": 8,
+      "lines_added": 414,
+      "lines_removed": 16,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 0.002s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".......................................\n----------------------------------------------------------------------\nRan 39 tests in 0.007s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-c-api-extension",
+      "category": "feature",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T17:24:06+0800",
+      "error": null,
+      "wall_s": 179.06,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "Miyago，完成 TTL、ttl/stats 操作與 snapshot 到期處理；補上 store、handler、snapshot 測試及 README 說明。指定測試通過：Ran 18 tests，OK。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 328966,
+        "cached_input_tokens": 290688,
+        "output_tokens": 6923,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.252986805,
+      "duration_ms": 11449,
+      "num_turns": 3,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "kvsvc/handler.py",
+        "kvsvc/snapshot.py",
+        "kvsvc/store.py",
+        "tests/test_handler.py",
+        "tests/test_snapshot.py",
+        "tests/test_store.py"
+      ],
+      "files_changed": 7,
+      "lines_added": 238,
+      "lines_removed": 13,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 0.002s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..................\n----------------------------------------------------------------------\nRan 18 tests in 0.003s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-d-perf-and-correctness",
+      "category": "perf",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T17:27:06+0800",
+      "error": null,
+      "wall_s": 106.7,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.18572348000000002,
+      "duration_ms": 44386,
+      "num_turns": 4,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "logpipe/aggregate.py",
+        "logpipe/enrich.py",
+        "logpipe/parse.py",
+        "logpipe/pipeline.py",
+        "logpipe/sessionize.py",
+        "tests/test_pipeline.py"
+      ],
+      "files_changed": 6,
+      "lines_added": 43,
+      "lines_removed": 19,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 4 tests in 0.476s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.003s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-d-perf-and-correctness",
+      "category": "perf",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T17:28:53+0800",
+      "error": null,
+      "wall_s": 105.96,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "failed"
+        ],
+        "handbacks": [
+          {
+            "status": "failed",
+            "reason": "已在 tests/test_pipeline.py 加入指定回歸測試，且只修改此檔。10 個測試中有 1 個失敗：新測試的 total_bytes 實際為 10，預期為 12；依指定範圍未修改實作。",
+            "landed": false,
+            "landing_reason": "status is failed; changes were not landed"
+          }
+        ],
+        "input_tokens": 132004,
+        "cached_input_tokens": 113664,
+        "output_tokens": 928,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.23101476999999998,
+      "duration_ms": 27176,
+      "num_turns": 7,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "logpipe/aggregate.py",
+        "logpipe/enrich.py",
+        "logpipe/pipeline.py",
+        "logpipe/sessionize.py",
+        "tests/test_pipeline.py"
+      ],
+      "files_changed": 5,
+      "lines_added": 29,
+      "lines_removed": 23,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 4 tests in 0.656s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.002s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-e-security-hardening",
+      "category": "security",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T17:30:40+0800",
+      "error": null,
+      "wall_s": 190.4,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:security-executor": 1,
+        "shoal:verifier": 1,
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.8090365199999999,
+      "duration_ms": 13492,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "deskapi/auth.py",
+        "deskapi/handlers/admin.py",
+        "deskapi/handlers/reports.py",
+        "deskapi/router.py",
+        "deskapi/tokens.py",
+        "tests/test_admin.py",
+        "tests/test_tokens.py"
+      ],
+      "files_changed": 7,
+      "lines_added": 70,
+      "lines_removed": 19,
+      "protected_violations": [
+        "deskapi/router.py"
+      ],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.004s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....................\n----------------------------------------------------------------------\nRan 20 tests in 0.004s\n\nOK"
+      },
+      "pass": false,
+      "no_dispatch": false,
+      "workdir": "/Users/miyago/shoal-live-360/ab-runs/shoal-ab-v2-e-security-hardening-shoal-mwgpth6j"
+    },
+    {
+      "task": "v2-e-security-hardening",
+      "category": "security",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T17:33:52+0800",
+      "error": null,
+      "wall_s": 190.0,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:security-executor": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 0,
+        "statuses": [],
+        "handbacks": [],
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.487225,
+      "duration_ms": 15903,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "deskapi/auth.py",
+        "deskapi/handlers/admin.py",
+        "deskapi/handlers/reports.py",
+        "deskapi/router.py",
+        "deskapi/tokens.py",
+        "tests/test_admin_access.py",
+        "tests/test_tokens.py"
+      ],
+      "files_changed": 7,
+      "lines_added": 106,
+      "lines_removed": 20,
+      "protected_violations": [
+        "deskapi/router.py"
+      ],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.002s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".......................\n----------------------------------------------------------------------\nRan 23 tests in 0.002s\n\nOK"
+      },
+      "pass": false,
+      "no_dispatch": false,
+      "workdir": "/Users/miyago/shoal-live-360/ab-runs/shoal-ab-v2-e-security-hardening-shoal-relay-qa9if5j6"
+    },
+    {
+      "task": "v2-f-refactor-split",
+      "category": "refactor",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:00:53+0800",
+      "error": null,
+      "wall_s": 77.03,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.2660929,
+      "duration_ms": 11981,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "app/core.py",
+        "app/core/__init__.py",
+        "app/core/errors.py",
+        "app/core/inventory.py",
+        "app/core/models.py",
+        "app/core/money.py",
+        "app/core/pricing.py",
+        "app/core/reports.py",
+        "app/core/service.py",
+        "app/core/settings.py",
+        "app/core/validation.py"
+      ],
+      "files_changed": 11,
+      "lines_added": 587,
+      "lines_removed": 543,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 1.931s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".............\n----------------------------------------------------------------------\nRan 13 tests in 0.002s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-f-refactor-split",
+      "category": "refactor",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:02:12+0800",
+      "error": null,
+      "wall_s": 191.39,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "已將 app/core.py 拆成 app/core/ 的十個模組，保留原有行為與 __all__ 清單；原檔已刪除，未提交。原清單實際有 30 個名稱。13 個 unittest 測試通過；pytest 因環境未安裝而無法執行。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 722103,
+        "cached_input_tokens": 688384,
+        "output_tokens": 6272,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.19120148,
+      "duration_ms": 21489,
+      "num_turns": 4,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "app/core.py",
+        "app/core/__init__.py",
+        "app/core/errors.py",
+        "app/core/inventory.py",
+        "app/core/models.py",
+        "app/core/money.py",
+        "app/core/pricing.py",
+        "app/core/reports.py",
+        "app/core/serialization.py",
+        "app/core/service.py",
+        "app/core/settings.py",
+        "app/core/validation.py"
+      ],
+      "files_changed": 12,
+      "lines_added": 552,
+      "lines_removed": 543,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 1.733s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".............\n----------------------------------------------------------------------\nRan 13 tests in 0.002s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-g-feature-across-layers",
+      "category": "feature",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:05:26+0800",
+      "error": null,
+      "wall_s": 58.94,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.20681714499999995,
+      "duration_ms": 6067,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "notes/cli.py",
+        "notes/http.py",
+        "notes/repository.py",
+        "notes/service.py",
+        "tests/test_cli.py",
+        "tests/test_http.py",
+        "tests/test_service.py"
+      ],
+      "files_changed": 8,
+      "lines_added": 128,
+      "lines_removed": 35,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 11 tests in 0.039s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".............\n----------------------------------------------------------------------\nRan 15 tests in 0.026s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-g-feature-across-layers",
+      "category": "feature",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:06:25+0800",
+      "error": null,
+      "wall_s": 133.93,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "完成 keyset cursor 分頁，維持 created_at DESC、id DESC。已更新 repository、service、HTTP、CLI、README 與測試；指定測試全部通過。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 290498,
+        "cached_input_tokens": 252928,
+        "output_tokens": 5679,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.16968905499999995,
+      "duration_ms": 12548,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "notes/cli.py",
+        "notes/http.py",
+        "notes/repository.py",
+        "notes/service.py",
+        "tests/test_cli.py",
+        "tests/test_http.py",
+        "tests/test_service.py"
+      ],
+      "files_changed": 8,
+      "lines_added": 157,
+      "lines_removed": 37,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 11 tests in 0.039s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "...............\n----------------------------------------------------------------------\nRan 16 tests in 0.027s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-h-flaky-test-and-race",
+      "category": "bugfix-concurrency",
+      "arm": "shoal",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:08:39+0800",
+      "error": null,
+      "wall_s": 41.89,
+      "claude_rc": 0,
+      "dispatches": {},
+      "main_edits": 0,
+      "total_cost_usd": 0.14128630000000003,
+      "duration_ms": 40682,
+      "num_turns": 5,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tests/test_batch.py",
+        "tests/test_pipeline.py",
+        "tests/test_pool.py",
+        "workpool/pool.py"
+      ],
+      "files_changed": 4,
+      "lines_added": 53,
+      "lines_removed": 25,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.602s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "...........\n----------------------------------------------------------------------\nRan 11 tests in 0.150s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": true
+    },
+    {
+      "task": "v2-h-flaky-test-and-race",
+      "category": "bugfix-concurrency",
+      "arm": "shoal-relay",
+      "rep": 1,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:09:22+0800",
+      "error": null,
+      "wall_s": 160.24,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "修正 WorkerPool 的關閉競態：submit 與 shutdown 共用鎖，shutdown 以 FIFO sentinel 排空已接受工作，timeout 使用單一截止時間。移除掩蓋競態的等待，新增排空、並行提交、整體 timeout 與 map_unordered 回歸測試。未改動 Git 目錄。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 351563,
+        "cached_input_tokens": 321792,
+        "output_tokens": 4920,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.22181389999999995,
+      "duration_ms": 21803,
+      "num_turns": 3,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tests/test_batch.py",
+        "tests/test_pipeline.py",
+        "tests/test_pool.py",
+        "workpool/pool.py"
+      ],
+      "files_changed": 4,
+      "lines_added": 91,
+      "lines_removed": 23,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.735s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".............\n----------------------------------------------------------------------\nRan 13 tests in 0.226s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-a-migration",
+      "category": "migration",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:12:04+0800",
+      "error": null,
+      "wall_s": 170.2,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1,
+        "shoal:verifier": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.637029,
+      "duration_ms": 9196,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "docs/FORMAT.md",
+        "shelf/cli.py",
+        "shelf/formatting.py",
+        "shelf/library.py",
+        "shelf/model.py",
+        "shelf/storage.py",
+        "tests/test_cli.py",
+        "tests/test_library.py",
+        "tests/test_model.py",
+        "tests/test_storage.py"
+      ],
+      "files_changed": 11,
+      "lines_added": 275,
+      "lines_removed": 50,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.014s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..................................\n----------------------------------------------------------------------\nRan 34 tests in 0.030s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-a-migration",
+      "category": "migration",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:14:54+0800",
+      "error": null,
+      "wall_s": 329.39,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:plan-critic": 1,
+        "shoal:executor": 3,
+        "shoal:verifier": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "完成 schema 2 轉換：保留 schema 1 讀取與延後升級，更新 CLI、輸出、文件及測試。無偏離要求。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 364665,
+        "cached_input_tokens": 334080,
+        "output_tokens": 6367,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.9261577150000004,
+      "duration_ms": 10706,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "docs/FORMAT.md",
+        "shelf/cli.py",
+        "shelf/formatting.py",
+        "shelf/library.py",
+        "shelf/model.py",
+        "shelf/storage.py",
+        "tests/test_cli.py",
+        "tests/test_library.py",
+        "tests/test_model.py",
+        "tests/test_storage.py"
+      ],
+      "files_changed": 11,
+      "lines_added": 185,
+      "lines_removed": 48,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.016s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "......................\n----------------------------------------------------------------------\nRan 22 tests in 0.016s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-b-bug-hunt",
+      "category": "bugfix",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:20:24+0800",
+      "error": null,
+      "wall_s": 22.68,
+      "claude_rc": 0,
+      "dispatches": {},
+      "main_edits": 0,
+      "total_cost_usd": 0.10650770000000001,
+      "duration_ms": 21348,
+      "num_turns": 4,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tick/dates.py",
+        "tick/export.py",
+        "tick/ordering.py"
+      ],
+      "files_changed": 3,
+      "lines_added": 13,
+      "lines_removed": 8,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.038s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.018s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": true
+    },
+    {
+      "task": "v2-b-bug-hunt",
+      "category": "bugfix",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:20:47+0800",
+      "error": null,
+      "wall_s": 73.23,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "完成指定的三處修改。10 個 unittest 全數通過；臨時資料庫手動檢查顯示 list 日期為 2026-03-10，export 將標題輸出為 \"a, b\"，且保留尾端換行。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 199396,
+        "cached_input_tokens": 177152,
+        "output_tokens": 2001,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.12776046500000002,
+      "duration_ms": 6898,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tick/dates.py",
+        "tick/export.py",
+        "tick/ordering.py"
+      ],
+      "files_changed": 3,
+      "lines_added": 10,
+      "lines_removed": 10,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.035s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.018s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-c-api-extension",
+      "category": "feature",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:22:01+0800",
+      "error": null,
+      "wall_s": 55.74,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.21736472500000004,
+      "duration_ms": 2339,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "kvsvc/handler.py",
+        "kvsvc/snapshot.py",
+        "kvsvc/store.py",
+        "tests/test_ttl.py"
+      ],
+      "files_changed": 5,
+      "lines_added": 194,
+      "lines_removed": 17,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 0.003s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 0.002s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-c-api-extension",
+      "category": "feature",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:22:57+0800",
+      "error": null,
+      "wall_s": 217.43,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:applier": 1
+      },
+      "main_edits": 1,
+      "codex": {
+        "calls": 2,
+        "statuses": [
+          "done",
+          "blocked"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "完成 TTL、stats、snapshot 行為與 README 更新；修正 set 的 `ttl: null` 回傳 bad_request。這份 worktree 原本沒有任務所述的 TTL/stats 實作，因此一併補齊。",
+            "landed": false,
+            "landing_reason": "patch does not apply to the primary checkout (error: patch failed: kvsvc/handler.py:17)"
+          },
+          {
+            "status": "blocked",
+            "reason": "無法套用 TTL 修正：shoal-guard 指出 `kvsvc/handler.py` 由另一個 session 編輯中，明確禁止重試或繞過；需由主 session 協調或取得 `#takeover`。本次未修改檔案。",
+            "landed": false,
+            "landing_reason": "status is blocked; changes were not landed"
+          }
+        ],
+        "input_tokens": 584879,
+        "cached_input_tokens": 528768,
+        "output_tokens": 7022,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.25192453,
+      "duration_ms": 6182,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "kvsvc/handler.py",
+        "kvsvc/snapshot.py",
+        "kvsvc/store.py"
+      ],
+      "files_changed": 3,
+      "lines_added": 115,
+      "lines_removed": 18,
+      "protected_violations": [],
+      "hidden": {
+        "passed": false,
+        "rc": 1,
+        "tail": "\n----------------------------------------------------------------------\nRan 14 tests in 0.007s\n\nFAILED (failures=3)"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.002s\n\nOK"
+      },
+      "pass": false,
+      "no_dispatch": false,
+      "workdir": "/Users/miyago/shoal-live-360/ab-runs/shoal-ab-v2-c-api-extension-shoal-relay-8bguqclc"
+    },
+    {
+      "task": "v2-d-perf-and-correctness",
+      "category": "perf",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:26:35+0800",
+      "error": null,
+      "wall_s": 45.9,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.165545605,
+      "duration_ms": 2403,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "logpipe/aggregate.py",
+        "logpipe/enrich.py",
+        "logpipe/parse.py",
+        "logpipe/pipeline.py",
+        "logpipe/sessionize.py",
+        "tests/test_pipeline.py"
+      ],
+      "files_changed": 6,
+      "lines_added": 27,
+      "lines_removed": 23,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 4 tests in 0.650s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.002s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-d-perf-and-correctness",
+      "category": "perf",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:27:21+0800",
+      "error": null,
+      "wall_s": 652.92,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1,
+        "shoal:applier": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 2,
+        "statuses": [
+          "done",
+          "blocked"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "已將既有去重、查找、時間解析及 sessionize 改動帶入此 worktree，並優化 Event、parse_line 與排序。1M 行 benchmark：7.30 秒 → 5.68 秒，結果均為 1,000,000 筆。修改檔案：logpipe/{aggregate,enrich,model,parse,pipeline,sessionize}.py、tests/{test_parse,",
+            "landed": false,
+            "landing_reason": "patch does not apply to the primary checkout (error: patch failed: logpipe/aggregate.py:3)"
+          },
+          {
+            "status": "blocked",
+            "reason": "Miyago，primary checkout 不在可寫範圍；第一個檔案複製時就收到 Operation not permitted，五個檔案都未複製。",
+            "landed": null,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 1401136,
+        "cached_input_tokens": 1345280,
+        "output_tokens": 9451,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.279519185,
+      "duration_ms": 7361,
+      "num_turns": 1,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "logpipe/aggregate.py",
+        "logpipe/enrich.py",
+        "logpipe/parse.py",
+        "logpipe/pipeline.py",
+        "logpipe/sessionize.py"
+      ],
+      "files_changed": 5,
+      "lines_added": 23,
+      "lines_removed": 26,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 4 tests in 0.491s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.000s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-e-security-hardening",
+      "category": "security",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:38:15+0800",
+      "error": null,
+      "wall_s": 33.97,
+      "claude_rc": 0,
+      "dispatches": {},
+      "main_edits": 0,
+      "total_cost_usd": 0.14873450000000002,
+      "duration_ms": 32448,
+      "num_turns": 6,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "deskapi/handlers/admin.py",
+        "deskapi/handlers/reports.py",
+        "deskapi/router.py",
+        "deskapi/tokens.py",
+        "tests/test_admin.py",
+        "tests/test_tokens.py"
+      ],
+      "files_changed": 6,
+      "lines_added": 25,
+      "lines_removed": 15,
+      "protected_violations": [
+        "deskapi/router.py"
+      ],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.002s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "...............\n----------------------------------------------------------------------\nRan 15 tests in 0.001s\n\nOK"
+      },
+      "pass": false,
+      "no_dispatch": true,
+      "workdir": "/Users/miyago/shoal-live-360/ab-runs/shoal-ab-v2-e-security-hardening-shoal-dpfj07u_"
+    },
+    {
+      "task": "v2-e-security-hardening",
+      "category": "security",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:38:50+0800",
+      "error": null,
+      "wall_s": 42.47,
+      "claude_rc": 0,
+      "dispatches": {},
+      "main_edits": 0,
+      "codex": {
+        "calls": 0,
+        "statuses": [],
+        "handbacks": [],
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.1683185,
+      "duration_ms": 41361,
+      "num_turns": 5,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "deskapi/handlers/admin.py",
+        "deskapi/handlers/reports.py",
+        "deskapi/router.py",
+        "deskapi/tokens.py",
+        "tests/test_admin.py",
+        "tests/test_tokens.py"
+      ],
+      "files_changed": 6,
+      "lines_added": 43,
+      "lines_removed": 15,
+      "protected_violations": [
+        "deskapi/router.py"
+      ],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.002s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..................\n----------------------------------------------------------------------\nRan 18 tests in 0.001s\n\nOK"
+      },
+      "pass": false,
+      "no_dispatch": true,
+      "workdir": "/Users/miyago/shoal-live-360/ab-runs/shoal-ab-v2-e-security-hardening-shoal-relay-y5w9b05k"
+    },
+    {
+      "task": "v2-f-refactor-split",
+      "category": "refactor",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:39:32+0800",
+      "error": null,
+      "wall_s": 209.82,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.29669310000000004,
+      "duration_ms": 7135,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "app/core.py",
+        "app/core/__init__.py",
+        "app/core/config.py",
+        "app/core/errors.py",
+        "app/core/inventory.py",
+        "app/core/models.py",
+        "app/core/money.py",
+        "app/core/pricing.py",
+        "app/core/reports.py",
+        "app/core/serialization.py",
+        "app/core/service.py",
+        "app/core/validation.py"
+      ],
+      "files_changed": 12,
+      "lines_added": 574,
+      "lines_removed": 543,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 1.298s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".............\n----------------------------------------------------------------------\nRan 13 tests in 0.002s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-f-refactor-split",
+      "category": "refactor",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:43:04+0800",
+      "error": null,
+      "wall_s": 171.68,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 2
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 2,
+        "statuses": [
+          "blocked",
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "blocked",
+            "reason": "無法在指定的 `/work` 目錄編輯：目前 sandbox 只允許寫入其下的 agent worktree，而任務明確要求不要使用 worktree。已確認 `/work/app` 不可寫；因此未修改檔案。",
+            "landed": null,
+            "landing_reason": null
+          },
+          {
+            "status": "done",
+            "reason": "Miyago，已將 app/core.py 拆成 app/core/ 的 10 個子模組，保留原有 __all__ 名稱與順序，並確認 CONFIG 共用同一個 dict。工作樹：/Users/miyago/shoal-live-360/ab-runs/shoal-ab-v2-f-refactor-split-shoal-relay-vln14k_0/work/.claude/worktrees/",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 368989,
+        "cached_input_tokens": 318592,
+        "output_tokens": 6476,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.19475052,
+      "duration_ms": 14285,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "app/core.py",
+        "app/core/__init__.py",
+        "app/core/core/__init__.py",
+        "app/core/core/errors.py",
+        "app/core/core/inventory.py",
+        "app/core/core/models.py",
+        "app/core/core/money.py",
+        "app/core/core/pricing.py",
+        "app/core/core/reports.py",
+        "app/core/core/serialization.py",
+        "app/core/core/service.py",
+        "app/core/core/settings.py",
+        "app/core/core/validation.py",
+        "app/core/errors.py",
+        "app/core/inventory.py",
+        "app/core/models.py",
+        "app/core/money.py",
+        "app/core/pricing.py",
+        "app/core/reports.py",
+        "app/core/serialization.py",
+        "app/core/service.py",
+        "app/core/settings.py",
+        "app/core/validation.py"
+      ],
+      "files_changed": 23,
+      "lines_added": 1082,
+      "lines_removed": 543,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 1.392s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".............\n----------------------------------------------------------------------\nRan 13 tests in 0.002s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-g-feature-across-layers",
+      "category": "feature",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:45:57+0800",
+      "error": null,
+      "wall_s": 83.84,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "total_cost_usd": 0.31086430000000004,
+      "duration_ms": 8344,
+      "num_turns": 2,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "notes/cli.py",
+        "notes/http.py",
+        "notes/repository.py",
+        "notes/service.py",
+        "tests/test_cli.py",
+        "tests/test_http.py",
+        "tests/test_service.py"
+      ],
+      "files_changed": 8,
+      "lines_added": 205,
+      "lines_removed": 36,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 11 tests in 0.034s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "...................\n----------------------------------------------------------------------\nRan 21 tests in 0.052s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-g-feature-across-layers",
+      "category": "feature",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:47:21+0800",
+      "error": null,
+      "wall_s": 123.8,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "Miyago，已將 listing 改為依 (created_at, id) 的游標分頁，更新 repository、service、HTTP、CLI、測試與 README。完整測試通過：Ran 17 tests，OK。",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 285503,
+        "cached_input_tokens": 258304,
+        "output_tokens": 5304,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.16886183999999999,
+      "duration_ms": 11559,
+      "num_turns": 3,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "README.md",
+        "notes/cli.py",
+        "notes/http.py",
+        "notes/repository.py",
+        "notes/service.py",
+        "tests/test_cli.py",
+        "tests/test_http.py",
+        "tests/test_service.py"
+      ],
+      "files_changed": 8,
+      "lines_added": 153,
+      "lines_removed": 29,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": "....\n----------------------------------------------------------------------\nRan 11 tests in 0.039s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".\n----------------------------------------------------------------------\nRan 17 tests in 0.020s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    },
+    {
+      "task": "v2-h-flaky-test-and-race",
+      "category": "bugfix-concurrency",
+      "arm": "shoal",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": false,
+      "started_at": "2026-10-22T18:49:26+0800",
+      "error": null,
+      "wall_s": 37.37,
+      "claude_rc": 0,
+      "dispatches": {},
+      "main_edits": 0,
+      "total_cost_usd": 0.1447398,
+      "duration_ms": 36125,
+      "num_turns": 4,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tests/test_batch.py",
+        "tests/test_pipeline.py",
+        "tests/test_pool.py",
+        "workpool/pool.py"
+      ],
+      "files_changed": 4,
+      "lines_added": 59,
+      "lines_removed": 24,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.702s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.160s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": true
+    },
+    {
+      "task": "v2-h-flaky-test-and-race",
+      "category": "bugfix-concurrency",
+      "arm": "shoal-relay",
+      "rep": 2,
+      "model": "claude-sonnet-5-5",
+      "auth": "keychain",
+      "shoal_head": "04b48a60c268bd130970abc67b147b0b5ce95b5d",
+      "relay": true,
+      "started_at": "2026-10-22T18:50:04+0800",
+      "error": null,
+      "wall_s": 108.66,
+      "claude_rc": 0,
+      "dispatches": {
+        "shoal:executor": 1
+      },
+      "main_edits": 0,
+      "codex": {
+        "calls": 1,
+        "statuses": [
+          "done"
+        ],
+        "handbacks": [
+          {
+            "status": "done",
+            "reason": "完成。`WorkerPool` 現在用同一把鎖保護提交與關閉；關閉時將 sentinel 排在所有已接受工作之後，worker 會處理完佇列才退出。`shutdown(timeout)` 使用單一總期限。移除測試中用來等待 worker 的 sleep，新增積壓工作與並發提交測試。`batch.py`、`pipeline.py` 未改；`map_unordered` 仍會以 item 作為 dic",
+            "landed": true,
+            "landing_reason": null
+          }
+        ],
+        "input_tokens": 248586,
+        "cached_input_tokens": 222336,
+        "output_tokens": 3115,
+        "calls_without_usage": 0
+      },
+      "relay_blocked": [],
+      "total_cost_usd": 0.17168339500000002,
+      "duration_ms": 9819,
+      "num_turns": 3,
+      "is_error": false,
+      "subtype": "success",
+      "changed_files": [
+        "tests/test_pipeline.py",
+        "tests/test_pool.py",
+        "workpool/pool.py"
+      ],
+      "files_changed": 3,
+      "lines_added": 70,
+      "lines_removed": 23,
+      "protected_violations": [],
+      "hidden": {
+        "passed": true,
+        "rc": 0,
+        "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.612s\n\nOK"
+      },
+      "visible": {
+        "passed": true,
+        "rc": 0,
+        "tail": "...........\n----------------------------------------------------------------------\nRan 11 tests in 0.003s\n\nOK"
+      },
+      "pass": true,
+      "no_dispatch": false
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# bench 專用 relay overlay（cross-vendor-relay T1.6）：run_ab.py 的 shoal-relay arm 把它接在
+# hosts/claude/binding.toml 後面再 render 成該 arm 自己的 plugin-dir。不屬於任何 host 的輸出。
+[relay]
+shell_model = "haiku"
+
+[relay.roles]
+executor = "codex"
+applier = "codex"

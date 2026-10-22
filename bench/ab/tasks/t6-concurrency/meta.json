@@ -1,0 +1,9 @@
+{
+  "id": "t6-concurrency",
+  "category": "concurrency",
+  "protected": [
+    "tests/test_cache.py",
+    "ttlcache/stats.py"
+  ],
+  "timeout_s": 900
+}
