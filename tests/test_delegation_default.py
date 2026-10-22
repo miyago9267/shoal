@@ -235,8 +235,8 @@ class OtherHostsRoleTests(unittest.TestCase):
 
 class PlanCriticGapModeTests(unittest.TestCase):
     def test_gap_mode_clause_is_in_the_core_contract(self) -> None:
-        text = (ROOT / "core" / "contracts" / "plan-critic.toml").read_text(encoding="utf-8")
-        self.assertIn('id = "gap-mode"', text)
+        text = (ROOT / "prompts" / "roles" / "plan-critic.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- clause: gap-mode ", text)
         self.assertIn("When the brief sets `mode: gaps`, do not return READY or REVISE.", text)
 
     def test_every_host_that_renders_plan_critic_carries_gap_mode(self) -> None:

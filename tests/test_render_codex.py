@@ -40,6 +40,7 @@ def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
 
 def make_root(root: Path) -> None:
     shutil.copytree(ROOT / "core", root / "core")
+    shutil.copytree(ROOT / "prompts", root / "prompts")
     shutil.copytree(ROOT / "hosts" / "codex", root / "hosts" / "codex")
     shutil.copytree(ROOT / "templates", root / "templates")
     (root / MIRROR).parent.mkdir(parents=True)
@@ -107,10 +108,10 @@ class CheckCommandTests(unittest.TestCase):
         self.assertIn(f"缺少: {MIRROR}", run_render(self.root, "--check").stderr)
 
     def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
-        # executor 是 core 模式：來源是 core/contracts；sol-executor 是 legacy：來源是 src/agents
-        contract = self.root / "core" / "contracts" / "executor.toml"
+        # executor 是 core 模式：來源是 prompts/roles；sol-executor 是 legacy：來源是 src/agents
+        contract = self.root / "prompts" / "roles" / "executor.md"
         contract.write_text(contract.read_text(encoding="utf-8")
-                            + '\n[[clause]]\nid = "extra"\nkind = "procedure"\ntext = "extra line"\n',
+                            + '\n<!-- clause: extra kind=procedure -->\nextra line\n',
                             encoding="utf-8", newline="\n")
         result = run_render(self.root, "--check")
         self.assertEqual(result.returncode, 1)
@@ -158,7 +159,7 @@ class BindingTests(unittest.TestCase):
         self.assert_rejected("scout")
 
     def test_role_override_cannot_make_read_only_role_writable(self) -> None:
-        self.edit(self.binding, 'effort = "low"\ndescription = "Read-only reconnaissance', 'effort = "low"\nsandbox_mode = "workspace-write"\ndescription = "Read-only reconnaissance')
+        self.edit(self.binding, '[roles.scout]\neffort = "low"', '[roles.scout]\neffort = "low"\nsandbox_mode = "workspace-write"')
         self.assert_rejected("scout")
 
     def test_write_role_cannot_be_read_only(self) -> None:
@@ -181,8 +182,8 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
 
     def test_developer_instructions_cannot_break_the_toml_string(self) -> None:
-        contract = self.root / "core" / "contracts" / "scout.toml"
-        contract.write_text("[[clause]]\nid = \"bad\"\nkind = \"procedure\"\ntext = \'\'\'bad \"\"\" body\'\'\'\n",
+        contract = self.root / "prompts" / "roles" / "scout.md"
+        contract.write_text('<!-- clause: bad kind=procedure -->\nbad """ body\n',
                             encoding="utf-8", newline="\n")
         self.assert_rejected("scout")
 

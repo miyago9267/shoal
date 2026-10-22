@@ -40,10 +40,28 @@ created: 2026-10-22
 
 ## Phase 2: 文字搬到 `prompts/`
 
-> Status: not-started
+> Status: complete（PR #36，CI 三平台綠燈，待合併）
 
 - 目標：R1、R2。
-- 記錄：`migrate_text.py` 相等斷言結果、`render_equiv.py` 總雜湊。
+- 2026-10-23 `migrate_text.py` 的結果行（已於最後一個 commit 移除腳本）：
+
+  ```text
+  migrate_text: OK 54 files, 251 clauses, 133 addenda, 38 descriptions;
+  (id, kind, sep, required, at, join, text) all equal
+  ```
+
+  腳本在乾淨的 origin/main 上重跑，產生的
+  `prompts/` 與提交的檔案逐檔相同（差別只有 `git mv` 搬入的 frames、`relay/shell.md` 與手寫的
+  `text.md`）。
+- 2026-10-23 `render_equiv.py --base origin/main --head HEAD` 退出 0，兩組雜湊與 P1 基準相同：
+  - 預設（103 檔）：`f0a3f34becf2342d21322e0ecb60de411b088b924f9ccdfddb213c1c68a71057`
+  - relay（27 檔）：`87d4a9a4aaed55028a9316573d91d5422370c42fa3dc24cb0c6ebdde4040ac59`
+- 全套測試 1942 個（P1 的 1920 加 `test_prompts_md` 的 22 個），約 297 秒；lock（不帶旗標）通過；
+  `npm run lint:md` 通過（`#prompts` 排除）。
+- 刪除：`core/policy/{bootstrap,extensions,orchestration,skill}.toml`、`core/contracts/*.toml`（保留
+  `handback.schema.json`）、所有 `addenda`、`policy-addenda` 與 relay addendum 的 TOML、
+  `codex/policy-frames/skill.md`（死檔）、四個 binding 內的 38 段 description。
+- 已知取捨：TOML 檔頭與段間註解不搬（md 語法不允許 marker 之前有內容）。
 
 ## Phase 3a: 停止 commit golden、收斂測試
 

@@ -43,6 +43,7 @@ def make_root(
     """core、hosts/<host>、guard、VERSION、runner 的最小副本；relay 是附加在 binding 後面的 toml（None 為不開）。"""
     root = parent / "root"
     shutil.copytree(ROOT / "core", root / "core")
+    shutil.copytree(ROOT / "prompts", root / "prompts")
     shutil.copytree(ROOT / "hosts" / host, root / "hosts" / host)
     (root / "hooks").mkdir(parents=True)
     (root / "tools").mkdir()
@@ -159,7 +160,7 @@ class RelayShellTests(TempCase):
             self.assertNotIn("{{", text)
 
     def test_description_keeps_the_routing_text(self) -> None:
-        binding = render.load_toml(self.root / "hosts" / "claude" / "binding.toml")
+        binding = render.load_host_binding(self.root, "claude")
         for name in ("executor", "applier"):
             self.assertTrue(
                 frontmatter(self.dist[f"agents/{name}.md"])["description"].startswith(
@@ -213,8 +214,9 @@ class RelayShellTests(TempCase):
         self.assertEqual(set(render.RELAY_P1_ROLES), set(shoal_relay.RELAY_ROLES))
         self.assertEqual(render.RELAY_DEFAULT_TIMEOUT, {"executor": 540, "applier": 300})
         self.assertEqual(render.RELAY_MAX_TIMEOUT + render.BASH_MARGIN_SECONDS, render.BASH_LIMIT_SECONDS)
+        texts = render.load_texts(ROOT / "hosts" / "claude")
         for seconds in (1, *render.RELAY_DEFAULT_TIMEOUT.values(), render.RELAY_MAX_TIMEOUT):
-            step = render._relay_run_step(seconds)
+            step = render.text_for(texts, "relay-run-step", render._relay_timing(seconds))
             self.assertNotIn("run_in_background", step)
             self.assertIn(f"`timeout: {(seconds + render.BASH_MARGIN_SECONDS) * 1000}`", step)
 

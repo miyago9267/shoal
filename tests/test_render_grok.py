@@ -103,7 +103,7 @@ class GrokRenderTests(rh.HostRenderCase):
         self.assertEqual(efforts, {"scout": "low", "applier": "low", "security-reviewer": "high"})
 
     def test_agent_model_must_match_binding(self) -> None:
-        self.edit(self.root / "hosts" / "grok" / "frames" / "scout.md", "model: inherit", "model: grok-4.5")
+        self.edit(self.root / "prompts" / "hosts" / "grok" / "frames" / "scout.md", "model: inherit", "model: grok-4.5")
         self.assert_rejected("scout")
 
     def test_read_only_role_must_use_read_only_capability(self) -> None:

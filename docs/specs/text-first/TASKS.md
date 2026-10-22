@@ -146,17 +146,25 @@ created: 2026-10-22
 
 ### 任務
 
-- [ ] T2.1 先改測試 helper：`HostRenderCase.setUp` 與 `repo_fixtures` 複製
+- [x] T2.1 先改測試 helper：`HostRenderCase.setUp` 與 `repo_fixtures` 複製
   `prompts/`；fixture 寫法改成 md（此時測試應紅，因 loader 尚未支援）
-- [ ] T2.2 `contracts.py`：`parse_markdown_contract`、`parse_markdown_addenda`、
+  實作紀錄（2026-10-23）：所有複製 `core/` 的測試 helper 與 fixture 一併複製
+  `prompts/`；`repo_fixtures`、`test_render_equiv` 的 SUBSET 也補 `prompts`。
+  fixture 的 `clause()`、`addendum()` 改產生 md。
+- [x] T2.2 `contracts.py`：`parse_markdown_contract`、`parse_markdown_addenda`、
   `parse_markdown_blocks`（description / text），單元測試涵蓋：頭尾空行、
   內嵌空行、`sep` 預設、`required`、`join`、重複 id、marker 前有內容、
   正文含 marker 字串、含 CR、缺 `kind`、未知屬性
-- [ ] T2.3 `migrate_text.py`：讀舊 TOML、寫 md、再用新 loader 讀回，逐條斷言
+  實作紀錄：`parse_markdown_*` 只負責切 marker 與組出和 TOML 相同形狀的 table，驗證沿用
+  `parse_contract`、`parse_addenda`（id、kind、sep、required、at 的規則不變）。單元測試在
+  `tests/test_prompts_md.py`。
+- [x] T2.3 `migrate_text.py`：讀舊 TOML、寫 md、再用新 loader 讀回，逐條斷言
   `(id, kind, sep, required, at, join, text)` 全等；涵蓋 core policy、contracts、
   所有 host addenda、policy-addenda、relay addendum、binding description
-- [ ] T2.4 `render.py` 切換 loader 與路徑；`explain_policy` 一併改
-- [ ] T2.5 `render.py` 寫死的句子搬到 `prompts/hosts/claude/text.md`（`<!-- text:
+  實作紀錄：結果行見 PROGRESS（384 段，與 spec 背景數字相同）。TOML 檔頭與段間的
+  註解（provenance、設計理由）不在 md 語法內，沒有搬；內容仍在 git 歷史。
+- [x] T2.4 `render.py` 切換 loader 與路徑；`explain_policy` 一併改
+- [x] T2.5 `render.py` 寫死的句子搬到 `prompts/hosts/claude/text.md`（`<!-- text:
   key -->`）：relay write rules、run step、
   relay description 後綴、plugin / marketplace / hook description；
   `render.py` 只留 key 名稱。run step 拆成兩個 placeholder：`{{timeout}}`
@@ -164,14 +172,31 @@ created: 2026-10-22
   以 `(timeout + BASH_MARGIN_SECONDS) * 1000` 計算後代入（`render.py:656-659`、
   `:670-672`），文字內不得出現算式；`relay_shell` 的 values 多一個
   `bash_timeout_ms`，未替換 placeholder 檢查（`{{` 殘留）維持
-- [ ] T2.6 role description 搬到 `prompts/hosts/<host>/descriptions.md`，
+  實作紀錄：text.md 的 key 為 `relay-write-rules`、`relay-run-step`（含 `{{timeout}}`、
+  `{{bash_timeout_ms}}`）、`relay-description-suffix`、`relay-write-description-suffix`、
+  `plugin-hooks-description`、`guard-hooks-description`、`plugin-description`、
+  `guard-plugin-description`、`marketplace-description`、`marketplace-plugin-description`、
+  `marketplace-guard-description`。`_relay_timing(timeout)` 回傳兩個值，毫秒數仍由 render
+  以 `(timeout + BASH_MARGIN_SECONDS) * 1000` 計算。write rules 後的兩個換行是外殼範本的接縫，
+  仍由 render 補。
+- [x] T2.6 role description 搬到 `prompts/hosts/<host>/descriptions.md`，
   `_frontmatter` 等改讀它；agy 的多行 description 保留尾端換行語意
-- [ ] T2.7 搬 frames / policy-frames / relay；決定 `codex/policy-frames/skill.md`
-- [ ] T2.8 移除 TOML 文字載入路徑、`migrate_text.py`；更新說明文件（`python-tests.yml`
+  實作紀錄：`load_host_binding(root, host)` 把 `descriptions.md` 併入 binding；host 專屬 role
+  （`Explore`、`sol-executor`）的 description 一併搬，所以 description 的 key 允許大寫。
+  同一個 role 不可同時在 binding 與 `descriptions.md` 有 description；generic-md host 仍可在
+  binding 內寫 description（`new_host.py` 的骨架改產生 `descriptions.md`）。agy 的 description
+  存成無尾端換行的文字，`description: >` 的輸出位元組不變。
+- [x] T2.7 搬 frames / policy-frames / relay；決定 `codex/policy-frames/skill.md`
+  實作紀錄：`codex/policy-frames/skill.md` 刪除（codex 省略 skill 的每個條款，frame 從不輸出；
+  `render_equiv` 證明刪除後輸出不變）。
+- [x] T2.8 移除 TOML 文字載入路徑、`migrate_text.py`；更新說明文件（`python-tests.yml`
   的 paths 與 `render --check` 步驟已在 P1 完成，此處只確認 `opencode-plugin.yml`
   的 paths 含 `prompts/**`）
-- [ ] T2.9 共同驗收；PR 描述貼 `migrate_text.py` 的相等斷言結果與
+- [x] T2.9 共同驗收；PR 描述貼 `migrate_text.py` 的相等斷言結果與
   `render_equiv.py` 總雜湊
+  實作紀錄：PR #36，三平台 CI 綠燈。CI 揭露 `bench/ab/run_ab.py` 的
+  `RELAY_RENDER_PATHS` 對 HEAD 做 `git archive`，必須補 `prompts`（P4 搬出 bench 時
+  shoal-bench 要帶這一條）。
 
 ### 驗收
 

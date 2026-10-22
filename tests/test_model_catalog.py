@@ -309,6 +309,7 @@ class CliOverrideTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "hosts" / "claude", self.root / "hosts" / "claude")
         self.binding = self.root / "hosts" / "claude" / "binding.toml"
 
@@ -449,6 +450,7 @@ class ExplainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             shutil.copytree(ROOT / "core", root / "core")
+            shutil.copytree(ROOT / "prompts", root / "prompts")
             shutil.copytree(ROOT / "hosts" / "claude", root / "hosts" / "claude")
             shutil.rmtree(root / "hosts" / "claude" / "dist")
             self.assertEqual(run_render("claude", root, "--explain").returncode, 0)
@@ -463,6 +465,7 @@ class SwapModelMutationTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(
             ROOT / "hosts",
             self.root / "hosts",
