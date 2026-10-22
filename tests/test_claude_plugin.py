@@ -364,6 +364,7 @@ class RenderCommandTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "hosts" / "claude", self.root / "hosts" / "claude")
         (self.root / "hooks").mkdir()
         shutil.copy(GUARD, self.root / "hooks" / "shoal_guard.py")

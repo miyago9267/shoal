@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""產生 generic-md host 的骨架：hosts/<name>/binding.toml、frames/default.md、addenda/。
+"""產生 generic-md host 的骨架：hosts/<name>/binding.toml，以及 prompts/hosts/<name>/ 的 frames/default.md、addenda/、descriptions.md。
 
 用法：python3 tools/new_host.py <name> [--root DIR]
 
@@ -17,7 +17,7 @@ import render  # noqa: E402
 
 TEMPLATE = '''\
 # {name} host binding：由 tools/new_host.py 產生，步驟見 docs/new-host.md。
-# 填好 [models]、工具對應表與每個 role 的 description 後：
+# 填好 [models]、工具對應表後（role 的 description 在 prompts/hosts/{name}/descriptions.md）：
 #   python3 tools/render.py --host {name} --write
 
 renderer = "generic-md"
@@ -86,22 +86,25 @@ tools = ["read", "grep", "glob", "bash"]
 
 ROLE = '''
 [roles.{role}]
-description = "TODO 填寫 {role} 的一句話說明，什麼時候該派它"
 effort = "medium"
 '''
+
+DESCRIPTION = "<!-- description: {role} -->\nTODO 填寫 {role} 的一句話說明，什麼時候該派它\n"
 
 
 def scaffold(root: Path, name: str) -> list[Path]:
     if not render.HOST_NAME.match(name):
         raise render.RenderError(f"host 名稱必須是小寫英數加連字號，收到 {name!r}")
     host = root / "hosts" / name
-    if name in render.RENDERERS or host.exists():
+    prompts = root / "prompts" / "hosts" / name
+    if name in render.RENDERERS or host.exists() or prompts.exists():
         raise render.RenderError(f"hosts/{name} 已存在，不覆寫")
     roles = render.load_toml(root / "core" / "roles.toml")["roles"]
     files = {
         host / "binding.toml": TEMPLATE.format(name=name, roles="".join(ROLE.format(role=r) for r in roles)),
-        host / "frames" / "default.md": render.contracts.FRAME_PLACEHOLDER,
-        host / "addenda" / ".gitkeep": "",
+        prompts / "frames" / "default.md": render.contracts.FRAME_PLACEHOLDER,
+        prompts / "addenda" / ".gitkeep": "",
+        prompts / "descriptions.md": "\n".join(DESCRIPTION.format(role=r) for r in roles),
     }
     for path, text in files.items():
         path.parent.mkdir(parents=True, exist_ok=True)

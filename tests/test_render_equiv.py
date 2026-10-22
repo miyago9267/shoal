@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import render_equiv  # noqa: E402
 
 # render 與 relay overlay 需要的最小樹。
-SUBSET = ("core", "hosts", "tools", "hooks", "VERSION", "tests/fixtures/relay")
+SUBSET = ("core", "prompts", "hosts", "tools", "hooks", "VERSION", "tests/fixtures/relay")
 
 
 def git(repo: Path, *args: str) -> None:

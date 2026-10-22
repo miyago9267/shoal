@@ -88,6 +88,7 @@ class HostRenderCase(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         # grok 的 dist 內有 hooks/shoal_guard.py 的副本，來源是 repo 根的 hooks/shoal_guard.py。
         (self.root / "hooks").mkdir()
         shutil.copy(ROOT / "hooks" / "shoal_guard.py", self.root / "hooks" / "shoal_guard.py")

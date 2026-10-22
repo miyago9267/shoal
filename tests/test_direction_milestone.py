@@ -54,8 +54,8 @@ class MilestoneDirectionTests(unittest.TestCase):
         self.assertNotIn("commit/push", block)
         self.assertIn("material change", block)
         self.assertIn("PAUSED_VERIFICATION", block)
-        core = (ROOT / "core/policy/extensions.toml").read_text(encoding="utf-8")
-        self.assertIn('id = "cost-unbounded-continuation"', core)
+        core = (ROOT / "prompts/policy/extensions.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- clause: cost-unbounded-continuation ", core)
         self.assertIn(block, core)
         dist = ROOT / "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md"
         self.assertIn(block, dist.read_text(encoding="utf-8"))

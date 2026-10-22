@@ -1,7 +1,7 @@
-"""core/policy 機制：條款格式、placeholder、omit、required、policy_text 開關與 preview（core-policy P1）。
+"""prompts/policy 機制：條款格式、placeholder、omit、required、policy_text 開關與 preview（core-policy P1）。
 
 機制測試用 temp 目錄的假條款與 repo 的 Claude 設定副本；鎖定測試（EXPECTED_*）直接檢查 repo 目前的
-core/policy 與各 host 的 binding / policy-addenda，變更要同時改這裡。所有 host 的 renderer 都能輸出 core，repo 內只有 claude 是 core。
+prompts/policy 與各 host 的 binding / policy-addenda，變更要同時改這裡。所有 host 的 renderer 都能輸出 core，repo 內只有 claude 是 core。
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ import json
 import re
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -158,16 +157,16 @@ def rewrite_policy_sections(root: Path, host: str, policy_toml: str, frame: bool
     text = "\n".join(kept).rstrip("\n") + "\n\n" + policy_toml
     binding.write_text(text, encoding="utf-8", newline="\n")
     for sub in ("policy-frames", "policy-addenda"):
-        shutil.rmtree(root / "hosts" / host / sub, ignore_errors=True)
+        shutil.rmtree(root / "prompts" / "hosts" / host / sub, ignore_errors=True)
     if frame:
-        frames = root / "hosts" / host / "policy-frames"
-        frames.mkdir()
+        frames = root / "prompts" / "hosts" / host / "policy-frames"
+        frames.mkdir(parents=True)
         (frames / "default.md").write_text("<!-- frame -->\n{{role_body}}", encoding="utf-8", newline="\n")
 
 
 def policy_doc(text: str) -> list[contracts.Clause]:
-    return contracts.parse_contract(
-        tomllib.loads(text), kinds=contracts.POLICY_KINDS, allow_required=True
+    return contracts.parse_markdown_contract(
+        text, kinds=contracts.POLICY_KINDS, allow_required=True
     )
 
 
@@ -178,8 +177,8 @@ def normalized(text: str) -> str:
 class PolicyContractFormatTests(unittest.TestCase):
     def test_policy_clauses_accept_required_and_policy_kinds(self) -> None:
         text = (
-            "[[clause]]\nid = \"a\"\nkind = \"gate\"\nrequired = true\ntext = '''\nA.'''\n\n"
-            "[[clause]]\nid = \"b\"\nkind = \"heading\"\ntext = '''\n## B'''\n"
+            "<!-- clause: a kind=gate required -->\nA.\n\n"
+            "<!-- clause: b kind=heading -->\n## B\n"
         )
         clauses = policy_doc(text)
         self.assertEqual([c.required for c in clauses], [True, False])
@@ -187,16 +186,12 @@ class PolicyContractFormatTests(unittest.TestCase):
     def test_role_contracts_do_not_accept_required(self) -> None:
         text = clause("a", "A.") + "\n"
         with self.assertRaisesRegex(contracts.ContractError, "未知欄位 required"):
-            contracts.parse_contract(
-                tomllib.loads(
-                    text.replace(
-                        'kind = "procedure"', 'kind = "procedure"\nrequired = true'
-                    )
-                )
+            contracts.parse_markdown_contract(
+                text.replace("kind=procedure", "kind=procedure required")
             )
 
     def test_required_must_be_a_boolean(self) -> None:
-        text = "[[clause]]\nid = \"a\"\nkind = \"gate\"\nrequired = \"yes\"\ntext = '''\nA.'''\n"
+        text = "<!-- clause: a kind=gate required=yes -->\nA.\n"
         with self.assertRaisesRegex(
             contracts.ContractError, "required 必須是 true 或 false"
         ):
@@ -204,9 +199,7 @@ class PolicyContractFormatTests(unittest.TestCase):
 
     def test_policy_kind_vocabulary_is_separate_from_role_kinds(self) -> None:
         with self.assertRaisesRegex(contracts.ContractError, "kind 必須是"):
-            policy_doc(
-                "[[clause]]\nid = \"a\"\nkind = \"identity\"\ntext = '''\nA.'''\n"
-            )
+            policy_doc("<!-- clause: a kind=identity -->\nA.\n")
         with self.assertRaisesRegex(contracts.ContractError, "kind 必須是"):
             parse_clauses(clause("a", "A.", kind="gate"))
 
@@ -251,9 +244,9 @@ class PlaceholderTests(unittest.TestCase):
 class OmitAndRequiredTests(unittest.TestCase):
     def doc(self) -> list[contracts.Clause]:
         return policy_doc(
-            "[[clause]]\nid = \"a\"\nkind = \"gate\"\ntext = '''\nA.'''\n\n"
-            "[[clause]]\nid = \"b\"\nkind = \"gate\"\ntext = '''\nB.'''\n\n"
-            "[[clause]]\nid = \"c\"\nkind = \"gate\"\nrequired = true\ntext = '''\nC.'''\n"
+            "<!-- clause: a kind=gate -->\nA.\n\n"
+            "<!-- clause: b kind=gate -->\nB.\n\n"
+            "<!-- clause: c kind=gate required -->\nC.\n"
         )
 
     def test_omit_removes_exactly_that_clause(self) -> None:
@@ -287,14 +280,12 @@ class OmitAndRequiredTests(unittest.TestCase):
             contracts.compose_policy("d", self.doc(), addenda, {"b"}, {})
 
     def test_document_with_every_clause_omitted_is_skipped(self) -> None:
-        clauses = policy_doc(
-            "[[clause]]\nid = \"a\"\nkind = \"gate\"\ntext = '''\nA.'''\n"
-        )
+        clauses = policy_doc("<!-- clause: a kind=gate -->\nA.\n")
         self.assertIsNone(contracts.compose_policy("d", clauses, [], {"a"}, {}))
 
 
 class RepoPolicyTests(unittest.TestCase):
-    """repo 內 core/policy 與各 host 設定的鎖定檢查。"""
+    """repo 內 prompts/policy 與各 host 設定的鎖定檢查。"""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -338,7 +329,7 @@ class RepoPolicyTests(unittest.TestCase):
             replaces: dict[str, list[str]] = {}
             addenda: dict[str, list[str]] = {}
             for path in sorted(
-                (ROOT / "hosts" / host / "policy-addenda").glob("*.toml")
+                (ROOT / "prompts" / "hosts" / host / "policy-addenda").glob("*.md")
             ):
                 loaded = contracts.load_addenda(path)
                 self.assertIn(path.stem, self.policy["docs"], path)
@@ -350,9 +341,7 @@ class RepoPolicyTests(unittest.TestCase):
                 self.assertEqual(addenda, EXPECTED_POLICY_ADDENDA[host])
 
     def test_core_clauses_have_no_host_specific_names(self) -> None:
-        for path in sorted((ROOT / "core" / "policy").glob("*.toml")):
-            if path.name == "placeholders.toml":
-                continue
+        for path in sorted((ROOT / "prompts" / "policy").glob("*.md")):
             for item in contracts.load_policy_contract(path):
                 lowered = item.text.lower()
                 for term in HOST_SPECIFIC_TERMS:
@@ -430,6 +419,7 @@ class PolicyRenderCase(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(
             ROOT / "hosts" / "claude",
             self.root / "hosts" / "claude",
@@ -566,7 +556,7 @@ class PolicyRenderCase(unittest.TestCase):
 
     def test_unknown_placeholder_in_a_core_clause_is_rejected(self) -> None:
         self.edit(
-            self.root / "core" / "policy" / "bootstrap.toml",
+            self.root / "prompts" / "policy" / "bootstrap.md",
             "{{named_roles}}",
             "{{unlisted}}",
         )
@@ -577,9 +567,9 @@ class PolicyRenderCase(unittest.TestCase):
 
     # --- addenda 與 frame ---
     def addenda(self, doc: str, text: str) -> None:
-        folder = self.root / "hosts" / "claude" / "policy-addenda"
-        folder.mkdir(exist_ok=True)
-        (folder / f"{doc}.toml").write_text(text, encoding="utf-8", newline="\n")
+        folder = self.root / "prompts" / "hosts" / "claude" / "policy-addenda"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{doc}.md").write_text(text, encoding="utf-8", newline="\n")
 
     def test_addendum_can_replace_a_non_required_clause(self) -> None:
         self.core_mode()
@@ -609,7 +599,7 @@ class PolicyRenderCase(unittest.TestCase):
         self.rejected(
             "--policy-preview",
             str(self.root / "out"),
-            expected="core/policy 沒有對應的文件",
+            expected="prompts/policy 沒有對應的文件",
         )
 
     def test_addendum_may_add_host_text_after_a_clause(self) -> None:
@@ -621,8 +611,8 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertTrue(text.endswith("- Host-only rule.\n"))
 
     def test_document_with_every_clause_omitted_is_not_emitted(self) -> None:
-        (self.root / "core" / "policy" / "extra.toml").write_text(
-            "[[clause]]\nid = \"extra-note\"\nkind = \"extension\"\ntext = '''\nExtra.'''\n",
+        (self.root / "prompts" / "policy" / "extra.md").write_text(
+            "<!-- clause: extra-note kind=extension -->\nExtra.\n",
             encoding="utf-8",
         )
         self.edit(

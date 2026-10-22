@@ -29,6 +29,7 @@ class DeadSrcGuardTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name)
         shutil.copytree(ROOT / "core", root / "core")
+        shutil.copytree(ROOT / "prompts", root / "prompts")
         (root / "hooks").mkdir()
         shutil.copy(ROOT / "hooks" / "shoal_guard.py", root / "hooks" / "shoal_guard.py")
         shutil.copytree(ROOT / "hosts" / host, root / "hosts" / host, ignore=shutil.ignore_patterns("plugin"))

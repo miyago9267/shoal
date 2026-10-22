@@ -804,7 +804,7 @@ class RelayLanding(RelayBase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.primary_status(), "")
         self.assertEqual((self.main / "README").read_text(), "r")
-        policy = (ROOT / "hosts" / "claude" / "relay" / "policy-addenda" / "orchestration.toml").read_text()
+        policy = (ROOT / "prompts" / "hosts" / "claude" / "relay" / "policy-addenda" / "orchestration.md").read_text()
         self.assertIn("git diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ <tree> <head> | git -C <primary> apply", policy)
 
     def test_apply_failure_keeps_done_and_leaves_primary_untouched(self):

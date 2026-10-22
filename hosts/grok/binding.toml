@@ -1,11 +1,11 @@
-# grok host binding：存取等級對應的 capability mode、每個 role 的 roles/*.toml（description、reasoning effort）。
+# grok host binding：存取等級對應的 capability mode、每個 role 的 roles/*.toml（reasoning effort；description 在 prompts/hosts/grok/descriptions.md）。
 # 數值等於 dotfile b65a243 的 plugins/shoal-grok/templates/roles/（vendored 自
 # Nanako0129/pilotfish-grok v1.0.6，見 upstream.lock）。
 # config.snippet.toml 逐字放在 src/，不經 render 改寫。agents/*.md 在 core 模式由
 # frames/（frontmatter、含 model: inherit）、core 條款與 addenda/ 產生；src/agents/
 # 的 legacy 原文已刪除，core role 的 src 內不可有同名檔（render 會拒絕）。
 
-# role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。
+# role 文字來源：legacy = src 內的原文；core = prompts/roles 的條款加 prompts/hosts/<host>/ 的 frames/、addenda/。
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
 role_text = "core"
 
@@ -14,7 +14,7 @@ role_text = "core"
 # render 會驗證 src/agents/<role>.md 的 model 等於解析出的值。
 selection = "inherit"
 
-# policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
+# policy 文字來源（core-policy P4）：legacy = src 內的原文；core = prompts/policy 的條款加 prompts/hosts/<host>/ 的 policy-frames/、policy-addenda/。
 # omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
 [policy]
 policy_text = "legacy"
@@ -36,37 +36,28 @@ capability_mode = "execute"
 [roles.scout]
 comment = "Role defaults applied when spawning subagent_type \"scout\"."
 effort = "low"
-description = "Read-only reconnaissance for broad codebase sweeps or focused lookup"
 
 [roles.applier]
 effort = "low"
-description = "Fast implementation of small, bounded changes"
 
 [roles.executor]
 effort = "medium"
-description = "Implementation requiring local engineering judgment"
 
 [roles.plan-critic]
 effort = "medium"
-description = "Read-only Plan readiness challenge before approval"
 
 [roles.verifier]
 effort = "medium"
-description = "Fresh-context outcome verification (read and run, never edit)"
 
 [roles.security-reviewer]
 effort = "high"
-description = "Read-only security evidence before approval"
 
 [roles.security-executor]
 effort = "high"
-description = "Approved security-sensitive implementation"
 
 # watcher、researcher 是 delegation-default 新增的 core role；其他 host 也只接 role，不接派工條款與 guard 規則（spec D17）。
 [roles.watcher]
 effort = "low"
-description = "Background watcher for long-running commands and CI runs (run and report, never edit)"
 
 [roles.researcher]
 effort = "high"
-description = "Read-only external research with a source for every claim"

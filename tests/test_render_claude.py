@@ -89,6 +89,7 @@ class CheckCommandTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "hosts" / "claude", self.root / "hosts" / "claude")
 
     def test_check_passes_when_dist_matches(self) -> None:
@@ -125,6 +126,7 @@ class ValidationTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "hosts" / "claude", self.root / "hosts" / "claude")
         self.roles = self.root / "core" / "roles.toml"
         self.binding = self.root / "hosts" / "claude" / "binding.toml"

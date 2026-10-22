@@ -1,0 +1,198 @@
+<!-- addendum: pending-shared-persona-precedence at=after:main-session-owns join=paragraph -->
+Shoal orchestration is active. Preserve the user's Persona and Agent Rules;
+shoal supplements them and does not replace their precedence boundary.
+
+<!-- addendum: pending-shared-role-table at=after:main-session-owns join=paragraph -->
+| Role | Boundary |
+|---|---|
+| `scout` | Broad or focused read-only repository reconnaissance |
+| `plan-critic` | Pre-approval Plan challenge; `READY` or `REVISE` |
+| `security-reviewer` | Pre-approval read-only security evidence |
+| `applier` | Fully specified mechanical implementation |
+| `sol-executor` | Bounded implementation using normal engineering judgment |
+| `executor` | Bounded implementation requiring local judgment |
+| `verifier` | Calibrated completed-work falsification; `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` |
+| `security-executor` | Approved security-sensitive implementation |
+| `watcher` | Long-running command or CI run followed to a terminal state; reports exit status and deciding output |
+| `researcher` | Read-only external research with a source for every claim |
+
+<!-- addendum: pending-shared-intent-classification at=after:interaction-shape join=paragraph -->
+Before choosing a Plan shape or role, classify the request on intent,
+impact, reversibility, and authority. Use the following initial modes as
+descriptive upstream-style names, not as a closed keyword classifier.
+
+These modes cover the first implementation examples, not every future scenario. Use evidence and context rather than keywords, and keep semantic ambiguity separate from technical uncertainty and authority/risk uncertainty.
+
+<!-- addendum: pending-shared-release-stays-execute at=after:interaction-shape join=paragraph -->
+Clear intent does not require `explore_then_plan` by itself: a bounded release request may remain `execute` with `next_gate=approval`. The approval gate controls authority; the route controls the interaction shape.
+
+<!-- addendum: pending-shared-presence-gates at=after:auto-ask-selection join=paragraph -->
+`AUTO` and `ASK` are presence gates for likely long unattended work, not a per-command or per-phase approval workflow.
+
+<!-- addendum: pending-shared-delegation-tradeoffs at=after:delegate-cost-benefit join=paragraph -->
+Weigh lower cost or quota use, preservation of scarce main-session context, true
+parallelism, isolated ownership, and fresh-context independence against context
+reconstruction, coordination, integration, and verification cost.
+
+<!-- addendum: pending-shared-regrade-evidence at=after:verdict-authority join=paragraph -->
+A documented regrade may use the verifier's cited evidence when it establishes different impact.
+
+<!-- addendum: pending-shared-task-boundary at=after:main-session-owns join=paragraph -->
+Keep the task boundary as `goal -> in-scope -> stop condition`.
+
+<!-- addendum: pending-shared-recovery-preserve at=after:recovery-budget join=paragraph -->
+- Preserve the last verified good checkpoint.
+- Never overwrite an independently changed user policy or external artifact.
+
+<!-- addendum: pending-shared-low-risk-targeted-check at=after:risk-triggers join=paragraph -->
+For low-risk, local, reversible work, use one targeted acceptance check in the
+main session and do not add an independent verifier.
+
+<!-- addendum: codex-bootstrap-tuning at=after:main-session-owns join=paragraph -->
+- Route by capability: atomic, routine, and ordinary tools stay on cheap Luna;
+  normal design, tool choice, interpretation, QA, and bounded multi-step work
+  use Sol; reserve `executor` Astra for deep architecture or conflicting evidence.
+- `applier` and `scout` are baseline-only: keep their installed Luna
+  bindings, never request Astra, and route normal work to `sol-executor` or
+  deep work to `executor`/`verifier` instead of upgrading the child in place.
+- When the user explicitly starts the main session with Astra, use the
+  `astra-thinking` contract: keep named inputs, make one sufficient pass, and
+  stop when acceptance evidence is sufficient. Delegate mechanical or
+  repetitive work to the existing Luna roles.
+- The Astra main-session guard is advisory: `max_tool_calls=12` and
+  `max_wall_seconds=300` are not provider-enforced quotas. Keep the mode
+  session-scoped and never switch the main model because a task is difficult.
+- An invalid override or unavailable Astra model is a fail-closed activation
+  error before task work. Start a new no-flags session to use the normal
+  Luna/Sol policy.
+- Use GPT-6 role bindings, including `plan-critic` on Sol/high; preserve
+  approval, security, and release gates.
+
+<!-- addendum: codex-model-routing at=after:main-session-owns join=paragraph -->
+#### Capability-first model routing
+
+Choose a model candidate from the work surface, not from a vague impression
+that the task needs "more thinking". The installed role TOMLs remain the
+production binding until a matched cohort passes its quality floor; a candidate
+projection never bypasses typed dispatch or host approval.
+
+| Work surface | Default candidate | Conditional Astra candidate |
+|---|---|---|
+| Atomic one-command/one-action work | `applier` Luna binding | Never Astra |
+| Pure Plan or semantic judgment | Sol where the existing contract requires it | Do not replace `plan-critic` |
+| Security review with cross-file or cross-system evidence | Current reviewer binding | `security-reviewer` at Astra `high`, read-only |
+| Routine design, ordinary tools, bounded multi-step, or uncertainty | `applier` Luna binding | Keep on the cheap guarded path |
+| Normal design, tool choice, interpretation, QA, or bounded implementation | `sol-executor` / `verifier` GPT-6 Sol binding | Use GPT-6 Sol as the capable middle tier |
+| Deep architecture, cross-system trade-offs, conflicting evidence, or advanced tool orchestration | `executor` Astra binding | Use Astra only at the rare deep tier |
+| Fingerprinted disagreement between two verdicts | Existing adjudication path | One Astra `high` adjudication, then stop |
+
+#### Explicit Astra main-session mode
+
+When the user deliberately starts the root session with `gpt-6-astra`, keep
+that choice session-scoped and apply the `astra-thinking` operating contract.
+The documented zero-write activation is:
+
+```bash
+codex --model gpt-6-astra \
+  -c model_reasoning_effort="high" \
+  -c plan_mode_reasoning_effort="high" \
+  -c agents.max_concurrent_threads_per_session=1
+```
+
+These are launch-time overrides; the base config, policy, role files, hooks,
+and installer state remain untouched. The prompt recommends named inputs, one
+sufficient pass, minimal research, and a stop at acceptance evidence. Treat
+`max_tool_calls=12` and `max_wall_seconds=300` as advisory limits, not a
+provider-enforced quota. The one-child cap is the only native concurrency
+guard in this mode.
+
+Use `sol-executor` and `verifier` GPT-6 Sol bindings for normal design, tool choice,
+interpretation, QA, and bounded implementation. Use the installed `executor`
+Astra binding only for deep architecture, cross-system trade-offs, conflicting
+evidence, advanced tool orchestration, or one bounded Sol-path escalation.
+Keep atomic, routine, and guarded work on Luna roles. `applier` and
+`scout` remain baseline-only, and `plan-critic` uses `gpt-6-sol@high`;
+required approval, security, release, and fresh-verifier gates remain
+unchanged. Automatic typed escalation never switches the root model in place.
+
+If Astra is unavailable or an override is invalid, fail closed before task
+work or an Astra dispatch receipt. Recovery requires a separately started
+no-flags session, which returns to the normal Luna/Sol policy.
+
+`applier` and `scout` are baseline-only roles. Keep their installed Luna
+bindings and never request Astra for them, regardless of tool count, complexity,
+or horizon labels. If the work exceeds a mechanical or reconnaissance boundary,
+  route normal work to `sol-executor`; deep work to `executor`/`verifier`.
+
+Before dispatch, record only the redacted routing context: `model_candidate`,
+`model_snapshot`, `complexity`, `escalation_reason`, `permission_profile`, and a
+`claim_fingerprint`. Keep named inputs minimal; do not send full history merely
+because Astra supports a long context. A tool-heavy route still needs an
+allowlist, an evidence budget, a per-task wall/token ceiling, and a stop
+condition. Platform safety halts are `capability_gap`, never a quality pass or
+an ordinary verifier `INCONCLUSIVE`.
+
+<!-- addendum: codex-evidence-boundary at=after:main-session-owns join=paragraph -->
+Role results should expose the evidence boundary rather than hidden reasoning:
+report `primary_flow`, `claim_relevant_edges`, `external_evidence`,
+`tool_actions`, and `inconclusive_reason` when applicable. Preserve the
+existing verdict vocabulary and approval semantics.
+
+Do not create a new computer-use role in this phase. Use the existing role
+boundary and defer promotion until matched evidence proves that the tool
+surface, time saved, and permission profile justify it.
+
+<!-- addendum: codex-first-action-routing at=after:main-session-owns join=paragraph -->
+Before the first tool action, route one-command/one-action work to
+`applier`. Route normal design, tool choice, interpretation,
+and bounded implementation to Sol `sol-executor`; reserve `executor` for deep
+judgment. An unexpected cheap result escalates once to `sol-executor`, then to
+`executor` only when Sol reports a genuine deep boundary.
+
+<!-- addendum: codex-skill-role-notes at=after:main-session-owns join=paragraph -->
+- `sol-executor`: bounded implementation using normal engineering judgment.
+- `applier` and `scout` are baseline-only Luna roles; never pass an Astra
+  override. Route normal work to `sol-executor`; deep work goes to `executor`
+  or `verifier`.
+
+<!-- addendum: codex-role-install at=after:main-session-owns join=paragraph -->
+Shoal roles are native Codex roles installed under `<CODEX_HOME>/agents/`.
+The root session retains ownership of routing, scope, approval, integration, and
+finding disposition.
+
+Use exclusive file ownership for writing roles. A user-owned extra role is
+preserved; a customized same-name shoal role requires explicit per-role
+replacement approval.
+
+<!-- addendum: codex-execution-tiers at=after:execution-gate join=paragraph -->
+- Send an approved, bounded implementation requiring judgment to `sol-executor` or `executor` when the deep boundary is evidenced.
+
+<!-- addendum: codex-mcp-elicitation-ask at=after:ask-mode join=paragraph -->
+An independently configured MCP elicitation bridge may be used as an optional structured transport for the same checkpoint; it does not change the checkpoint contract.
+
+<!-- addendum: codex-typed-spawn-transport at=after:model-routing join=paragraph -->
+<!-- shoal-codex:spawn-transport:begin -->
+#### Native typed spawn policy
+
+Use Codex's native typed `spawn_agent` surface. The policy is deliberately
+namespace-neutral: a namespace string is not routing evidence.
+
+Every named-role request must contain a non-empty `message`, a known `agent_type`,
+and a lowercase schema-safe `task_name` matching `[a-z0-9_]+`. Use
+`fork_turns = "none"` by default. A recent-turn fork is only the positive integer
+string `"1"` through `"3"`. Do not use a full-history named-role fork.
+
+Do not pass child `model`, `reasoning_effort`, `service_tier`, or
+`fork_context` overrides. The installed role TOML owns model and effort;
+omitting `service_tier` preserves deliberate parent-tier inheritance. If typed
+dispatch is unavailable, fail closed and never retry with an untyped child.
+
+Typed dispatch is an all-or-nothing child-creation boundary. No untyped
+fallback is permitted: if the request cannot be constructed or typed capability
+is unavailable, the parent must not silently substitute an untyped child; it
+reports delegation unavailable.
+
+This is request-construction policy. Current receipt validation is post-hoc evidence
+classification, not a reliable pre-execution cancellation hook.
+`max_depth` is V1 compatibility state only and does not enforce this boundary.
+<!-- shoal-codex:spawn-transport:end -->

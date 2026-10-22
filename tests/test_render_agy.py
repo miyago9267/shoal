@@ -13,25 +13,25 @@ class AgyRenderTests(rh.HostRenderCase):
     SOURCE_REFS = ("shoal@",)
     DIST_FILE = "agents/scout/agent.md"
     # agy 已切到 core：agents/*.md、rules、SKILL.md 的 legacy 原文（hosts/agy/src）都不參與 render，
-    # 所以「改來源」的測試改在下面覆寫，改 policy-frames/bootstrap.md。
+    # 所以「改來源」的測試改在下面覆寫，改 prompts/hosts/agy/policy-frames/bootstrap.md。
     SRC_FILE = ""
 
     # --- 3.0.0：agy 有自己的 VERSION，rules 的 marker 由它產生（同 grok） ---
     def test_rules_marker_comes_from_host_version(self) -> None:
-        # marker 是 policy-frames/bootstrap.md 的字面值，render 不讀 VERSION；一致性在這裡對 dist 直接檢查。
+        # marker 是 prompts/hosts/agy/policy-frames/bootstrap.md 的字面值，render 不讀 VERSION；一致性在這裡對 dist 直接檢查。
         version = (ROOT / "hosts" / "agy" / "VERSION").read_text(encoding="utf-8").strip()
         rules = (ROOT / render.DIST_DIRS["agy"] / "rules" / "shoal-agy.md").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-agy v.+ -->$", rules), [f"<!-- shoal-agy v{version} -->"])
         self.assertEqual(version, "3.13.0-beta")
 
     def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
-        frame = self.root / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
+        frame = self.root / "prompts" / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
         frame.write_text(frame.read_text(encoding="utf-8") + "extra line\n", encoding="utf-8", newline="\n")
         self.assertEqual(self.check().returncode, 1)
 
     def test_changing_version_requires_rewriting_dist(self) -> None:
-        # 常駐文件的 marker 是 policy-frames/bootstrap.md 的字面值（同 claude），VERSION 只做格式檢查。
-        frame = self.root / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
+        # 常駐文件的 marker 是 prompts/hosts/agy/policy-frames/bootstrap.md 的字面值（同 claude），VERSION 只做格式檢查。
+        frame = self.root / "prompts" / "hosts" / "agy" / "policy-frames" / "bootstrap.md"
         self.edit(frame, "<!-- shoal-agy v3.13.0-beta -->", "<!-- shoal-agy v2.0.1 -->")
         result = self.check()
         self.assertEqual(result.returncode, 1, result.stderr)

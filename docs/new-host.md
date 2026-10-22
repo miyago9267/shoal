@@ -8,12 +8,13 @@ JSON 這類格式，仍要在 `tools/render.py` 寫專屬 renderer。
 ## 步驟
 
 1. 產生骨架：`python3 tools/new_host.py <name>`，建立
-   `hosts/<name>/binding.toml`、`frames/default.md` 與 `addenda/`。
+   `hosts/<name>/binding.toml`，以及 `prompts/hosts/<name>/` 的
+   `frames/default.md`、`addenda/` 與 `descriptions.md`。
    名稱是小寫英數加連字號，已存在的 host 不會被覆寫（exit 2）。
 2. 在 `binding.toml` 填 `[models]`：key 是 `core/models.toml` 的
    `vendor/name`，值是它在這個 host 的名稱。沒填之前 render 會 exit 2。
 3. 把 `[access.*]` 的範例工具名稱換成這個 host 的實際名稱，並填每個
-   `[roles.<role>].description`。
+   `prompts/hosts/<name>/descriptions.md` 的 role description。
 4. 預覽：`python3 tools/render.py --host <name> --explain`。
 5. 寫入並檢查：`--write`，再 `--check`，最後跑
    `python3 -m unittest discover -s tests`（探索式測試會自動涵蓋新 host，
@@ -51,7 +52,8 @@ type = "list"                    # list、scalar 或 map
 ## 限制
 
 - 不支援 `[extra_roles]`（host 專屬 role）與 `role_text = "legacy"`。
-- role 的外框是 `frames/default.md`（要恰好一個 `{{role_body}}`），host
-  專屬的句子寫在 `addenda/<role>.toml`，見 [core/README.md](../core/README.md)。
+- role 的外框是 `prompts/hosts/<name>/frames/default.md`（要恰好一個
+  `{{role_body}}`），host 專屬的句子寫在 `prompts/hosts/<name>/addenda/<role>.md`，
+  見 [core/README.md](../core/README.md)。
 - 不建 golden：committed dist 加 `--check` 就是回歸基準。
 - 安裝方式不由工具產生，寫在這個 host 自己的文件。
