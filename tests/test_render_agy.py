@@ -9,8 +9,6 @@ from render_helpers import ROOT, render, run_render
 
 class AgyRenderTests(rh.HostRenderCase):
     HOST = "agy"
-    GOLDEN_COUNT = 13
-    SOURCE_REFS = ("shoal@",)
     DIST_FILE = "agents/scout/agent.md"
     # agy 已切到 core：agents/*.md、rules、SKILL.md 的 legacy 原文（hosts/agy/src）都不參與 render，
     # 所以「改來源」的測試改在下面覆寫，改 prompts/hosts/agy/policy-frames/bootstrap.md。

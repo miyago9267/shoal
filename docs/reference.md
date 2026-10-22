@@ -11,7 +11,7 @@ Claude Code、Codex CLI、Gemini/agy、Grok Build、OpenCode。
 
 shoal 只維護一份 role 定義（`scout`、`executor`、`verifier` 等）。每個 host
 用自己的 binding 決定 model、effort，並把 role 的存取等級對應成該 host 的權限欄位，再由 renderer 產生該 host
-要安裝的檔案。產物有 golden 測試，改動一律看得到 diff。
+要安裝的檔案。產物由 `render --check` 與 CI 擋住手改，改動一律看得到 diff。
 
 ![render 流程：core 與 host binding 經 render.py 產生五個 host 的 dist](./assets/shoal-render-pipeline.svg)
 
@@ -72,7 +72,6 @@ tools/check_links.py       文件相對連結檢查
 install/                   安裝器與其依賴（install.sh、install.py、AGENT-INSTALL.md 等）
 bench/                     benchmark 與評測腳本（不參與安裝）
 tests/fixtures/install-history/previous/  舊版 role 位元組，供升級測試當 fixture
-tests/golden/<host>/       各 host 的逐位元組基準
 upstream.lock              各 host 對應的上游與版本
 ```
 
@@ -94,7 +93,7 @@ python3 tools/render.py --host claude --write
 （`plugins/claude/`、`plugins/claude-guard/`、
 `.claude-plugin/marketplace.json`），不是第六個 host。
 修改 core 或 binding 後先 `--write`，再跑
-`python3 -m unittest discover -s tests` 確認 golden 差異是預期的。
+`python3 -m unittest discover -s tests` 確認輸出差異是預期的。
 
 ### 新增 host
 

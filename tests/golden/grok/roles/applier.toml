@@ -1,3 +1,0 @@
-description = "Fast implementation of small, bounded changes"
-default_capability_mode = "all"
-reasoning_effort = "low"

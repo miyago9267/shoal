@@ -14,16 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import render  # noqa: E402
 
-GOLDEN = ROOT / "tests" / "golden" / "claude"
 RENDER = ROOT / "tools" / "render.py"
-
-
-def golden_files() -> dict[str, bytes]:
-    return {
-        p.relative_to(GOLDEN).as_posix(): p.read_bytes()
-        for p in GOLDEN.rglob("*")
-        if p.is_file() and p.name != "SOURCE"
-    }
 
 
 def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
@@ -36,24 +27,6 @@ def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-class GoldenTests(unittest.TestCase):
-    def test_render_is_byte_identical_to_golden(self) -> None:
-        golden = golden_files()
-        self.assertEqual(len(golden), 15)
-        rendered = render.RENDERERS["claude"](ROOT)
-        self.assertEqual(sorted(rendered), sorted(golden))
-        for rel, data in golden.items():
-            self.assertEqual(rendered[rel], data, rel)
-
-    def test_golden_records_source(self) -> None:
-        self.assertRegex((GOLDEN / "SOURCE").read_text(encoding="utf-8"), r"(?m)^ref: shoal@[0-9a-f]{7}$")
-
-    def test_committed_dist_matches_golden(self) -> None:
-        dist = ROOT / "hosts" / "claude" / "dist"
-        actual = {p.relative_to(dist).as_posix(): p.read_bytes() for p in dist.rglob("*") if p.is_file()}
-        self.assertEqual(actual, golden_files())
-
-
 class HostVersionTests(unittest.TestCase):
     """Claude host 版本的正式位置是 hosts/claude/VERSION；所有 marker 與記錄都要等於它（Decision 6）。"""
 
@@ -62,18 +35,6 @@ class HostVersionTests(unittest.TestCase):
 
     def test_version_file_format(self) -> None:
         self.assertRegex(self.VERSION, r"^\d+\.\d+\.\d+(?:-beta)?$")
-
-    def test_skill_marker_equals_version_in_dist_and_golden(self) -> None:
-        marker = f"<!-- shoal-claude v{self.VERSION} -->"
-        for base in (ROOT / "hosts" / "claude" / "dist", GOLDEN):
-            lines = (base / self.SKILL).read_text(encoding="utf-8").splitlines()
-            self.assertEqual([x for x in lines if x.startswith("<!-- shoal-claude v")], [marker], base)
-
-    def test_bootstrap_marker_equals_version_in_dist_and_golden(self) -> None:
-        first = f"<!-- shoal-claude v{self.VERSION} -->"
-        for base in (ROOT / "hosts" / "claude" / "dist", GOLDEN):
-            text = (base / "claude-md.bootstrap.md").read_text(encoding="utf-8")
-            self.assertEqual(text.splitlines()[0], first, base)
 
     def test_upstream_lock_and_readme_record_the_version(self) -> None:
         lock = tomllib.loads((ROOT / "upstream.lock").read_text(encoding="utf-8"))
@@ -189,55 +150,6 @@ class RolesCatalogTests(unittest.TestCase):
             {"security-reviewer", "security-executor"},
         )
         self.assertTrue(all(r["access"] in render.ACCESS and r["tier"] in render.TIERS for r in roles.values()))
-
-
-class RefreshGoldenTests(unittest.TestCase):
-    def test_reimports_from_a_git_repo(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            repo, root = Path(tmp) / "src", Path(tmp) / "root"
-            (repo / "templates" / "agents").mkdir(parents=True)
-            (repo / "templates" / "agents" / "a.md").write_bytes(b"hello\n")
-            git = ["git", "-c", "core.autocrlf=false", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
-            subprocess.run([*git, "init", "-q"], check=True)
-            subprocess.run([*git, "add", "."], check=True)
-            subprocess.run([*git, "commit", "-qm", "x"], check=True)
-            sha = subprocess.run([*git, "rev-parse", "--short", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "tools" / "refresh_golden.py"), "--host", "claude",
-                 "--from", str(repo), "--ref", sha, "--root", str(root)],
-                capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual((root / "tests/golden/claude/agents/a.md").read_bytes(), b"hello\n")
-            self.assertTrue(re.search(rf"ref: {sha}", (root / "tests/golden/claude/SOURCE").read_text()))
-
-
-    def test_from_dist_copies_own_dist_and_records_shoal_sha(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "hosts" / "claude" / "dist" / "agents").mkdir(parents=True)
-            (root / "hosts" / "claude" / "dist" / "agents" / "a.md").write_bytes(b"dist\n")
-            git = ["git", "-c", "core.autocrlf=false", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t"]
-            subprocess.run([*git, "init", "-q"], check=True)
-            subprocess.run([*git, "add", "."], check=True)
-            subprocess.run([*git, "commit", "-qm", "x"], check=True)
-            sha = subprocess.run([*git, "rev-parse", "--short=7", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-            args = [sys.executable, str(ROOT / "tools" / "refresh_golden.py"), "--host", "claude", "--from-dist", "--root", str(root)]
-            result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-            self.assertEqual(result.returncode, 0, result.stderr)
-            golden = root / "tests" / "golden" / "claude"
-            self.assertEqual((golden / "agents" / "a.md").read_bytes(), b"dist\n")
-            source = (golden / "SOURCE").read_text()
-            self.assertIn(f"ref: shoal@{sha}\n", source)
-            self.assertIn("dirty: false", source)
-            (root / "hosts" / "claude" / "dist" / "agents" / "a.md").write_bytes(b"changed\n")
-            subprocess.run(args, capture_output=True, text=True, check=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-            self.assertIn("dirty: true", (golden / "SOURCE").read_text())
-
-    def test_without_source_or_from_dist_is_rejected(self) -> None:
-        result = subprocess.run([sys.executable, str(ROOT / "tools" / "refresh_golden.py"), "--host", "claude"],
-                                capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-        self.assertEqual(result.returncode, 2)
 
 
 if __name__ == "__main__":

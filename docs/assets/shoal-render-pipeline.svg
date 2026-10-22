@@ -30,7 +30,7 @@
   <rect width="1400" height="800" class="bg"/>
   <text x="48" y="45" class="kicker muted">SHOAL / RENDER PIPELINE</text>
   <text x="48" y="88" class="title fg">一份 role 定義，render 成五個 host</text>
-  <text x="48" y="120" class="small muted">只改 core 或 binding，五個 host 的 agent 設定一起更新；產物有 golden 測試，每個改動都看得到 diff。</text>
+  <text x="48" y="120" class="small muted">只改 core 或 binding，五個 host 的 agent 設定一起更新；產物由 render --check 擋住手改，每個改動都看得到 diff。</text>
 
   <!-- column 1: core -->
   <text x="48" y="172" class="section purple">CORE（HOST 中立）</text>
@@ -66,7 +66,7 @@
   <text x="526" y="484" class="small fg">access 對應成 tools / sandbox / mode</text>
   <circle cx="504" cy="512" r="12" class="blue"/><text x="499" y="517" class="tiny" fill="#fff">3</text>
   <text x="526" y="518" class="small fg">共用條款 + addenda 組成 role 文字</text>
-  <text x="492" y="552" class="tiny muted">--check 逐位元組比對 golden；prompt lock 守受保護的 surface</text>
+  <text x="492" y="552" class="tiny muted">--check 逐位元組比對 committed 輸出；prompt lock 守受保護的 surface</text>
 
   <path d="M388 250 C 430 250, 430 450, 466 452" class="route" marker-end="url(#arrow)"/>
   <path d="M388 380 C 425 380, 430 465, 466 466" class="route" marker-end="url(#arrow)"/>

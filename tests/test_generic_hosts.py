@@ -1,8 +1,8 @@
 """generic-md host 的探索式測試（new-host 的 R7）：repo 內每個 `renderer = "generic-md"` 的 host
 都檢查 `--check`，以及 core 條款逐字出現在輸出（role-contracts 的 R5）。
 
-新增 generic-md host 不需要新增或修改測試檔。generic-md host 不使用 golden：
-committed dist 加 `--check` 就是回歸基準。目前 repo 還沒有 generic-md host 時，這裡沒有任何檢查，仍然通過。
+新增 generic-md host 不需要新增或修改測試檔。generic-md host 的回歸基準是
+committed dist 加 `--check`。目前 repo 還沒有 generic-md host 時，這裡沒有任何檢查，仍然通過。
 """
 
 from __future__ import annotations
@@ -40,10 +40,9 @@ class GenericHostTests(unittest.TestCase):
                         with self.subTest(host=host, role=name, clause=clause.id):
                             self.assertIn(clause.text, text)
 
-    def test_generic_hosts_have_no_golden_and_a_dist_next_to_the_binding(self) -> None:
+    def test_generic_hosts_have_a_dist_next_to_the_binding(self) -> None:
         for host in self.hosts():
             with self.subTest(host=host):
-                self.assertFalse((ROOT / "tests" / "golden" / host).exists())
                 self.assertEqual(render.dist_dir(host), f"hosts/{host}/dist")
                 self.assertTrue((ROOT / "hosts" / host / "dist").is_dir())
 

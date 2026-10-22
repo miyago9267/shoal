@@ -8,7 +8,7 @@ Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容�
 `hooks/shoal_guard.py` 與根目錄 `VERSION` 產生，輸出在 `plugins/claude/`（`shoal`）、
 `plugins/claude-guard/`（`shoal-dispatch-guard`）與
 `.claude-plugin/marketplace.json`（兩個 plugin 同一個 marketplace）；
-`--check` 與 golden 擋住手改。Codex 的
+`--check` 擋住手改。Codex 的
 `plugin/` 目錄與這條路徑無關。需要 Claude Code 2.1 以上與 `python3`。
 
 ```bash

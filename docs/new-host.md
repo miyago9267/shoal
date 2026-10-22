@@ -55,5 +55,5 @@ type = "list"                    # list、scalar 或 map
 - role 的外框是 `prompts/hosts/<name>/frames/default.md`（要恰好一個
   `{{role_body}}`），host 專屬的句子寫在 `prompts/hosts/<name>/addenda/<role>.md`，
   見 [core/README.md](../core/README.md)。
-- 不建 golden：committed dist 加 `--check` 就是回歸基準。
+- committed dist 加 `--check` 就是回歸基準。
 - 安裝方式不由工具產生，寫在這個 host 自己的文件。

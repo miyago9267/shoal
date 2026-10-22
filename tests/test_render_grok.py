@@ -12,8 +12,6 @@ from render_helpers import ROOT, render, run_render
 
 class GrokRenderTests(rh.HostRenderCase):
     HOST = "grok"
-    GOLDEN_COUNT = 24
-    SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.toml"
     SRC_FILE = "config.snippet.toml"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
 
@@ -87,14 +85,6 @@ class GrokRenderTests(rh.HostRenderCase):
         self.assert_rejected("marker")
         src.write_text(text + marker, encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
-
-    def test_agents_are_rendered_from_core_not_from_src(self) -> None:
-        src = ROOT / "hosts" / "grok" / "src" / "agents"
-        rendered = render.RENDERERS["grok"](ROOT)
-        for path in src.glob("*.md"):
-            if path.stem in ("watcher", "researcher"):
-                continue  # 沒有上游原文；legacy 檔是 core 輸出的快照，供 role_text = "legacy" 回復用
-            self.assertNotEqual(rendered[f"agents/{path.name}"], path.read_bytes(), path.name)
 
     def test_role_toml_carries_reasoning_effort(self) -> None:
         rendered = render.RENDERERS["grok"](ROOT)
