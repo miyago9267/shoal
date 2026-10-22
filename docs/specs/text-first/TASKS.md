@@ -192,8 +192,11 @@ created: 2026-10-22
 - [x] T2.8 移除 TOML 文字載入路徑、`migrate_text.py`；更新說明文件（`python-tests.yml`
   的 paths 與 `render --check` 步驟已在 P1 完成，此處只確認 `opencode-plugin.yml`
   的 paths 含 `prompts/**`）
-- [ ] T2.9 共同驗收；PR 描述貼 `migrate_text.py` 的相等斷言結果與
+- [x] T2.9 共同驗收；PR 描述貼 `migrate_text.py` 的相等斷言結果與
   `render_equiv.py` 總雜湊
+  實作紀錄：PR #36，三平台 CI 綠燈。CI 揭露 `bench/ab/run_ab.py` 的
+  `RELAY_RENDER_PATHS` 對 HEAD 做 `git archive`，必須補 `prompts`（P4 搬出 bench 時
+  shoal-bench 要帶這一條）。
 
 ### 驗收
 

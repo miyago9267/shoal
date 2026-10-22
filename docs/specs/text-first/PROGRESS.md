@@ -40,7 +40,7 @@ created: 2026-10-22
 
 ## Phase 2: 文字搬到 `prompts/`
 
-> Status: in-review（分支 `refactor/text-first-p2`，CI 結果見 PR）
+> Status: complete（PR #36，CI 三平台綠燈，待合併）
 
 - 目標：R1、R2。
 - 2026-10-23 `migrate_text.py` 的結果行（已於最後一個 commit 移除腳本）：
