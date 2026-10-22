@@ -182,3 +182,13 @@
 ## 2026-10-22 landing 安全強化（`fix/relay-landing-hardening`）
 
 - 2026-10-22：依 security review 補 landing 拒絕條件（H1 指令檔／自動執行設定／exec bit、M2 primary HEAD 與 clean 檢查、M3 git-dir 重驗與 `GIT_ATTR_SOURCE`、L1 mismatch、L2 5 MiB 上限、L3 `worktree list -z`），`landing` 加 `head`、`tree` 與 revert 指令；fallback 合併只限 `patch does not apply` 且移除 `--3way`。
+
+## 2026-10-22 S1.13 判定
+
+- 來源：`bench/ab/results/relay-v2c.json`，commit 04b48a6，v2 任務，2 reps，model claude-sonnet-5-5。
+- 整體：shoal 14/16、wall 中位數 93.0 s；shoal-relay 13/16、182.1 s（1.96x）。兩邊都有派工的 11 對：shoal 10/11、120.9 s；relay 9/11、227.7 s（1.88x）。
+- 成本：Claude 端 relay 平均低約 15%（0.275 vs 0.326 USD）；Codex 端每 run 平均 353k input（324k cached）、4.4k output tokens，另計。
+- 失敗：5 個失敗中 4 個是 security 題，兩個 arm 都是 0/2，原因是改到受保護的 `deskapi/router.py`，與 relay 無關。唯一的 relay 專屬失敗是 v2-c rep2：Codex 回 `done`，但 landing 時 `patch does not apply`，因為 Codex 執行期間 main 改了同一個檔案；第二次 relay 又被 guard 的併行編輯鎖擋下。v2-d rep2 也有同樣的 landing 衝突，該題最後仍通過。
+- 公平性：worktree 改動已由 runner 自動落地，失敗原因都有紀錄，判定這次比較已公平。剩下的差距主要是時間：每次 relay 都要冷啟動 Codex，並重新讀約 35 萬 token 的 context，外層還多一層 haiku 外殼。
+- 判定：S1.13 未達標。通過數 13 < 14（差 1，在 2 reps 的雜訊範圍內）；時間 1.96x，超過 1.5x 的上限。依 TASKS，T1.7 不開始，P2 不開始。
+- 後續可能方向（未核准）：main 在 relay 執行期間不要動同一批檔案；縮小給 Codex 的 context；只對長任務 relay。
