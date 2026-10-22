@@ -257,7 +257,8 @@ created: 2026-10-22
   實作紀錄：本機把 `prompts/roles/scout.md` 的 `Never edit` 改成 `Nevar edit`、
   不 `--write`，CI 步驟的迴圈（六個 host）全部 exit 1，第一個 host 印出
   `內容不同: agents/scout.md`；還原後六個全部 OK。
-- [ ] T3.6 共同驗收；PR 描述貼測試數與行數變化
+- [x] T3.6 共同驗收；PR 描述貼測試數與行數變化
+  實作紀錄：PR #37，ubuntu / macOS / windows、Markdown lint、OpenCode plugin tests 全綠。
 
 ### 驗收
 

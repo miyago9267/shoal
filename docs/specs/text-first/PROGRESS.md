@@ -65,7 +65,7 @@ created: 2026-10-22
 
 ## Phase 3a: 停止 commit golden、收斂測試
 
-> Status: in-progress（PR 待開；triage 表待 Miyago 抽看後合併）
+> Status: complete（PR #37，CI 三平台綠燈，待 Miyago 抽看 triage 表後合併）
 
 - 目標：R4（golden）、R6。
 - 基準（origin/main `802b981`）：全套 1942 個測試、約 297 秒、OK（skipped=1）。
