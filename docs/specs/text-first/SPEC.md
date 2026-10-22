@@ -14,7 +14,9 @@ priority: medium
 # Text first：讓 prompt 文字成為 repo 的主體
 
 方向於 2026-10-22 經 Miyago 核准；本文是實作前的規格，量測基準為
-main `863943c`。
+main `863943c`，已 rebase 到 `8da4d0f`。後者只合入 PR #34（刪除 `docs/archive`
+與 `docs/assets/reel-*`，不動 `tools/`、`tests/`、`hosts/`、`core/`），所以下列
+事實不變；`docs/benchmarks` 仍存在，D5 因此要處理它。
 
 ## Background
 
@@ -59,12 +61,13 @@ claude-plugin，輸出雜湊改變才算 live（168 個檔，104 live、64 dead�
 | `hosts/agy/dist`、`hosts/grok/dist`、`hosts/opencode/dist` | runtime 會讀：`shoal_install.py` symlink 或複製 agy dist、`install_grok.py` 對 HEAD 做 `git archive`、`opencode_global.py` 從 ref 讀、`modules.json` 列為安裝路徑；dotfile 的 `check_agent_rule_sync.sh` 與 `setup_gemini.sh` 也讀 | D3 不能停止 commit 這三份 |
 | `templates/` | codex 的安裝輸入：`install.py`、`validate_agents.py`、`verify_dispatch.py`、`sync_global.py`、`install.sh`、dotfile `setup_codex.sh` 都讀；也是 lock 的 surface | 保留 |
 | `plugins/claude*`、`.claude-plugin/` | `shoal_update.py` 對 HEAD 做 `git archive`，Claude plugin 由此同步 | 保留 |
-| `hosts/claude/dist` | 與 `plugins/claude/{agents,skills,policy}` 逐位元組相同（`diff -r` 驗證）；runtime 只讀 `agents/Explore.md`（`shoal_install.py:49`、`shoal_update.py:425`、`modules.json:53`）；lock 有 13 個 surface 指向它；dotfile `check_agent_rule_sync.sh:239` 讀它的 `SKILL.md` | 唯一可停止 commit 的 dist，但要 lock renewal 加 dotfile 一行修改（P3b，選配） |
+| `hosts/claude/dist` | 與 `plugins/claude/{agents,skills,policy}` 逐位元組相同（`diff -r` 驗證）；runtime 只讀 `agents/Explore.md`（`shoal_install.py:49`、`shoal_update.py:425`、`modules.json:53`）；lock 有 13 個 surface 指向它；dotfile `check_agent_rule_sync.sh:239` 讀它的 `SKILL.md` | 唯一可停止 commit 的 dist，但要 lock renewal 加 dotfile 一行修改（P3b，已延後） |
 | `tests/golden` | 只有測試與 `tools/refresh_golden.py` 讀；內容等於 dist 的 regression 副本 | 可刪 |
 | prompt lock | surface 全是輸出路徑（`templates/`、`plugins/codex/`、`hosts/claude/dist/`、`INSTALL_PROMPT.md`），沒有任何 `core/*.toml` | P1、P2、P4 不動輸出路徑，**不需要 renewal**；只有 P3b 要 |
-| CI paths filter | `python-tests.yml` 的 paths 沒有 agy、grok、opencode 的 `hosts/` 路徑，也沒有 `prompts/**`（新） | P2 要加 `prompts/**`；既有缺口見 Risks |
-| CI 沒有獨立的 `render --check` | 只經由單元測試（`test_every_host_matches_its_committed_dist` 等）執行 | P3a 加明確步驟 |
-| bench 耦合 | bench 單向依賴 shoal：`install/{verify_dispatch,stage_smoke_home,routing_contract}.py`、`hooks/shoal_autoroute_gate.py`、`tools/`；shoal 的 runtime 不 import bench。移除 bench 後 28 個測試模組無法 import，另有 1 個測試讀 `bench/ab/relay.binding.toml` | D5 的「指回 shoal」要用 `SHOAL_ROOT`，不只是 `SHOAL_AB_PLUGIN_REF` |
+| CI paths filter | `python-tests.yml` 的 paths 沒有 agy、grok、opencode 的 `hosts/` 路徑，也沒有 `prompts/**`（新） | 已決定：P1 補 `hosts/{agy,grok,opencode}/**` 與 `prompts/**` |
+| CI 沒有獨立的 `render --check` | 只經由單元測試（`test_every_host_matches_its_committed_dist` 等）執行 | 已決定：P1 加明確步驟（輸出在 P1 不變，所以可立即生效） |
+| bench 耦合 | bench 單向依賴 shoal：`install/{verify_dispatch,stage_smoke_home,routing_contract}.py`、`hooks/shoal_autoroute_gate.py`、`tools/`、`docs/benchmarks/`（`benchmark_routing.py`、`claude_eval_smoke.py`、`role_fitness_claude.py` 與 3 個測試讀它，`FROZEN_MANIFEST_V2_HASH` 釘它的 hash）；shoal 的 runtime 不 import bench。移除 bench 後 28 個測試模組無法 import，另有 1 個測試（`test_relay_render.py` 的 `OVERLAY`）讀 `bench/ab/relay.binding.toml` | D5 的「指回 shoal」要用 `SHOAL_ROOT`，不只是 `SHOAL_AB_PLUGIN_REF`；`docs/benchmarks` 列為相容面 |
+| relay overlay | `tests/fixtures/relay/relay.binding.toml` 已存在，與 `bench/ab/relay.binding.toml` 只差開頭註解，內容相同；`render_equiv.py` 若只跑預設 binding，relay 路徑（`relay_shell`、runner 打包、`--overlay`）完全不在等價證明內 | `render_equiv.py` 另跑 relay overlay；P4 把測試的 `OVERLAY` 改指 fixture |
 | 基準 | 全套測試 1915 個、297 秒（macOS）、OK（skipped=1） | P1 到 P4 的測試不得變紅 |
 
 ## Requirements (EARS)
@@ -75,8 +78,11 @@ claude-plugin，輸出雜湊改變才算 live（168 個檔，104 live、64 dead�
 - **R2**: When 任何 phase 完成，the system shall 讓每個 host 與 claude-plugin
   的 render 輸出與 main 上 render 的輸出逐位元組相同；唯一例外是該 phase 明列
   「不再 commit」的檔案，它們仍必須能被 render 重新產生。
-- **R3**: If `hosts/*/src` 內有檔案會被 core 輸出覆蓋，then render shall 以
-  非 0 結束並指出該檔，而不是默默覆蓋。
+- **R3**: If `hosts/<host>/src` 內存在某個路徑，而該路徑是 core 會產生的輸出
+  （`[policy.documents]` 的輸出路徑，或 `role_text = "core"` 的 role 的
+  `agents/<role>.md`、opencode 的 `roles/<role>.md`），then render shall 以非 0
+  結束並在錯誤訊息指出該路徑。判斷依據是檔案系統上 `src/<path>` 是否存在，
+  不是比對內容。
 - **R4**: The repository shall 只 commit 有 runtime 消費者的生成物
   （見「已驗證事實」），and CI shall 對其餘輸出執行 `render --check`。
 - **R5**: While 輸出路徑與內容不變，the prompt lock shall 保持原狀；When lock
@@ -98,9 +104,12 @@ claude-plugin，輸出雜湊改變才算 live（168 個檔，104 live、64 dead�
 - 不改 role / host 的語意、binding 的權限欄位、模型選擇規則。
 - 不動 `hooks/shoal_guard.py`、OpenCode 的 TS plugin、`plugins/codex` 內手寫的
   `SKILL.md`、`openai.yaml`、`plugin.json`、`templates/hooks.json` 的文字。
-- 不拆 `docs/benchmarks` 與 `docs/specs/*benchmark*`（決策紀錄留在 shoal）。
-- 不碰 `docs/archive`、`docs/assets/reel-*`、已結案 spec：它們由另一個 agent
-  的 `chore/slim-docs` 分支處理。
+- 不拆 `docs/benchmarks` 與 `docs/specs/*benchmark*`（決策紀錄留在 shoal；
+  shoal-bench 經 `SHOAL_ROOT` 讀它，見 D5）。
+- 不碰已結案 spec。`docs/archive` 與 `docs/assets/reel-*` 已由 PR #34 刪除，
+  不在本案範圍。
+- 不做 P3b（停止 commit `hosts/claude/dist`）：2026-10-23 決定延後，不在本案
+  範圍；P1 到 P4 完成後再另案評估。
 - 不開 PR（本 spec 只 commit 並 push 到 `docs/text-first-spec`）。
 
 ## Alternatives Considered
@@ -204,10 +213,17 @@ python3 tools/render_equiv.py --base origin/main --head HEAD
 1. 對兩個 ref 各做 `git archive` 到獨立的 temp root。
 2. 在各自 root 內用**該 ref 自己的** `tools/render.py` 對 claude、codex、agy、
    grok、opencode、claude-plugin 執行 `--write`。
-3. 收集輸出根目錄（各 host dist、`plugins/claude`、`plugins/claude-guard`、
-   `.claude-plugin/marketplace.json`、codex 的 mirror 目標）內每個檔案的
-   `(path, sha256)`，逐檔比對並印出總雜湊；任何差異即非 0 結束。
-4. 另對 head 的 working tree 執行 `render --check`，證明「已 commit 的」也一致。
+3. 另把各 ref 的 archive 複製成第二個 root（relay root，每個 ref 一個，與第 2
+   步的 root 分開，以免覆蓋預設輸出），在其中用該 ref 自己的
+   `render.py --host claude-plugin --write --overlay
+   tests/fixtures/relay/relay.binding.toml`。relay 路徑（外殼 agent、runner、
+   `--overlay`）因此與預設輸出一樣受等價證明涵蓋。
+4. 收集輸出根目錄（各 host dist、`plugins/claude`、`plugins/claude-guard`、
+   `.claude-plugin/marketplace.json`、codex 的 mirror 目標，以及 relay root 的
+   `plugins/claude*`、`.claude-plugin/marketplace.json`）內每個檔案的
+   `(path, sha256)`，relay 輸出以 `relay:` 前綴區分；逐檔比對並印出總雜湊；
+   任何差異即非 0 結束。
+5. 另對 head 的 working tree 執行 `render --check`，證明「已 commit 的」也一致。
 
 因為 `--write` 會重新產生未 commit 的輸出，被停止 commit 的檔案仍參與比較，
 所以 R2 的例外不需要豁免清單。基準 sanity check 已在 main 上做過：archive
@@ -217,7 +233,7 @@ HEAD、全部 host `--write` 後與 working tree 的 9 個輸出目錄 `diff -r`
 
 ```text
 P1 -> P2 -> P3a -> [ R -> P3b ] -> P4
-                     選配
+                     延後，不在本案範圍
 ```
 
 P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b 時才存在，
@@ -256,8 +272,20 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
   `config.snippet.toml`，codex 的 `src/agents/sol-executor.md`、
   `config.snippet.toml`、`hooks.json`，claude 的 `src/agents/Explore.md`、
   `settings.snippet.json`。
-- 防回歸（R3）：`merge_core_policy` 目前用 `out.pop(path)` 默默覆蓋 src；
-  改為遇到「src 提供了會被覆蓋的路徑」就 `RenderError`。
+- 防回歸（R3）：`merge_core_policy` 目前用 `out.pop(path)` 默默覆蓋 src
+  （`render.py:811-816`）。改為檔案系統檢查：對每個 `[policy.documents]` 的輸出
+  路徑，以及每個 `role_text = "core"` 的 role 的輸出路徑（`agents/<role>.md`，
+  opencode 為 `roles/<role>.md`；`_legacy_body` 讀的就是這些路徑，見
+  `:720-723`），只要 `src/<path>` 存在就 `RenderError` 並指名該路徑。agy 的
+  `src/rules/shoal-agy.md` 由 `render_agy` 的 `_versioned_rules` 讀取
+  （`:897-898`）而不經 `merge_core_policy` 的覆蓋，所以 P1 移除該呼叫後，
+  同一個檢查（它是 `[policy.documents]` 路徑）也涵蓋它。policy 檢查只在
+  `policy_text = "core"` 的 host 生效，role 檢查只對 `role_text = "core"` 的
+  role 生效（含 `[roles.<name>]` 的覆寫）；因此 grok 與 opencode 的
+  `policy_text = "legacy"` 不受 policy 檢查約束，grok 的 `src/rules/
+  shoal-grok.md` 不會誤報。真實樹在 P1 刪檔後不觸發；legacy 的 `Explore.md`、
+  `sol-executor.md` 屬 `extra_roles`，不是 core
+  role，不受影響。
 - agy：移除 `render_agy` 對 `_versioned_rules` 的呼叫與 `AGY_RULES_PATH` 的
   src 依賴；marker 與 `VERSION` 一致性由 P3a 的結構斷言保證。
 
@@ -265,13 +293,14 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
 
 - 決策：保留 `templates/`、`plugins/*`、`.claude-plugin/`、`hosts/{agy,grok,
   opencode}/dist`；停止 commit `tests/golden/`（P3a）；`hosts/claude/dist` 列為
-  選配 P3b。CI 對所有輸出執行 `render --check`。
+  延後的 P3b。CI 對所有輸出執行 `render --check`。
 - 原因：事實表逐一列出消費者。與原假設不同，agy / grok / opencode 的 dist 是
   runtime 輸入（含 repo 外的 dotfile），不是 CI 專用副本。
-- P3b 的代價：lock renewal、dotfile 一行修改（`check_agent_rule_sync.sh:239`
+- P3b 已延後（2026-10-23），不在本案範圍。若日後評估，代價為：lock
+  renewal、dotfile 一行修改（`check_agent_rule_sync.sh:239`
   改指 `plugins/claude/skills/...`）、`EXPLORE_DIST` 改指
   `plugins/claude/agents/Explore.md`、claude host 的 `--check` 改為只驗證不比對
-  dist；收益只有 15 個檔。建議 Miyago 決定是否做（見 Open Questions）。
+  dist；收益只有 15 個檔。已於 2026-10-23 決定延後。
 
 ### D4 文字內容測試收斂
 
@@ -297,10 +326,22 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
   所有 `Path(__file__).resolve().parents[1] / "install"` 一類的 `sys.path`
   組合改用它；`SHOAL_AB_PLUGIN_REF` 保持現狀，改為對 `SHOAL_ROOT` 做
   `git archive`。
+- 相容面（選 a）：`docs/benchmarks/` 留在 shoal，列為 shoal-bench 的相容面，
+  shoal-bench 一律經 `shoal_root.py` 讀它（`SHOAL_ROOT/docs/benchmarks`）。
+  理由：`FROZEN_MANIFEST_V2_HASH` 釘的是 shoal 內這份 manifest，決策紀錄
+  （`docs/specs/*benchmark*`）也在 shoal，搬出會讓同一份資料有兩個版本；
+  filter-repo 拆純 fixture JSON 要另算哪些檔是純 fixture，成本高於收益。與
+  `docs/benchmarks` 並列的相容面：`tests/fixtures/benchmark_routing`（若 T4.2
+  判定不專屬 bench）、`install/`、`hooks/shoal_autoroute_gate.py`、`tools/`、
+  `templates/`；這些路徑改名須在 shoal 的 CHANGELOG 註明。
 - 留在 shoal：`install/verify_dispatch.py`、`stage_smoke_home.py`、
   `routing_contract.py`、`probe_hybrid_runtime.py`（`AGENT-INSTALL.md` 與 CI
   使用）、`tests/bench_hook_latency.py`（量 guard 延遲，與 bench 無關）。
-- 建立 private repo 屬外部操作，需 Miyago 當下明確同意。
+- 建立 private repo 屬外部操作，P4 因此設閘：需 Miyago 當下明確同意才開始
+  建立與 push（已決定：計畫保留 P4，閘門見 TASKS）。
+- relay overlay：shoal 內 `tests/fixtures/relay/relay.binding.toml` 已存在且
+  內容與 `bench/ab/relay.binding.toml` 相同，所以 shoal 側不必搬檔；
+  `test_relay_render.py` 的 `OVERLAY` 在 P4 改指該 fixture，測試保留。
 
 ### D6 lock renewal 是單獨一個 commit
 
@@ -312,11 +353,11 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
 
 | Phase | 內容 | 可獨立合併 | 需要 renewal |
 | --- | --- | --- | --- |
-| P1 | 刪 53 個死檔、R3 防回歸、`render_equiv.py` | 是 | 否 |
+| P1 | 刪 53 個死檔、R3 防回歸、`render_equiv.py`（含 relay）、CI paths 補齊與獨立 `render --check` 步驟 | 是 | 否 |
 | P2 | 文字搬到 `prompts/` | 是（建議在 P1 之後） | 否 |
-| P3a | 刪 `tests/golden`、收斂文字測試、CI 加 render check | 是 | 否 |
-| R + P3b | 停止 commit `hosts/claude/dist`（選配） | R 先於 P3b | 是（R） |
-| P4 | bench 搬出 | 是 | 否 |
+| P3a | 刪 `tests/golden`、收斂文字測試 | 是 | 否 |
+| R + P3b | 停止 commit `hosts/claude/dist`（延後，不在本案範圍） | R 先於 P3b | 是（R） |
+| P4 | bench 搬出（閘門：建立 private repo 需 Miyago 明確同意） | 是 | 否 |
 
 每個 phase 一個 PR，合併前跑：全套測試、`render_equiv.py`、lock（不帶旗標）、
 `npm run lint:md`、三 OS CI。細節見 TASKS.md。
@@ -328,17 +369,22 @@ P4 與其他 phase 互不依賴，可獨立合併。renewal `R` 只在採用 P3b
 | parser 對頭尾空行 / 內嵌空行處理與 TOML 不同 | 輸出悄悄漂移 | `migrate_text.py` 逐條相等斷言；`render_equiv.py`；lock 預算作最後防線 |
 | 搬移時文字被編輯器改動（全形空白、結尾空白、行尾） | 位元組不同 | 腳本產生 md，不手貼；CI 的 `render --check` |
 | 53 個死檔之外還有隱藏讀取者（腳本、docs、dotfile） | 安裝或同步壞掉 | 已 grep repo 與 dotfile；P1 先在 clone 上跑全套；dotfile 的引用列於 TASKS |
-| `python-tests.yml` 的 paths 沒涵蓋 agy、grok、opencode 的 `hosts/` 路徑 | 只改這些的 PR 不跑主測試 | P2 加 `prompts/**`；既有缺口列為 Open Question |
+| `python-tests.yml` 的 paths 沒涵蓋 agy、grok、opencode 的 `hosts/` 路徑 | 只改這些的 PR 不跑主測試 | P1 補齊並加 `prompts/**` |
 | 測試 fixture 大量複製 `core/` 與 `hosts/<host>` | P2 漏複製 `prompts/` 造成假失敗 | 先改 `render_helpers` 與 `repo_fixtures`（T2.1），再改 loader |
 | bench 搬出後 28 個測試模組不在 shoal 跑 | bench 腐壞無人發現 | shoal-bench 自己的 CI 檢出 shoal 並跑同一批測試 |
-| 另一個 agent 的 `chore/slim-docs` 同時改 `package.json`、CI、docs | merge conflict | 本案不碰其刪除路徑；`package.json` 與 workflow 衝突時 rebase 後重跑 lint |
+| 其他分支同時改 `package.json`、CI、docs（PR #34 已合入，無待處理分支） | merge conflict | 每個 phase 從最新 `origin/main` 開分支；衝突時 rebase 後重跑 lint |
 | `Lock-Renewal` trailer 位置錯誤 | renewal 在 CI 變紅 | 直接 push 單一 commit；本機以旗標預演 |
 
 ## Open Questions（需 Miyago 決定）
 
-1. 是否做 P3b（停止 commit `hosts/claude/dist`）？收益 15 個檔，代價是 renewal
-   加 dotfile 修改；建議先不做，P1 到 P4 完成後再評估。
-2. 建立 `miyago9267/shoal-bench` private repo 與 `filter-repo` 後的第一次 push，
-   需要你當下同意（外部操作）。
-3. `python-tests.yml` 缺 agy、grok、opencode 的 `hosts/` 路徑是否順手補上？
-   這會讓這些 host 的 PR 開始跑完整三 OS 測試。
+已決定（2026-10-23）：
+
+- P3b（停止 commit `hosts/claude/dist`）延後，不在本案範圍。
+- `python-tests.yml` 補 agy、grok、opencode 的 `hosts/` 路徑與 `prompts/**`，
+  並加獨立的 `render --check` 步驟，兩者都放 P1。
+- P4 保留在計畫內但設閘。
+
+仍待決：
+
+1. 建立 `miyago9267/shoal-bench` private repo 與 `filter-repo` 後的第一次 push，
+   需要你當下同意（外部操作）；未同意前 P4 不開始。

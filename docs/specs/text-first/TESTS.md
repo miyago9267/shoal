@@ -9,7 +9,7 @@ created: 2026-10-22
 > Spec: `docs/specs/text-first/SPEC.md`
 
 編號 R1 到 R8 對應 SPEC 的 Requirements。`Shall` 為驗收條件；「每個 phase」
-指 P1、P2、P3a、P3b、P4。
+指 P1、P2、P3a、P4（P3b 已延後）。
 
 ## 驗收條件 (EARS)
 
@@ -34,40 +34,43 @@ created: 2026-10-22
 - **驗證方式**: `python3 tools/render_equiv.py --base origin/main --head HEAD`
   退出 0，印出的總雜湊寫入該 phase 的 PROGRESS。工具以各 ref 自己的
   `render.py --write` 在 temp root 重新產生所有輸出再比對，所以被停止 commit
-  的檔案也被涵蓋；另對 head working tree 執行 `render --check`。
+  的檔案也被涵蓋；另對 head working tree 執行 `render --check`。工具另在各 ref
+  的獨立 relay root 跑 `--host claude-plugin --write --overlay
+  tests/fixtures/relay/relay.binding.toml`，relay 輸出一併入雜湊；只改 relay
+  路徑的一個位元組也必須非 0。
 - **狀態**: [ ] 未驗證
 
 ### R3：死檔不能復活
 
-- **When**: `hosts/*/src` 內存在會被 core policy 輸出覆蓋的檔案。
-- **Shall**: render 以非 0 結束並在錯誤訊息指出該路徑。
-- **驗證方式**: 單元測試在 temp root 放入 `hosts/claude/src/claude-md.bootstrap.md`
-  及一個 agy 的 `src/rules/shoal-agy.md`，兩者皆被拒絕；main 的真實樹不觸發。
+- **When**: `hosts/<host>/src/<path>` 存在，而 `<path>` 是 core 會產生的輸出
+  （`[policy.documents]` 路徑，或 `role_text = "core"` 的 role 的
+  `agents/<role>.md`、opencode 的 `roles/<role>.md`）。
+- **Shall**: render 以非 0 結束並在錯誤訊息指出該路徑；判斷是檔案系統存在性，
+  不比對內容。
+- **驗證方式**: 單元測試在 temp root 分別放入 `hosts/agy/src/rules/shoal-agy.md`、
+  `hosts/claude/src/agents/scout.md`、`hosts/claude/src/claude-md.bootstrap.md`、
+  `hosts/opencode/src/roles/scout.md`，每個都使 render 非 0 且 stderr 含該路徑；
+  main 的真實樹（grok `src/rules/shoal-grok.md`、`Explore.md`、`sol-executor.md`
+  都在）不觸發。
 - **狀態**: [ ] 未驗證
 
 ### R4：只 commit 有消費者的生成物
 
-- **When**: P3a 與（選配）P3b 完成。
+- **When**: P3a 完成（P3b 已延後，不在本案範圍）。
 - **Shall**: `tests/golden/` 不存在；`templates/`、`plugins/*`、
-  `.claude-plugin/`、agy / grok / opencode dist 仍被 commit 且 `render --check`
-  通過；若做 P3b，`hosts/claude/dist` 不存在且 `EXPLORE_DIST` 指向存在的檔。
-- **驗證方式**: `test_render_check.py`；CI 的 render check 步驟；刻意改 `prompts/`
-  一個字而不 `--write`，兩者皆紅；`shoal_install.py --update` 在 temp HOME 的
-  dry-run 通過。
+  `.claude-plugin/`、`hosts/*/dist`（含 claude）仍被 commit 且 `render --check`
+  通過。
+- **驗證方式**: `test_render_check.py`；CI 的獨立 render check 步驟（P1 加入）；
+  刻意改 `prompts/` 一個字而不 `--write`，兩者皆紅。
 - **狀態**: [ ] 未驗證
 
 ### R5：lock 有效、renewal 乾淨
 
-- **When**: P1、P2、P3a、P4。
+- **When**: P1、P2、P3a、P4（P3b 與 renewal R 已延後，不在本案範圍）。
 - **Shall**: `validate_prompt_lock.py --base-ref origin/main` 不帶旗標通過，
   `LOCK.json` 與所有 surface 檔案無 diff。
 - **驗證方式**: 該指令退出 0，且 `git diff origin/main --stat -- LOCK.json
   docs/specs/prompt-document-lock templates plugins/codex` 為空。
-- **When**: 採用 P3b，renewal commit R。
-- **Shall**: R 只含 `LOCK.json`、`validate_prompt_lock.py` 與測試；訊息含獨立
-  一行 `Lock-Renewal: approved`；不改 `VERSION` 與任何 prompt 內容。
-- **驗證方式**: `git show --stat R` 的檔案清單；不帶旗標的 validator 在 R 上
-  失敗、帶 `--allow-lock-update` 通過；push 後 CI 的 lock 步驟綠。
 - **狀態**: [ ] 未驗證
 
 ### R6：行為測試保留
@@ -84,10 +87,15 @@ created: 2026-10-22
 
 - **When**: P4 完成。
 - **Shall**: shoal 不含 `bench/` 與 28 個 bench 專用測試模組；shoal-bench 保留
-  歷史並在 `SHOAL_ROOT` 指向 shoal 時測試全綠。
+  歷史並在 `SHOAL_ROOT` 指向 shoal 時測試全綠；`docs/benchmarks` 仍在 shoal，
+  shoal-bench 內每個引用都經 `shoal_root.py` 解析；`test_relay_render.py` 保留，
+  `OVERLAY` 指向 `tests/fixtures/relay/relay.binding.toml`。建立 private repo
+  需 Miyago 明確同意（閘門）。
 - **驗證方式**: shoal 的全套測試綠且 `git ls-files bench` 為空；shoal-bench
   的 `git log --follow bench/ab/run_ab.py` 保留原 commit；shoal-bench CI 綠；
-  `SHOAL_AB_PLUGIN_REF` 指向 branch 時 `export_tree` 取得該 branch 的 plugin。
+  `SHOAL_AB_PLUGIN_REF` 指向 branch 時 `export_tree` 取得該 branch 的 plugin；
+  shoal-bench 內 `grep -rn "docs.*benchmarks"` 只命中 `shoal_root.py` 與說明文字；
+  `SHOAL_ROOT` 指向 shoal main 時 shoal-bench 測試套件通過。
 - **狀態**: [ ] 未驗證
 
 ### R8：三 OS CI 綠
@@ -105,7 +113,7 @@ created: 2026-10-22
 
 | # | 測試 | 預期結果 | 狀態 |
 |---|------|----------|------|
-| 1 | main 對 main 跑 `render_equiv.py` | 退出 0，雜湊相同 | [ ] |
+| 1 | main 對 main 跑 `render_equiv.py`（含 relay overlay 輸出） | 退出 0，雜湊相同 | [ ] |
 | 2 | P1 刪 53 檔後全套測試 | 1915 個以內全綠，無新增失敗 | [ ] |
 | 3 | P2 後 `render_equiv.py` | 退出 0 | [ ] |
 | 4 | P2 後 `render --explain-policy` 各 host | 條款狀態與 P2 前相同 | [ ] |
@@ -133,9 +141,10 @@ created: 2026-10-22
 | 2 | 重複 id / 未知 kind / 未知屬性 / 缺 `kind` | `ContractError` | [ ] |
 | 3 | 正文行以 `<!-- clause:` 開頭 | 拒絕 | [ ] |
 | 4 | md 含 CR | 拒絕 | [ ] |
-| 5 | `render_equiv.py` 對改一個位元組的 ref | 非 0 並列出路徑 | [ ] |
+| 5 | `render_equiv.py` 對改一個位元組的 ref（分別改預設輸出與 relay 路徑各一次） | 非 0 並列出路徑 | [ ] |
 | 6 | 不帶旗標改 `LOCK.json` | validator 失敗 | [ ] |
 | 7 | 移除 `SHOAL_ROOT` 且預設路徑不存在 | shoal-bench 以明確訊息失敗 | [ ] |
+| 8 | temp root 放 `hosts/agy/src/rules/shoal-agy.md` 或 `hosts/claude/src/agents/scout.md` 後 render | 非 0，stderr 含該路徑（R3） | [ ] |
 
 ## 備註
 

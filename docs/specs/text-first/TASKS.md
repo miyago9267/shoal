@@ -23,8 +23,14 @@ created: 2026-10-22
 
 - [ ] 確認 spec 已獲 Miyago 核准（2026-10-22 已核准方向；本文待確認）
 - [ ] `bun install --frozen-lockfile`（取得 repo 釘住的 markdownlint 0.23.0）
-- [ ] 每個 phase 從最新 `origin/main` 開分支；不碰 `docs/archive`、
-      `docs/assets/reel-*`、已結案 spec
+- [ ] 每個 phase 從最新 `origin/main` 開分支（基準 `8da4d0f`，已含 PR #34）；
+      不碰已結案 spec
+- [ ] 範圍外：P3b（停止 commit `hosts/claude/dist`）已於 2026-10-23 決定
+      延後，下文 R + P3b 一節僅保留作未來評估的草案，不排入本案
+- [ ] P4 閘門：建立 private repo `miyago9267/shoal-bench` 與第一次 push
+      屬外部操作，需 Miyago 當下明確同意；T4.1 到 T4.4 只在本機 fresh clone 做，
+      可先行，T4.5（建立 repo 與 push）與 T4.6（shoal 側刪除 `bench/`）在同意前
+      不得開始
 
 ## P1：刪除死檔
 
@@ -47,17 +53,33 @@ created: 2026-10-22
     `config.snippet.toml`）
   - `hosts/opencode/src/roles/` 同上 9 個 role
 - 修改：`tools/render.py`（`render_agy` 移除 `_versioned_rules` 呼叫與對 src 的
-  依賴；`merge_core_policy` 改為遇到被覆蓋的 src 路徑即 `RenderError`）、
-  `tests/*`（見下）、`package.json`（lint 排除清單若引用被刪路徑）。
-- 新增：`tools/render_equiv.py`（等價證明工具，約 80 行）、其單元測試。
+  依賴；`merge_core_policy` 加檔案系統檢查：`[policy.documents]` 與
+  `role_text = "core"` 的 role 輸出路徑只要 `src/<path>` 存在即 `RenderError`
+  指名該路徑）、`tests/*`（見下）、`package.json`（lint 排除清單若引用被刪
+  路徑）、`.github/workflows/python-tests.yml`（paths 補 `hosts/agy/**`、
+  `hosts/grok/**`、`hosts/opencode/**`、`prompts/**`，pull_request 與 push 兩處；
+  新增獨立的 `render --check` 步驟）。
+- 新增：`tools/render_equiv.py`（等價證明工具，約 100 行，含 relay overlay 的
+  第二組輸出）、其單元測試。`tests/fixtures/relay/relay.binding.toml` 已存在
+  （與 `bench/ab/relay.binding.toml` 只差開頭註解），不必搬檔；T1.1 的工具直接
+  使用它，這是 P4 移除 `bench/` 後仍能比對 relay 的前提。
 
 ### 任務
 
 - [ ] T1.1 先寫 `tools/render_equiv.py` 與測試（Red：對刻意改一個位元組的 temp
-  ref 必須非 0）；在 main 對 main 自證退出 0
-- [ ] T1.2 新增測試：src 內存在會被 core 覆蓋的檔 -> render 以非 0 結束並指名
-  該檔（R3，Red 先行）
-- [ ] T1.3 `merge_core_policy` 改為報錯；`render_agy` 移除 `_versioned_rules`
+  ref 必須非 0）；除了六個 host 的預設輸出，還要對每個 ref 的 relay root 執行
+  `--host claude-plugin --write --overlay tests/fixtures/relay/relay.binding.toml`
+  （兩個 ref 各一個獨立目錄，不與預設輸出共用），把 relay 輸出併入雜湊比較；
+  測試另含「只改 relay 路徑（例如 `relay/shell.md` 一個位元組）也必須非 0」。
+  在 main 對 main 自證退出 0
+- [ ] T1.2 新增測試（R3，Red 先行）：temp root 放入 `hosts/agy/src/rules/
+  shoal-agy.md`，另一個放入 `hosts/claude/src/agents/scout.md`，render 皆須非 0
+  結束且 stderr 含該路徑；再加 `hosts/claude/src/claude-md.bootstrap.md` 與
+  opencode `hosts/opencode/src/roles/scout.md` 的案例；另一個案例確認真實樹
+  （P1 刪檔後）render 退出 0，且 grok 的 `src/rules/shoal-grok.md`、claude 的
+  `src/agents/Explore.md`、codex 的 `src/agents/sol-executor.md` 不觸發
+- [ ] T1.3 `merge_core_policy` 加檔案系統檢查（見上）；`render_agy` 移除
+  `_versioned_rules`
 - [ ] T1.4 刪 53 檔
 - [ ] T1.5 修復 35 個因讀死檔而失敗的測試（粗暴刪除實測，10 個模組）：
   `test_render_agy`（12，改為 marker 取自 dist 並等於 `VERSION`）、
@@ -70,13 +92,19 @@ created: 2026-10-22
   `test_relay_render`、`test_generic_md_render`、`test_direction_milestone`
   （各 1，後者的 legacy 比對改讀 dist）
 - [ ] T1.6 `docs/` 與 `core/README.md` 內提到上述路徑的說明更新
-- [ ] T1.7 共同驗收；PR 描述貼 `render_equiv.py` 的總雜湊
+- [ ] T1.7 `python-tests.yml`：paths 補 `hosts/agy/**`、`hosts/grok/**`、
+  `hosts/opencode/**`、`prompts/**`（兩處），並新增獨立步驟，對六個 host 與
+  claude-plugin 執行 `render --check`（失敗訊息直接，成本小於 5 秒；輸出在 P1
+  不變，所以立即可用）
+- [ ] T1.8 共同驗收；PR 描述貼 `render_equiv.py` 的總雜湊（預設與 relay 各一）
 
 ### 驗收
 
 共同驗收，加上：`git grep -n "hosts/.*/src/\(agents\|roles\|skills\)"` 只剩
 `Explore.md`、`sol-executor.md`、grok `src/rules`、`hooks`、
-`config.snippet.toml`；R3 測試綠。
+`config.snippet.toml`；R3 測試綠，且把 `hosts/agy/src/rules/shoal-agy.md` 與
+`hosts/claude/src/agents/scout.md` 放進 temp root 時 render 非 0 並印出該路徑，
+真實樹不觸發。
 
 ### 風險
 
@@ -104,8 +132,8 @@ created: 2026-10-22
   `hosts/{claude,codex,agy,grok}/binding.toml`（移除 description）、
   `core/README.md`、`docs/new-host.md`、`package.json`（lint 排除
   `#prompts`，並移除已搬走的 `#hosts/*/frames` 等）、
-  `.github/workflows/python-tests.yml` 與 `opencode-plugin.yml`（paths 加
-  `prompts/**`）、`tests/render_helpers.py`、`tests/repo_fixtures.py`、
+  `.github/workflows/opencode-plugin.yml`（paths 加 `prompts/**`；
+  `python-tests.yml` 的已在 P1 補）、`tests/render_helpers.py`、`tests/repo_fixtures.py`、
   `tests/test_core_policy.py`、`tests/test_render_codex.py`、
   `tests/test_role_contracts.py`。
 
@@ -122,13 +150,19 @@ created: 2026-10-22
   所有 host addenda、policy-addenda、relay addendum、binding description
 - [ ] T2.4 `render.py` 切換 loader 與路徑；`explain_policy` 一併改
 - [ ] T2.5 `render.py` 寫死的句子搬到 `prompts/hosts/claude/text.md`（`<!-- text:
-  key -->`）：relay write rules、run step（用 `{{timeout}}` placeholder）、
+  key -->`）：relay write rules、run step、
   relay description 後綴、plugin / marketplace / hook description；
-  `render.py` 只留 key 名稱
+  `render.py` 只留 key 名稱。run step 拆成兩個 placeholder：`{{timeout}}`
+  （runner 的秒數）與 `{{bash_timeout_ms}}`（Bash 工具的毫秒數），後者由 render
+  以 `(timeout + BASH_MARGIN_SECONDS) * 1000` 計算後代入（`render.py:656-659`、
+  `:670-672`），文字內不得出現算式；`relay_shell` 的 values 多一個
+  `bash_timeout_ms`，未替換 placeholder 檢查（`{{` 殘留）維持
 - [ ] T2.6 role description 搬到 `prompts/hosts/<host>/descriptions.md`，
   `_frontmatter` 等改讀它；agy 的多行 description 保留尾端換行語意
 - [ ] T2.7 搬 frames / policy-frames / relay；決定 `codex/policy-frames/skill.md`
-- [ ] T2.8 移除 TOML 文字載入路徑、`migrate_text.py`；更新說明文件與 CI paths
+- [ ] T2.8 移除 TOML 文字載入路徑、`migrate_text.py`；更新說明文件（`python-tests.yml`
+  的 paths 與 `render --check` 步驟已在 P1 完成，此處只確認 `opencode-plugin.yml`
+  的 paths 含 `prompts/**`）
 - [ ] T2.9 共同驗收；PR 描述貼 `migrate_text.py` 的相等斷言結果與
   `render_equiv.py` 總雜湊
 
@@ -142,8 +176,8 @@ created: 2026-10-22
 
 中到高：這是全計畫最大的改動面（約 3.4k 行 TOML 轉換、loader 重寫、5 個 host
 的路徑）。位元組漂移是主要風險，由 `migrate_text.py` 的相等斷言與
-`render_equiv.py` 雙重把關。fixture 複製漏 `prompts/` 會造成大量假失敗，所以
-T2.1 先做。與 `chore/slim-docs` 可能在 `package.json` 衝突。
+`render_equiv.py`（含 relay overlay 輸出，relay 外殼的 run step 就在這個 phase
+被搬動）雙重把關。fixture 複製漏 `prompts/` 會造成大量假失敗，所以 T2.1 先做。
 
 ## P3a：停止 commit golden，收斂文字測試
 
@@ -158,8 +192,9 @@ T2.1 先做。與 `chore/slim-docs` 可能在 `package.json` 衝突。
   `GoldenTests`、`RefreshGoldenTests`）、`tests/test_templates.py`、
   `tests/test_policy.py`、`tests/test_core_policy.py`、
   `tests/test_core_policy_hosts.py`、`tests/test_delegation_default.py`、
-  `tests/test_direction_milestone.py`（依 triage 表）、`.github/workflows/
-  python-tests.yml`、`package.json`（移除 `#tests/golden`）。
+  `tests/test_direction_milestone.py`（依 triage 表）、`package.json`
+  （移除 `#tests/golden`）。獨立的 `render --check` CI 步驟已在 P1 加入，本
+  phase 只需確認它涵蓋 `test_render_check.py` 的同一組 host。
 - 新增：`tests/test_render_check.py`（六個 host 的 `render --check` 與結構斷言）。
 - 保留：`tests/test_adapter_golden.py` 與 `tests/fixtures/adapter_golden.json`
   （guard adapter 的 fixture，與 render golden 無關）。
@@ -175,8 +210,9 @@ T2.1 先做。與 `chore/slim-docs` 可能在 `package.json` 衝突。
   每個 lock `required_fragments` 存在於其 surface
 - [ ] T3.3 刪 golden 資料與基礎設施，修 import
 - [ ] T3.4 依 triage 表刪文字內容測試
-- [ ] T3.5 `python-tests.yml` 加明確步驟：六個 host 的 `render --check`
-  （與測試重複但失敗訊息直接，成本小於 5 秒）
+- [ ] T3.5 確認 P1 加的 `render --check` 步驟仍涵蓋全部輸出（golden 移除後它是
+  唯一直接指出「輸出與來源不符」的 CI 步驟）；故意改 `prompts/` 一個字而不
+  `--write`，該步驟必須變紅
 - [ ] T3.6 共同驗收；PR 描述貼測試數與行數變化
 
 ### 驗收
@@ -192,9 +228,10 @@ relay、plugin）數量不減；故意改 `prompts/` 一個字而不 `--write` �
 其實保護的是 lock 沒涵蓋的行為契約，會失去回歸保護；保守原則：有疑問就轉成
 結構斷言而不是刪。
 
-## R + P3b（選配）：停止 commit `hosts/claude/dist`
+## R + P3b（延後，不在本案範圍）：停止 commit `hosts/claude/dist`
 
-只在 Miyago 同意（SPEC Open Question 1）後進行。
+2026-10-23 決定延後；以下僅保留草案，供 P1 到 P4 完成後評估，不排入本案任何
+PR，也不計入共同驗收。
 
 ### Lock renewal R（先上 main）
 
@@ -241,6 +278,9 @@ dotfile。收益小（15 檔），這也是列為選配的原因。
 
 目標：R7。
 
+閘門：T4.5 之前（建立 private repo、第一次 push）與 T4.6 之前（shoal 刪除
+`bench/`）需要 Miyago 當下明確同意；沒有同意就停在 T4.4，shoal 保持原樣。
+
 ### 檔案
 
 - 移出（shoal 刪除）：`bench/`（440 檔）與 28 個 bench 專用測試模組：
@@ -261,9 +301,9 @@ dotfile。收益小（15 檔），這也是列為選配的原因。
   `py_compile` 行移除 `bench/evaluate_dispatch.py`）、`package.json`（移除
   `#bench/...` 排除）、`tests/test_{templates,install,install_hooks,
   stage_smoke_home,prompt_document_lock}.py` 的 `sys.path.insert(... "bench")`
-  殘留、`tests/test_relay_render.py`（刪讀 `bench/ab/relay.binding.toml` 的
-  overlay 一致性測試，shoal 自己的 `tests/fixtures/relay/relay.binding.toml`
-  保留）、`docs/reference.md:73` 與 README 的 bench 敘述、`install/routing_contract.py`
+  殘留、`tests/test_relay_render.py`（`OVERLAY` 由
+  `bench/ab/relay.binding.toml` 改指 `tests/fixtures/relay/relay.binding.toml`，
+  測試保留不刪；兩個檔內容相同，只差開頭註解）、`docs/reference.md:73` 與 README 的 bench 敘述、`install/routing_contract.py`
   docstring、各 `docs/specs/*benchmark*` 加一行指向新 repo。
 - 新增（shoal-bench）：`bench/shoal_root.py`、`README.md`（說明
   `SHOAL_ROOT`、`SHOAL_AB_PLUGIN_REF`）、`.github/workflows/tests.yml`
@@ -279,15 +319,25 @@ dotfile。收益小（15 檔），這也是列為選配的原因。
   中該檔（bench 目錄共 18 個 commit）
 - [ ] T4.4 shoal-bench：新增 `shoal_root.py`，替換所有以 `parents[1]` 推 shoal
   路徑的 `sys.path` 組合與 `run_ab.py` 的 `ROOT`（`export_tree` 對 `SHOAL_ROOT`
-  做 `git archive`）；在 shoal-bench 跑搬出的 28 個模組全綠
-- [ ] T4.5 建立 private repo 並 push（需 Miyago 當下同意）
-- [ ] T4.6 shoal 側刪除與修改；共同驗收；PR 描述貼兩邊的測試結果
+  做 `git archive`）。`docs/benchmarks` 是相容面（SPEC D5）：
+  `benchmark_routing.py:39`、`claude_eval_smoke.py:72`、`role_fitness_claude.py:50`
+  與測試 `test_claude_eval_smoke.py:645`、`test_role_fitness_content_failure.py:26`、
+  `test_role_fitness_claude.py:1224` 全部改經 `shoal_root.py` 取路徑
+  （`shoal_root.BENCHMARKS`、`shoal_root.SHOAL_ROOT`），不再用 `ROOT / "docs"`；
+  `tests/fixtures/benchmark_routing`（`benchmark_routing.py:38`）依 T4.2 的結果
+  同樣處理。在 shoal-bench 跑搬出的 28 個模組全綠，其中 `SHOAL_ROOT` 指向 shoal
+  main
+- [ ] T4.5 （閘門）建立 private repo 並 push（需 Miyago 當下同意）
+- [ ] T4.6 （閘門）shoal 側刪除與修改；共同驗收；PR 描述貼兩邊的測試結果
 
 ### 驗收
 
 共同驗收，加上：shoal 內 `git grep -n "bench/"` 只剩 CHANGELOG 與歷史
 spec 的敘述；shoal-bench 的 CI 在 `SHOAL_ROOT` 指向 shoal main 時全綠；
-`SHOAL_AB_PLUGIN_REF=<branch>` 能對 shoal 的 branch 出 plugin。
+`SHOAL_AB_PLUGIN_REF=<branch>` 能對 shoal 的 branch 出 plugin；shoal-bench 內每個
+`docs/benchmarks` 引用都經 `shoal_root.py` 解析
+（`grep -rn "docs.*benchmarks"` 在 shoal-bench 只命中 `shoal_root.py` 與說明文字），
+且 shoal-bench 測試在 `SHOAL_ROOT` 指向 shoal main 時全綠。
 
 ### 風險
 

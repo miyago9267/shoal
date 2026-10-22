@@ -18,7 +18,12 @@ created: 2026-10-22
   - 移除 `bench/` 後 28 個測試模組無法 import。
   - 對 main archive 全部 host `--write` 後，9 個輸出目錄與 working tree
     `diff -r` 皆相同（等價證明的基準）。
-- 待決：SPEC Open Questions 1 到 3。
+- 2026-10-23 rebase 到 main `8da4d0f`（PR #34 只刪 `docs/archive`、
+  `docs/assets/reel-*`；`tools/`、`tests/`、`hosts/`、`core/` 無變動，量測仍有效；
+  `docs/benchmarks` 仍存在）。
+- 2026-10-23 決定：P3b 延後；CI paths 補齊與獨立 `render --check` 放 P1；P4
+  保留但建立 private repo 設閘。plan-critic REVISE 的三項 blocker 已併入 spec。
+- 待決：建立 `miyago9267/shoal-bench`（Open Question 1）。
 
 ## Phase 1: 刪除死檔
 
@@ -42,9 +47,9 @@ created: 2026-10-22
 - 記錄：triage 表（每個測試 keep / drop / convert 與理由）、測試數與行數
   前後對照。
 
-## Phase R + 3b（選配）: lock renewal 與停止 commit claude dist
+## Phase R + 3b（延後）: lock renewal 與停止 commit claude dist
 
-> Status: not-started（待 Open Question 1）
+> Status: deferred（2026-10-23 決定，不在本案範圍）
 
 - 記錄：renewal commit sha、CI lock 步驟結果、dotfile 修改 commit。
 
