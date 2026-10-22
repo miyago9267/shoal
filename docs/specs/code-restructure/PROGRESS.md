@@ -25,8 +25,10 @@ event 200 次（先暖一次 bytecode cache），state/cache 指向 throwaway �
 `tests/fixtures/adapter_golden.json`：157 筆（claude 51、codex 30、grok 38、agy 38，含
 None 結果與 S1.5、S1.6 案例），inputs 與完整輸出都存在檔內。`guard_vectors.json` 是已 normalize 的
 event，不是 adapter 的輸入，因此不當作 adapter payload；它由既有的 vector replay 負責（S0.3）。
-測試：`tests/test_adapter_golden.py`。敏感度：在 scratch 副本把 `adapt_claude` 的 edit 工具集合拿掉
-`MultiEdit`，以 throwaway runner 取代 `shoal_guard` 模組後，golden 測試轉紅
+測試：`tests/test_adapter_golden.py`（P0 `0a0ff8a` 只 commit fixture，測試檔於 P1
+`700cdd0` 才 commit；verifier 以 `0a0ff8a` 的 guard 跑這些 P1 測試類別，ran 13、fail 0 全綠，因此
+S1.11 實質成立）。敏感度：在 scratch 副本把 `adapt_claude` 的 edit 工具集合拿掉 `MultiEdit`，以
+throwaway runner 取代 `shoal_guard` 模組後，golden 測試轉紅
 （`pre_MultiEdit`、`pre_MultiEdit_nopath` 兩筆 FAIL）。
 
 ### T0.4 InstallAbort
@@ -42,8 +44,8 @@ fingerprint）尚無逐字行為測試，只有模板被凍結；P4 的 T4.2 拆
 
 ## P1（2026-10-19）
 
-完成 T1.1–T1.5a；T1.6 的 dist 副本、`.sha256`、共同驗收與延遲已做，fresh `verifier`
-尚未跑。`hooks/shoal_guard.py` 3181 -> 3080 行。
+完成 T1.1–T1.5a；T1.6 的 dist 副本、`.sha256`、共同驗收與延遲已做，fresh `verifier` 已於 2026-10-21
+跑過，結果 CONFIRMED（見下節 Fresh verifier）。`hooks/shoal_guard.py` 3181 -> 3080 行。
 
 ### Hook 延遲（O7）
 
@@ -71,6 +73,24 @@ code 變快；結論只能是「沒有變慢的證據」。
   worktree 路徑 `wt-guard` 含 `guard`，測試的假 host 以 `"guard" in argv[-1]`
   判斷失敗，`marketplace add <ROOT>` 被誤判。同一份 diff 套在路徑不含 `guard` 的 worktree，該模組 103
   tests 全 OK；其餘模組逐一跑過全 OK。
+
+### Fresh verifier（2026-10-21）
+
+HEAD `71c4382`；golden 與 guard_vectors 自 `0a0ff8a` 後未變。`test_adapter_golden` 18
+tests OK。敏感度：移除 claude `MultiEdit`、codex `apply_patch`、grok
+`run_terminal_command` 分別使 golden 轉紅（2 / 4 / 2 fails）。
+
+- S1.3/S1.10：舊、新 guard 對 14 個 claude event × 3 種前置狀態共 42 步執行 `run()`，stdout 與
+  state bytes 差異皆 0。
+- S1.4：`_open_private` / `_open_readable` 文字與 `0a0ff8a` 相同；symlink probe
+  行為一致，victim 檔與 0o644 皆未變動。
+- S1.5：7 個 Workflow input -> dispatch None；4 host adapter differential fuzz
+  60000 payloads，mismatches 0；S1.1/S1.9 host table 一致。
+- dist sha256 `28696065…1fa6` 與所有副本一致；`render --check` 6 hosts OK。
+- 全套 `python3 -m unittest discover -s tests`：1766 tests OK（skipped=1）。先前的
+  `test_install_failure_runs_nothing_live` 失敗已消失，搬到 `~/Project/Active/shoal`
+  後路徑不再含 "guard"，確認為路徑成因。
+- 未重新量測：S0.4 hook latency。
 
 ## 2026-10-19
 
