@@ -1,0 +1,9 @@
+{
+  "id": "v2-c-api-extension",
+  "category": "feature",
+  "protected": [
+    "kvsvc/errors.py",
+    "kvsvc/__main__.py"
+  ],
+  "timeout_s": 1200
+}

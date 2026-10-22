@@ -1,0 +1,10 @@
+{
+  "id": "t1-bugfix",
+  "category": "bugfix",
+  "protected": [
+    "tests/**",
+    "README.md",
+    "pager/__init__.py"
+  ],
+  "timeout_s": 900
+}

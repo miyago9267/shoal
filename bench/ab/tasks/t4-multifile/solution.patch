@@ -1,0 +1,84 @@
+diff --git a/shop/cart.py b/shop/cart.py
+index 1f33652..1ab8a95 100644
+--- a/shop/cart.py
++++ b/shop/cart.py
+@@ -1,6 +1,8 @@
+ """Shopping cart line items."""
+ from dataclasses import dataclass, field
+ 
++from .errors import ValidationError
++
+ 
+ @dataclass
+ class Cart:
+@@ -12,6 +14,10 @@ class Cart:
+ 
+ def add_item(cart, sku, qty=1):
+     """Add ``qty`` units of ``sku``; return the new quantity for that line."""
++    if not isinstance(sku, str) or not sku.strip():
++        raise ValidationError("sku", "must be a non-empty string")
++    if isinstance(qty, bool) or not isinstance(qty, int) or qty < 1:
++        raise ValidationError("qty", "must be a positive integer")
+     cart.lines[sku] = cart.lines.get(sku, 0) + qty
+     return cart.lines[sku]
+ 
+diff --git a/shop/errors.py b/shop/errors.py
+new file mode 100644
+index 0000000..6f722e2
+--- /dev/null
++++ b/shop/errors.py
+@@ -0,0 +1,13 @@
++"""Shared error types for the shop package."""
++
++
++class ValidationError(ValueError):
++    """Raised when a caller passes an invalid argument.
++
++    ``field`` names the offending parameter so API layers can report it.
++    """
++
++    def __init__(self, field, message):
++        super().__init__(f"{field}: {message}")
++        self.field = field
++        self.message = message
+diff --git a/shop/pricing.py b/shop/pricing.py
+index af800bc..f98ff65 100644
+--- a/shop/pricing.py
++++ b/shop/pricing.py
+@@ -1,8 +1,14 @@
+ """Price arithmetic. Prices are integer cents."""
++from .errors import ValidationError
+ 
+ 
+ def apply_discount(price_cents, percent):
+     """Return the discounted price, rounded to the nearest cent."""
++    if isinstance(price_cents, bool) or not isinstance(price_cents, int) or price_cents < 0:
++        raise ValidationError("price_cents", "must be a non-negative integer")
++    if isinstance(percent, bool) or not isinstance(percent, (int, float)) \
++            or not 0 <= percent <= 100:
++        raise ValidationError("percent", "must be between 0 and 100")
+     return round(price_cents * (100 - percent) / 100)
+ 
+ 
+diff --git a/shop/shipping.py b/shop/shipping.py
+index 9b8907c..942fff3 100644
+--- a/shop/shipping.py
++++ b/shop/shipping.py
+@@ -1,4 +1,5 @@
+ """Shipping cost by parcel weight and destination zone."""
++from .errors import ValidationError
+ 
+ ZONES = {
+     "domestic": (500, 120),
+@@ -9,6 +10,11 @@ ZONES = {
+ 
+ def shipping_cost(weight_kg, zone):
+     """Cents to ship a parcel: zone base fee plus a per-started-kg rate."""
++    if isinstance(weight_kg, bool) or not isinstance(weight_kg, (int, float)) \
++            or not weight_kg > 0:
++        raise ValidationError("weight_kg", "must be a positive number")
++    if zone not in ZONES:
++        raise ValidationError("zone", f"unknown zone {zone!r}")
+     base, per_kg = ZONES[zone]
+     whole_kg = int(weight_kg) + (0 if float(weight_kg).is_integer() else 1)
+     return base + per_kg * max(whole_kg - 1, 0)

@@ -1,0 +1,9 @@
+{
+  "id": "v2-b-bug-hunt",
+  "category": "bugfix",
+  "protected": [
+    "tick/store.py",
+    "tick/__main__.py"
+  ],
+  "timeout_s": 1200
+}

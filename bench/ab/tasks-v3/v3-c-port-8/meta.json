@@ -1,0 +1,10 @@
+{
+  "id": "v3-c-port-8",
+  "category": "refactor",
+  "protected": [
+    "fmtkit/reader.py",
+    "fmtkit/reader_v2.py",
+    "fmtkit/errors.py"
+  ],
+  "timeout_s": 1200
+}

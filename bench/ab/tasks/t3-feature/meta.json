@@ -1,0 +1,10 @@
+{
+  "id": "t3-feature",
+  "category": "feature",
+  "protected": [
+    "tests/**",
+    "invsum/loader.py",
+    "invsum/__main__.py"
+  ],
+  "timeout_s": 900
+}

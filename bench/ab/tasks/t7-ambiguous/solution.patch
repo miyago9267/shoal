@@ -1,0 +1,17 @@
+diff --git a/reports/dedupe.py b/reports/dedupe.py
+index 2d4cb57..ad99348 100644
+--- a/reports/dedupe.py
++++ b/reports/dedupe.py
+@@ -15,8 +15,11 @@ def is_duplicate(a, b):
+ 
+ 
+ def dedupe_orders(orders):
++    seen = set()
+     unique = []
+     for order in orders:
+-        if not any(is_duplicate(order, kept) for kept in unique):
++        key = _normalize(order)
++        if key not in seen:
++            seen.add(key)
+             unique.append(order)
+     return unique

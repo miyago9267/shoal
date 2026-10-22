@@ -1,0 +1,72 @@
+diff -ruN -x __pycache__ a/deskapi/handlers/admin.py b/deskapi/handlers/admin.py
+--- a/deskapi/handlers/admin.py	2026-10-16 11:07:13
++++ b/deskapi/handlers/admin.py	2026-10-16 11:07:14
+@@ -1,5 +1,5 @@
+ """User management endpoints. Admins only."""
+-from ..auth import require_admin, require_user
++from ..auth import require_admin
+ from ..http import error, no_content, ok
+ from ..store import ROLES
+ 
+@@ -30,7 +30,7 @@
+     return no_content()
+ 
+ 
+-@require_user
++@require_admin
+ def change_role(request, context):
+     user = _target_user(request, context)
+     if user is None:
+diff -ruN -x __pycache__ a/deskapi/handlers/reports.py b/deskapi/handlers/reports.py
+--- a/deskapi/handlers/reports.py	2026-10-16 11:07:13
++++ b/deskapi/handlers/reports.py	2026-10-16 11:07:14
+@@ -1,7 +1,7 @@
+ """Reporting endpoints used by the ops dashboard."""
+ from collections import Counter
+ 
+-from ..auth import authenticate, require_admin
++from ..auth import require_admin
+ from ..http import error, ok
+ 
+ 
+@@ -11,13 +11,8 @@
+     return ok({"total": sum(counts.values()), "by_status": dict(counts)})
+ 
+ 
++@require_admin
+ def audit_export(request, context):
+-    # The dashboard proxy sets X-Role for logged-in staff.
+-    user = authenticate(request, context)
+-    if user is None:
+-        return error(401, "authentication required")
+-    if request.header("X-Role") != "admin" and user["role"] != "admin":
+-        return error(403, "admin only")
+     limit = request.query.get("limit")
+     entries = context.store.audit
+     if limit is not None:
+diff -ruN -x __pycache__ a/deskapi/tokens.py b/deskapi/tokens.py
+--- a/deskapi/tokens.py	2026-10-16 11:07:13
++++ b/deskapi/tokens.py	2026-10-16 11:07:14
+@@ -1,4 +1,5 @@
+ """API token registry. Tokens look like ``<key_id>.<secret>``."""
++import hmac
+ 
+ 
+ class TokenRegistry:
+@@ -31,9 +32,11 @@
+ 
+ 
+ def _secrets_match(supplied, expected):
+-    if len(supplied) != len(expected):
++    """Constant-time comparison; non-ASCII input simply never matches."""
++    expected_bytes = expected.encode("utf-8")
++    try:
++        supplied_bytes = supplied.encode("ascii")
++    except UnicodeEncodeError:
++        hmac.compare_digest(expected_bytes, expected_bytes)
+         return False
+-    for a, b in zip(supplied, expected):
+-        if a != b:
+-            return False
+-    return True
++    return hmac.compare_digest(supplied_bytes, expected_bytes)

@@ -1,0 +1,93 @@
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 1d2b8bf..1b72aa7 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -34,3 +34,20 @@ class CliTest(CliCase):
+         lines = self.tick("export").splitlines()
+         self.assertEqual(lines[0], "id,title,priority,due,done,tags")
+         self.assertEqual(lines[1], "1,plain title,high,,no,x;y")
++
++    def test_ties_by_due_then_id(self):
++        self.tick("add", "undated", "--priority", "high")
++        self.tick("add", "late", "--priority", "high", "--due", "2026-05-20")
++        self.tick("add", "early", "--priority", "high", "--due", "2026-05-01")
++        self.assertEqual(self.ids(self.tick("list")), [3, 2, 1])
++
++    def test_due_shown_east_of_utc(self):
++        self.tick("add", "rent", "--due", "2026-03-10", tz="+08:00")
++        self.assertIn("2026-03-10", self.tick("list", tz="+08:00"))
++
++    def test_export_quotes_commas(self):
++        import csv
++        import io
++        self.tick("add", "milk, eggs")
++        rows = list(csv.reader(io.StringIO(self.tick("export"))))
++        self.assertEqual(rows[1][1], "milk, eggs")
+diff --git a/tick/dates.py b/tick/dates.py
+index 89aa04f..01544e4 100644
+--- a/tick/dates.py
++++ b/tick/dates.py
+@@ -27,15 +27,15 @@ def parse_due(text, tz):
+     return int(local_midnight.timestamp())
+ 
+ 
+-def due_date(epoch):
+-    """The calendar date a stored due timestamp refers to."""
+-    return datetime.fromtimestamp(epoch, timezone.utc).date()
++def due_date(epoch, tz):
++    """The calendar date (in ``tz``) a stored due timestamp refers to."""
++    return datetime.fromtimestamp(epoch, tz).date()
+ 
+ 
+ def format_due(epoch, tz):
+     if epoch is None:
+         return "-"
+-    return due_date(epoch).isoformat()
++    return due_date(epoch, tz).isoformat()
+ 
+ 
+ def today(tz, now=None):
+@@ -45,4 +45,4 @@ def today(tz, now=None):
+ 
+ def days_until(epoch, tz, now=None):
+     """Whole days from today (in ``tz``) to the due date; negative if overdue."""
+-    return (datetime.fromtimestamp(epoch, tz).date() - today(tz, now)).days
++    return (due_date(epoch, tz) - today(tz, now)).days
+diff --git a/tick/export.py b/tick/export.py
+index 00d87e5..ba39004 100644
+--- a/tick/export.py
++++ b/tick/export.py
+@@ -1,4 +1,7 @@
+ """CSV export."""
++import csv
++import io
++
+ from . import dates
+ 
+ HEADER = ("id", "title", "priority", "due", "done", "tags")
+@@ -17,7 +20,9 @@ def _row(task, tz):
+ 
+ def to_csv(tasks, tz):
+     """Render ``tasks`` as CSV text with a header row."""
+-    lines = [",".join(HEADER)]
++    buf = io.StringIO()
++    writer = csv.writer(buf, lineterminator="\n")
++    writer.writerow(HEADER)
+     for task in tasks:
+-        lines.append(",".join(_row(task, tz)))
+-    return "\n".join(lines) + "\n"
++        writer.writerow(_row(task, tz))
++    return buf.getvalue()
+diff --git a/tick/ordering.py b/tick/ordering.py
+index c185c24..26825a2 100644
+--- a/tick/ordering.py
++++ b/tick/ordering.py
+@@ -9,7 +9,7 @@ def _due_key(task):
+ 
+ def by_priority(tasks):
+     """High priority first; then soonest due, undated last; then lowest id."""
+-    return sorted(tasks, key=lambda t: (t.priority, _due_key(t), t.id), reverse=True)
++    return sorted(tasks, key=lambda t: (-t.priority, _due_key(t), t.id))
+ 
+ 
+ def by_due(tasks):

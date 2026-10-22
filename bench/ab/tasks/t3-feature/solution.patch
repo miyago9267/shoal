@@ -1,0 +1,32 @@
+diff --git a/invsum/cli.py b/invsum/cli.py
+index f3581e5..a017a70 100644
+--- a/invsum/cli.py
++++ b/invsum/cli.py
+@@ -1,5 +1,6 @@
+ """Command line entry point: ``python3 -m invsum stock.csv``."""
+ import argparse
++import json
+ import sys
+ 
+ from .loader import load_rows
+@@ -14,6 +15,8 @@ def build_parser():
+                         default="category", help="column to sort rows by")
+     parser.add_argument("--min-quantity", type=int, default=0,
+                         help="skip categories with fewer units than this")
++    parser.add_argument("--format", choices=["text", "json"], default="text",
++                        help="output format (default: text)")
+     return parser
+ 
+ 
+@@ -25,7 +28,10 @@ def main(argv=None):
+         print(f"invsum: {exc}", file=sys.stderr)
+         return 1
+     summary = summarize(rows, sort_by=args.sort, min_quantity=args.min_quantity)
+-    print(format_table(summary))
++    if args.format == "json":
++        print(json.dumps(summary, indent=2))
++    else:
++        print(format_table(summary))
+     return 0
+ 
+ 

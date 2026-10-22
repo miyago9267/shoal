@@ -114,9 +114,11 @@ def init_workdir(task: dict[str, Any], parent: Path) -> Path:
 
 def export_plugins(dest: Path) -> tuple[list[Path], str]:
     """Export the shoal plugins from committed HEAD (no WIP leaks into the arm)."""
-    head = git(ROOT, "rev-parse", "HEAD").strip()
+    # SHOAL_AB_PLUGIN_REF: benchmark a branch's plugins without checking it out.
+    ref = os.environ.get("SHOAL_AB_PLUGIN_REF", "HEAD")
+    head = git(ROOT, "rev-parse", ref).strip()
     archive = subprocess.run(
-        ["git", "archive", "HEAD", *PLUGIN_PATHS],
+        ["git", "archive", head, *PLUGIN_PATHS],
         cwd=ROOT,
         capture_output=True,
         check=True,
@@ -280,6 +282,12 @@ def claude_env(auth: str, private: Path) -> dict[str, str]:
         if not key.startswith(("CLAUDE_CODE_", "CLAUDECODE", "ANTHROPIC_"))
         and key != "CLAUDE_CONFIG_DIR"
     }
+    # The user's shoal data dir registers guard-chain members; keep them out of both arms.
+    (private / "data").mkdir(parents=True, exist_ok=True)
+    env["XDG_DATA_HOME"] = str(private / "data")
+    # Same as an installed shoal: hooks launch the recorded real interpreter (see plugins/claude-guard/hooks/run.sh).
+    (private / "data" / "shoal").mkdir(parents=True, exist_ok=True)
+    (private / "data" / "shoal" / "python").write_text(os.path.realpath(sys.executable) + "\n")
     return env
 
 

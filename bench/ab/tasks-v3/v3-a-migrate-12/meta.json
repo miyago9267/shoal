@@ -1,0 +1,9 @@
+{
+  "id": "v3-a-migrate-12",
+  "category": "refactor",
+  "protected": [
+    "ops/legacy.py",
+    "ops/log.py"
+  ],
+  "timeout_s": 1200
+}
