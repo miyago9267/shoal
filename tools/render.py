@@ -1704,7 +1704,7 @@ def policy_main(args: argparse.Namespace) -> int:
         files = policy_files(core, binding, host_dir)
         target = args.policy_preview.resolve()
         protected = (args.root / dist_dir(args.host)).resolve()
-        if target == protected or protected in target.parents:
+        if args.host not in NO_DIST_HOSTS and (target == protected or protected in target.parents):
             raise RenderError(f"預覽目錄不可在 {dist_dir(args.host)} 之內")
         for rel, data in files.items():  # 只寫預覽檔，不清理 DIR 內其他檔案
             (target / rel).parent.mkdir(parents=True, exist_ok=True)

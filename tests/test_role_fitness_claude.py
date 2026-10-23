@@ -1017,7 +1017,7 @@ class CommandAndEnvironmentTests(ClaudeStageCase):
         _, host, _ = self.run_stage()
         committed = {
             path.name: path.read_bytes()
-            for path in (ROOT / "hosts" / "claude" / "dist" / "agents").iterdir()
+            for path in (ROOT / "plugins" / "claude" / "agents").iterdir()
         }
         self.assertEqual(len(committed), 10)
         self.assertEqual(host.calls[0]["staged_agents"], committed)

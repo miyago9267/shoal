@@ -398,10 +398,8 @@ class PolicyRenderCase(unittest.TestCase):
             ignore=shutil.ignore_patterns("plugin"),
         )
         self.binding = self.root / "hosts" / "claude" / "binding.toml"
-        self.dist = self.root / "hosts" / "claude" / "dist"
-        # repo 的 Claude 已是 core；這組測試以 legacy 為基準，副本改回 legacy 並重寫 dist。
+        # repo 的 Claude 已是 core；這組測試以 legacy 為基準，副本改回 legacy。
         self.edit(self.binding, 'policy_text = "core"', 'policy_text = "legacy"')
-        self.assertEqual(self.render("--write").returncode, 0)
 
     def edit(self, path: Path, old: str, new: str) -> None:
         text = path.read_text(encoding="utf-8")
@@ -420,7 +418,7 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertIn(expected, result.stderr)
 
     # --- legacy 與 core 開關（P4） ---
-    def test_legacy_is_byte_identical_to_dist(self) -> None:
+    def test_legacy_check_passes(self) -> None:
         self.assertEqual(self.render("--check").returncode, 0)
 
     def test_core_adds_exactly_the_policy_documents(self) -> None:
@@ -431,12 +429,6 @@ class PolicyRenderCase(unittest.TestCase):
         documents = set(render.load_toml(self.binding)["policy"]["documents"].values())
         self.assertEqual(set(core) - set(legacy), documents)
         self.assertTrue(all(core[p] == legacy[p] for p in legacy))
-
-    def test_core_check_fails_until_dist_is_rewritten(self) -> None:
-        self.core_mode()
-        self.assertEqual(self.render("--check").returncode, 1)
-        self.assertEqual(self.render("--write").returncode, 0)
-        self.assertEqual(self.render("--check").returncode, 0)
 
     def test_every_host_accepts_core_policy_text_in_validation(self) -> None:
         # 所有 host 的 renderer 都能輸出 core；repo 內只有 claude 切過去（EXPECTED_POLICY_TEXT）。
@@ -600,8 +592,7 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertEqual(len(files), len(render.render_host(ROOT, "claude")))
 
     # --- preview ---
-    def test_preview_writes_core_documents_without_touching_dist(self) -> None:
-        before = {p: p.read_bytes() for p in self.dist.rglob("*") if p.is_file()}
+    def test_preview_writes_core_documents_without_creating_a_dist(self) -> None:
         out = self.root / "preview"
         result = self.render("--policy-preview", str(out))
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -612,9 +603,7 @@ class PolicyRenderCase(unittest.TestCase):
             written,
             sorted(render.load_toml(self.binding)["policy"]["documents"].values()),
         )
-        self.assertEqual(
-            {p: p.read_bytes() for p in self.dist.rglob("*") if p.is_file()}, before
-        )
+        self.assertFalse((self.root / "hosts" / "claude" / "dist").exists())
         self.assertEqual(
             render.load_toml(self.binding)["policy"]["policy_text"], "legacy"
         )
@@ -627,8 +616,12 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertTrue((out / "keep.txt").exists())
 
     def test_preview_refuses_a_directory_inside_dist(self) -> None:
-        self.rejected("--policy-preview", str(self.dist / "agents"), expected="不可在")
-        self.rejected("--policy-preview", str(self.dist), expected="不可在")
+        # claude 沒有 committed dist；有 dist 的 host 以 codex（templates/）驗證這道保護。
+        shutil.copytree(ROOT / "hosts" / "codex", self.root / "hosts" / "codex")
+        for target in (self.root / "templates" / "agents", self.root / "templates"):
+            result = run_render("codex", self.root, "--policy-preview", str(target))
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("不可在", result.stderr)
 
     def test_preview_is_rejected_for_a_host_without_documents(self) -> None:
         shutil.copytree(ROOT / "hosts" / "codex", self.root / "hosts" / "codex")

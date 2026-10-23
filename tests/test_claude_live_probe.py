@@ -41,7 +41,7 @@ FAKE_TOKEN = "placeholder-probe-token-for-offline-tests"
 TOKEN_ENV = claude.SUBSCRIPTION_TOKEN_ENV
 FREE_TEXT = "SENTINEL model sentence that must never be reported"
 STAGED = sorted(
-    path.stem for path in (ROOT / "hosts" / "claude" / "dist" / "agents").iterdir()
+    path.stem for path in (ROOT / "plugins" / "claude" / "agents").iterdir()
 )
 ALL = "auth,dispatch,budget"
 

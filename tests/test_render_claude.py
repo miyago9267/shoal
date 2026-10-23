@@ -57,28 +57,17 @@ class CheckCommandTests(unittest.TestCase):
         result = run_render(self.root, "--check")
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_check_fails_when_one_byte_changes(self) -> None:
-        target = self.root / "hosts" / "claude" / "dist" / "agents" / "scout.md"
-        target.write_bytes(target.read_bytes() + b"x")
-        result = run_render(self.root, "--check")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("agents/scout.md", result.stderr)
-
-    def test_check_fails_on_extra_or_missing_file(self) -> None:
+    def test_check_does_not_compare_a_dist_directory(self) -> None:
+        # claude 沒有 committed dist；即使目錄裡有東西，--check 也只驗證 render 成功。
         dist = self.root / "hosts" / "claude" / "dist"
-        (dist / "extra.md").write_text("x", encoding="utf-8", newline="\n")
-        (dist / "settings.snippet.json").unlink()
-        result = run_render(self.root, "--check")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("extra.md", result.stderr)
-        self.assertIn("settings.snippet.json", result.stderr)
-
-    def test_write_repairs_dist(self) -> None:
-        dist = self.root / "hosts" / "claude" / "dist"
-        (dist / "agents" / "scout.md").write_bytes(b"broken")
-        (dist / "extra.md").write_text("x", encoding="utf-8", newline="\n")
-        self.assertEqual(run_render(self.root, "--write").returncode, 0)
+        (dist / "agents").mkdir(parents=True)
+        (dist / "agents" / "scout.md").write_bytes(b"not the render")
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
+
+    def test_write_creates_nothing(self) -> None:
+        result = run_render(self.root, "--write")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "hosts" / "claude" / "dist").exists())
 
 
 class ValidationTests(unittest.TestCase):
