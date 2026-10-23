@@ -205,7 +205,7 @@ class UpdateFlowTests(UpdateBase):
                     "-C",
                     str(ROOT),
                     "show",
-                    "HEAD:hosts/claude/dist/agents/Explore.md",
+                    "HEAD:plugins/claude/agents/Explore.md",
                 ]
             ),
         )

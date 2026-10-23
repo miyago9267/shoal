@@ -1346,8 +1346,10 @@ RENDERERS: dict[str, Callable[[Path], dict[str, bytes]]] = {
 }
 # dist 目錄（相對 repo 根）。codex 的 dist 沿用既有的 templates/，因為 installer、
 # 測試與遠端 --ref raw URL 都寫死這個路徑。
-DIST_DIRS = {"claude": "hosts/claude/dist", "codex": "templates", "agy": "hosts/agy/dist",
+DIST_DIRS = {"codex": "templates", "agy": "hosts/agy/dist",
              "grok": "hosts/grok/dist", "opencode": "hosts/opencode/dist"}
+# 沒有 committed dist 的 host：committed 形態是 --host claude-plugin 的輸出（plugins/claude）。
+NO_DIST_HOSTS = ("claude",)
 
 
 def render_host(root: Path, host: str) -> dict[str, bytes]:
@@ -1762,6 +1764,18 @@ def main(argv: list[str] | None = None) -> int:
     except (RenderError, OSError, KeyError) as exc:
         print(f"render 失敗: host {args.host}: {exc}", file=sys.stderr)
         return 2
+
+    if args.host in NO_DIST_HOSTS:
+        if args.write:
+            print(f"host {args.host} 沒有 committed dist，沒有東西可寫；committed 形態用 --host {CLAUDE_PLUGIN_HOST} --write")
+            return 0
+        problems = diff_mirrors(args.root, args.host, files) + diff_relay_packaging(args.root, args.host)
+        if problems:
+            for line in problems:
+                print(f"  {line}", file=sys.stderr)
+            return 1
+        print(f"OK: {len(files)} 個檔案 render 成功（不比對 committed dist；committed 形態由 --host {CLAUDE_PLUGIN_HOST} --check 驗證）")
+        return 0
 
     dist = args.root / dist_dir(args.host)
     if args.write:

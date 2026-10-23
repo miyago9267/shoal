@@ -46,7 +46,7 @@ REGISTRY_PATH = REPO / "install" / "modules.json"
 JEV_PLUGIN = "shoal-jev-router@shoal-codex"
 # 與 hooks/shoal_guard.py 的 CHAIN_EVENTS 相同（tests 比對）；不 import guard，installer 保持獨立。
 CHAIN_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionEnd", "Stop")
-EXPLORE_DIST = "hosts/claude/dist/agents/Explore.md"
+EXPLORE_DIST = "plugins/claude/agents/Explore.md"
 VENDORS_FILE = REPO / "core" / "vendors.toml"
 # 有這些變數時 vendor CLI 可能改走 API 計費；doctor 只報名稱，不碰值（relay 的 child env 本來就不帶它們）。
 API_KEY_NAMES = ("OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY")
