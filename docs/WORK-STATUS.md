@@ -247,7 +247,7 @@ rechecked after the new role bindings are installed:
       重新計分確認（B3 fixture 項目因此未勾）；目前的值由檔內 aggregate
       `risk_coverage` 推論。
     - PR label `lock-renewal` 這條 renewal 路徑尚未有真實 PR 驗證；同一項
-      也包含「只改 `hosts/claude/dist/agents/*.md` 的 PR 會觸發 workflow」
+      也包含「只改 `plugins/claude/agents/*.md` 的 PR 會觸發 workflow」
       （B0 的 `validate_prompt_lock.py` 生效確認項尚未勾）。
     - Spec B Decision 2 的 0.35 變更預算（`executor`、`mech-executor`、
       `security-executor`）待 Miyago 確認。
@@ -311,7 +311,7 @@ rechecked after the new role bindings are installed:
 - Codex user policy：`~/dotfile/config/ai/codex/AGENTS.md`
 - Codex runtime policy：`~/dotfile/config/ai/codex/AGENTS.runtime.md`
 - Codex local sync：`~/.codex/shoal/sync_codex_runtime.py`
-- Claude policy：由本 repo 的 `hosts/claude/dist` 經 dotfile hook 同步；
+- Claude policy：由本 repo 的 `plugins/claude`（plugin `shoal@shoal`）經 dotfile hook 同步；
   舊的 `~/dotfile/config/ai/claude/CLAUDE.md` 已不存在，唯讀限制已解除。
 
 ## Next smallest action

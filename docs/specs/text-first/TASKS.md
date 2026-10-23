@@ -280,16 +280,16 @@ push 到 main）-> P3b PR。
 
 ### Lock renewal R（先上 main）
 
-- [ ] TR.1 `LOCK.json`：13 個 claude surface 的 `path` 由
+- [x] TR.1 `LOCK.json`：13 個 claude surface 的 `path` 由
   `hosts/claude/dist/...` 改為 `plugins/claude/...`（`id`、預算、
   `required_fragments`、`version_file` 不變）
-- [ ] TR.2 同 commit 更新 `install/validate_prompt_lock.py` 的
+- [x] TR.2 同 commit 更新 `install/validate_prompt_lock.py` 的
   `REQUIRED_SURFACE_PATHS` 與 `tests/test_prompt_document_lock.py`、
   `tests/test_core_policy.py:444` 的路徑引用；**不含**任何 prompt 內容、
   `VERSION` 或輸出檔
-- [ ] TR.3 本機驗證：`validate_prompt_lock.py --base-ref origin/main
+- [x] TR.3 本機驗證：`validate_prompt_lock.py --base-ref origin/main
   --allow-lock-update` 通過；不帶旗標時失敗並指出 `LOCK.json changed`
-- [ ] TR.4 單一 commit，message 含獨立一行 `Lock-Renewal: approved`，無 AI
+- [x] TR.4 單一 commit，message 含獨立一行 `Lock-Renewal: approved`，無 AI
   署名；**push 前先告知 Miyago**（P3b 已核准，但這是 main 歷史上不可逆的一步），
   再直接 push 到 main；確認 push 事件的 CI lock 步驟綠
 
@@ -303,16 +303,16 @@ push 到 main）-> P3b PR。
   `tests/test_generic_md_render.py:691-699`、`tests/test_render_claude.py`、
   `.gitignore`；repo 外：dotfile `script/common/check_agent_rule_sync.sh:239`
   改指 `plugins/claude/skills/shoal-orchestration/SKILL.md`。
-- [ ] TB.1 dotfile 修改先上（舊路徑在 P3b 前仍存在，所以順序安全）：在
+- [x] TB.1 dotfile 修改先上（舊路徑在 P3b 前仍存在，所以順序安全）：在
   `~/dotfile` 把 `script/common/check_agent_rule_sync.sh:239` 改指
   `plugins/claude/skills/shoal-orchestration/SKILL.md`。動手前以
   `grep -rn "claude/dist" ~/dotfile`（排除 `docs/specs`）重新確認讀取者；
   2026-10-23 實測只有這一處，`setup_gemini.sh` 讀的是 agy dist，不受影響。
   dotfile commit 無 AI 署名；`check_agent_rule_sync.sh` 在 shoal 舊路徑仍存在時
   必須通過
-- [ ] TB.2 repoint `EXPLORE_DIST` 與測試
-- [ ] TB.3 刪 `hosts/claude/dist/`，調整 claude host 的 `--check` / `--write`
-- [ ] TB.4 共同驗收；`shoal_install.py --update`（dry-run）在 temp HOME 通過
+- [x] TB.2 repoint `EXPLORE_DIST` 與測試
+- [x] TB.3 刪 `hosts/claude/dist/`，調整 claude host 的 `--check` / `--write`
+- [x] TB.4 共同驗收；`shoal_install.py --update`（dry-run）在 temp HOME 通過
 
 ### 驗收
 

@@ -40,7 +40,7 @@ from role_fitness_stage import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DIST_AGENTS = ROOT / "hosts" / "claude" / "dist" / "agents"
+DIST_AGENTS = ROOT / "plugins" / "claude" / "agents"
 
 # UNVERIFIED: the name of the variable `claude` reads a `claude setup-token`
 # subscription token from has not been confirmed by a live call (SPEC Open

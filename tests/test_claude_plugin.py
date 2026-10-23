@@ -50,7 +50,7 @@ class CommittedOutputTests(unittest.TestCase):
         for rel, data in render.render_claude_plugin(ROOT).items():
             self.assertEqual((ROOT / rel).read_bytes(), data, rel)
 
-    def test_claude_dist_is_not_changed_by_the_plugin_target(self) -> None:
+    def test_claude_renderer_output_is_not_changed_by_the_plugin_target(self) -> None:
         self.assertEqual(len(render.RENDERERS["claude"](ROOT)), 15)
         self.assertNotIn("claude-plugin", render.RENDERERS)
 

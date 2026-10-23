@@ -10,7 +10,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SURFACES = (
-    ROOT / "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md",
     ROOT / "plugins/claude/skills/shoal-orchestration/references/workflow-extensions.md",
     ROOT / "templates/agents-md.extensions.md",
 )

@@ -99,6 +99,8 @@ class RelayOffTests(unittest.TestCase):
     def test_every_host_matches_its_committed_dist(self) -> None:
         for host in HOSTS:
             files = render.render_host(ROOT, host)
+            if host in render.NO_DIST_HOSTS:  # claude 的 committed 形態是 plugins/claude，由下一個測試比對
+                continue
             self.assertEqual(
                 render.diff_dist(ROOT / render.dist_dir(host), files), [], host
             )

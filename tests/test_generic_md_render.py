@@ -630,7 +630,7 @@ class DiscoveryTests(GenericRoot):
         self.assertEqual(
             set(render.RENDERERS), {"claude", "codex", "agy", "grok", "opencode"}
         )
-        self.assertEqual(set(render.DIST_DIRS), set(render.RENDERERS))
+        self.assertEqual(set(render.DIST_DIRS) | set(render.NO_DIST_HOSTS), set(render.RENDERERS))
         shutil.copytree(
             ROOT / "hosts" / "agy",
             self.root / "hosts" / "agy",
@@ -702,7 +702,7 @@ class ReproduceExistingHostsTests(unittest.TestCase):
 
     def test_claude_scout_is_byte_identical(self) -> None:
         files = self.rendered("claude", "claude-output.toml")
-        real = (ROOT / "hosts/claude/dist/agents/scout.md").read_bytes()
+        real = (ROOT / "plugins/claude/agents/scout.md").read_bytes()
         self.assertEqual(files["agents/scout.md"], real)
 
     def test_claude_all_core_roles_are_byte_identical(self) -> None:
@@ -710,7 +710,7 @@ class ReproduceExistingHostsTests(unittest.TestCase):
         files = self.rendered("claude", "claude-output.toml")
         self.assertEqual(sorted(files), sorted(f"agents/{r}.md" for r in CORE_ROLES))
         for rel, data in files.items():
-            real = (ROOT / "hosts/claude/dist" / rel).read_bytes()
+            real = (ROOT / "plugins/claude" / rel).read_bytes()
             if rel == "agents/applier.md":
                 # applier 的 tools 覆寫在 Claude host 會丟掉 disallowedTools；generic-md 沒有互斥欄位，兩者都輸出。
                 data = data.replace(b"\ndisallowedTools: Agent, Workflow\n", b"\n", 1)

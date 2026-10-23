@@ -291,10 +291,30 @@ created: 2026-10-22
 
 ## Phase R + 3b: lock renewal 與停止 commit claude dist
 
-> Status: not-started（2026-10-23 已核准；排在 P3a 之後、P4 之前）
+> Status: P3b 待合併（R 已於 2026-10-23 上 main）
 
-- 記錄：renewal commit sha、告知 Miyago 的時間、CI lock 步驟結果、dotfile
-  修改 commit。
+- R：`57b3d34`（`Lock-Renewal: approved`）。push 事件的 CI 在 ubuntu 與 macOS
+  的 lock 步驟綠；windows 的完整測試步驟在 lock 之前就紅（見下），lock 沒跑到。
+  windows 的完整測試在 main 上自 P1 前就是紅的（push 與 nightly 都紅，PR 的
+  子集是綠的），與本案無關。
+- dotfile：`check_agent_rule_sync.sh` 改讀 `plugins/claude/skills/...`（TB.1，已推）。
+- P3b：刪 `hosts/claude/dist/`（15 檔）；`render.py` 新增 `NO_DIST_HOSTS`，
+  claude 的 `--check` 只驗證 render 成功與 relay 打包，`--write` 無事可做；
+  `EXPLORE_DIST` 與 `bench/role_fitness_claude.py` 的 `DIST_AGENTS` 改指
+  `plugins/claude/agents`；測試逐案改寫（不再比對 dist 的案例改成驗證 render 輸出
+  或 plugin 輸出）。`.gitignore` 不需變動（render 不再寫該目錄）。
+- `render_equiv.py` 的 `OUTPUTS` 移除 `hosts/claude/dist`。雜湊變化：預設 103 檔
+  `f0a3f34b...` 變 88 檔 `3052b84a...`，relay 27 檔 `87d4a9a4...` 不變。已驗證新預設
+  雜湊等於「舊 103 檔移除 15 個 `hosts/claude/dist/*` 後」重算的值，其餘 88 檔逐位元組
+  相同。
+- 去向：15 檔中 13 檔與 `plugins/claude/` 內對應檔逐位元組相同；
+  `settings.snippet.json` 沒有 committed 形態（沒有消費者，仍由 `render --check`
+  驗證可 render）；`claude-md.bootstrap.md` 的 committed 形態是
+  `plugins/claude/policy/claude-md.bootstrap.md`。
+- 全套測試 1893 個、約 286 秒、OK（skipped=1）；lock（不帶旗標）通過；
+  `npm run lint:md` 通過；六個 host 的 `render --check` 通過；
+  `check_agent_rule_sync.sh`（`SHOAL_ROOT` 指向此 worktree）通過；
+  `shoal_install.py --update` 在 temp HOME 通過（dry-run）。
 
 ## Phase 4: bench 拆出
 

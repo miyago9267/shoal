@@ -22,9 +22,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 HOSTS = ("claude", "codex", "agy", "grok", "opencode", "claude-plugin")
 OVERLAY = "tests/fixtures/relay/relay.binding.toml"
-# --write 會寫入的路徑（目錄或單檔，相對 repo 根）：五個 dist、claude-plugin 與 codex 的 mirror 目標。
+# --write 會寫入的路徑（目錄或單檔，相對 repo 根）：四個 dist（claude host 沒有 committed dist）、claude-plugin 與 codex 的 mirror 目標。
 OUTPUTS = (
-    "hosts/claude/dist",
     "templates",
     "hosts/agy/dist",
     "hosts/grok/dist",

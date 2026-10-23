@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 AGENTS = ROOT / "templates" / "agents"
 CLAUDE_REFS = (
-    ROOT / "hosts" / "claude" / "dist" / "skills" / "shoal-orchestration" / "references"
+    ROOT / "plugins" / "claude" / "skills" / "shoal-orchestration" / "references"
 )
 
 
