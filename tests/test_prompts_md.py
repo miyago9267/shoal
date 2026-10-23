@@ -167,6 +167,7 @@ class HostBindingTests(unittest.TestCase):
         self.descriptions.write_text(
             "<!-- description: scout -->\nS.\n<!-- description: Odd -->\nO.\n",
             encoding="utf-8",
+            newline="\n",
         )
         binding = render.load_host_binding(self.root, "h")
         self.assertEqual(binding["roles"]["scout"]["description"], "S.")
@@ -178,7 +179,7 @@ class HostBindingTests(unittest.TestCase):
             "binding 沒有 role ghost": "<!-- description: ghost -->\nG.\n",
             "同時出現在 binding.toml": "<!-- description: executor -->\nE.\n",
         }.items():
-            self.descriptions.write_text(text, encoding="utf-8")
+            self.descriptions.write_text(text, encoding="utf-8", newline="\n")
             with (
                 self.subTest(expected=expected),
                 self.assertRaisesRegex(render.RenderError, expected),

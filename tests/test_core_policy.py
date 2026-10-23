@@ -578,6 +578,7 @@ class PolicyRenderCase(unittest.TestCase):
         (self.root / "prompts" / "policy" / "extra.md").write_text(
             "<!-- clause: extra-note kind=extension -->\nExtra.\n",
             encoding="utf-8",
+            newline="\n",
         )
         self.edit(
             self.binding,

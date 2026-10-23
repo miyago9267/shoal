@@ -17,6 +17,16 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `docs/specs/adaptive-intent-routing` 與 `docs/specs/dispatch-verification` 的 corpus。
 - `tests/test_relay_render.py` 的 relay overlay 改指 `tests/fixtures/relay/relay.binding.toml`。
 
+### Windows
+
+- `tools/shoal_relay.py` 在沒有 POSIX process group 的平台（Windows）回 blocked、不呼叫
+  vendor；原本在 `signal.SIGHUP` 就崩潰、沒有 hand-back。H1 落地路徑比對另擋 NTFS 視為同名的
+  寫法（`\` 分隔、結尾 `.` 或空白、`:stream`）。
+- installer 的 rollback 複本在沒有 `O_NOFOLLOW` 時先 lstat、再比對開到的檔，Windows 上
+  symlink 來源一樣拒絕；install state 的 manifest 路徑另拒 `/x`、`\x`、`C:x` 這類 Windows
+  不算 absolute 但會跳出 Codex home 的寫法。
+- 測試 fixture 以 LF 寫入；fake vendor 相關的 relay 測試在 Windows 跳過。
+
 ## v3.13.0-beta
 
 2026-10-19。fan_out 路由與 Codex plugin 搬家。

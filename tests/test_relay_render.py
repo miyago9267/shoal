@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import render  # noqa: E402
 import shoal_relay  # noqa: E402
 from repo_fixtures import git  # noqa: E402
-from test_relay_runner import FAKE, SCHEMA, report  # noqa: E402
+from test_relay_runner import FAKE, NO_PROCESS_TREE, SCHEMA, report  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "relay" / "relay.binding.toml"
 OVERLAY = ROOT / "tests" / "fixtures" / "relay" / "relay.binding.toml"
@@ -352,6 +352,7 @@ class RelayPackagingTests(TempCase):
         self.assertIsNone(shoal_relay.schema_error(SCHEMA, hand_back))
         return hand_back
 
+    @unittest.skipUnless(shoal_relay.PROCESS_TREE_CONTROL, NO_PROCESS_TREE)
     def test_packaged_runner_relays_through_the_fake_vendor(self) -> None:
         bin_dir, wt, brief, env = self.fake_vendor()
         hand_back = self.run_packaged(wt, brief, env)
@@ -363,6 +364,7 @@ class RelayPackagingTests(TempCase):
         self.assertEqual(exec_call["nonce_mode"], "0o600")
         self.assertFalse(os.path.exists(exec_call["nonce_path"]))  # 結束時刪除
 
+    @unittest.skipUnless(shoal_relay.PROCESS_TREE_CONTROL, NO_PROCESS_TREE)
     def test_shim_only_layout_returns_blocked(self) -> None:
         # 回歸：plugin 的 hooks/shoal_guard.py 是沒有 _guard_dir/_open_private 的 compat shim
         bin_dir, wt, brief, env = self.fake_vendor()
