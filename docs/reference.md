@@ -49,7 +49,7 @@ main session 先判斷互動形態與風險。已有穩定契約的實作、互�
 有風險或大型工作才走五道關卡，依階段派唯讀、審查或寫入的 role。每次派工都帶 effort，可寫 role 的 description 以 `fix:`、
 `feat:` 這類類型開頭（目前只有 Claude 的 policy 渲染這些條款）。完整規則在各 host 的 orchestration
 policy（例如
-`hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md`）
+`plugins/claude/skills/shoal-orchestration/references/orchestration-policy.md`）
 。
 
 ![呼叫鏈：互動形態、風險判斷、五道關卡與各 host 的執行時機制](./assets/shoal-call-chain.svg)
@@ -106,7 +106,7 @@ python3 tools/render.py --host claude --write
 | Host | 目前的安裝方式 |
 | --- | --- |
 | Codex CLI | 本檔前半的 Codex 章節，腳本在 `install/install.sh` |
-| Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
+| Claude Code | 取用 `plugins/claude`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Claude Code plugin | `claude plugin marketplace add miyago9267/shoal#v<版本>` 再 `claude plugin install shoal@shoal`（釘 tag；與全域 guard 同時存在時只判斷一次；state 與 log 在 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`，uninstall 不刪），見 [本檔](./install/claude.md#claude-code-plugin) |
 | Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結；dispatch guard：`python3 tools/install_hooks.py --host agy`，見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Grok Build | `python3 tools/install_grok.py`（預設 dry-run，`--apply` 才寫入），見 [本檔](./install/grok.md#grok-build) |
