@@ -1,8 +1,0 @@
-{
-  "id": "t5-security",
-  "category": "security",
-  "protected": [
-    "tests/test_server.py"
-  ],
-  "timeout_s": 900
-}

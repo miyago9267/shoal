@@ -24,7 +24,7 @@ from repo_fixtures import git  # noqa: E402
 from test_relay_runner import FAKE, SCHEMA, report  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "relay" / "relay.binding.toml"
-OVERLAY = ROOT / "bench" / "ab" / "relay.binding.toml"
+OVERLAY = ROOT / "tests" / "fixtures" / "relay" / "relay.binding.toml"
 POLICY_DOC = "skills/shoal-orchestration/references/orchestration-policy.md"
 RELAY_FILES = (
     "tools/shoal_relay.py",

@@ -217,17 +217,17 @@ rechecked after the new role bindings are installed:
     - B0 完成：lock 依 host 判斷版本，27 個 surface（含 11 個 Claude），
       CI 納入 `hosts/claude/**` 與 renewal 綠燈路徑。main push 的 trailer
       路徑已由 `91a23e6` 的 CI 驗證（macos、ubuntu、windows 皆 success）。
-    - B1 完成：stage 介面 `bench/role_fitness_stage.py`，Codex 行為不變。
+    - B1 完成：stage 介面 shoal-bench 的 `role_fitness_stage.py`，Codex 行為不變。
     - B3 完成（fixture 回放除外，見下）：content 層失敗分類、報表、public
       projection 與 `attempt`／`rerun_of`。
-    - B2 完成：`bench/role_fitness_claude.py`；2026-10-05 已以 live probe
+    - B2 完成：shoal-bench 的 `role_fitness_claude.py`；2026-10-05 已以 live probe
       實測（見下方「已完成」），stream 樣本的形狀依實測校正，值仍是 synthetic。
     - B4 離線接線完成（commit `136a76b`）：四個 native case 函式可經
       `ClaudeStageAdapter` 執行，Codex 路徑不變；
-      `bench/claude_eval_smoke.py` 提供 `--dry-run`（stage budget 1.00、
+      shoal-bench 的 `claude_eval_smoke.py` 提供 `--dry-run`（stage budget 1.00、
       turn reserve 0.50、total 14，7 個 process）與受限的 live 模式。
   - 已完成（2026-10-05）：B2 的 live 驗證，經 credential broker
-    執行 `bench/claude_live_probe.py`（CLI 2.1.289，7 次，API 等值約 0.29
+    執行 shoal-bench 的 `claude_live_probe.py`（CLI 2.1.289，7 次，API 等值約 0.29
     USD）。token 環境變數 `CLAUDE_CODE_OAUTH_TOKEN`、`-p --output-format
     stream-json --verbose --setting-sources project` 搭配、`~/.claude` 隔離
     （hooks 除外）、`--max-budget-usd` 超額中止都已確認；細節見 `TASKS.md`

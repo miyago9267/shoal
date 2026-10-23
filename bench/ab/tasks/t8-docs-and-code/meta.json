@@ -1,9 +1,0 @@
-{
-  "id": "t8-docs-and-code",
-  "category": "docs",
-  "protected": [
-    "tests/test_config.py",
-    "appcfg/defaults.py"
-  ],
-  "timeout_s": 900
-}

@@ -1,1 +1,0 @@
-We started sharing one `ttlcache.Cache` instance across worker threads in the gateway, and the numbers are off: `incr` counters come out lower than the real request count and the hit/miss stats don't add up. Please make the cache safe to use from multiple threads. Keep the public API exactly the same, since other services already call it.

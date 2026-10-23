@@ -18,7 +18,6 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
-sys.path.insert(0, str(ROOT / "bench"))
 import install as installer  # noqa: E402
 import hook_registration  # noqa: E402
 import stage_smoke_home  # noqa: E402
