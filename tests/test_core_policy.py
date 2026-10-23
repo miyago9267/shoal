@@ -6,7 +6,6 @@ prompts/policy 與各 host 的 binding / policy-addenda，變更要同時改這�
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import tempfile
@@ -168,10 +167,6 @@ def policy_doc(text: str) -> list[contracts.Clause]:
     return contracts.parse_markdown_contract(
         text, kinds=contracts.POLICY_KINDS, allow_required=True
     )
-
-
-def normalized(text: str) -> str:
-    return " ".join(text.split())
 
 
 class PolicyContractFormatTests(unittest.TestCase):
@@ -386,29 +381,6 @@ class RepoPolicyTests(unittest.TestCase):
             self.core, self.bindings["claude"], ROOT / "hosts" / "claude"
         ).items():
             self.assertNotIn("{{", data.decode("utf-8"), rel)
-
-    def test_claude_core_preview_keeps_lock_required_fragments(self) -> None:
-        """Decision 4：core 條款保留各 lock surface 的 required_fragments 原文。"""
-        lock = json.loads(
-            (ROOT / "docs/specs/prompt-document-lock/LOCK.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        surfaces = {s["path"]: s for s in lock["surfaces"]}
-        files = render.policy_files(
-            self.core, self.bindings["claude"], ROOT / "hosts" / "claude"
-        )
-        checked = 0
-        for rel, data in files.items():
-            surface = surfaces.get(f"hosts/claude/dist/{rel}")
-            if surface is None:  # bootstrap 不是 lock surface
-                continue
-            content = normalized(data.decode("utf-8")).casefold()
-            for fragment in surface["required_fragments"]:
-                checked += 1
-                with self.subTest(surface=surface["id"], fragment=fragment[:40]):
-                    self.assertIn(normalized(fragment).casefold(), content)
-        self.assertEqual(checked, 12)
 
 
 class PolicyRenderCase(unittest.TestCase):

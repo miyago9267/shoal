@@ -3,7 +3,7 @@
 #
 # capability、cost 都是 1-5 的相對級距（cost 不放實際價格），只在同一個 host 的
 # 可用集合內比較。初版數值是校準到「能重現 2026-10 的現行配置」，不是客觀量測；
-# 之後要用 benchmark 修正，必須走 golden diff review（見 docs/model-catalog.md）。
+# 之後要用 benchmark 修正，必須走 dist diff review（見 docs/model-catalog.md）。
 # flags：refuses_defensive_security 表示該模型的分類器會誤拒防禦性資安工作，
 # security = true 的 role 不會選到它。
 

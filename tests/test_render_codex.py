@@ -12,20 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import render  # noqa: E402
 
-GOLDEN = ROOT / "tests" / "golden" / "codex"
 RENDER = ROOT / "tools" / "render.py"
 POLICY = "agents-md.orchestration.md"
 MIRROR = render.MIRRORS["codex"][POLICY]
 # binding [policy.mirrors] 另外鏡像 on-demand extensions 文件到 plugin reference。
 EXT_MIRROR = "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
-
-
-def golden_files() -> dict[str, bytes]:
-    return {
-        p.relative_to(GOLDEN).as_posix(): p.read_bytes()
-        for p in GOLDEN.rglob("*")
-        if p.is_file() and p.name != "SOURCE"
-    }
 
 
 def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
@@ -48,23 +39,7 @@ def make_root(root: Path) -> None:
     shutil.copyfile(ROOT / EXT_MIRROR, root / EXT_MIRROR)
 
 
-class GoldenTests(unittest.TestCase):
-    def test_render_is_byte_identical_to_golden(self) -> None:
-        golden = golden_files()
-        self.assertEqual(len(golden), 15)
-        rendered = render.RENDERERS["codex"](ROOT)
-        self.assertEqual(sorted(rendered), sorted(golden))
-        for rel, data in golden.items():
-            self.assertEqual(rendered[rel], data, rel)
-
-    def test_golden_records_source(self) -> None:
-        self.assertRegex((GOLDEN / "SOURCE").read_text(encoding="utf-8"), r"(?m)^ref: shoal@[0-9a-f]{7}$")
-
-    def test_committed_templates_match_golden(self) -> None:
-        dist = ROOT / "templates"
-        actual = {p.relative_to(dist).as_posix(): p.read_bytes() for p in dist.rglob("*") if p.is_file()}
-        self.assertEqual(actual, golden_files())
-
+class MirrorTests(unittest.TestCase):
     def test_plugin_policy_mirror_is_rendered(self) -> None:
         self.assertEqual((ROOT / MIRROR).read_bytes(), render.RENDERERS["codex"](ROOT)[POLICY])
 

@@ -233,19 +233,32 @@ created: 2026-10-22
 
 ### 任務
 
-- [ ] T3.1 逐檔 triage 表寫入 PROGRESS.md：每個候選測試標 keep / drop /
+- [x] T3.1 逐檔 triage 表寫入 PROGRESS.md：每個候選測試標 keep / drop /
   convert，並寫理由（判準見 SPEC D4）；Miyago 抽看後再刪
-- [ ] T3.2 先寫 `tests/test_render_check.py`（Red -> Green）：
+  實作紀錄（2026-10-23）：表在 PROGRESS「Phase 3a」。triage 表與刪除在同一個 PR 內
+  （表是獨立 commit，在刪除之前），Miyago 在 PR 上抽看，合併前可要求復原任何一項。
+- [x] T3.2 先寫 `tests/test_render_check.py`（Red -> Green）：
   六個 host `render --check` 退出 0；agy、grok、claude 的 marker 等於各自
   `VERSION`；codex 的 mirror 與其來源相等；所有輸出不含 `{{`；每個 core role
   在每個提供它的 host 都有輸出；frames 與 addenda 不出現在 dist；
   每個 lock `required_fragments` 存在於其 surface
-- [ ] T3.3 刪 golden 資料與基礎設施，修 import
-- [ ] T3.4 依 triage 表刪文字內容測試
-- [ ] T3.5 確認 P1 加的 `render --check` 步驟仍涵蓋全部輸出（golden 移除後它是
+  實作紀錄：「所有輸出不含 `{{`」排除 `${{`，因為 grok 的 `agents/scout.md` 含
+  grok runtime 自己的樣板語法 `${{ tools.by_kind.* }}`，不是殘留的 placeholder。
+  Red 驗證用四種突變（改 `prompts/roles/scout.md`、改 `hosts/agy/VERSION`、改
+  codex mirror、改 claude dist 的一個 lock 片段），逐一確認對應測試變紅後還原。
+- [x] T3.3 刪 golden 資料與基礎設施，修 import
+- [x] T3.4 依 triage 表刪文字內容測試
+  實作紀錄：convert 的結構斷言放在 `tests/test_policy.py`（協定符號、行為契約、role 邊界）與
+  `tests/test_render_check.py`。除 triage 表列出的檔案，另外清掉 `docs/`、`core/README.md`、
+  `core/models.toml` 註解與一張 svg 內對 golden 的敘述。
+- [x] T3.5 確認 P1 加的 `render --check` 步驟仍涵蓋全部輸出（golden 移除後它是
   唯一直接指出「輸出與來源不符」的 CI 步驟）；故意改 `prompts/` 一個字而不
   `--write`，該步驟必須變紅
-- [ ] T3.6 共同驗收；PR 描述貼測試數與行數變化
+  實作紀錄：本機把 `prompts/roles/scout.md` 的 `Never edit` 改成 `Nevar edit`、
+  不 `--write`，CI 步驟的迴圈（六個 host）全部 exit 1，第一個 host 印出
+  `內容不同: agents/scout.md`；還原後六個全部 OK。
+- [x] T3.6 共同驗收；PR 描述貼測試數與行數變化
+  實作紀錄：PR #37，ubuntu / macOS / windows、Markdown lint、OpenCode plugin tests 全綠。
 
 ### 驗收
 

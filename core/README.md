@@ -217,8 +217,7 @@ renderer（規格見
 - 不支援 `[extra_roles]`；既有五個 host 維持各自的 renderer，輸出不變。
 - `python3 tools/new_host.py <name>` 產生骨架；
   `tests/test_generic_hosts.py` 自動檢查每個 generic-md host 的 `--check`
-  與條款逐字出現。這類 host 不建 golden，committed dist 加 `--check` 即為
-  回歸基準。
+  與條款逐字出現。這類 host 的回歸基準是 committed dist 加 `--check`。
 
 ## 各 host 的 role 子集與 effort
 
@@ -232,6 +231,6 @@ renderer（規格見
 
 ## 產出物不做 Markdown lint
 
-`hosts/*/src`、`hosts/*/dist`、`tests/golden` 裡的 Markdown 是從各 host
+`hosts/*/src`、`hosts/*/dist` 裡的 Markdown 是從各 host
 原始 repo 逐位元組搬來的文字與其 render 產出，必須和來源一致，
 因此排除在 `lint:md` 之外；Codex 的 dist（`templates/`）維持原本的 lint。

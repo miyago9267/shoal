@@ -50,7 +50,7 @@ class RenderEquivTests(unittest.TestCase):
                 shutil.copytree(
                     src,
                     dst,
-                    ignore=shutil.ignore_patterns("__pycache__", "dist", "golden"),
+                    ignore=shutil.ignore_patterns("__pycache__", "dist"),
                 )
             else:
                 dst.parent.mkdir(parents=True, exist_ok=True)
