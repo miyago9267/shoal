@@ -330,7 +330,8 @@ created: 2026-10-22
   `BENCH_ROOT`、`use()`）；`docs/benchmarks` 的引用全經它（含三個 bench 模組與三個
   測試）；`run_ab.py` 的 `export_tree` 對 `SHOAL_ROOT` 做 `git archive`，
   `RELAY_RENDER_PATHS` 含 `prompts` 且不含 `hosts/claude/dist`。
-- 實測：`SHOAL_AB_PLUGIN_REF` 設為 `origin/main` 與 `origin/refactor/text-first-p4` 皆能出 plugin 並渲染 relay。
+- 實測：`SHOAL_AB_PLUGIN_REF` 設為 `origin/main` 與
+  `origin/refactor/text-first-p4` 皆能出 plugin 並渲染 relay。
 - 測試：shoal 1893 到 1397（移出 496），OK skipped=1；shoal-bench 496 個 OK，
   `SHOAL_ROOT` 指向 shoal main 與指向本 branch 都通過；shoal-bench CI 綠。
 - `render_equiv.py --base origin/main --head HEAD`：預設 `3052b84a...` 88 檔、
