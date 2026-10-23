@@ -11,7 +11,7 @@
   （guard 的 _guard_dir，以子程序的 env 計算）下的 `relay-<nonce>`，結束時刪除。guard 先用同目錄的
   shoal_guard.py（plugin 內由 render 打包的副本），沒有可用的再用 hooks/shoal_guard.py；都不可用就回 blocked。
 - 逾時、SIGTERM/HUP/INT 或 parent 死亡時結束 vendor 的整棵程序樹（含 setsid 的後代），一律回 failed，
-  不自動重跑、不改回 native。
+  不自動重跑、不改回 native。沒有 POSIX process group 的平台（Windows）做不到這點，一律回 blocked、不呼叫 vendor。
 - changed_files 由 `git status --porcelain -z` 計算；vendor 自報的路徑剝掉 ` (deleted)` 類註記、`./`，
   `a -> b` 兩邊都算，正規化後仍不同時 files_mismatch 為 true。不一致只標出，不改 status。
 - status 為 done 且有改動時，把 worktree 對 HEAD 的改動（含未追蹤檔、binary）以 `git apply` 落到
@@ -125,6 +125,8 @@ MARKER = (
 _SIGNALLED: List[str] = []
 _SECRETS: List[str] = []
 _SUBREAPER = False
+# 程序樹的收拾靠 process group、killpg、SIGSTOP 與 ps；沒有這些的平台（Windows）一律 blocked。
+PROCESS_TREE_CONTROL = os.name == "posix"
 
 
 class Blocked(Exception):
@@ -903,6 +905,10 @@ def _relay(
     args: argparse.Namespace, schema: Dict[str, Any], parent: int
 ) -> Dict[str, Any]:
     vendor = args.vendor
+    if not PROCESS_TREE_CONTROL:
+        raise Blocked(
+            "relay needs POSIX process groups to contain the vendor; not supported on this platform"
+        )
     if args.role not in RELAY_ROLES:
         raise Blocked(
             f"role {args.role!r} cannot be relayed (only {', '.join(sorted(RELAY_ROLES))})"
@@ -1076,17 +1082,20 @@ def _primary_worktree(top: Path, env: Dict[str, str], common: str) -> Path:
 
 
 def _path_key(part: str) -> str:
-    """H1：NFKC 正規化、去掉 Unicode Cf（零寬字元等）後 casefold，擋掉檔案系統會視為同名的變體。"""
+    """H1：NFKC 正規化、去掉 Unicode Cf（零寬字元等）後 casefold，擋掉檔案系統會視為同名的變體。
+
+    NTFS 另把 `name:stream`、結尾的 `.` 與空白視為同一個檔，比對時一併去掉。
+    """
     text = unicodedata.normalize("NFKC", part)
     text = "".join(c for c in text if unicodedata.category(c) != "Cf")
-    return text.casefold()
+    return text.split(":", 1)[0].rstrip(" .").casefold()
 
 
 def _refused_landing_path(path: str) -> bool:
     if path.startswith("/"):
         return True
     parts = path.split("/")
-    keys = [_path_key(p) for p in parts]
+    keys = [_path_key(p) for p in path.replace("\\", "/").split("/")]
     return (
         any(p in ("", ".", "..") for p in parts)
         or any(k in ("", ".", "..") or k in LAND_REFUSED_DIRS for k in keys)
@@ -1276,8 +1285,9 @@ def _land(
 
 def main(argv: Optional[List[str]] = None) -> int:
     parent = os.getppid()
-    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
-        signal.signal(sig, _on_signal)
+    for name in ("SIGTERM", "SIGHUP", "SIGINT"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), _on_signal)
     _SECRETS[:] = sorted(
         {
             v

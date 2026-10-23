@@ -18,6 +18,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -115,6 +116,27 @@ sys.exit(mode.get("rc", 0))
 """
 
 
+H1_PATHS = (
+    "CLAUDE.md",
+    "docs/claude.md",
+    "CLAUDE.local.md",
+    "pkg/AGENTS.md",
+    "GEMINI.md",
+    "ＡＧＥＮＴＳ.md",  # 全形，NFKC 後是 AGENTS.md
+    "CLAUDE\u200d.md",  # U+200D 是 Cf
+    ".mcp.json",
+    ".gitattributes",
+    "sub/.gitattributes",
+    ".gitmodules",
+    ".envrc",
+    ".vscode/settings.json",
+    ".husky/pre-commit",
+    "tools/.githooks/pre-push",
+    ".pre-commit-config.yaml",
+)
+NO_PROCESS_TREE = "the fake vendor and process-tree kill need POSIX; the runner returns blocked elsewhere"
+
+
 def report(files=("a.txt",), **extra):
     return {
         "status": "done",
@@ -136,6 +158,7 @@ def alive(pid: int) -> bool:
     return True
 
 
+@unittest.skipUnless(shoal_relay.PROCESS_TREE_CONTROL, NO_PROCESS_TREE)
 class RelayBase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -718,24 +741,7 @@ class RelayLanding(RelayBase):
 
     def test_h1_agent_instruction_and_autorun_files_are_refused(self):
         """H1：agent 指令檔與自動執行設定檔（NFKC、去 Cf、casefold 後比對）整份拒絕。"""
-        for path in (
-            "CLAUDE.md",
-            "docs/claude.md",
-            "CLAUDE.local.md",
-            "pkg/AGENTS.md",
-            "GEMINI.md",
-            "ＡＧＥＮＴＳ.md",  # 全形，NFKC 後是 AGENTS.md
-            "CLAUDE‍.md",  # U+200D 是 Cf
-            ".mcp.json",
-            ".gitattributes",
-            "sub/.gitattributes",
-            ".gitmodules",
-            ".envrc",
-            ".vscode/settings.json",
-            ".husky/pre-commit",
-            "tools/.githooks/pre-push",
-            ".pre-commit-config.yaml",
-        ):
+        for path in H1_PATHS:
             with self.subTest(path=path):
                 self.reset_worktree()
                 self.assert_refused(self.relay_files({path: "x\n", "ok.txt": "ok\n"}))
@@ -888,6 +894,57 @@ class LandingHelpers(unittest.TestCase):
         )
         self.assertEqual(shoal_relay._attr_env({"A": "1"}, "abc", (2, 39, 5)), {"A": "1"})
         self.assertEqual(shoal_relay._attr_env({"A": "1"}, "abc", None), {"A": "1"})
+
+    def test_h1_path_check_holds_on_every_platform(self):
+        """H1 純函式：清單本身，加上 NTFS 視為同名的寫法（`\\` 分隔、結尾 `.`/空白、`:stream`）。"""
+        ntfs = (
+            "docs\\CLAUDE.md",
+            "CLAUDE.md.",
+            "CLAUDE.md ",
+            "CLAUDE.md::$DATA",
+            "AGENTS.md:x",
+            ".git./config",
+            ".claude /settings.json",
+            "sub\\.codex\\config.toml",
+            "a\\..\\b",
+        )
+        for path in (*H1_PATHS, *ntfs, ".git/config", "deep/.codex/c", "sub/.Claude/x", "../x", "/abs"):
+            with self.subTest(path=path):
+                self.assertTrue(shoal_relay._refused_landing_path(path))
+        for path in ("README", "docs/guide.md", "a.txt", ".gitignore", "notes.", "src/claude_md.py"):
+            with self.subTest(path=path):
+                self.assertFalse(shoal_relay._refused_landing_path(path))
+
+
+class RelayPlatformGate(unittest.TestCase):
+    """沒有 POSIX process group 時無法保證收掉整棵程序樹：blocked，且不 spawn 任何東西。"""
+
+    def args(self, tmp: Path):
+        return ["--vendor", "codex", "--role", "executor", "--cwd", str(tmp), "--brief", str(tmp / "b")]
+
+    def test_without_process_tree_control_nothing_is_spawned(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            shoal_relay, "PROCESS_TREE_CONTROL", False
+        ), mock.patch.object(subprocess, "Popen", side_effect=AssertionError("spawned")):
+            hb, _ = shoal_relay.relay(self.args(Path(tmp)), os.getppid())
+        self.assertEqual(hb["status"], "blocked", hb)
+        self.assertIn("POSIX process groups", hb["reason"])
+        self.assertIsNone(hb["landing"])
+
+    @unittest.skipIf(shoal_relay.PROCESS_TREE_CONTROL, "covers the platforms without process groups")
+    def test_runner_prints_one_blocked_hand_back_here(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            done = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "shoal_relay.py"), *self.args(Path(tmp))],
+                capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60,
+            )
+        lines = done.stdout.splitlines()
+        self.assertEqual(len(lines), 1, done.stdout + done.stderr)
+        hb = json.loads(lines[0])
+        self.assertIsNone(shoal_relay.schema_error(SCHEMA, hb))
+        self.assertEqual(hb["status"], "blocked")
+        self.assertIn("POSIX process groups", hb["reason"])
+        self.assertEqual(done.returncode, 1)
 
 
 if __name__ == "__main__":

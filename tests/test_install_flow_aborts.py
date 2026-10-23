@@ -459,6 +459,16 @@ class CopyBackup(Base):
         self.src.symlink_to(real)
         self.assertAborts(f"rollback source changed: {self.src}", self.copy)
 
+    def test_source_swapped_after_lstat_is_refused(self) -> None:
+        # Windows 沒有 O_NOFOLLOW：open 到的 handle 必須與 lstat 看到的是同一個檔
+        other = self.root / "other"
+        other.write_bytes(b"orig")
+        real_lstat = Path.lstat
+        swapped = lambda path: real_lstat(other if path == self.src else path)  # noqa: E731
+        with mock.patch.object(Path, "lstat", swapped):
+            self.assertAborts(f"rollback source changed: {self.src}", self.copy)
+        self.assertFalse(self.bak.exists())
+
     def test_backup_open_gates(self) -> None:
         self.bak.write_bytes(b"squatter")
         self.assertAborts(f"rollback backup path raced: {self.bak}", self.copy)
