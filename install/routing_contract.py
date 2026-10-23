@@ -1,4 +1,5 @@
-"""Provider-neutral routing metadata shared by dispatch and benchmarks.
+"""Provider-neutral routing metadata shared by dispatch and the
+shoal-bench benchmarks (a separate repository that imports this module).
 
 The metadata records why a model candidate was selected without retaining the
 prompt, transcript, paths, or other runtime-sensitive content.

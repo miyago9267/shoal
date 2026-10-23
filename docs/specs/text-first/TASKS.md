@@ -362,13 +362,20 @@ dotfile。收益小（15 檔），這也是列為選配的原因。
 
 ### 任務
 
-- [ ] T4.1 在 shoal 的 temp clone 上驗證：移除 `bench/` 與 28 個模組後，其餘
-  測試全綠（nobench 實測已知：只有這 28 個 import 失敗與 1 個 overlay 測試）
-- [ ] T4.2 列出只被搬出測試使用的 fixture（grep），一併納入路徑清單
-- [ ] T4.3 `git filter-repo`（fresh clone）：保留 `bench/`、28 個測試與 fixture
+- [x] T4.1 在 shoal 的 temp clone 上驗證：移除 `bench/` 與 27 個模組後，其餘
+  測試全綠（1397 個，OK skipped=1）。實測模組清單是 27 個（本檔列出的就是 27 個，
+  原文「28」是計數錯誤）；另有 4 個測試（`test_hook_registration`、
+  `test_hybrid_probe`、`test_install_renamed_roles`、`test_verify_dispatch`）只剩
+  `sys.path.insert(... "bench")` 殘留，一併移除
+- [x] T4.2 列出只被搬出測試使用的 fixture（grep），一併納入路徑清單。只有
+  `tests/fixtures/claude_stream` 專屬 bench（含其 README），隨測試搬出；
+  `tests/fixtures/benchmark_routing` 雖只被 bench 讀，但 `docs/benchmarks` 的 manifest
+  以路徑與 hash 綁定它，與 manifest 同為相容面，留在 shoal（shoal-bench 經
+  `shoal_root.SHOAL_ROOT` 讀）
+- [x] T4.3 `git filter-repo`（fresh clone）：保留 `bench/`、28 個測試與 fixture
   的歷史；驗證 `git log --follow bench/ab/run_ab.py` 的 commit 數不少於 shoal
   中該檔（bench 目錄共 18 個 commit）
-- [ ] T4.4 shoal-bench：新增 `shoal_root.py`，替換所有以 `parents[1]` 推 shoal
+- [x] T4.4 shoal-bench：新增 `shoal_root.py`，替換所有以 `parents[1]` 推 shoal
   路徑的 `sys.path` 組合與 `run_ab.py` 的 `ROOT`（`export_tree` 對 `SHOAL_ROOT`
   做 `git archive`）。`docs/benchmarks` 是相容面（SPEC D5）：
   `benchmark_routing.py:39`、`claude_eval_smoke.py:72`、`role_fitness_claude.py:50`
@@ -378,8 +385,8 @@ dotfile。收益小（15 檔），這也是列為選配的原因。
   `tests/fixtures/benchmark_routing`（`benchmark_routing.py:38`）依 T4.2 的結果
   同樣處理。在 shoal-bench 跑搬出的 28 個模組全綠，其中 `SHOAL_ROOT` 指向 shoal
   main
-- [ ] T4.5 建立 private repo 並 push（已核准 2026-10-23）
-- [ ] T4.6 shoal 側刪除與修改；共同驗收；PR 描述貼兩邊的測試結果
+- [x] T4.5 建立 private repo 並 push（已核准 2026-10-23）
+- [x] T4.6 shoal 側刪除與修改；共同驗收；PR 描述貼兩邊的測試結果
 
 ### 驗收
 

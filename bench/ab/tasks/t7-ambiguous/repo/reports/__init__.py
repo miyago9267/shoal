@@ -1,1 +1,0 @@
-"""Daily sales report generation."""

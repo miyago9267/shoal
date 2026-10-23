@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "bun@1.3.11",
   "scripts": {
-    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.ai\" \"#hosts/*/src\" \"#prompts\" \"#hosts/*/dist\" \"#plugins/claude\" \"#plugins/claude-guard\" \"#bench/ab/tasks*/**/task.md\" \"#bench/ab/tasks*/**/repo\" \"#hosts/opencode/plugin\" \"#templates/agents-md.bootstrap.md\" \"#templates/agents-md.orchestration.md\" \"#templates/agents-md.extensions.md\" \"#plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md\" \"#plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md\""
+    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.ai\" \"#hosts/*/src\" \"#prompts\" \"#hosts/*/dist\" \"#plugins/claude\" \"#plugins/claude-guard\" \"#hosts/opencode/plugin\" \"#templates/agents-md.bootstrap.md\" \"#templates/agents-md.orchestration.md\" \"#templates/agents-md.extensions.md\" \"#plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md\" \"#plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md\""
   },
   "devDependencies": {
     "markdownlint-cli2": "0.23.0",

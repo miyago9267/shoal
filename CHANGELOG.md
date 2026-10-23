@@ -3,6 +3,20 @@
 shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前的完整歷史
 在 [hosts/codex/CHANGELOG.md](./hosts/codex/CHANGELOG.md)。
 
+## Unreleased
+
+### Repository
+
+- `bench/` 與 27 個 bench 專用測試模組拆到私有 repo `miyago9267/shoal-bench`（歷史以
+  `git filter-repo` 保留）。shoal 的 runtime 不 import bench；shoal-bench 單向讀 shoal，
+  路徑由它的 `shoal_root.py` 解析（`SHOAL_ROOT`，預設 `../shoal`）。
+- shoal-bench 的相容面：下列路徑改名或搬動前須先確認 shoal-bench 的 CI。
+  `install/`、`hooks/shoal_autoroute_gate.py`、`tools/`、`templates/`、`plugins/`、
+  `core/`、`hosts/claude/binding.toml`、`docs/benchmarks/`（`FROZEN_MANIFEST_V2_HASH`
+  釘其中 manifest 的 hash）、`tests/fixtures/benchmark_routing`、
+  `docs/specs/adaptive-intent-routing` 與 `docs/specs/dispatch-verification` 的 corpus。
+- `tests/test_relay_render.py` 的 relay overlay 改指 `tests/fixtures/relay/relay.binding.toml`。
+
 ## v3.13.0-beta
 
 2026-10-19。fan_out 路由與 Codex plugin 搬家。
