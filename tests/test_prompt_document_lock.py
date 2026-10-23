@@ -231,12 +231,12 @@ CLAUDE_AGENT_FILES = (
     "watcher",
     "researcher",
 )
-CLAUDE_SKILL_DIR = "hosts/claude/dist/skills/shoal-orchestration"
+CLAUDE_SKILL_DIR = "plugins/claude/skills/shoal-orchestration"
 LOCK_RELATIVE = "docs/specs/prompt-document-lock/LOCK.json"
 
 
 def _claude_paths() -> set[str]:
-    return {f"hosts/claude/dist/agents/{name}.md" for name in CLAUDE_AGENT_FILES} | {
+    return {f"plugins/claude/agents/{name}.md" for name in CLAUDE_AGENT_FILES} | {
         f"{CLAUDE_SKILL_DIR}/SKILL.md",
         f"{CLAUDE_SKILL_DIR}/references/orchestration-policy.md",
         f"{CLAUDE_SKILL_DIR}/references/workflow-extensions.md",
@@ -263,7 +263,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
     def test_lock_covers_exactly_the_thirteen_claude_surfaces(self) -> None:
         lock = load_lock(ROOT)
         claude = {
-            s["path"] for s in lock["surfaces"] if s["path"].startswith("hosts/claude/")
+            s["path"] for s in lock["surfaces"] if s["path"].startswith("plugins/claude/")
         }
 
         self.assertEqual(claude, _claude_paths())
@@ -275,7 +275,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         for surface in load_lock(ROOT)["surfaces"]:
             expected = (
                 "hosts/claude/VERSION"
-                if surface["path"].startswith("hosts/claude/")
+                if surface["path"].startswith("plugins/claude/")
                 else "hosts/codex/VERSION"
             )
             self.assertEqual(surface["version_file"], expected, surface["id"])
@@ -297,7 +297,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
 
     def test_claude_agent_beyond_its_budget_fails_and_names_the_surface(self) -> None:
         with self._git_repo_with_current_lock() as root:
-            executor = root / "hosts/claude/dist/agents/executor.md"
+            executor = root / "plugins/claude/agents/executor.md"
             lines = executor.read_text(encoding="utf-8").splitlines()
             # Five edited front-matter lines are 10 changed lines against a budget of 8.
             lines[1:6] = [f"edited-{index}: value" for index in range(5)]
@@ -313,7 +313,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             self._edit(
                 root,
-                "hosts/claude/dist/agents/Explore.md",
+                "plugins/claude/agents/Explore.md",
                 "Never modify anything.",
                 "Modify files when convenient.",
             )
@@ -328,7 +328,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             self._edit(
                 root,
-                "hosts/claude/dist/agents/executor.md",
+                "plugins/claude/agents/executor.md",
                 "Work like a senior engineer",
                 "Work as a senior engineer",
             )
@@ -345,7 +345,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
             self.assertFalse((root / "VERSION").exists())
             self._edit(
                 root,
-                "hosts/claude/dist/agents/executor.md",
+                "plugins/claude/agents/executor.md",
                 "Work like a senior engineer",
                 "Work as a senior engineer",
             )
@@ -360,7 +360,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             self._edit(
                 root,
-                "hosts/claude/dist/agents/executor.md",
+                "plugins/claude/agents/executor.md",
                 "Work like a senior engineer",
                 "Work as a senior engineer",
             )
@@ -402,11 +402,11 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
             previous["surfaces"] = [
                 s
                 for s in previous["surfaces"]
-                if not s["path"].startswith("hosts/claude/")
+                if not s["path"].startswith("plugins/claude/")
             ]
             manifest.write_text(json.dumps(previous, indent=2) + "\n", encoding="utf-8")
             subprocess.run(
-                ["git", "rm", "-rq", "hosts/claude/dist"], cwd=root, check=True
+                ["git", "rm", "-rq", "plugins/claude"], cwd=root, check=True
             )
             subprocess.run(["git", "add", "--", LOCK_RELATIVE], cwd=root, check=True)
             subprocess.run(
