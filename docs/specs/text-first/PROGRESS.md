@@ -318,10 +318,26 @@ created: 2026-10-22
 
 ## Phase 4: bench 拆出
 
-> Status: not-started（已核准 2026-10-23；最後執行，P1 到 P3b 完成後）
+> Status: PR 待合併（Miyago 2026-10-23 核准建 repo）
 
 - 目標：R7。
-- 記錄：`filter-repo` 路徑清單、shoal-bench 初始 commit sha、兩邊測試結果。
+- 新 repo：`miyago9267/shoal-bench`（private），main 以 `git filter-repo`（fresh
+  clone，只取 origin/main）保留路徑 `bench/`、27 個測試模組、
+  `tests/fixtures/claude_stream`。原 78 個 commit 中，歷史 75 個（含 PR merge）
+  加 3 個 T4.4 commit；`git log --follow bench/ab/run_ab.py` 6 個，與 shoal 相同；
+  bench 目錄 20 個 commit，與 shoal 相同。
+- T4.4：`bench/shoal_root.py`（`SHOAL_ROOT` 預設 `../shoal`；`BENCHMARKS`、
+  `BENCH_ROOT`、`use()`）；`docs/benchmarks` 的引用全經它（含三個 bench 模組與三個
+  測試）；`run_ab.py` 的 `export_tree` 對 `SHOAL_ROOT` 做 `git archive`，
+  `RELAY_RENDER_PATHS` 含 `prompts` 且不含 `hosts/claude/dist`。
+- 實測：`SHOAL_AB_PLUGIN_REF=origin/main` 對 shoal main 出 plugin 與 relay 渲染成功。
+- 測試：shoal 1893 到 1397（移出 496），OK skipped=1；shoal-bench 496 個 OK，
+  `SHOAL_ROOT` 指向 shoal main 與指向本 branch 都通過；shoal-bench CI 綠。
+- `render_equiv.py --base origin/main --head HEAD`：預設 `3052b84a...` 88 檔、
+  relay `87d4a9a4...` 27 檔，與 P3b 相同。lock（`--base-ref origin/main`）通過；
+  `lint:md` 通過；六個 host 的 `render --check` 通過。
+- `git grep -n "bench/"` 在 shoal 只剩 CHANGELOG 與歷史 spec。
+- shoal 是 public，shoal-bench 的 workflow 不需要 token。
 
 ---
 
