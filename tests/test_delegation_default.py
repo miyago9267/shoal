@@ -297,6 +297,16 @@ class PolicyClauseTests(unittest.TestCase):
         ids = [c.id for c in render.load_core(ROOT)["contracts"]["watcher"]]
         self.assertEqual(ids[ids.index("run-to-terminal") + 1], "long-command-background")
 
+    def test_background_capable_roles_end_their_children_and_main_stops_reported_roles(self) -> None:
+        for role in ("watcher", "executor", "security-executor", "verifier"):
+            text = " ".join(self.files[f"agents/{role}.md"].decode("utf-8").split())
+            with self.subTest(role=role):
+                self.assertRegex(text, r"(?i)TaskStop[^.;]*(Monitor|background)|(Monitor|background)[^.;]*TaskStop")
+                self.assertIn("a live child keeps you listed as running", text)
+        bootstrap = " ".join(self.files["claude-md.bootstrap.md"].decode("utf-8").split())
+        self.assertIn("still listed running after its report", bootstrap)
+        self.assertIn("`TaskStop`", bootstrap)
+
     def test_core_policy_and_contract_clauses_name_no_model_and_no_number_threshold(self) -> None:
         core = render.load_core(ROOT)
         texts = [c.text for doc in core["policy"]["docs"].values() for c in doc]
