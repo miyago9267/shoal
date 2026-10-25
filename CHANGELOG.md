@@ -12,6 +12,9 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   watcher、executor、security-executor、verifier 的 Claude 區塊現在要求回報前先 TaskStop 自己起的
   背景 task 與 Monitor；bootstrap 的 collect 條款補上 main 對仍列為 running 的已回報 role 要 TaskStop。
   `hosts/claude/VERSION` 升為 3.13.1-beta（只動 Claude host）。
+  Claude plugin 與 marketplace 的版本改由 `hosts/claude/VERSION` 產生（原本讀根目錄 `VERSION`，
+  host 單獨升版時 plugin.json 沒跟著動，Claude 依版本號快取 plugin，已安裝的 cache 永遠是舊內容）；
+  `tools/shoal_update.py` 在內容變了但版本相同時回報 skipped 並說明原因，不再假報 updated。
 
 ### Repository
 

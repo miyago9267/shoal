@@ -314,6 +314,10 @@ class Updater:
                 and row["version"] != plugins[name]["version"]
             ):
                 verb = "update"
+                if row.get("version") == plugins[name]["version"]:
+                    # Claude 依版本號快取 plugin；版本沒升，plugin update 不會刷新 cache。
+                    out.append((step, "skipped", "marketplace 內容有變但版本沒升，cache 不會刷新；請升 hosts/claude/VERSION 並 render"))
+                    continue
             else:
                 out.append((step, "up-to-date", ""))
                 continue
