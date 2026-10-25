@@ -89,6 +89,13 @@
   {"command": "perl -e 'print 1'", "targets": []},
   {"command": "perl -ne 'print if /i/' f.py", "targets": []},
   {"command": "echo perl -pi f", "targets": []},
+  {"command": "python3 - <<'EOF'\nopen('src/a.py','w').write('x')\nEOF", "targets": ["src/a.py"]},
+  {"command": "python3 -c \"from pathlib import Path; Path('a').write_text('x')\"", "targets": ["$?"]},
+  {"command": "python -c 'import shutil; shutil.copy(\"a\", \"b\")'", "targets": ["$?"]},
+  {"command": "/usr/bin/python3.12 -c \"open(p, mode='a')\"", "targets": ["$?"]},
+  {"command": "python3 -c \"import json; json.load(open('a.json'))\"", "targets": []},
+  {"command": "python3 -c \"print(open('a').read().count(','))\"", "targets": []},
+  {"command": "echo \"open('x','w')\"", "targets": []},
   {"command": "ls -la", "targets": []},
   {"command": "", "targets": []}
  ]

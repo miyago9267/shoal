@@ -7,7 +7,13 @@
  * (after `;`, `|`, `&&`, newline, `(`, `then`, `do`, or wrappers such as `sudo`, `env`, `xargs`,
  * `find -exec`).  Never counts: `>&2` / `2>&1` duplications, `<` input, here-document bodies,
  * quoted text, `[[ ]]`, `(( ))`, `$(( ))`, comments and `>(...)`.  Writes through any other interpreter or
- * command (python, node, `perl -e` code that opens a file, cp, mv, patch, git apply, dd, ...) are not detected.
+ * command (node, `perl -e` code that opens a file, cp, mv, patch, git apply, dd, ...) are not detected.
+ *
+ * Python (`python[0-9.]*` at command position): when one runs, the whole command text is scanned with
+ * PY_WRITE_RE (literal-mode `open(..., 'w|a|x')`, `.write_text(` / `.write_bytes(`, `shutil.copy*(` /
+ * `shutil.move(`, `os.remove|unlink|rename|replace(`); `open('literal', ...)` reports that path, any other
+ * hit UNKNOWN_TARGET, after the shell targets.  A guardrail, not a sandbox: exec/eval, getattr,
+ * subprocess, script files, computed modes, `node -e`, cp and mv are not covered.
  */
 
 /** Target reported when a write is certain but its file is not (see the Python module). */
@@ -19,6 +25,14 @@ const DOUBLE_BRACKET_END_RE = /(?:^|\s)\]\](?=$|[\s;&|)])/g;
 const COMMAND_KEEP = new Set(["then", "do", "else", "elif", "if", "while", "until", "!", "{"]);
 const COMMAND_WRAPPERS = new Set(["sudo", "command", "exec", "env", "time", "nohup", "builtin", "xargs"]);
 const FIND_EXEC = new Set(["-exec", "-execdir"]);
+const PYTHON_NAME_RE = /^python[0-9.]*$/;
+const PY_WRITE_RE = new RegExp(
+  String.raw`\bopen\(\s*(?:(['"])([^'"\n]*)\1)?[^\n]{0,200}?,\s*(?:mode=)?['"][rbt]*[wax][rbt+]*['"]` +
+    String.raw`|\.write_(?:text|bytes)\(` +
+    String.raw`|\bshutil\.(?:copy\w*|move)\(` +
+    String.raw`|\bos\.(?:remove|unlink|rename|replace)\(`,
+  "g",
+);
 
 const isDigit = (c: string): boolean => c >= "0" && c <= "9";
 
@@ -197,7 +211,15 @@ function perlInPlaceFiles(args: string[]): string[] {
 
 /** File targets that `command` writes by a literal reading of its text (G5). */
 export function shellWriteTargets(command: string): string[] {
-  if (!command.includes(">") && !command.includes("tee") && !command.includes("sed") && !command.includes("perl")) return [];
+  if (
+    !command.includes(">") &&
+    !command.includes("tee") &&
+    !command.includes("sed") &&
+    !command.includes("perl") &&
+    !command.includes("python")
+  ) {
+    return [];
+  }
   const targets: string[] = [];
   const n = command.length;
   let i = 0;
@@ -206,9 +228,11 @@ export function shellWriteTargets(command: string): string[] {
   let name: string | null = null;
   let args: string[] = [];
   let heredocs: Array<[string, boolean]> = [];
+  let pythonRan = false;
 
   const flush = (): void => {
-    if (name === "tee") targets.push(...teeFiles(args));
+    if (name !== null && PYTHON_NAME_RE.test(name)) pythonRan = true;
+    else if (name === "tee") targets.push(...teeFiles(args));
     else if (name === "sed") targets.push(...sedInPlaceFiles(args));
     else if (name === "perl") targets.push(...perlInPlaceFiles(args));
     name = null;
@@ -321,5 +345,8 @@ export function shellWriteTargets(command: string): string[] {
     }
   }
   flush();
+  if (pythonRan) {
+    for (const match of command.matchAll(PY_WRITE_RE)) targets.push(match[2] || UNKNOWN_TARGET);
+  }
   return targets;
 }

@@ -62,7 +62,7 @@ class ShellWriteDetectorTests(unittest.TestCase):
                 self.assertEqual(guard.shell_write_targets(case["command"]), case["targets"])
 
     def test_interpreter_and_copy_writes_are_out_of_scope(self) -> None:
-        for command in ("python3 -c \"open('f','w').write('x')\"", "node -e \"require('fs').writeFileSync('f','x')\"",
+        for command in ("python3 write_it.py", "python3 -c \"import subprocess; subprocess.run(['cp', 'a', 'b'])\"", "node -e \"require('fs').writeFileSync('f','x')\"",
                         "cp a b", "mv a b", "git apply x.patch", "patch -p1 < x.patch", "dd if=a of=b", "install -m 644 a b"):
             self.assertEqual(guard.shell_write_targets(command), [], command)
 
@@ -1752,6 +1752,42 @@ class ChainCliTests(CliCase):
         reports = [r for r in self.log_records() if r.get("decision") == "chain_report"]
         self.assertEqual([r["reason"] for r in reports], ["id=fx-num version=1"])
 
+    @unittest.skipIf(os.name == "nt", "FIFO and uid ownership are POSIX-only")
+    def test_fifo_manifest_does_not_block_and_guard_stays_on(self) -> None:
+        # issue #26: a FIFO at the manifest path used to block the open forever
+        fifo = os.path.join(self.home, "chain.fifo")
+        os.mkfifo(fifo)
+        env = {"SHOAL_GUARD_CHAIN_FILE": fifo}
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        self.write_turn("sess-1", "p-1", "judgment")
+        payload = json.dumps(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)).encode()
+        started = time.monotonic()
+        proc = subprocess.run([sys.executable, str(GUARD), "--host", "claude"], input=payload,
+                              capture_output=True, env=self.env(**env), timeout=5)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(guard.chain_members("claude", env, Path(self.home)), [])
+        self.assertTrue(guard.dispatch_guard_selected("claude", env, Path(self.home)))
+
+    @unittest.skipIf(os.name == "nt", "FIFO and uid ownership are POSIX-only")
+    def test_foreign_owned_manifest_is_refused(self) -> None:
+        # issue #26: a manifest owned by another uid must not supply chain members or switch the guard off
+        self.configure(["deny", "stop right there"])
+        manifest = Path(self.chain_env["SHOAL_GUARD_CHAIN_FILE"])
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+        manifest.write_text(json.dumps({**doc, "claude": {"modules": ["core"], "version": "3.8.0"}}), encoding="utf-8")
+        env, home = self.chain_env, Path(self.home)
+        self.assertEqual(len(guard.chain_members("claude", env, home)), 1)
+        real_fstat = os.fstat
+
+        def foreign(fd: int) -> os.stat_result:
+            st = real_fstat(fd)
+            return os.stat_result((st.st_mode, st.st_ino, st.st_dev, st.st_nlink, st.st_uid + 1, *st[5:10]))
+
+        with mock.patch.object(guard.os, "fstat", side_effect=foreign):
+            self.assertEqual(guard.chain_members("claude", env, home), [])
+            self.assertTrue(guard.dispatch_guard_selected("claude", env, home))
+
     def test_no_manifest_changes_nothing(self) -> None:
         self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work)), "")
         self.assertEqual([r for r in self.log_records() if r.get("rule") == "chain"], [])
@@ -1789,13 +1825,17 @@ class RobustnessTests(CliCase):
         self.assertEqual(out, "")
         self.assertEqual(self.log_records()[-1]["skip_reason"], "exception")
 
-    def test_log_stops_at_one_mib(self) -> None:
+    def test_log_rotates_once_past_one_mib(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work))
         path = Path(self.guard_dir) / "guard.jsonl"
+        rotated = Path(self.guard_dir) / "guard.jsonl.1"
+        rotated.write_text("old", encoding="utf-8")
         path.write_text("x" * (guard.MAX_LOG_BYTES + 1), encoding="utf-8")
-        before = path.stat().st_size
         self.run_guard("claude", claude_tool("Edit", {"file_path": "a"}, cwd=self.work))
-        self.assertEqual(path.stat().st_size, before)
+        self.assertEqual(rotated.stat().st_size, guard.MAX_LOG_BYTES + 1)
+        self.assertLess(path.stat().st_size, 4096)
+        self.assertTrue(self.log_records())
+        self.assertEqual(sorted(p.name for p in Path(self.guard_dir).glob("guard.jsonl*")), ["guard.jsonl", "guard.jsonl.1"])
 
     def test_off_mode_creates_nothing(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD="off")
