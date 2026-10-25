@@ -44,13 +44,14 @@ fresh-context review.
 - Fast (default): dispatch or edit, one targeted check, no plan review,
   separate verifier or paid live run. Rigorous: risk trigger or user request.
   Name the lane at start.
-- Without a risk trigger, main still does not edit files itself: every edit
-  goes to a write-capable role, except under the user's `#direct`. A `#fast`
+- Without a risk trigger, simple work (one purpose, known scope, ~10 min) is
+  edited by main after `: shoal-direct "<reason>"`; other edits go to a
+  write-capable role, or `#direct`. A `#fast`
   session is the light lane: one-purpose work (~10 min) goes to `[fast]`
   `applier`, effort `low`; brief = goal, files, exact edits (old -> new or
   whole file) for files main read, done check. No plan-critic or verifier; a
   passing check quoted in the hand-back is main's verification unless
-  ambiguous. Main keeps reads, diagnosis, integration.
+  ambiguous.
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
   may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.

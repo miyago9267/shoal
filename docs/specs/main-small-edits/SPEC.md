@@ -126,5 +126,5 @@ Miyago 2026-10-25 daily interview：shoal「太複雜」，希望 main session �
   但 `claude-orchestration-policy` 與 `claude-orchestration-skill` 等 Claude surface 在 LOCK 內，
   任何改動都要升 `hosts/claude/VERSION`（version gate），且 `orchestration-policy.md` 只剩
   19598 / 19600 bytes 預算，`direct-when-small` 改寫須等量精簡。bootstrap 不在 LOCK 內。
-  因此 P2 先只改 bootstrap；`orchestration.md:59` 的 Claude 改寫待 VERSION 升版時一併做
-  （addendum 草稿已備，見 PROGRESS）。
+  因此 P2 同時改 bootstrap 與 `orchestration.md:59` 的 Claude 版（addendum 精簡到不超過預算），
+  並升 `hosts/claude/VERSION` 為 3.14.0-beta（2026-10-25 Miyago 核准）。

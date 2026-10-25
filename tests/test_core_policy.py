@@ -104,10 +104,14 @@ EXPECTED_POLICY_OMITS["agy"] = [
     "auto-ask-selection", "bootstrap-effort", "effort-per-delegation", "parallel-writers",
 ]
 # Claude 專屬的簡單工作條款取代 bootstrap-delegate-default（main-small-edits D2），Codex 條款不動。
-EXPECTED_POLICY_REPLACES["claude"] = {"bootstrap": ["bootstrap-delegate-default"]}
+EXPECTED_POLICY_REPLACES["claude"] = {
+    "bootstrap": ["bootstrap-delegate-default"],
+    "orchestration": ["direct-when-small"],
+}
 EXPECTED_POLICY_ADDENDA["claude"] = {
     "bootstrap": ["claude-stop-reported-role", "claude-delegate-default"],
     "extensions": ["claude-fan-out-workflow"],
+    "orchestration": ["claude-direct-when-small"],
 }
 EXPECTED_POLICY_ADDENDA["agy"] = {
     "orchestration": [

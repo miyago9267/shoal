@@ -7,6 +7,11 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ### Claude
 
+- main 可以自己改簡單工作（main-small-edits）。Claude host 的 `SHOAL_GUARD_R1` 預設改為 `declare`，
+  簡單工作（單一目的、範圍已知、不碰 risk trigger、預期 10 分鐘內）由 main 先執行
+  `: shoal-direct "<理由>"` 再自己改；多檔、需判斷或命中 risk trigger 仍派 `applier`／`executor`。
+  bootstrap 與 orchestration policy 的 Claude 條款同步改寫。其他 host 的預設與條款不變；
+  `SHOAL_GUARD_R1=strict` 可還原。`hosts/claude/VERSION` 升為 3.14.0-beta（只動 Claude host）。
 - 背景 role 回報後不再掛著。Claude 的 transcript 顯示 watcher、executor、security-executor 起了
   背景 Bash 或 Monitor 卻沒 TaskStop 就回報，agent 因為還有 live child 一直列為 running。
   watcher、executor、security-executor、verifier 的 Claude 區塊現在要求回報前先 TaskStop 自己起的

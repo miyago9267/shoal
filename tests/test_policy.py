@@ -153,7 +153,7 @@ class BehaviourContractTests(unittest.TestCase):
         "For low-risk, local, reversible work, use one targeted acceptance check in the main session and do not add an independent verifier",
     )
     CLAUDE = (
-        "main still does not edit files itself",
+        'Without a risk trigger, simple work (one purpose, known scope, ~10 min) is edited by main after `: shoal-direct "<reason>"`',
         "Direct main execution of mechanical work needs `#direct`",
         "Once root cause and remedy are known, the fix is Execution work and is delegated.",
     )
@@ -169,6 +169,7 @@ class BehaviourContractTests(unittest.TestCase):
         for sentence in self.CLAUDE:
             with self.subTest(contract=sentence[:50]):
                 self.assertIn(sentence, policy)
+        self.assertNotIn("main still does not edit files itself", policy)
 
     def test_claude_bootstrap_lets_main_edit_simple_work_after_declaring(self) -> None:
         text = flat(CLAUDE_BOOTSTRAP)
