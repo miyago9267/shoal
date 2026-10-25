@@ -1,6 +1,7 @@
 ---
 title: main 自己改簡單檔案，並修 plan mode 寫不了 plan 檔
-status: draft
+status: approved
+approved_by: Miyago (2026-10-25)
 created: 2026-10-25
 updated: 2026-10-25
 ---
@@ -70,10 +71,10 @@ Miyago 2026-10-25 daily interview：shoal「太複雜」，希望 main session �
 | # | 問題 | 建議 |
 | --- | --- | --- |
 | D1 | Claude 預設 R1：`strict` 或 `declare` | **已決定（Miyago，2026-10-25）：直接改 Claude host 預設為 `declare`**，P2 實作。原建議：`declare`，只改 Claude 的 host 預設（不動 codex 等）。理由：宣告有 log 可稽核，不需新機制。替代：維持 `strict`，只在 Miyago 本機設 `SHOAL_GUARD_R1=declare`，零 public 影響但每台機器都要設。shoal 是 public repo，預設變更會影響其他使用者，release note 要寫清楚；可用 `SHOAL_GUARD_R1=strict` 還原 |
-| D2 | policy 文字 | 簡單工作（沿用 `lean-default` D2，不另立檔數門檻）main 宣告後直接改；多檔、需判斷、命中 risk trigger 仍派 role。Risk trigger 不動。要在 `prompts/policy/` 的 Claude 路徑改，避免動到 Codex 的 LOCK surface（見 Scope） |
+| D2 | policy 文字 | **已決定（Miyago，2026-10-25）**：簡單工作沿用 `lean-default` D2 定義（單一目的、範圍已知、不碰 risk trigger、預期 10 分鐘內），不設檔數門檻；main 宣告後直接改。多檔、需判斷、命中 risk trigger 仍派 role，risk trigger 不動。實作走 Claude 專屬 policy addendum（`prompts/hosts/claude/policy-addenda/`），Codex surface 與 LOCK.json 位元組不變 |
 | D3 | exempt 加 `~/.claude/plans` 與 `$CLAUDE_CONFIG_DIR/plans` | 做。這是 bugfix，與 D1 無關，可獨立先出（P1） |
-| D4 | 宣告成本：main 可否不宣告直接改簡單工作 | 保留一次宣告：成本是一次空 shell 呼叫，換來 log 理由可稽核，也保有「這件事該不該派工」的停頓點。替代：簡單工作免宣告（`off` 或新模式），更省但無 log。`guard-declared-direct` 的 live gate 顯示宣告常成儀式，因此 D5 要量宣告率 |
-| D5 | 驗收 | 重跑 `lean-default` D6 benchmark（`bench/ab/run_ab.py`）：小任務成本與時間接近 baseline，通過數不低於 baseline；v2 多步驟維持 D6 原門檻（通過數 ≥ baseline、成本 ≤ 1.3 倍、時間 ≤ 1.5 倍）。另記宣告率與「該派工卻自己做」的案例數 |
+| D4 | 宣告成本：main 可否不宣告直接改簡單工作 | **已決定（Miyago，2026-10-25）**：保留一行宣告 `: shoal-direct "<理由>"`。成本是一次空 shell 呼叫，換來 log 理由可稽核，也保有「這件事該不該派工」的停頓點 |
+| D5 | 驗收 | **已決定（Miyago，2026-10-25）**：不跑 benchmark。改為本機試用一週（2026-10-25 至 2026-11-01），結束後檢視 guard log 的宣告率（`${XDG_STATE_HOME:-~/.local/state}/shoal/guard/guard.jsonl` 中 `rule: declare` 的紀錄與 `reason`），判斷 main 是否把非簡單工作也宣告後自己做 |
 
 ## Scope
 
@@ -104,8 +105,8 @@ Miyago 2026-10-25 daily interview：shoal「太複雜」，希望 main session �
    預設，無需 lock renewal。
 2. **P2 預設與條款**：R2–R5、DESIGN-INVARIANTS、受影響測試；視 Scope 的判斷做 lock
    renewal；需 Miyago 核准後才實作。
-3. **P3 benchmark**：D5 驗收，決定是否發 minor 版；不達標就回到本 spec 檢討（含是否退回
-   `strict`）。
+3. **P3 本機試用**：2026-10-25 至 2026-11-01，之後依 D5 檢視宣告 log 決定是否發版；
+   宣告用在非簡單工作的比例偏高就回到本 spec 檢討（含是否退回 `strict`）。
 
 ## Out of scope
 
@@ -117,7 +118,13 @@ Miyago 2026-10-25 daily interview：shoal「太複雜」，希望 main session �
 ## Risks
 
 - 回到 `declare` 後，main 可能把多檔或高風險工作也當簡單工作自己做。緩解：R4 與條款寫明
-  觸發條件；P3 記錄該派工卻自己做的案例；log 可稽核。
+  觸發條件；P3 檢視宣告 log；log 可稽核。
 - 預設改變影響 public 使用者。緩解：只改 Claude；release note 與還原方式
   （`SHOAL_GUARD_R1=strict`）。
 - 條款改動超過 change budget。緩解：先做 Claude 專屬條款；不行就 lock renewal。
+  實測（P2，2026-10-25）：Claude 專屬 addendum 可行，Codex surface 與 LOCK.json 不動、免 renewal。
+  但 `claude-orchestration-policy` 與 `claude-orchestration-skill` 等 Claude surface 在 LOCK 內，
+  任何改動都要升 `hosts/claude/VERSION`（version gate），且 `orchestration-policy.md` 只剩
+  19598 / 19600 bytes 預算，`direct-when-small` 改寫須等量精簡。bootstrap 不在 LOCK 內。
+  因此 P2 先只改 bootstrap；`orchestration.md:59` 的 Claude 改寫待 VERSION 升版時一併做
+  （addendum 草稿已備，見 PROGRESS）。
