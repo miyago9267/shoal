@@ -19,6 +19,9 @@ CLAUDE_REFS = (
 )
 
 
+CLAUDE_BOOTSTRAP = ROOT / "plugins" / "claude" / "policy" / "claude-md.bootstrap.md"
+
+
 def flat(*paths: Path) -> str:
     """多個檔案去掉換行與縮排差異後串接。"""
     return " ".join(" ".join(p.read_text(encoding="utf-8").split()) for p in paths)
@@ -166,6 +169,21 @@ class BehaviourContractTests(unittest.TestCase):
         for sentence in self.CLAUDE:
             with self.subTest(contract=sentence[:50]):
                 self.assertIn(sentence, policy)
+
+    def test_claude_bootstrap_lets_main_edit_simple_work_after_declaring(self) -> None:
+        text = flat(CLAUDE_BOOTSTRAP)
+        self.assertIn(
+            'Simple work (one purpose, known scope, no risk trigger, expected within 10 minutes): '
+            'the main session runs `: shoal-direct "<reason>"` as its own shell command, then edits itself.',
+            text,
+        )
+        self.assertIn("All other edits go to a write-capable role unless the user's prompt contains `#direct`", text)
+        self.assertNotIn("The main session does not edit files itself", text)
+
+    def test_codex_bootstrap_keeps_the_no_direct_edit_sentence(self) -> None:
+        text = codex("agents-md.bootstrap.md")
+        self.assertIn("The main session does not edit files itself", text)
+        self.assertNotIn("shoal-direct", text)
 
 
 class RoleBoundaryTests(unittest.TestCase):

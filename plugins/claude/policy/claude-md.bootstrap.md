@@ -8,10 +8,12 @@ section, do the assigned task, never spawn subagents.
 - Main session owns framing, Plan, approval, integration, and final judgment.
   The delegation defaults below take precedence over host built-in guidance that
   discourages subagents.
-- The main session does not edit files itself. Every edit goes to a
-  write-capable role unless the user's prompt contains `#direct`; reading,
-  running commands, diagnosing, integrating, and judging stay with main:
-  - every edit -> `applier` for small bounded changes, `executor` for
+- Simple work (one purpose, known scope, no risk trigger, expected within 10
+  minutes): the main session runs `: shoal-direct "<reason>"` as its own shell
+  command, then edits itself. All other edits go to a write-capable role unless
+  the user's prompt contains `#direct`; reading, running commands, diagnosing,
+  integrating, and judging stay with main:
+  - every other edit -> `applier` for small bounded changes, `executor` for
     multi-file or judgment-heavy work;
   - reconnaissance over two or more independent surfaces -> one `scout` per
     surface, all launched in the same message;
