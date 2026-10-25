@@ -2192,19 +2192,19 @@
    ]
   },
   {
-   "name": "r1_unrecognized_value_uses_the_strict_default",
+   "name": "r1_unrecognized_value_uses_the_claude_declare_default",
    "env": {"SHOAL_GUARD_R1": "bogus"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
    ]
   },
   {
-   "name": "r1_empty_value_uses_the_strict_default",
+   "name": "r1_empty_value_uses_the_claude_declare_default",
    "env": {"SHOAL_GUARD_R1": ""},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
    ]
   },
   {
@@ -2528,7 +2528,7 @@
   },
   {
    "name": "strict_undeclared_edit_denied_with_the_strict_message",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
@@ -2537,7 +2537,7 @@
   },
   {
    "name": "strict_deny_message_zh_tw",
-   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_LANG": "zh-TW"},
+   "env": {"SHOAL_GUARD_R1": "strict", "SHOAL_GUARD_LANG": "zh-TW"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 不自己改檔。請派出可寫的 role（executor 或 applier），或請使用者在 prompt 加上 #direct。"}},
@@ -2546,7 +2546,7 @@
   },
   {
    "name": "strict_declaration_is_an_ordinary_no_op_and_does_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix a typo\""}, "expect": {"decision": "none"}},
@@ -2559,7 +2559,7 @@
   },
   {
    "name": "strict_parent_local_classification_does_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "parent_local"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
@@ -2569,7 +2569,7 @@
   },
   {
    "name": "strict_other_classifications_have_no_effect",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
@@ -2578,7 +2578,7 @@
   },
   {
    "name": "strict_prompt_direct_unlocks_this_turn_only",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
@@ -2599,7 +2599,7 @@
   },
   {
    "name": "strict_direct_env_other_values_do_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD_DIRECT": "true"},
+   "env": {"SHOAL_GUARD_R1": "strict", "SHOAL_GUARD_DIRECT": "true"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
@@ -2607,7 +2607,7 @@
   },
   {
    "name": "strict_write_role_dispatch_unlocks_this_turn_only",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
@@ -2626,7 +2626,7 @@
   },
   {
    "name": "strict_read_only_and_verify_dispatch_do_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "tool_name": "Agent", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
@@ -2643,7 +2643,7 @@
   },
   {
    "name": "strict_shell_without_write_has_no_opinion",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo ok"}, "expect": {"decision": "none"}},
@@ -2665,7 +2665,7 @@
   },
   {
    "name": "strict_subagent_is_unaffected_and_hard_rules_stay",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "executor"}, "expect": {"decision": "none"}},
@@ -2677,7 +2677,7 @@
   },
   {
    "name": "strict_denied_calls_are_not_counted_for_r2",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
@@ -2690,7 +2690,7 @@
   },
   {
    "name": "strict_shadow_would_deny_and_edit_goes_ahead",
-   "env": {"SHOAL_GUARD_R1": null, "SHOAL_GUARD": "shadow"},
+   "env": {"SHOAL_GUARD_R1": "strict", "SHOAL_GUARD": "shadow"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "would_deny", "rule": "R1"}},
@@ -2708,18 +2708,55 @@
    ]
   },
   {
-   "name": "r1_value_empty_selects_strict",
+   "name": "r1_value_empty_selects_claude_declare_default",
    "env": {"SHOAL_GUARD_R1": ""},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
    ]
   },
   {
-   "name": "r1_value_bogus_selects_strict",
+   "name": "r1_value_bogus_selects_claude_declare_default",
    "env": {"SHOAL_GUARD_R1": "bogus"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "claude_r1_unset_defaults_to_declare_and_denies_undeclared_edit",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role (executor or applier), or declare direct work first by running exactly : shoal-direct \"<reason>\" as its own shell command, or ask the user to add #direct to the prompt."}}
+   ]
+  },
+  {
+   "name": "claude_r1_unset_declared_turn_allows_edit",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "declared"}}
+   ],
+   "log_contains": ["\"rule\":\"declare\"", "\"reason\":\"fix typo\""]
+  },
+  {
+   "name": "claude_r1_unset_declaration_does_not_carry_to_next_turn",
+   "env": {"SHOAL_GUARD_R1": null},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "state", "rule": "declare"}},
+    {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t2", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}
+   ]
+  },
+  {
+   "name": "claude_r1_strict_env_restores_the_old_default",
+   "env": {"SHOAL_GUARD_R1": "strict"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"fix typo\""}, "expect": {"decision": "none"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "Edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
    ]
   },
@@ -2952,7 +2989,7 @@
   },
   {
    "name": "m11_dispatch_without_start_does_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}},
@@ -2964,7 +3001,7 @@
   },
   {
    "name": "m11_dispatch_then_start_unlocks_edit_and_shell_write",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
@@ -2998,7 +3035,7 @@
   },
   {
    "name": "m11_read_only_and_verify_starts_never_release",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
@@ -3013,7 +3050,7 @@
   },
   {
    "name": "m11_scout_dispatch_and_start_do_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout"}, "expect": {"decision": "allow", "rule": "dispatch"}},
@@ -3026,7 +3063,7 @@
   },
   {
    "name": "m11_start_without_pending_dispatch_does_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": "t1"}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
@@ -3038,7 +3075,7 @@
   },
   {
    "name": "m11_start_without_any_state_does_not_unlock",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "subagent_start", "role": "shoal:executor", "turn_id": null}, "expect": {"decision": "skip", "skip_reason": "start_without_pending"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}
@@ -3046,7 +3083,7 @@
   },
   {
    "name": "m11_pending_dispatch_does_not_carry_to_the_next_turn",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
@@ -3104,7 +3141,7 @@
   },
   {
    "name": "m11_malformed_start_events_fail_open_without_state_change",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
@@ -3167,7 +3204,7 @@
   },
   {
    "name": "m11_subagent_calls_are_unaffected",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "executor"}, "expect": {"decision": "allow", "rule": "dispatch_pending"}},
@@ -3519,7 +3556,7 @@
   },
   {
    "name": "stop_claude_declaration_is_not_a_check",
-   "env": {"SHOAL_GUARD_R1": null},
+   "env": {"SHOAL_GUARD_R1": "strict"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1", "direct": true}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "allow", "rule": "direct"}},
@@ -7428,7 +7465,7 @@
   {"name": "fast_env_does_not_release_non_shoal_subagent_edit", "host": "codex", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_FAST": "1"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "tool_name": "apply_patch", "is_subagent": true, "role": "worker", "agent_id": "w1"}, "expect": {"decision": "deny", "rule": "E1"}}]},
   {"name": "fast_keeps_verify_edit_and_leaf_dispatch_denied", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1", "fast": "on"}, "expect": {"decision": "state"}}, {"event": {"kind": "prompt", "turn_id": "t2"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "watcher"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t2", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "shoal:verifier"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t2", "dispatched_role": "scout", "is_subagent": true, "role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}}]},
   {"name": "fast_env_keeps_verify_edit_and_leaf_dispatch_denied", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null, "SHOAL_GUARD_FAST": "1"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "watcher"}, "expect": {"decision": "deny", "rule": "VERIFY_EDIT"}}, {"event": {"kind": "tool", "tool_kind": "dispatch", "turn_id": "t1", "dispatched_role": "scout", "is_subagent": true, "role": "executor"}, "expect": {"decision": "deny", "rule": "LEAF"}}]},
-  {"name": "fast_denial_messages_name_fast", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "general-purpose"}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."}}]},
+  {"name": "fast_denial_messages_name_fast", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_SUBAGENT_WRITE": null, "SHOAL_GUARD_R1": "strict"}, "steps": [{"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the main session does not edit files itself. Dispatch a write-capable role (executor or applier), or ask the user to add #direct to the prompt."}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"], "is_subagent": true, "role": "general-purpose"}, "expect": {"decision": "deny", "rule": "E1", "reason": "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. Dispatch a shoal write-capable role (executor or applier), add #direct to the user prompt that started this work, add this agent type to SHOAL_GUARD_WRITE_AGENTS, or set SHOAL_GUARD_DIRECT=1."}}]},
   {"name": "chain_none_configured_unchanged", "env": {"SHOAL_GUARD_CHAIN_FILE": "$HOME/chain.json", "SHOAL_GUARD_CHAIN_TIMEOUT_MS": "1500"}, "files_absent": ["$HOME/chain.json"], "log_lacks": ["chain"], "steps": [{"event": {"kind": "tool", "tool_kind": "other", "tool_name": "Read", "turn_id": "t1"}, "expect": {"decision": "none", "rule": null}}]},
   {"name": "chain_missing_file_unchanged", "env": {"SHOAL_GUARD_CHAIN_FILE": "$HOME/chain.json", "SHOAL_GUARD_CHAIN_TIMEOUT_MS": "1500"}, "log_lacks": ["chain"], "steps": [{"event": {"kind": "tool", "tool_kind": "other", "tool_name": "Read", "turn_id": "t1"}, "expect": {"decision": "none"}}]},
   {"name": "chain_allow_member_unchanged", "env": {"SHOAL_GUARD_CHAIN_FILE": "$HOME/chain.json", "SHOAL_GUARD_CHAIN_TIMEOUT_MS": "1500"}, "setup": {"write": {"$HOME/chain.json": "{\"chain\": [{\"name\": \"fx-allow\", \"command\": [\"python3\", \"$REPO/tests/fixtures/chain/member.py\", \"allow\"], \"hosts\": [\"claude\"], \"order\": 0}]}"}}, "log_contains": ["\"decision\":\"chain_allow\"", "\"member\":\"fx-allow\"", "\"ms\":\""], "log_lacks": ["chain_error"], "steps": [{"event": {"kind": "tool", "tool_kind": "other", "tool_name": "Read", "turn_id": "t1"}, "expect": {"decision": "none", "rule": null}}]},

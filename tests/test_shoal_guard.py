@@ -98,8 +98,9 @@ class DeclarationParserTests(unittest.TestCase):
 
     def test_resolve_r1(self) -> None:
         for host in ("claude", "codex", "opencode", "grok", "agy"):
-            for env, want in (({}, "strict"), ({"SHOAL_GUARD_R1": ""}, "strict"), ({"SHOAL_GUARD_R1": "bogus"}, "strict"),
-                              ({"SHOAL_GUARD_R1": "STRICT"}, "strict"), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
+            default = "declare" if host == "claude" else "strict"  # claude alone defaults to declare (main-small-edits D1)
+            for env, want in (({}, default), ({"SHOAL_GUARD_R1": ""}, default), ({"SHOAL_GUARD_R1": "bogus"}, default),
+                              ({"SHOAL_GUARD_R1": "STRICT"}, default), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
                               ({"SHOAL_GUARD_R1": "declare"}, "declare"),
                               ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
                 self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
@@ -779,12 +780,12 @@ class DeclareCliTests(CliCase):
 
 
 class StrictCliTests(CliCase):
-    """`strict` (the claude and codex default since 3.3.0) through the real script, claude and codex payloads."""
+    """`strict` (the codex default since 3.3.0; claude selects it with SHOAL_GUARD_R1=strict) through the real script."""
 
     PATCH = "*** Begin Patch\n*** Add File: a\n+x\n*** End Patch"
 
     def claude(self, payload) -> str:
-        return self.run_guard("claude", payload, SHOAL_GUARD_R1="")
+        return self.run_guard("claude", payload, SHOAL_GUARD_R1="strict")
 
     def codex(self, payload) -> str:
         return self.run_guard("codex", payload, SHOAL_GUARD_R1="")
@@ -825,7 +826,7 @@ class StrictCliTests(CliCase):
         self.claude(claude_prompt(cwd=self.work, prompt_id="p-2", prompt="fix it #direct"))
         self.assertEqual(self.claude(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2")), "")
         self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": "b.py"}, cwd=self.work, prompt_id="p-3"),
-                                        SHOAL_GUARD_R1="", SHOAL_GUARD_DIRECT="1"), "")
+                                        SHOAL_GUARD_R1="strict", SHOAL_GUARD_DIRECT="1"), "")
 
     def test_codex_exits_are_dispatch_and_hash_direct_only(self) -> None:
         self.codex(CodexAdapterTests.prompt(cwd=self.work))

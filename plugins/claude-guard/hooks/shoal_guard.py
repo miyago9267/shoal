@@ -717,13 +717,15 @@ def resolve_r1(host: str, env: Dict[str, str]) -> str:
     """SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
 
     Unset, unrecognized, or `strict` / `declare` on a host that cannot gate -> the host default
-    (`strict` on claude, codex, grok, agy and opencode, `classified` elsewhere)."""
+    (`declare` on claude, `strict` on codex, grok, agy and opencode, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw
     if host not in DECLARE_HOSTS:
         return "classified"
-    return "declare" if raw == "declare" else "strict"
+    if raw in ("strict", "declare"):
+        return raw
+    return "declare" if host == "claude" else "strict"
 
 
 # ---------------------------------------------------------------------------

@@ -118,12 +118,13 @@ guard（`hooks/shoal_guard.py`）在五個 host 的安裝方式：Codex 由 `ins
 `tools/install_hooks.py` 安裝，OpenCode 的 guard 在 plugin 內。Claude、Codex、Grok 與 agy
 預設 enforce（agy 以 conversation 的事件順序推斷 main 與 subagent，是推斷不是事實，細節見 INSTALL.md；
 agy 沒有 `#direct`），`SHOAL_GUARD=off` 關閉。R2（檔案數）在所有 host 都只提醒；subagent 的 LEAF、
-VERIFY_EDIT 會擋。五個 host 上（預設 `strict`；agy 沒有 `#direct`）main 沒派 write role、使用者也沒有
+VERIFY_EDIT 會擋。五個 host 上（預設：Claude `declare`，其餘 `strict`；agy 沒有 `#direct`）main 沒派 write role、使用者也沒有
 `#direct` 就改檔（R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）會被擋，不需要任何分類來源；
-出口只有兩個：派 `executor`／`applier`，或請使用者在 prompt 加 `#direct`。main
+`strict` 的出口只有兩個：派 `executor`／`applier`，或請使用者在 prompt 加 `#direct`。main
 自己宣告的出口（`: shoal-direct "<理由>"`，3.2.x 的 `declare`）在 live gate 中被 Claude 每次拿來自己做，
-所以預設拿掉，但仍可用 `SHOAL_GUARD_R1=declare` 選回。main 自己開背景 shell（G4，只有 Claude）同樣被擋；R2
-仍只提醒。`SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`、`classified`（3.1.0 的行為：
+3.3.0 一度拿掉；2026-10-25 起 Claude 改回預設 `declare`（簡單工作宣告後自己改，
+見 `docs/specs/main-small-edits`），可用 `SHOAL_GUARD_R1=strict` 還原，其他 host 仍預設 `strict`。main 自己開背景 shell（G4，只有 Claude）同樣被擋；R2
+仍只提醒。`SHOAL_GUARD_R1` 的值：`strict`、`declare`（Claude 預設）、`classified`（3.1.0 的行為：
 只在外部分類來源標出實作工作時擋）、`off`。`SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的
 subagent 改檔（五個 host 預設 `on`；Claude、Codex、Grok、OpenCode 上啟動該工作的 prompt 帶
 `#direct` 可放行，agy 沒有 `#direct`，其餘出口見 INSTALL.md）。

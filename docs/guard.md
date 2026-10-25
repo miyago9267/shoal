@@ -180,18 +180,20 @@ Claude Code 與 Gemini/agy 沒有自己的 shoal installer，dispatch guard 由
 3.2.0 起 R1 與 G5 不再等分類來源（宣告）；3.3.0 起預設改成 `strict`：main 沒派 write role、
 使用者也沒有 `#direct` 就不能改檔，宣告不再是出口
 （[`docs/specs/guard-declared-direct`](./specs/guard-declared-direct/SPEC.md)）。
+2026-10-25 起 Claude 的預設改回 `declare`（[`docs/specs/main-small-edits`](./specs/main-small-edits/SPEC.md)）；
+`SHOAL_GUARD_R1=strict` 還原成 3.3.0 的行為，其他 host 的預設不變。
 
 ### main 改檔規則的模式：`SHOAL_GUARD_R1`
 
 | 值 | 預設於 | R1（改檔工具）與 G5（寫檔的 `Bash`） |
 | --- | --- | --- |
-| `strict` | Claude、Codex（3.3.0 起）、Grok、agy、OpenCode（3.6.0 起） | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
-| `declare` | 無（3.2.x 的預設，可選） | enforce 時 deny，除非本輪有：已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告（下一節），或分類檔的 `role` 是 `parent_local`。沒有分類檔、或其他 `role`，都不影響結果。shadow 記 `would_deny` |
+| `strict` | Codex（3.3.0 起）、Grok、agy、OpenCode（3.6.0 起）；Claude 以 `SHOAL_GUARD_R1=strict` 選用 | enforce 時 deny，除非本輪有：已派出的 write role，或使用者的 `#direct`（或 `SHOAL_GUARD_DIRECT=1`），或目標在豁免路徑。`: shoal-direct ...` 只是普通的空指令（不寫 state、不寫 log、不放行），分類檔（包含 `parent_local`）沒有作用。訊息只列兩個出口：派 `executor`／`applier`，或請使用者加 `#direct`。shadow 記 `would_deny` |
+| `declare` | Claude（2026-10-25 起；3.2.x 也是預設，3.3.0 改成 `strict`） | enforce 時 deny，除非本輪有：已派出的 write role、使用者的 `#direct` 或 `SHOAL_GUARD_DIRECT=1`、main 的宣告（下一節），或分類檔的 `role` 是 `parent_local`。沒有分類檔、或其他 `role`，都不影響結果。shadow 記 `would_deny` |
 | `classified` | 無（可選；3.6.0 前的 OpenCode 預設） | 3.1.0 的規則：只有分類檔把本輪標成 `judgment` 或 `mechanical` 時才擋（Claude：deny；其他 host 只提醒） |
 | `off` | 無 | 關掉 R1 與 G5。硬規則（LEAF、VERIFY_EDIT）、G4、R2 不受影響 |
 
 未設定、空字串、無法辨識的值，或在不能閘控的 host 上設 `strict`／`declare`，都用該 host 的預設
-（所有 host 都是 `strict`；3.6.0 前 OpenCode 是 `classified`）。
+（Claude 是 `declare`，其餘 host 是 `strict`；3.6.0 前 OpenCode 是 `classified`）。
 `declare`、`classified`、`off` 的行為與 3.2.1 相同。
 被 deny 的改檔與 shell 寫檔不計入 R2 的檔案數，也不會在同一次呼叫送出 R2 提醒。
 
@@ -237,7 +239,7 @@ Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TM
 
 ### 宣告
 
-`declare` 模式（`SHOAL_GUARD_R1=declare`）下，要自己改檔時 main 先單獨執行一次 shell 指令
+`declare` 模式（Claude 的預設，其他 host 以 `SHOAL_GUARD_R1=declare` 選用）下，要自己改檔時 main 先單獨執行一次 shell 指令
 （`strict` 下這個指令是普通的空指令，不放行）：
 
 ```bash

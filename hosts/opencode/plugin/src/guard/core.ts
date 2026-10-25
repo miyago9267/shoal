@@ -767,13 +767,15 @@ export function stopBlocks(host: string, env: Env): boolean {
 /**
  * SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
  * Unset, unrecognized, or `strict` / `declare` on a host outside DECLARE_HOSTS -> `classified`.  Every host the
- * guard knows (claude, codex, opencode, grok, agy) is in DECLARE_HOSTS, so `strict` is the default there.
+ * guard knows (claude, codex, opencode, grok, agy) is in DECLARE_HOSTS; the default there is `declare` on claude and
+ * `strict` on the others.
  */
 export function resolveR1(host: string, env: Env): string {
   const raw = env.SHOAL_GUARD_R1 || "";
   if (raw === "classified" || raw === "off") return raw;
   if (!DECLARE_HOSTS.has(host)) return "classified";
-  return raw === "declare" ? "declare" : "strict";
+  if (raw === "strict" || raw === "declare") return raw;
+  return host === "claude" ? "declare" : "strict";
 }
 
 /** null when the configured value is not an integer (the guard then fails open). */
