@@ -5,6 +5,14 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+### Claude
+
+- 背景 role 回報後不再掛著。Claude 的 transcript 顯示 watcher、executor、security-executor 起了
+  背景 Bash 或 Monitor 卻沒 TaskStop 就回報，agent 因為還有 live child 一直列為 running。
+  watcher、executor、security-executor、verifier 的 Claude 區塊現在要求回報前先 TaskStop 自己起的
+  背景 task 與 Monitor；bootstrap 的 collect 條款補上 main 對仍列為 running 的已回報 role 要 TaskStop。
+  `hosts/claude/VERSION` 升為 3.13.1-beta（只動 Claude host）。
+
 ### Repository
 
 - `bench/` 與 27 個 bench 專用測試模組拆到私有 repo `miyago9267/shoal-bench`（歷史以

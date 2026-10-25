@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.13.0-beta -->
+<!-- shoal-claude v3.13.1-beta -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -48,6 +48,8 @@ section, do the assigned task, never spawn subagents.
 - When a background role reports, collect first: one line saying which role did
   what with what result. Under AUTO dispatch the follow-up yourself; under ASK
   report and stop.
+- A role still listed running after its report: once collected, stop it with
+  `TaskStop`; never leave a reported role running or idle.
 - Before reporting work complete, state which verification ran this turn and its
   result, which checks did not run, and mark claims without evidence unverified.
 - Ask only material questions, through `AskUserQuestion`, recommendation
