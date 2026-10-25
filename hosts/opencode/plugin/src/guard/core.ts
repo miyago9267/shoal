@@ -844,7 +844,7 @@ export function repoUnderTest(cwd: string): string {
   }
 }
 
-/** `path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, claude transcripts. */
+/** `path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, claude transcripts and plan files. */
 export function isExempt(path: string, host: string, env: Env, home: string): boolean {
   if (path.split("/").slice(0, -1).includes(".ai")) return true;
   const roots = ["/tmp", "/private/tmp", lenientRealpath("/tmp")];
@@ -853,9 +853,11 @@ export function isExempt(path: string, host: string, env: Env, home: string): bo
     roots.push(lenientRealpath(tmpdir));
   }
   if (host === "claude") {
-    roots.push(lenientRealpath(join(home, ".claude", "projects")));
+    for (const sub of ["projects", "plans"]) roots.push(lenientRealpath(join(home, ".claude", sub)));
     const config = env.CLAUDE_CONFIG_DIR ?? "";
-    if (config && isAbsolute(config)) roots.push(lenientRealpath(join(config, "projects")));
+    if (config && isAbsolute(config)) {
+      for (const sub of ["projects", "plans"]) roots.push(lenientRealpath(join(config, sub)));
+    }
   }
   return roots.some((root) => under(path, root));
 }

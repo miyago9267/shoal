@@ -393,6 +393,37 @@
    ]
   },
   {
+   "name": "exempt_claude_plans",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/plans/x.md"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "exempt_claude_config_dir_plans",
+   "env": {"CLAUDE_CONFIG_DIR": "$WORK/cfg"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/cfg/plans/x.md"]}, "expect": {"decision": "allow", "rule": "exempt"}}
+   ]
+  },
+  {
+   "name": "claude_dir_outside_projects_and_plans_not_exempt",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/settings.json"]}, "expect": {"decision": "allow", "rule": "count"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/plans-lookalike/x.md"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
+   "name": "claude_plans_not_exempt_on_other_hosts",
+   "host": "codex",
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/plans/x.md"]}, "expect": {"decision": "allow", "rule": "count"}}
+   ]
+  },
+  {
    "name": "exempt_prefix_lookalike_is_not_exempt",
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},

@@ -837,7 +837,7 @@ def repo_under_test(cwd: str) -> str:
 
 
 def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
-    """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts."""
+    """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts, plan-mode plan files."""
     if ".ai" in path.split("/")[:-1]:
         return True
     roots = ["/tmp", "/private/tmp", os.path.realpath("/tmp")]
@@ -845,10 +845,12 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
     if tmpdir and os.path.isabs(tmpdir) and os.path.realpath(tmpdir) != "/":
         roots.append(os.path.realpath(tmpdir))
     if host == "claude":
-        roots.append(os.path.realpath(str(home / ".claude" / "projects")))
+        for sub in ("projects", "plans"):
+            roots.append(os.path.realpath(str(home / ".claude" / sub)))
         config = env.get("CLAUDE_CONFIG_DIR", "")
         if config and os.path.isabs(config):
-            roots.append(os.path.realpath(os.path.join(config, "projects")))
+            for sub in ("projects", "plans"):
+                roots.append(os.path.realpath(os.path.join(config, sub)))
     return any(_under(path, root) for root in roots)
 
 
