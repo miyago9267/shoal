@@ -5,6 +5,21 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+### Guard
+
+- G5 看得到 python 寫檔（#32）。指令位置有 `python[0-9.]*` 時，整段指令
+  （heredoc 本文、`-c`）再比對字面 mode 的 `open(..., 'w'/'a'/'x')`、
+  `.write_text(`／`.write_bytes(`、`shutil.copy*(`／`shutil.move(`、
+  `os.remove|unlink|rename|replace(`；`open('路徑', ...)` 回報該路徑，
+  其他回報 `$?`。只是 guardrail：exec、getattr、subprocess、腳本檔、
+  `node -e`、`cp`／`mv` 仍不偵測。E1 的 verify role 共用同一判斷。
+  TypeScript port（OpenCode）同步。
+- `guard.jsonl` 超過 1 MiB 改名為 `guard.jsonl.1` 後繼續寫（只留一代），不再停寫（#31）。
+- module manifest 以 `O_NONBLOCK` 開啟，且只接受目前使用者擁有的一般檔案（#26）：FIFO 不再讓
+  hook 卡住；被拒的 manifest 等同讀不到，guard 維持開啟、不跑 chain，`defer_to_global` 回 False。
+  OpenCode 的 `chainMembers` 讀檔失敗改與 Python 一致（被拒或不存在回 `[]`）。
+- `hosts/claude/VERSION` 升為 3.13.2-beta，讓 Claude 的 plugin cache 換新 guard。
+
 ### Claude
 
 - 背景 role 回報後不再掛著。Claude 的 transcript 顯示 watcher、executor、security-executor 起了
