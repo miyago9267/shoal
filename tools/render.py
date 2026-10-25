@@ -4,7 +4,7 @@
 用法：python3 tools/render.py --host <host> (--check|--write|--explain|--explain-policy|--policy-preview DIR) [--root DIR]
 <host> 是 claude、codex、agy、grok、opencode，或 hosts/<name>/binding.toml 宣告
 renderer = "generic-md" 的 host（輸出格式由 binding 的 [output] 宣告，不需寫程式碼）。
-另有 claude-plugin：由 claude 的 render 結果、hooks/shoal_guard.py 與根目錄 VERSION 產生
+另有 claude-plugin：由 claude 的 render 結果、hooks/shoal_guard.py 與 hosts/claude/VERSION 產生
 兩個 Claude plugin（plugins/claude/ = shoal、plugins/claude-guard/ = shoal-dispatch-guard）與
 .claude-plugin/marketplace.json，不屬於五個 host。
 
@@ -1427,7 +1427,7 @@ def diff_mirrors(root: Path, host: str, files: dict[str, bytes]) -> list[str]:
 
 
 # ---- claude-plugin：Claude Code plugin 與 marketplace（generic-shoal K1、K2、K5）----
-# 不是第六個 host：沒有自己的 binding，內容全部取自 claude 的 render 結果、guard 與根目錄 VERSION。
+# 不是第六個 host：沒有自己的 binding，內容全部取自 claude 的 render 結果、guard 與 hosts/claude/VERSION。
 CLAUDE_PLUGIN = "plugins/claude"
 CLAUDE_PLUGIN_HOST = "claude-plugin"  # --host 的名稱
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
@@ -1448,9 +1448,10 @@ CLAUDE_PLUGIN_TIMEOUT = 10
 PRODUCT_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-beta)?$")
 
 
-def product_version(root: Path) -> str:
-    """根目錄 VERSION（產品版本）；plugin 與 marketplace 的版本都等於它。"""
-    path = root / "VERSION"
+def plugin_version(root: Path) -> str:
+    """hosts/claude/VERSION；plugin 與 marketplace 的版本都等於它。
+    Claude 依版本號快取 plugin，內容變了版本沒動，已安裝的 cache 不會刷新。"""
+    path = root / "hosts" / "claude" / "VERSION"
     try:
         version = path.read_text(encoding="utf-8").strip()
     except OSError as exc:
@@ -1501,7 +1502,7 @@ def _guard_plugin_hooks(texts: dict[str, str]) -> dict:
 
 def render_claude_plugin(root: Path, overlay: Path | None = None) -> dict[str, bytes]:
     """{相對 repo 根的路徑: bytes}。agents 與 skills 取自 claude 的 render 結果，guard 是 hooks/shoal_guard.py 的逐位元組副本。"""
-    version = product_version(root)
+    version = plugin_version(root)
     texts = load_texts(root / "hosts" / RELAY_HOST)
     claude = _claude(root, overlay)
     out: dict[str, bytes] = {}
