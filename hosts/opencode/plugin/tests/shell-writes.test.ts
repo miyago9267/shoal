@@ -23,7 +23,7 @@ describe("shellWriteTargets", () => {
   }
 
   test("interpreter and copy writes are out of scope", () => {
-    for (const command of ["python3 -c \"open('f','w').write('x')\"", "cp a b", "mv a b", "git apply x.patch", "dd if=a of=b"]) {
+    for (const command of ["python3 write_it.py", "python3 -c \"import subprocess; subprocess.run(['cp', 'a', 'b'])\"", "cp a b", "mv a b", "git apply x.patch", "dd if=a of=b"]) {
       expect(shellWriteTargets(command)).toEqual([]);
     }
   });

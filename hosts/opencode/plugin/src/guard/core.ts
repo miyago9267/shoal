@@ -18,9 +18,9 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
   readSync,
   readlinkSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeSync,
@@ -525,6 +525,29 @@ function withStateLock(path: string, body: () => GuardResult, skip: (reason: str
   }
 }
 
+/**
+ * Up to `max` bytes of `path` when it is a regular file owned by the current user; null when it is absent,
+ * not a regular file (a FIFO is opened non-blocking and refused) or owned by another uid.  A read error throws.
+ * Mirror of _open_readable in hooks/shoal_guard.py.
+ */
+export function readOwnedRegular(path: string, max: number): Buffer | null {
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  } catch {
+    return null;
+  }
+  try {
+    const info = fstatSync(fd);
+    const uid = process.getuid?.();
+    if (!info.isFile() || (uid !== undefined && info.uid !== uid)) return null;
+    const buffer = Buffer.alloc(max);
+    return buffer.subarray(0, readSync(fd, buffer, 0, max, null));
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function readJson(path: string): Record<string, unknown> {
   const fd = openPrivate(path, constants.O_RDONLY);
   if (fd === null) return {};
@@ -578,7 +601,7 @@ export function shortHash(value: unknown): string | undefined {
   return createHash("sha256").update(value, "utf8").digest("hex").slice(0, 8);
 }
 
-/** Append one whitelisted record to guard.jsonl (1 MiB cap).  Never throws. */
+/** Append one whitelisted record to guard.jsonl; past 1 MiB it becomes guard.jsonl.1 (one generation).  Never throws. */
 export function appendLog(dir: string | null, record: LogRecord): void {
   if (dir === null) return;
   const line: Record<string, string | boolean> = { ts: new Date().toISOString() };
@@ -595,7 +618,7 @@ export function appendLog(dir: string | null, record: LogRecord): void {
   const path = join(dir, "guard.jsonl");
   try {
     try {
-      if (statSync(path).size > MAX_LOG_BYTES) return;
+      if (statSync(path).size > MAX_LOG_BYTES) renameSync(path, `${path}.1`);
     } catch {
       // not created yet
     }
@@ -632,7 +655,9 @@ export function dispatchGuardSelected(host: string, env: Env, home: string): boo
     const xdg = env.XDG_DATA_HOME ?? "";
     const data = xdg && isAbsolute(xdg) ? xdg : join(home, ".local", "share");
     const path = override && isAbsolute(override) ? override : join(data, "shoal", "modules.json");
-    const doc: unknown = JSON.parse(readFileSync(path).subarray(0, 1024 * 1024).toString("utf8"));
+    const text = readOwnedRegular(path, 1024 * 1024);
+    if (text === null) return true;
+    const doc: unknown = JSON.parse(text.toString("utf8"));
     const entry = typeof doc === "object" && doc !== null ? (doc as Record<string, unknown>)[host] : undefined;
     const modules = typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>).modules : undefined;
     return !(Array.isArray(modules) && !modules.includes("dispatch-guard"));

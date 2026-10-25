@@ -9,7 +9,7 @@
   "overrides a default.  Env defaults: XDG_STATE_HOME=$HOME/xdg-state, TMPDIR=$TMPDIR; null deletes a key.",
   "Setup: dirs, symlinks {link: target}, chmod, write {file: text}, turn {session, turn_id, role} (classifier",
   "file), turn_legacy_prompt_id, state_file/turn_file {session, content}, log_prefill_bytes.  Checks:",
-  "files_exist/files_absent, modes, file_contents, log_contains/log_lacks, log_size_max, foreign_owner",
+  "files_exist/files_absent, modes, file_contents, log_contains/log_lacks, log_size_max, log_rotated_bytes (guard.jsonl.1 size), foreign_owner",
   "(paths relative to the guard dir whose owner is simulated as another uid).  The log is always checked",
   "against log_whitelist.",
   "SHOAL_GUARD_SUBAGENT_WRITE (E1, docs/specs/guard-every-gate): e1_*/e2_* vectors; subagent edit/shell events with role = agent type (null = none).",
@@ -983,9 +983,10 @@
    ]
   },
   {
-   "name": "log_cap_stops_growth",
+   "name": "log_cap_rotates_once",
    "setup": {"log_prefill_bytes": 1048577},
-   "log_size_max": 1048600,
+   "log_size_max": 4096,
+   "log_rotated_bytes": 1048577,
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}
    ]
@@ -1504,6 +1505,15 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: this turn is classified as implementation work and no write role has been dispatched. Dispatch executor or applier, or add #direct to your prompt to edit directly."}}
+   ]
+  },
+  {
+   "name": "g5_python_heredoc_write_denied",
+   "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "python3 - <<'EOF'\nopen('src/a.py', 'w').write('x')\nEOF"}, "expect": {"decision": "deny", "rule": "R1"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "python3 -c \"import json; print(json.load(open('a.json')))\""}, "expect": {"decision": "none"}}
    ]
   },
   {

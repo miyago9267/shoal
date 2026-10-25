@@ -507,7 +507,7 @@ def short_hash(value: Any) -> Optional[str]:
 
 
 def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
-    """Append one whitelisted record to guard.jsonl (1 MiB cap).  Never raises."""
+    """Append one whitelisted record to guard.jsonl; past 1 MiB it becomes guard.jsonl.1 (one generation).  Never raises."""
     if guard is None:
         return
     line: Dict[str, Any] = {"ts": datetime.now(timezone.utc).isoformat()}
@@ -525,7 +525,7 @@ def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
     path = guard / "guard.jsonl"
     try:
         if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
-            return
+            os.replace(path, guard / "guard.jsonl.1")
         fd = _open_private(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
         if fd is None:
             return
@@ -874,6 +874,15 @@ _COMMAND_WRAPPERS = frozenset(("sudo", "command", "exec", "env", "time", "nohup"
 _FIND_EXEC = frozenset(("-exec", "-execdir"))
 # sed flags that take no value; the first other letter ends a short-option cluster.
 _SED_FLAG_LETTERS = "Enrsuzb"
+# Python file writes, matched over the whole command only when a `python[0-9.]*` runs in it.
+_PYTHON_NAME_RE = re.compile(r"python[0-9.]*")
+_PY_WRITE_RE = re.compile(
+    r"""\bopen\(\s*(?:(['"])([^'"\n]*)\1)?[^\n]{0,200}?,\s*(?:mode=)?['"][rbt]*[wax][rbt+]*['"]"""
+    r"|\.write_(?:text|bytes)\("
+    r"|\bshutil\.(?:copy\w*|move)\("
+    r"|\bos\.(?:remove|unlink|rename|replace)\(",
+    re.ASCII,
+)
 
 
 def _skip_parens(text: str, start: int) -> int:
@@ -1039,8 +1048,17 @@ def shell_write_targets(command: str) -> List[str]:
     `$` or a backtick has no known value and is the caller's call.  Writes through any other
     interpreter or command (python, node, `perl -e` code that opens a file, cp, mv, patch,
     git apply, dd, ...) are not detected.  The TypeScript port (guard/shell-writes.ts) must return the same list.
+
+    Python (`python[0-9.]*` at command position, absolute path included): when one runs, the whole
+    command text (here-document body and `-c` code alike) is scanned for `open(..., '<w|a|x mode>')`
+    with a literal mode, `.write_text(` / `.write_bytes(`, `shutil.copy*(` / `shutil.move(` and
+    `os.remove|unlink|rename|replace(`.  `open('literal', ...)` reports that path; every other hit
+    reports UNKNOWN_TARGET; these come after the shell targets.  This is a guardrail against routine
+    edits, not a sandbox: exec/eval, getattr, subprocess, script files (`python x.py`), computed modes,
+    `node -e`, cp and mv are not covered.
     """
-    if ">" not in command and "tee" not in command and "sed" not in command and "perl" not in command:
+    if (">" not in command and "tee" not in command and "sed" not in command and "perl" not in command
+            and "python" not in command):
         return []
     targets: List[str] = []
     n = len(command)
@@ -1049,10 +1067,13 @@ def shell_write_targets(command: str) -> List[str]:
     name: Optional[str] = None
     args: List[str] = []
     heredocs: List[Tuple[str, bool]] = []
+    python_ran = False
 
     def flush() -> None:
-        nonlocal name, args, cmd_pos, wrapped
-        if name == "tee":
+        nonlocal name, args, cmd_pos, wrapped, python_ran
+        if name is not None and _PYTHON_NAME_RE.fullmatch(name):
+            python_ran = True
+        elif name == "tee":
             targets.extend(_tee_files(args))
         elif name == "sed":
             targets.extend(_sed_in_place_files(args))
@@ -1157,6 +1178,8 @@ def shell_write_targets(command: str) -> List[str]:
             else:
                 name, args, cmd_pos, wrapped = word.rsplit("/", 1)[-1], [], False, False
     flush()
+    if python_ran:
+        targets.extend(m.group(2) or UNKNOWN_TARGET for m in _PY_WRITE_RE.finditer(command))
     return targets
 
 
@@ -3061,12 +3084,16 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
 
 
 def _open_readable(path: Path) -> Optional[int]:
+    """fd of `path` when it is a regular file owned by the current user, else None.
+
+    O_NONBLOCK keeps a FIFO from blocking the open; it is then refused as not regular (#26)."""
     try:
-        fd = os.open(str(path), os.O_RDONLY)
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     except OSError:
         return None
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or (hasattr(os, "getuid") and info.st_uid != os.getuid()):
             os.close(fd)
             return None
     except OSError:

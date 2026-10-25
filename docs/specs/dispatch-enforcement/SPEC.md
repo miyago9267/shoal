@@ -247,6 +247,13 @@ Miyago 2026-10-10 指出強制力不夠：hook 提醒後 main 仍自己做，背
     `#direct`）。
   - 限制：用 interpreter 寫檔（python、node、perl）、`cp`、`mv`、`git apply`、
     `patch`、`dd of=`、`$(...)` 內的導向擋不到，刻意不偵測。
+  - python 補充（issue #32，claude 3.13.2-beta）：指令位置出現 `python[0-9.]*`
+    （含絕對路徑）時，整段指令（含 heredoc 本文與 `-c`）再比對一次：字面 mode
+    的 `open(..., 'w'/'a'/'x')`、`.write_text(`／`.write_bytes(`、`shutil.copy*(`／
+    `shutil.move(`、`os.remove|unlink|rename|replace(`。`open('字面路徑', ...)`
+    回報該路徑（豁免照舊），其他回報 `$?`。這是 guardrail 不是 sandbox：
+    exec／getattr／subprocess、`python 腳本檔`、`node -e`、`cp`／`mv` 仍不偵測。
+    E1 的 verify role shell 寫檔判斷共用 `shell_write_targets`，一併繼承這個偵測與界線。
   - 被 deny 的指令不記成 edit；放行的 shell 寫檔不計入 R2。沒有寫檔的前景
     `Bash` 照舊不判斷、不改狀態、不寫 log。事件新增 `tool_kind: shell` 與
     `command` 欄位；背景 `Bash` 仍是 `background_shell`，所以「背景加寫檔」只會

@@ -16,3 +16,5 @@
 - D2：簡單工作沿用 `lean-default` D2 定義，不設檔數門檻；簡單工作宣告後自己改，其餘仍派 role；risk trigger 不變。
 - D4：保留一行宣告 `: shoal-direct "<理由>"`。
 - D5：不跑 benchmark，改本機試用一週後檢視宣告 log。
+
+- 2026-10-25：合入 origin/main 的 guard 修正（#43，3.13.2-beta），`hosts/claude/VERSION` 升為 3.14.1-beta；declare 預設與 python 寫檔偵測並存。
