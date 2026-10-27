@@ -24,7 +24,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 try:
     import fcntl
@@ -861,6 +861,11 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
 UNKNOWN_TARGET = "$?"
 _WORD_BREAK = " \t\r\n;|&<>()"
 _ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+# `$NAME` / `${NAME}` leading a target word, and the literal bases a tracked value or `cd` target may have.
+_VAR_REF_RE = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})(?=/|\Z)")
+_KNOWN_BASE_RE = re.compile(r"/|~(?=/|\Z)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=/|\Z)")
+_SET_COMMANDS = frozenset(("export", "declare", "local", "typeset", "readonly"))
+_CD_NAMES = frozenset(("cd", "pushd", "popd"))
 _DOUBLE_BRACKET_END_RE = re.compile(r"(?:^|\s)\]\](?=$|[\s;&|)])")
 # Words after which the next word is still a command (`FOO=1 tee f`, `then tee f`).
 _COMMAND_KEEP = frozenset(("then", "do", "else", "elif", "if", "while", "until", "!", "{"))
@@ -1033,6 +1038,19 @@ def _perl_in_place_files(args: List[str]) -> List[str]:
     return files or [UNKNOWN_TARGET]
 
 
+def _known_path(value: str) -> bool:
+    """An absolute path, or one led by `~` / `$HOME` / `$TMPDIR` (braces ok), with no other `$` or backtick."""
+    m = _KNOWN_BASE_RE.match(value)
+    return bool(m) and "$" not in value[m.end():] and "`" not in value[m.end():]
+
+
+def _in_dir(word: str, base: Optional[str]) -> str:
+    """A relative literal `word` joined to `base`; anything else (absolute, `~`, `$...`, UNKNOWN_TARGET) as is."""
+    if base and word and word != UNKNOWN_TARGET and word[0] not in "/~$`":
+        return base.rstrip("/") + "/" + word
+    return word
+
+
 def shell_write_targets(command: str) -> List[str]:
     """File targets that `command` writes by a literal reading of its text (G5).
 
@@ -1052,6 +1070,15 @@ def shell_write_targets(command: str) -> List[str]:
     reports UNKNOWN_TARGET; these come after the shell targets.  This is a guardrail against routine
     edits, not a sandbox: exec/eval, getattr, subprocess, script files (`python x.py`), computed modes,
     `node -e`, cp and mv are not covered.
+
+    Two literal rewrites make routine temp-dir work readable.  (1) A standalone `NAME=<known path>` (or
+    `export NAME=...`) that runs unconditionally -- not after `&&` / `||` / `|` of a non-assignment command, not
+    inside `( )`, `if`, `do`, `case` -- is substituted into a later target that starts with `$NAME` / `${NAME}`;
+    a value that is not a known path (see `_known_path`) makes NAME unknown again.  (2) A `cd <known path>`
+    (also via a known NAME) followed by `;`, `&&` or a newline, while every command so far was an assignment
+    or a `cd`, makes later relative targets (python `open('x')` too) absolute under it.  `cd -`, `cd $(...)`,
+    a relative or unknown `cd`, `pushd` / `popd`, a `cd` in a subshell, pipeline or `||` leave relative
+    targets as written.
     """
     if (">" not in command and "tee" not in command and "sed" not in command and "perl" not in command
             and "python" not in command):
@@ -1064,17 +1091,59 @@ def shell_write_targets(command: str) -> List[str]:
     args: List[str] = []
     heredocs: List[Tuple[str, bool]] = []
     python_ran = False
+    variables: Dict[str, Optional[str]] = {}
+    pending: List[str] = []  # assignments before the current command word
+    cur_dir: Optional[str] = None
+    py_dirs: Set[Optional[str]] = set()
+    leading = True  # every command so far was an assignment or a `cd`
+    sticky = False  # saw a keyword, `(` or `)`: later assignments may not run as written
+    guarded = False  # the next statement follows `&&` / `||` / `|` / `&` of a command that may not succeed
 
-    def flush() -> None:
-        nonlocal name, args, cmd_pos, wrapped, python_ran
-        if name is not None and _PYTHON_NAME_RE.fullmatch(name):
-            python_ran = True
-        elif name == "tee":
-            targets.extend(_tee_files(args))
-        elif name == "sed":
-            targets.extend(_sed_in_place_files(args))
-        elif name == "perl":
-            targets.extend(_perl_in_place_files(args))
+    def resolve(word: str) -> str:
+        m = _VAR_REF_RE.match(word)
+        value = variables.get(m.group(1) or m.group(2)) if m else None
+        return value + word[m.end():] if m and value else word
+
+    def locate(word: str) -> str:
+        return _in_dir(resolve(word), cur_dir)
+
+    def set_var(assignment: str) -> None:
+        key, _, value = assignment.partition("=")
+        value = resolve(value)
+        variables[key] = value if not (sticky or guarded) and _known_path(value) else None
+
+    def flush(sep: str = "") -> None:
+        nonlocal name, args, cmd_pos, wrapped, python_ran, cur_dir, leading, guarded
+        if name is None:
+            for assignment in pending:
+                set_var(assignment)
+        elif name in _CD_NAMES:
+            positional = [a for a in args if not (a.startswith("-") and a != "-")]
+            if name == "cd" and leading and sep in (";", "&&", "\n"):
+                target = resolve(positional[0]) if len(positional) == 1 else ""
+                cur_dir = target if _known_path(target) else None
+            else:
+                cur_dir, leading = None, False
+        elif name in _SET_COMMANDS:
+            for a in args:
+                if _ASSIGNMENT_RE.match(a):
+                    set_var(a)
+        else:
+            leading = False
+            if _PYTHON_NAME_RE.fullmatch(name):
+                python_ran = True
+                py_dirs.add(cur_dir)
+            elif name == "tee":
+                targets.extend(locate(f) for f in _tee_files(args))
+            elif name == "sed":
+                targets.extend(locate(f) for f in _sed_in_place_files(args))
+            elif name == "perl":
+                targets.extend(locate(f) for f in _perl_in_place_files(args))
+        pending.clear()
+        if sep in ("||", "|", "|&", "&") or (sep == "&&" and not leading):
+            guarded = True
+        elif sep in (";", ";;", "\n"):
+            guarded = False
         name, args, cmd_pos, wrapped = None, [], True, False
 
     while i < n:
@@ -1083,7 +1152,7 @@ def shell_write_targets(command: str) -> List[str]:
         if c in " \t\r":
             i += 1
         elif c == "\n":
-            flush()
+            flush("\n")
             i += 1
             for delim, strip in heredocs:  # bodies start on the next line
                 while i < n:
@@ -1098,10 +1167,12 @@ def shell_write_targets(command: str) -> List[str]:
             end = command.find("\n", i)
             i = n if end < 0 else end
         elif c in ";|" or (c == "&" and nxt != ">"):
-            flush()
+            sep = c
             i += 1
             if i < n and command[i] in ";|&":
+                sep += command[i]
                 i += 1
+            flush(sep)
         elif c == ">" or c == "&":  # `&>` writes both streams to a file
             i += 2 if c == "&" else 1
             if i < n and command[i] in ">|":
@@ -1116,7 +1187,7 @@ def shell_write_targets(command: str) -> List[str]:
             word, i = _read_word(command, i)
             fd_only = dup and (word in ("", "-") or word.isdigit() or word.startswith("$"))
             if word and not fd_only:
-                targets.append(word)
+                targets.append(locate(word))
         elif c == "<":
             if command.startswith("<<<", i):
                 i += 3
@@ -1147,9 +1218,11 @@ def shell_write_targets(command: str) -> List[str]:
                 cmd_pos = False
             else:
                 flush()
+                sticky, leading = True, False
                 i += 1
         elif c == ")":
             flush()
+            sticky = True
             i += 1
         elif c.isdigit() and _fd_prefix(command, i):
             while command[i].isdigit():
@@ -1165,8 +1238,10 @@ def shell_write_targets(command: str) -> List[str]:
                 cmd_pos = False
             elif not cmd_pos:
                 args.append(word)
-            elif _ASSIGNMENT_RE.match(word) or word in _COMMAND_KEEP:
-                pass
+            elif _ASSIGNMENT_RE.match(word):
+                pending.append(word)
+            elif word in _COMMAND_KEEP:
+                sticky, leading = True, False
             elif wrapped and word.startswith("-"):
                 pass
             elif word in _COMMAND_WRAPPERS:
@@ -1175,7 +1250,8 @@ def shell_write_targets(command: str) -> List[str]:
                 name, args, cmd_pos, wrapped = word.rsplit("/", 1)[-1], [], False, False
     flush()
     if python_ran:
-        targets.extend(m.group(2) or UNKNOWN_TARGET for m in _PY_WRITE_RE.finditer(command))
+        base = next(iter(py_dirs)) if len(py_dirs) == 1 else None
+        targets.extend(_in_dir(m.group(2), base) if m.group(2) else UNKNOWN_TARGET for m in _PY_WRITE_RE.finditer(command))
     return targets
 
 
