@@ -520,10 +520,10 @@ class MigrationMarkerTests(unittest.TestCase):
     def test_unmarked_surface_stays_budgeted_while_another_is_migrating(self) -> None:
         with self._git_repo_with_current_lock() as root:
             self._marked_overshoot(root)
-            self._overshoot(root, "templates/agents/executor.toml")
+            self._overshoot(root, "templates/agents/security-executor.toml")
 
             with self.assertRaisesRegex(
-                PromptLockError, "executor-agent: .*budget exceeded"
+                PromptLockError, "security-executor-agent: .*budget exceeded"
             ):
                 validate_lock(root, base_ref="HEAD", allow_lock_update=True)
 

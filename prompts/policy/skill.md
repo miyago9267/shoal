@@ -16,6 +16,9 @@ complete contract.
 3. Apply risk triggers before size, then the phase gate and dispatch brake
    before every {{dispatch_tool}} call.
 
+<!-- clause: executor-brief-bound kind=dispatch sep=newline -->
+An `executor` brief names its file/module bound; work larger than that is split into several executors or routed to `applier`.
+
 <!-- clause: references-heading kind=heading -->
 ## References
 

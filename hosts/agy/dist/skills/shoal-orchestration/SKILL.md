@@ -18,6 +18,7 @@ complete contract.
 3. Apply risk triggers before size, then the phase gate and dispatch brake
    before every invoke_subagent call.
 
+An `executor` brief names its file/module bound; work larger than that is split into several executors or routed to `applier`.
 ## References
 
 Read only the part needed for the current decision:

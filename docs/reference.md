@@ -154,8 +154,8 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 | 項目 | 版本 |
 | --- | --- |
 | shoal（產品） | 3.13.0-beta |
-| codex host | 3.13.0-beta（`hosts/codex/VERSION`） |
-| claude host | 3.13.2-beta（`hosts/claude/VERSION`） |
+| codex host | 3.13.1-beta（`hosts/codex/VERSION`） |
+| claude host | 3.13.3-beta（`hosts/claude/VERSION`） |
 | agy host | 3.13.0-beta（`hosts/agy/VERSION`） |
 | grok host | 3.13.0-beta（`hosts/grok/VERSION`） |
 | opencode host | 3.13.0-beta（`hosts/opencode/plugin/package.json`） |
