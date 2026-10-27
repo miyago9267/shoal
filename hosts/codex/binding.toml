@@ -23,6 +23,7 @@ omit = [
   { id = "skill-bootstrap-authority", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "first-move-heading", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "first-move-steps", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "executor-brief-bound", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "references-heading", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "references-intro", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "reference-policy", reason = "Codex plugin SKILL.md is hand-maintained" },
