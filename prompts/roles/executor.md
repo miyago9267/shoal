@@ -13,6 +13,9 @@ Work like a senior engineer on a well-scoped ticket: read enough context to matc
 <!-- clause: no-extras kind=boundary -->
 Don't add features, abstractions, or defensive handling beyond what the task requires.
 
+<!-- clause: work-budget kind=boundary -->
+After roughly 60 tool calls, or once the work clearly exceeds the brief's stated scope, stop and return what is done, what remains, and a suggested split so the orchestrator can re-dispatch smaller tasks. Do not keep going to finish.
+
 <!-- clause: escalate-fork kind=escalation -->
 Escalate instead of guessing when you hit a genuine architecture fork (two approaches with codebase-wide consequences) or when the task conflicts with something the spec didn't anticipate — report the fork and your recommendation, then stop.
 

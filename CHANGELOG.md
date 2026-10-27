@@ -14,6 +14,13 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   其他回報 `$?`。只是 guardrail：exec、getattr、subprocess、腳本檔、
   `node -e`、`cp`／`mv` 仍不偵測。E1 的 verify role 共用同一判斷。
   TypeScript port（OpenCode）同步。
+- G5 的字面掃描認得兩個 verifier／watcher 常見寫法，寫進 `/tmp`、`$TMPDIR` 等 exempt 目錄不再被擋：
+  同一條指令內無條件執行的 `NAME=<絕對路徑或 ~／$HOME／$TMPDIR 開頭的路徑>`（含 `export`）會代換後續
+  `$NAME/...`、`${NAME}/...` 目標；開頭連續（前面只有賦值或 `cd`）的 `cd <絕對路徑> &&|;|換行`
+  之後，相對目標（含 python `open('x')`）改解析到該目錄。值含 `$(`、反引號或未知變數、`cd -`、
+  `cd $(...)`、subshell、`||`、管線、`pushd`／`popd` 一律照舊（未知目標，該 deny 的 role 照 deny）；
+  指向 repo 的變數或 `cd` 仍是 repo 目標。TypeScript port（OpenCode）同步，共用 fixture 補 46 筆指令
+  與 3 個 guard vector。
 - `guard.jsonl` 超過 1 MiB 改名為 `guard.jsonl.1` 後繼續寫（只留一代），不再停寫（#31）。
 - module manifest 以 `O_NONBLOCK` 開啟，且只接受目前使用者擁有的一般檔案（#26）：FIFO 不再讓
   hook 卡住；被拒的 manifest 等同讀不到，guard 維持開啟、不跑 chain，`defer_to_global` 回 False。

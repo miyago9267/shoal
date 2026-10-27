@@ -14,6 +14,11 @@
  * `shutil.move(`, `os.remove|unlink|rename|replace(`); `open('literal', ...)` reports that path, any other
  * hit UNKNOWN_TARGET, after the shell targets.  A guardrail, not a sandbox: exec/eval, getattr,
  * subprocess, script files, computed modes, `node -e`, cp and mv are not covered.
+ *
+ * Two literal rewrites (see the Python docstring): a standalone `NAME=<known path>` / `export NAME=...`
+ * that runs unconditionally is substituted into a later target starting with `$NAME` / `${NAME}`; a
+ * `cd <known path>` followed by `;`, `&&` or a newline, while every command so far was an assignment or a
+ * `cd`, makes later relative targets (python `open('x')` too) absolute under it.
  */
 
 /** Target reported when a write is certain but its file is not (see the Python module). */
@@ -22,6 +27,10 @@ export const UNKNOWN_TARGET = "$?";
 const WORD_BREAK = " \t\r\n;|&<>()";
 const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const DOUBLE_BRACKET_END_RE = /(?:^|\s)\]\](?=$|[\s;&|)])/g;
+const VAR_REF_RE = /^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})(?=\/|$)/;
+const KNOWN_BASE_RE = /^(?:\/|~(?=\/|$)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=\/|$))/;
+const SET_COMMANDS = new Set(["export", "declare", "local", "typeset", "readonly"]);
+const CD_NAMES = new Set(["cd", "pushd", "popd"]);
 const COMMAND_KEEP = new Set(["then", "do", "else", "elif", "if", "while", "until", "!", "{"]);
 const COMMAND_WRAPPERS = new Set(["sudo", "command", "exec", "env", "time", "nohup", "builtin", "xargs"]);
 const FIND_EXEC = new Set(["-exec", "-execdir"]);
@@ -35,6 +44,22 @@ const PY_WRITE_RE = new RegExp(
 );
 
 const isDigit = (c: string): boolean => c >= "0" && c <= "9";
+
+/** An absolute path, or one led by `~` / `$HOME` / `$TMPDIR` (braces ok), with no other `$` or backtick. */
+function knownPath(value: string): boolean {
+  const m = KNOWN_BASE_RE.exec(value);
+  if (!m) return false;
+  const rest = value.slice(m[0].length);
+  return !rest.includes("$") && !rest.includes("`");
+}
+
+/** A relative literal `word` joined to `base`; anything else (absolute, `~`, `$...`, UNKNOWN_TARGET) as is. */
+function inDir(word: string, base: string | null): string {
+  if (base && word !== "" && word !== UNKNOWN_TARGET && !"/~$`".includes(word[0])) {
+    return base.replace(/\/+$/, "") + "/" + word;
+  }
+  return word;
+}
 
 /** `text[start]` is `(`: index just after the matching `)` (text.length when unbalanced). */
 function skipParens(text: string, start: number): number {
@@ -229,12 +254,51 @@ export function shellWriteTargets(command: string): string[] {
   let args: string[] = [];
   let heredocs: Array<[string, boolean]> = [];
   let pythonRan = false;
+  const variables = new Map<string, string | null>();
+  const pending: string[] = []; // assignments before the current command word
+  let curDir: string | null = null;
+  const pyDirs = new Set<string | null>();
+  let leading = true; // every command so far was an assignment or a `cd`
+  let sticky = false; // saw a keyword, `(` or `)`: later assignments may not run as written
+  let guarded = false; // the next statement follows `&&` / `||` / `|` / `&` of a command that may not succeed
 
-  const flush = (): void => {
-    if (name !== null && PYTHON_NAME_RE.test(name)) pythonRan = true;
-    else if (name === "tee") targets.push(...teeFiles(args));
-    else if (name === "sed") targets.push(...sedInPlaceFiles(args));
-    else if (name === "perl") targets.push(...perlInPlaceFiles(args));
+  const resolve = (word: string): string => {
+    const m = VAR_REF_RE.exec(word);
+    const value = m ? variables.get(m[1] ?? m[2]) : null;
+    return m && value ? value + word.slice(m[0].length) : word;
+  };
+  const locate = (word: string): string => inDir(resolve(word), curDir);
+  const setVar = (assignment: string): void => {
+    const eq = assignment.indexOf("=");
+    const value = resolve(assignment.slice(eq + 1));
+    variables.set(assignment.slice(0, eq), !(sticky || guarded) && knownPath(value) ? value : null);
+  };
+  const flush = (sep = ""): void => {
+    if (name === null) {
+      for (const assignment of pending) setVar(assignment);
+    } else if (CD_NAMES.has(name)) {
+      const positional = args.filter((a) => !(a.startsWith("-") && a !== "-"));
+      if (name === "cd" && leading && (sep === ";" || sep === "&&" || sep === "\n")) {
+        const target = positional.length === 1 ? resolve(positional[0]) : "";
+        curDir = knownPath(target) ? target : null;
+      } else {
+        curDir = null;
+        leading = false;
+      }
+    } else if (SET_COMMANDS.has(name)) {
+      for (const a of args) if (ASSIGNMENT_RE.test(a)) setVar(a);
+    } else {
+      leading = false;
+      if (PYTHON_NAME_RE.test(name)) {
+        pythonRan = true;
+        pyDirs.add(curDir);
+      } else if (name === "tee") targets.push(...teeFiles(args).map(locate));
+      else if (name === "sed") targets.push(...sedInPlaceFiles(args).map(locate));
+      else if (name === "perl") targets.push(...perlInPlaceFiles(args).map(locate));
+    }
+    pending.length = 0;
+    if (sep === "||" || sep === "|" || sep === "|&" || sep === "&" || (sep === "&&" && !leading)) guarded = true;
+    else if (sep === ";" || sep === ";;" || sep === "\n") guarded = false;
     name = null;
     args = [];
     cmdPos = true;
@@ -250,7 +314,7 @@ export function shellWriteTargets(command: string): string[] {
     if (c === " " || c === "\t" || c === "\r") {
       i += 1;
     } else if (c === "\n") {
-      flush();
+      flush("\n");
       i += 1;
       for (const [delim, strip] of heredocs) {
         // bodies start on the next line
@@ -267,9 +331,13 @@ export function shellWriteTargets(command: string): string[] {
       const end = command.indexOf("\n", i);
       i = end < 0 ? n : end;
     } else if (c === ";" || c === "|" || (c === "&" && next !== ">")) {
-      flush();
+      let sep = c;
       i += 1;
-      if (i < n && ";|&".includes(command[i])) i += 1;
+      if (i < n && ";|&".includes(command[i])) {
+        sep += command[i];
+        i += 1;
+      }
+      flush(sep);
     } else if (c === ">" || c === "&") {
       // `&>` writes both streams to a file
       i += c === "&" ? 2 : 1;
@@ -281,7 +349,7 @@ export function shellWriteTargets(command: string): string[] {
       let word: string;
       [word, i] = readWord(command, i);
       const fdOnly = dup && (word === "" || word === "-" || /^[0-9]+$/.test(word) || word.startsWith("$"));
-      if (word !== "" && !fdOnly) targets.push(word);
+      if (word !== "" && !fdOnly) targets.push(locate(word));
     } else if (c === "<") {
       if (command.startsWith("<<<", i)) {
         i += 3;
@@ -310,10 +378,13 @@ export function shellWriteTargets(command: string): string[] {
         cmdPos = false;
       } else {
         flush();
+        sticky = true;
+        leading = false;
         i += 1;
       }
     } else if (c === ")") {
       flush();
+      sticky = true;
       i += 1;
     } else if (isDigit(c) && fdPrefix(command, i)) {
       while (isDigit(command[i])) i += 1;
@@ -330,8 +401,11 @@ export function shellWriteTargets(command: string): string[] {
         cmdPos = false;
       } else if (!cmdPos) {
         args.push(word);
-      } else if (ASSIGNMENT_RE.test(word) || COMMAND_KEEP.has(word)) {
-        // still at command position
+      } else if (ASSIGNMENT_RE.test(word)) {
+        pending.push(word); // still at command position
+      } else if (COMMAND_KEEP.has(word)) {
+        sticky = true;
+        leading = false;
       } else if (wrapped && word.startsWith("-")) {
         // an option of the wrapper
       } else if (COMMAND_WRAPPERS.has(word)) {
@@ -346,7 +420,8 @@ export function shellWriteTargets(command: string): string[] {
   }
   flush();
   if (pythonRan) {
-    for (const match of command.matchAll(PY_WRITE_RE)) targets.push(match[2] || UNKNOWN_TARGET);
+    const base = pyDirs.size === 1 ? [...pyDirs][0] : null;
+    for (const match of command.matchAll(PY_WRITE_RE)) targets.push(match[2] ? inDir(match[2], base) : UNKNOWN_TARGET);
   }
   return targets;
 }

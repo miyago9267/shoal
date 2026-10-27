@@ -40,6 +40,7 @@ EXPECTED_POLICY_OMITS["codex"] = [
     "discovery-scope-exclusive",
     "dispatch-kind-label",
     "effort-per-delegation",
+    "executor-brief-bound",
     "first-move-heading",
     "first-move-steps",
     "parallel-writers",

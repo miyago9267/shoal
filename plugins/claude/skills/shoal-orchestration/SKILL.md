@@ -2,7 +2,7 @@
 name: shoal-orchestration
 description: Full shoal orchestration workflow - interaction-shape routing, Plan and approval gates, dispatch brakes, named-role delegation, security separation, verification, recovery, outcome continuation, review intent, decision checkpoints, and blocked-task isolation. Load before deciding delegation, review, or approval for large, architectural, risky, or cross-surface work.
 ---
-<!-- shoal-claude v3.14.1-beta -->
+<!-- shoal-claude v3.14.2-beta -->
 
 # Shoal orchestration
 
@@ -19,6 +19,7 @@ complete contract.
 3. Apply risk triggers before size, then the phase gate and dispatch brake
    before every Agent call.
 
+An `executor` brief names its file/module bound; work larger than that is split into several executors or routed to `applier`.
 ## References
 
 Read only the part needed for the current decision:
