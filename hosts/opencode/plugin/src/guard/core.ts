@@ -1772,7 +1772,6 @@ class Guard {
     }
     const file = this.shellWriteTarget() ?? undefined;
     if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) {
-      this.shellWrote(statePath, file);
       return this.result("allow", { rule: "direct", file });
     }
     if (state.dispatched) {
@@ -1782,7 +1781,6 @@ class Guard {
     if (this.r1 === "strict") return this.shellR1(state, statePath, file, exitText(this.env, this.host, "STRICT"));
     if (this.r1 === "declare") {
       if (this.declared(state, dir)) {
-        this.shellWrote(statePath, file);
         return this.result("allow", { rule: "declared", file });
       }
       return this.shellR1(state, statePath, file, exitText(this.env, this.host, "DECLARE"));
@@ -1875,7 +1873,7 @@ class Guard {
       return this.result("deny", { rule: "R1", reason: strict || declare ? exitText(this.env, this.host, strict ? "STRICT" : "DECLARE") : text(this.env, "R1"), file: rawPaths[0] });
     }
     state.edited = edited;
-    this.pendingChange = statePath; // B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
+    if (!(direct || declared)) this.pendingChange = statePath; // B2: main's own direct/declared edits are not a change; STOP is for write roles
     const notify =
       adviseRule !== null && !state.advised && this.mode === "enforce" && ADVISE_OUTPUT_HOSTS.has(this.host);
     if (notify) state.advised = true; // the one reminder of this turn is spent
