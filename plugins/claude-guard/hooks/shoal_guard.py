@@ -2167,8 +2167,7 @@ class _Guard:
                 return self.result("state", "declare", note=log_reason(reason))
         target = self.shell_write_target()
         if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
-            self._shell_wrote(state_path, target)
-            return self.result("allow", "direct", file=target)
+            return self.result("allow", "direct", file=target)  # main's own declared work: not a STOP change
         if state["dispatched"]:
             self._shell_wrote(state_path, target)
             return self.result("allow", "dispatched", file=target)
@@ -2176,8 +2175,7 @@ class _Guard:
             return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "STRICT"))
         if self.r1 == "declare":
             if self._declared(state, guard):
-                self._shell_wrote(state_path, target)
-                return self.result("allow", "declared", file=target)
+                return self.result("allow", "declared", file=target)  # not a STOP change (write roles only)
             return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "DECLARE"))
         if self._classified(state, guard) is None:
             self._shell_wrote(state_path, target)
@@ -2286,7 +2284,8 @@ class _Guard:
                 file=raw_paths[0],
             )
         state["edited"] = edited
-        self.pending_change = state_path  # B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
+        if not (direct or declared):  # B2: main's own direct/declared edits are not a change; STOP is for write roles
+            self.pending_change = state_path
         notify = (
             advise_rule is not None
             and not state["advised"]
