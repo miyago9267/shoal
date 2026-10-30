@@ -1817,6 +1817,14 @@
    ]
   },
   {
+   "name": "declare_combined_declaration_gets_specific_deny",
+   "env": {"SHOAL_GUARD_R1": "declare"},
+   "steps": [
+    {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": ": shoal-direct \"x\"; echo y > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard: the : shoal-direct declaration was combined with other commands, so it was not recorded. Send exactly : shoal-direct \"<reason>\" as its own shell call (no ;, &&, |, newline or other command in it), then run the edit in a separate call."}}
+   ]
+  },
+  {
    "name": "declare_shell_without_write_has_no_opinion",
    "env": {"SHOAL_GUARD_R1": "declare"},
    "steps": [
