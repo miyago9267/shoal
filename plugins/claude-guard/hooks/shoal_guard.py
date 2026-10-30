@@ -307,6 +307,11 @@ MESSAGES = {
             'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add '
             "#direct to the prompt."
         ),
+        "DECLARE_COMBINED": (
+            "Shoal dispatch guard: the : shoal-direct declaration was combined with other commands, so it "
+            "was not recorded. Send exactly : shoal-direct \"<reason>\" as its own shell call (no ;, &&, |, "
+            "newline or other command in it), then run the edit in a separate call."
+        ),
     },
     "zh-TW": {
         "ADVISE": (
@@ -369,6 +374,11 @@ MESSAGES = {
             "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
             "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
             ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。'
+        ),
+        "DECLARE_COMBINED": (
+            "Shoal dispatch guard：: shoal-direct 宣告和其他指令寫在同一個 shell 指令裡，所以沒有生效。"
+            '請把 : shoal-direct "<理由>" 單獨當成一次 shell 呼叫送出（不要接 ;、&&、|、換行或其他指令），'
+            "改檔留到下一次呼叫。"
         ),
     },
 }
@@ -521,7 +531,7 @@ def short_hash(value: Any) -> Optional[str]:
 
 
 def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
-    """Append one whitelisted record to guard.jsonl; past 1 MiB it becomes guard.jsonl.1 (one generation).  Never raises."""
+    """Append one whitelisted record to guard.jsonl (per-member chain_* records go to chain.jsonl); past 1 MiB a file becomes <name>.1 (one generation).  Never raises."""
     if guard is None:
         return
     line: Dict[str, Any] = {"ts": datetime.now(timezone.utc).isoformat()}
@@ -536,10 +546,13 @@ def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
         value = _safe_text(value)
         if value is not None:
             line[key] = value
-    path = guard / "guard.jsonl"
+    # Per-member chain bookkeeping (chain_allow, chain_report, ...) is high volume: keep it out of the decision log.
+    chatter = line.get("rule") == "chain" and str(line.get("decision", "")).startswith("chain_")
+    name = "chain.jsonl" if chatter else "guard.jsonl"
+    path = guard / name
     try:
         if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
-            os.replace(path, guard / "guard.jsonl.1")
+            os.replace(path, guard / (name + ".1"))
         fd = _open_private(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
         if fd is None:
             return
@@ -745,6 +758,8 @@ def resolve_r1(host: str, env: Dict[str, str]) -> str:
 # ---------------------------------------------------------------------------
 
 _DECLARE_PREFIX_RE = re.compile(r":[ \t]+shoal-direct[ \t]+")
+# A denied command that mentions a declaration without being one: it was combined with other commands.
+_DECLARE_MENTION_RE = re.compile(r":[ \t]+shoal-direct\b")
 # Controls other than TAB: a declaration is one line of printable text.
 _DECLARE_CONTROL_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")
 # A bare reason is plain words: no shell syntax, expansion or globbing (bash and zsh alike).
@@ -2216,7 +2231,10 @@ class _Guard:
         if self.r1 == "declare":
             if self._declared(state, guard):
                 return self.result("allow", "declared", file=target)  # not a STOP change (write roles only)
-            return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "DECLARE"))
+            command = self.event.get("command")
+            combined = isinstance(command, str) and _DECLARE_MENTION_RE.search(command)
+            reason = _text(self.env, "DECLARE_COMBINED") if combined else _exit_text(self.env, self.host, "DECLARE")
+            return self._shell_r1(state, state_path, target, reason)
         if self._classified(state, guard) is None:
             self._shell_wrote(state_path, target)
             return self.result("allow", "uncounted", file=target)

@@ -211,8 +211,8 @@ class CliCase(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc.stdout.decode()
 
-    def log_records(self) -> list:
-        path = os.path.join(self.guard_dir, "guard.jsonl")
+    def log_records(self, name: str = "guard.jsonl") -> list:
+        path = os.path.join(self.guard_dir, name)
         if not os.path.exists(path):
             return []
         return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()]
@@ -709,6 +709,21 @@ class DeclareCliTests(CliCase):
         self.assertIn("deny", self.edit())
         self.assertEqual([r for r in self.log_records() if r.get("rule") == "declare"], [])
         self.assertIn("deny", self.bash(': shoal-direct "x" > a.py'))
+
+    def test_compound_declaration_deny_says_to_send_it_alone(self) -> None:
+        self.start()
+        for command in (': shoal-direct "x"; sed -i s/a/b/ a.py', 'sed -i s/a/b/ a.py && : shoal-direct "x"',
+                        ': shoal-direct "x" > a.py'):
+            reason = json.loads(self.bash(command))["hookSpecificOutput"]["permissionDecisionReason"]
+            self.assertEqual(reason, guard.MESSAGES["en"]["DECLARE_COMBINED"], command)
+        self.assertIn("own shell call", guard.MESSAGES["en"]["DECLARE_COMBINED"])
+        self.assertNotEqual(guard.MESSAGES["en"]["DECLARE_COMBINED"], guard.MESSAGES["en"]["DECLARE"])
+        # a write that never mentions a declaration keeps the generic text
+        reason = json.loads(self.bash("sed -i s/a/b/ a.py"))["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertEqual(reason, guard.MESSAGES["en"]["DECLARE"])
+        # the standalone declaration still works and the message exists in zh-TW
+        self.assertEqual(self.bash(': shoal-direct "x"'), "")
+        self.assertIn("shoal-direct", guard.MESSAGES["zh-TW"]["DECLARE_COMBINED"])
 
     def test_subagent_declaration_is_ignored(self) -> None:
         self.start()
@@ -1676,9 +1691,10 @@ class ChainCliTests(CliCase):
         self.configure(["exit1"], ["garbage"], ["sleep"])
         self.chain_env["SHOAL_GUARD_CHAIN_TIMEOUT_MS"] = "400"
         self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work), **self.chain_env), "")
-        decisions = [r["decision"] for r in self.log_records() if r.get("rule") == "chain"]
+        decisions = [r["decision"] for r in self.log_records("chain.jsonl")]
         self.assertEqual(decisions, ["chain_error", "chain_error", "chain_timeout"])
-        self.assertTrue(all("ms" in r and r["member"].startswith("m") for r in self.log_records() if r.get("rule") == "chain"))
+        self.assertTrue(all("ms" in r and r["member"].startswith("m") for r in self.log_records("chain.jsonl")))
+        self.assertEqual([r for r in self.log_records() if str(r.get("decision", "")).startswith("chain_")], [])
 
     def test_manifest_record_without_dispatch_guard_runs_chain_only(self) -> None:
         # modular-install S3 switch + issue #3: members present -> chain-only; none for the host -> off
@@ -1712,7 +1728,7 @@ class ChainCliTests(CliCase):
             self.assertEqual(out, {"hookSpecificOutput": {"hookEventName": name, "additionalContext": "mind the style"}}, name)
         for name in ("SessionEnd", "Stop"):  # Claude has no additionalContext there: log only
             self.assertEqual(self.run_guard("claude", self.event_payload(name, stop_hook_active=True), **self.chain_env), "")
-        self.assertIn("chain_context", [r["decision"] for r in self.log_records()])
+        self.assertIn("chain_context", [r["decision"] for r in self.log_records("chain.jsonl")])
         for host_name, extra in (("codex", {"tool_name": "Read", "tool_input": {}, "turn_id": "t"}),):
             doc["chain"][0]["hosts"] = ["codex"]
             manifest.write_text(json.dumps(doc), encoding="utf-8")
@@ -1771,12 +1787,12 @@ class ChainCliTests(CliCase):
         post = self.event_payload("PostToolUse", tool_name="Edit", tool_input={"file_path": "a"})
         self.assertEqual(self.run_guard("claude", post, **self.chain_env), "")  # log only: no block
         self.assertFalse(os.path.exists(record))
-        self.assertEqual([r["decision"] for r in self.log_records() if r.get("rule") == "chain"], ["chain_deny"])
+        self.assertEqual([r["decision"] for r in self.log_records("chain.jsonl")], ["chain_deny"])
 
     def test_numeric_version_is_reported_and_non_scalars_dropped(self) -> None:
         self.configure(["report_num"])
         self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work), **self.chain_env)
-        reports = [r for r in self.log_records() if r.get("decision") == "chain_report"]
+        reports = [r for r in self.log_records("chain.jsonl") if r.get("decision") == "chain_report"]
         self.assertEqual([r["reason"] for r in reports], ["id=fx-num version=1"])
 
     @unittest.skipIf(os.name == "nt", "FIFO and uid ownership are POSIX-only")
@@ -1817,7 +1833,7 @@ class ChainCliTests(CliCase):
 
     def test_no_manifest_changes_nothing(self) -> None:
         self.assertEqual(self.run_guard("claude", claude_tool("Read", {"file_path": "x"}, cwd=self.work)), "")
-        self.assertEqual([r for r in self.log_records() if r.get("rule") == "chain"], [])
+        self.assertEqual([r for r in self.log_records("chain.jsonl")], [])
 
 
 class RobustnessTests(CliCase):
@@ -1863,6 +1879,27 @@ class RobustnessTests(CliCase):
         self.assertLess(path.stat().st_size, 4096)
         self.assertTrue(self.log_records())
         self.assertEqual(sorted(p.name for p in Path(self.guard_dir).glob("guard.jsonl*")), ["guard.jsonl", "guard.jsonl.1"])
+
+    def test_chain_records_go_to_chain_jsonl_not_guard_jsonl(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work))
+        self.run_guard("claude", claude_tool("Edit", {"file_path": "a"}, cwd=self.work))
+        self.assertTrue(self.log_records())
+        self.assertFalse(os.path.exists(os.path.join(self.guard_dir, "chain.jsonl")))
+        guard._append_log(Path(self.guard_dir), {"host": "claude", "decision": "chain_allow", "rule": "chain", "member": "m0"})
+        guard._append_log(Path(self.guard_dir), {"host": "claude", "decision": "deny", "rule": "chain", "reason": "m0: no"})
+        self.assertEqual([r["decision"] for r in self.log_records("chain.jsonl")], ["chain_allow"])
+        self.assertNotIn("chain_allow", [r["decision"] for r in self.log_records()])
+        self.assertEqual(self.log_records()[-1]["decision"], "deny")
+
+    def test_chain_log_rotates_once_on_its_own(self) -> None:
+        gdir = Path(self.guard_dir)
+        gdir.mkdir(parents=True, exist_ok=True)
+        path, rotated = gdir / "chain.jsonl", gdir / "chain.jsonl.1"
+        path.write_text("x" * (guard.MAX_LOG_BYTES + 1), encoding="utf-8")
+        guard._append_log(gdir, {"host": "claude", "decision": "chain_allow", "rule": "chain"})
+        self.assertEqual(rotated.stat().st_size, guard.MAX_LOG_BYTES + 1)
+        self.assertLess(path.stat().st_size, 4096)
+        self.assertFalse((gdir / "guard.jsonl").exists())
 
     def test_off_mode_creates_nothing(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD="off")

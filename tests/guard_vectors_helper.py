@@ -238,7 +238,11 @@ def check_post(vector: Dict[str, Any], sandbox: Sandbox, state: str, whitelist: 
         if Path(path).read_text(encoding="utf-8") != text:
             failures.append("%s: %s content changed" % (name, path))
     log_path = os.path.join(state, "shoal", "guard", "guard.jsonl")
-    log_text = Path(log_path).read_text(encoding="utf-8") if os.path.isfile(log_path) else ""
+    # log_contains / log_lacks look at both files: decisions in guard.jsonl, per-member chain_* records in chain.jsonl.
+    log_text = "".join(
+        Path(p).read_text(encoding="utf-8") if os.path.isfile(p) else ""
+        for p in (log_path, os.path.join(os.path.dirname(log_path), "chain.jsonl"))
+    )
     if "log_prefill_bytes" not in vector.get("setup", {}):
         for line in log_text.splitlines():
             try:

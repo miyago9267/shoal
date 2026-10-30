@@ -339,6 +339,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "write-capable role (executor or applier), or declare direct work first by running " +
       'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add ' +
       "#direct to the prompt.",
+    DECLARE_COMBINED:
+      "Shoal dispatch guard: the : shoal-direct declaration was combined with other commands, so it " +
+      "was not recorded. Send exactly : shoal-direct \"<reason>\" as its own shell call (no ;, &&, |, " +
+      "newline or other command in it), then run the edit in a separate call.",
   },
   "zh-TW": {
     ADVISE:
@@ -386,6 +390,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
       "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
       ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。',
+    DECLARE_COMBINED:
+      "Shoal dispatch guard：: shoal-direct 宣告和其他指令寫在同一個 shell 指令裡，所以沒有生效。" +
+      '請把 : shoal-direct "<理由>" 單獨當成一次 shell 呼叫送出（不要接 ;、&&、|、換行或其他指令），' +
+      "改檔留到下一次呼叫。",
   },
 };
 
@@ -601,7 +609,7 @@ export function shortHash(value: unknown): string | undefined {
   return createHash("sha256").update(value, "utf8").digest("hex").slice(0, 8);
 }
 
-/** Append one whitelisted record to guard.jsonl; past 1 MiB it becomes guard.jsonl.1 (one generation).  Never throws. */
+/** Append one whitelisted record to guard.jsonl (per-member chain_* records go to chain.jsonl); past 1 MiB a file becomes <name>.1 (one generation).  Never throws. */
 export function appendLog(dir: string | null, record: LogRecord): void {
   if (dir === null) return;
   const line: Record<string, string | boolean> = { ts: new Date().toISOString() };
@@ -615,7 +623,9 @@ export function appendLog(dir: string | null, record: LogRecord): void {
     const text = safeText(value);
     if (text !== null) line[key] = text;
   }
-  const path = join(dir, "guard.jsonl");
+  // Per-member chain bookkeeping (chain_allow, chain_report, ...) is high volume: keep it out of the decision log.
+  const chatter = line.rule === "chain" && String(line.decision ?? "").startsWith("chain_");
+  const path = join(dir, chatter ? "chain.jsonl" : "guard.jsonl");
   try {
     try {
       if (statSync(path).size > MAX_LOG_BYTES) renameSync(path, `${path}.1`);
@@ -1783,7 +1793,9 @@ class Guard {
       if (this.declared(state, dir)) {
         return this.result("allow", { rule: "declared", file });
       }
-      return this.shellR1(state, statePath, file, exitText(this.env, this.host, "DECLARE"));
+      const command = this.event.command;
+      const combined = typeof command === "string" && /:[ \t]+shoal-direct\b/.test(command);
+      return this.shellR1(state, statePath, file, combined ? text(this.env, "DECLARE_COMBINED") : exitText(this.env, this.host, "DECLARE"));
     }
     if (this.classified(state, dir) === null) {
       this.shellWrote(statePath, file);
