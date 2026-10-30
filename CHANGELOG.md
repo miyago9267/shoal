@@ -21,7 +21,8 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `cd $(...)`、subshell、`||`、管線、`pushd`／`popd` 一律照舊（未知目標，該 deny 的 role 照 deny）；
   指向 repo 的變數或 `cd` 仍是 repo 目標。TypeScript port（OpenCode）同步，共用 fixture 補 46 筆指令
   與 3 個 guard vector。
-- guard chain 每個 member 的 `chain_*` 紀錄（`chain_allow`、`chain_report`、`chain_error` 等，rule=`chain`）
+- guard chain 每個 member 的 `chain_*` 紀錄
+  （`chain_allow`、`chain_report`、`chain_error` 等，rule=`chain`）
   改寫到同目錄的 `chain.jsonl`（同樣 1 MiB 輪替一代），`guard.jsonl` 只留決策紀錄，避免一天內輪替掉
   declare 試用的證據。chain 的最終 deny／would_deny 仍在 `guard.jsonl`。TypeScript port（OpenCode）同步，
   shared vector 的 `log_contains` 兩個檔都看。

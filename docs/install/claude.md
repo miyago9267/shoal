@@ -91,7 +91,8 @@ claude --plugin-dir ./plugins/claude --plugin-dir ./plugins/claude-guard
 資料與保留（K6）：plugin 與全域安裝共用同一個 state 與 log 目錄
 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`（`state/`、`turns/` 與
 `guard.jsonl`、`chain.jsonl`）。兩個檔各自超過 1 MiB 就改名為 `.1` 後繼續寫（只留一代）。
-`chain.jsonl` 只放 guard chain 每個 member 的 `chain_*` 紀錄（`chain_allow`、`chain_report` 等，量大），
+`chain.jsonl` 只放 guard chain 每個 member 的 `chain_*` 紀錄
+（`chain_allow`、`chain_report` 等，量大），
 `guard.jsonl` 留給 deny／allow／declare／state 等決策紀錄。
 `guard.jsonl` 每行的欄位：`ts`、`host`、`event`、`tool`、`rule`、`decision`、`file`
 （只有檔名）、`skip_reason`、`mode`、`reason`；另外有 `agent_type`（subagent 的類型，
