@@ -228,7 +228,10 @@ function checkPost(vector: Json, sandbox: Sandbox, state: string, whitelist: str
     if (readFileSync(path, "utf8") !== content) failures.push(`${name}: ${path} content changed`);
   }
   const logPath = join(state, "shoal", "guard", "guard.jsonl");
-  const logText = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
+  // log_contains / log_lacks look at both files: decisions in guard.jsonl, per-member chain_* records in chain.jsonl.
+  const logText = [logPath, join(dirname(logPath), "chain.jsonl")]
+    .map((file) => (existsSync(file) ? readFileSync(file, "utf8") : ""))
+    .join("");
   if (!("log_prefill_bytes" in (vector.setup ?? {}))) {
     for (const line of logText.split("\n").filter(Boolean)) {
       let record: Json;

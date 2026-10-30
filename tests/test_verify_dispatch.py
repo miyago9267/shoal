@@ -948,6 +948,9 @@ class NativeHomeAndReceiptTests(unittest.TestCase):
             metadata_name = ".codex-global-state.json"
             (active / metadata_name).write_text("runtime-state")
             smoke_cwd = root / "smoke"; smoke_cwd.mkdir()
+            if not verify_dispatch._clean_cwd(smoke_cwd, ROOT, [".git"]):
+                # Windows keeps the temp dir under the user profile, which may hold AGENTS.md or .codex
+                self.skipTest("temp dir has an AGENTS.md / .codex / .git ancestor on this machine")
             args = Namespace(
                 active_codex_home=active,
                 codex_home=staged,

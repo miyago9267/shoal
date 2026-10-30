@@ -509,15 +509,23 @@ def _codex_cli() -> str:
     for candidate in ("codex", "codex.exe", "codex.cmd"):
         found = shutil.which(candidate)
         if found:
-            # Windows PATHEXT resolves bare "codex" to a .cmd shim, but CreateProcess does not.
-            return found if os.name == "nt" and candidate == "codex" else candidate
+            # which() applies PATHEXT but CreateProcess only appends .exe: an npm
+            # codex.cmd shim (or bare "codex" resolving to one) is reachable only by full path.
+            if os.name == "nt" and (candidate == "codex" or found.lower().endswith((".cmd", ".bat"))):
+                return found
+            return candidate
     return "codex"
 
 
 def _same_path(left: Path, right: Path) -> bool:
-    return os.path.normcase(os.path.realpath(os.path.abspath(str(left)))) == os.path.normcase(
-        os.path.realpath(os.path.abspath(str(right)))
-    )
+    return _path_key(left) == _path_key(right)
+
+
+def _path_key(path: Path) -> str:
+    text = str(path)
+    if os.name == "nt" and text.startswith("\\\\?\\"):  # Codex reports extended-length paths
+        text = text[4:]
+    return os.path.normcase(os.path.realpath(os.path.abspath(text)))
 
 
 CODEX_PLUGIN_DIRS = ("plugins/codex", "plugins/jev-router")

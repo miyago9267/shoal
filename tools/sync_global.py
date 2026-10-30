@@ -520,7 +520,12 @@ def sync_agy(ctx: Ctx) -> Result:
     if not ctx.apply:  # 同理：dry-run 時即將補上的 role link 不算 drift
         problems = [p for p in problems if not any(p.startswith(r + " ") for r in role_links)]
     problems += kept
-    note = ("symlink drift: " + ", ".join(problems)) if problems else "symlinks ok"
+    config = home / "config"
+    if not (config / "agents").exists() and not (config / "skills").exists():
+        # 只裝了 guard hook（例如沒有 agy 的機器跑 --update）：沒有 role 可比對，不是 drift
+        note = "roles not installed"
+    else:
+        note = ("symlink drift: " + ", ".join(problems)) if problems else "symlinks ok"
     parts = [p for p in (migrated, removed, "guard hooks" if changed else None) if p]
     if parts:
         return "updated", f"{'; '.join(parts)}; {note}"

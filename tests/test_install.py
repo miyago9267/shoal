@@ -290,7 +290,8 @@ class NativeInstallTests(unittest.TestCase):
         with mock.patch.object(
             installer.shutil, "which", side_effect=[None, None, r"C:\codex.cmd"]
         ):
-            self.assertEqual(installer._codex_cli(), "codex.cmd")
+            # CreateProcess cannot start a .cmd shim by bare name; POSIX keeps the bare candidate
+            self.assertEqual(installer._codex_cli(), r"C:\codex.cmd" if os.name == "nt" else "codex.cmd")
 
     def run_install(self, home: Path, **kwargs: object) -> int:
         return install(source_root=ROOT, codex_home=home, dry_run=False, check_codex=False, **kwargs)

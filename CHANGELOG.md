@@ -21,6 +21,15 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `cd $(...)`、subshell、`||`、管線、`pushd`／`popd` 一律照舊（未知目標，該 deny 的 role 照 deny）；
   指向 repo 的變數或 `cd` 仍是 repo 目標。TypeScript port（OpenCode）同步，共用 fixture 補 46 筆指令
   與 3 個 guard vector。
+- guard chain 每個 member 的 `chain_*` 紀錄
+  （`chain_allow`、`chain_report`、`chain_error` 等，rule=`chain`）
+  改寫到同目錄的 `chain.jsonl`（同樣 1 MiB 輪替一代），`guard.jsonl` 只留決策紀錄，避免一天內輪替掉
+  declare 試用的證據。chain 的最終 deny／would_deny 仍在 `guard.jsonl`。TypeScript port（OpenCode）同步，
+  shared vector 的 `log_contains` 兩個檔都看。
+- declare 模式下，被擋的 shell 指令含 `: shoal-direct` 卻不是單獨一行的合法宣告（例如
+  `: shoal-direct "x"; sed -i ...`、`... && : shoal-direct "x"`）時，deny 訊息改為明講「宣告和其他指令
+  寫在一起所以沒生效，請單獨送出宣告，改檔放下一次呼叫」（新增 `DECLARE_COMBINED`，en／zh-TW）。
+  `parse_declaration` 解析規則不變。TypeScript port 同步。
 - `guard.jsonl` 超過 1 MiB 改名為 `guard.jsonl.1` 後繼續寫（只留一代），不再停寫（#31）。
 - module manifest 以 `O_NONBLOCK` 開啟，且只接受目前使用者擁有的一般檔案（#26）：FIFO 不再讓
   hook 卡住；被拒的 manifest 等同讀不到，guard 維持開啟、不跑 chain，`defer_to_global` 回 False。
@@ -85,6 +94,27 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 ### Tests
 
 - `test_shoal_update` 在 Windows 改用真的 git，不再跳過（#20）。
+
+### Fixes
+
+- dispatch guard 支援原生 Windows：不再 fail-open no-op。檔案開啟改為先檢查 symlink、
+  `O_BINARY`、`msvcrt` 鎖；路徑比對統一為小寫 `/` 形式，Git Bash 的 `/c/...`、`/tmp`
+  對應到 Windows 路徑，`\\?\` 長路徑前綴會去掉，`%TEMP%`／`%TMP%`／`TMPDIR` 與 `/tmp` 一樣 exempt。
+  state 目錄在 Windows 不檢查 uid 與 POSIX 權限位元，私有性靠 profile ACL。plugin copy 在
+  Windows 也會讓位給已涵蓋該事件的 global hook（路徑比對改走同一套 Windows 正規化），不再
+  重複計數。guard 測試在 Windows 不再跳過（只跳過 POSIX 權限位元的兩個 vector 與 FIFO／uid 兩個測試），
+  並新增每個 OS 都跑的 deny → dispatch → allow 狀態往返、`SHOAL_GUARD=off`／`SHOAL_GUARD_DIRECT=1`
+  測試。
+- Windows guard 的 rollback：revert 這個 PR 的 merge commit；在那之前 Windows 使用者可設
+  `SHOAL_GUARD=off` 關掉 guard。
+- `install.py::_same_path` 忽略 Codex 回報的 `\\?\` 長路徑前綴，`--update` 在 Windows 不再把已裝好的
+  Codex plugin 誤報為 `failed`。
+- `sync agy`：`~/.gemini/config` 下沒有任何 agents、skills 時回報 `roles not installed`，
+  不再把沒裝 agy role 的機器報成 symlink drift。
+- Windows 上 `codex` 只有 npm 的 `codex.cmd` shim 時，installer 改用完整路徑呼叫
+  （`CreateProcess` 只補 `.exe`）。
+- 測試在 Windows 的假設修正：`USERPROFILE`、`fchmod` 權限位元、`.cmd` 需要的
+  `SYSTEMROOT`/`COMSPEC`，以及暫存目錄位在含 `AGENTS.md` 的 home 底下時 skip。
 
 ## v3.12.0-beta
 
