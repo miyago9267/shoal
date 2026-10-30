@@ -21,6 +21,14 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   `cd $(...)`、subshell、`||`、管線、`pushd`／`popd` 一律照舊（未知目標，該 deny 的 role 照 deny）；
   指向 repo 的變數或 `cd` 仍是 repo 目標。TypeScript port（OpenCode）同步，共用 fixture 補 46 筆指令
   與 3 個 guard vector。
+- guard chain 每個 member 的 `chain_*` 紀錄（`chain_allow`、`chain_report`、`chain_error` 等，rule=`chain`）
+  改寫到同目錄的 `chain.jsonl`（同樣 1 MiB 輪替一代），`guard.jsonl` 只留決策紀錄，避免一天內輪替掉
+  declare 試用的證據。chain 的最終 deny／would_deny 仍在 `guard.jsonl`。TypeScript port（OpenCode）同步，
+  shared vector 的 `log_contains` 兩個檔都看。
+- declare 模式下，被擋的 shell 指令含 `: shoal-direct` 卻不是單獨一行的合法宣告（例如
+  `: shoal-direct "x"; sed -i ...`、`... && : shoal-direct "x"`）時，deny 訊息改為明講「宣告和其他指令
+  寫在一起所以沒生效，請單獨送出宣告，改檔放下一次呼叫」（新增 `DECLARE_COMBINED`，en／zh-TW）。
+  `parse_declaration` 解析規則不變。TypeScript port 同步。
 - `guard.jsonl` 超過 1 MiB 改名為 `guard.jsonl.1` 後繼續寫（只留一代），不再停寫（#31）。
 - module manifest 以 `O_NONBLOCK` 開啟，且只接受目前使用者擁有的一般檔案（#26）：FIFO 不再讓
   hook 卡住；被拒的 manifest 等同讀不到，guard 維持開啟、不跑 chain，`defer_to_global` 回 False。
