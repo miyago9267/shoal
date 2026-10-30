@@ -105,7 +105,7 @@ class PolicyTargetIdentity:
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
 SHOAL_PLUGIN_NAME = "shoal-codex"
-SHOAL_PLUGIN_VERSION = "3.13.0-beta"
+SHOAL_PLUGIN_VERSION = (Path(__file__).resolve().parents[1] / "hosts" / "codex" / "VERSION").read_text(encoding="utf-8").strip()
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
