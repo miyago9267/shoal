@@ -7,6 +7,7 @@ test_install_grok
 test_install_hooks
 test_install_opencode_global
 test_install_renamed_roles
+test_install_same_path
 test_shoal_install
 test_shoal_install_p1
 test_shoal_update

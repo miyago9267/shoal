@@ -88,6 +88,27 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 - `test_shoal_update` 在 Windows 改用真的 git，不再跳過（#20）。
 
+### Fixes
+
+- dispatch guard 支援原生 Windows：不再 fail-open no-op。檔案開啟改為先檢查 symlink、
+  `O_BINARY`、`msvcrt` 鎖；路徑比對統一為小寫 `/` 形式，Git Bash 的 `/c/...`、`/tmp`
+  對應到 Windows 路徑，`\\?\` 長路徑前綴會去掉，`%TEMP%`／`%TMP%`／`TMPDIR` 與 `/tmp` 一樣 exempt。
+  state 目錄在 Windows 不檢查 uid 與 POSIX 權限位元，私有性靠 profile ACL。plugin copy 在
+  Windows 也會讓位給已涵蓋該事件的 global hook（路徑比對改走同一套 Windows 正規化），不再
+  重複計數。guard 測試在 Windows 不再跳過（只跳過 POSIX 權限位元的兩個 vector 與 FIFO／uid 兩個測試），
+  並新增每個 OS 都跑的 deny → dispatch → allow 狀態往返、`SHOAL_GUARD=off`／`SHOAL_GUARD_DIRECT=1`
+  測試。
+- Windows guard 的 rollback：revert 這個 PR 的 merge commit；在那之前 Windows 使用者可設
+  `SHOAL_GUARD=off` 關掉 guard。
+- `install.py::_same_path` 忽略 Codex 回報的 `\\?\` 長路徑前綴，`--update` 在 Windows 不再把已裝好的
+  Codex plugin 誤報為 `failed`。
+- `sync agy`：`~/.gemini/config` 下沒有任何 agents、skills 時回報 `roles not installed`，
+  不再把沒裝 agy role 的機器報成 symlink drift。
+- Windows 上 `codex` 只有 npm 的 `codex.cmd` shim 時，installer 改用完整路徑呼叫
+  （`CreateProcess` 只補 `.exe`）。
+- 測試在 Windows 的假設修正：`USERPROFILE`、`fchmod` 權限位元、`.cmd` 需要的
+  `SYSTEMROOT`/`COMSPEC`，以及暫存目錄位在含 `AGENTS.md` 的 home 底下時 skip。
+
 ## v3.12.0-beta
 
 2026-10-18。版本 channel、`#fast` 輕量 lane 與派工開銷優化。

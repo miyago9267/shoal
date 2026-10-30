@@ -18,15 +18,20 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "hooks"))
+sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import guard_vectors_helper as helper  # noqa: E402
+import install_hooks  # noqa: E402
 import shoal_guard as guard  # noqa: E402
 
 GUARD = ROOT / "hooks" / "shoal_guard.py"
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
+# POSIX permission bits mean nothing on Windows; the per-user profile ACL protects the state dir there.
+POSIX_MODE_VECTORS = frozenset(("state_dir_group_readable_rejected", "state_dirs_are_private"))
+
+
 class VectorTests(unittest.TestCase):
     def test_shared_vectors(self) -> None:
         data = helper.load_vectors()
@@ -35,6 +40,8 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for vector in data["vectors"]:
             with self.subTest(vector["name"]):
+                if os.name == "nt" and vector["name"] in POSIX_MODE_VECTORS:
+                    continue
                 self.assertEqual(helper.run_vector(vector, data["log_whitelist"], guard, data.get("env_defaults")), [])
 
     def test_vectors_cover_the_spec_r8_list(self) -> None:
@@ -48,7 +55,6 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(list(guard.LOG_FIELDS), helper.load_vectors()["log_whitelist"])
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class ShellWriteDetectorTests(unittest.TestCase):
     """G5: shell_write_targets is replayed from the fixture the TypeScript port also replays."""
 
@@ -73,7 +79,6 @@ class ShellWriteDetectorTests(unittest.TestCase):
             self.assertIsInstance(guard.shell_write_targets(command), list, command)
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class DeclarationParserTests(unittest.TestCase):
     """M3: parse_declaration is replayed from the fixture the TypeScript port also replays."""
 
@@ -121,13 +126,15 @@ class DeclarationParserTests(unittest.TestCase):
             "as its own shell command, or ask the user to add #direct to the prompt.")
 
 
-class WindowsNoOpTests(unittest.TestCase):
-    def test_run_is_a_silent_no_op_when_os_name_is_nt(self) -> None:
-        with tempfile.TemporaryDirectory() as home:
-            with mock.patch.object(guard.os, "name", "nt"):
-                out = guard.run("claude", b"x" * (guard.MAX_INPUT_BYTES + 1), {"HOME": home})
-            self.assertIsNone(out)
-            self.assertEqual(list(Path(home).iterdir()), [])
+@unittest.skipUnless(os.name == "nt", "Windows path mapping")
+class WindowsPathTests(unittest.TestCase):
+    def test_git_bash_paths_map_to_native_ones(self) -> None:
+        temp = guard._real(tempfile.gettempdir())
+        self.assertEqual(guard._real("/tmp/x"), temp + "/x")
+        self.assertEqual(guard._real("/c/Users"), guard._real(r"C:\Users"))
+        self.assertEqual(guard.resolve_path(r"C:\A\b", ""), "c:/a/b")
+        self.assertTrue(guard.is_exempt(guard.resolve_path("/tmp/y", ""), "claude", {}, Path.home()))
+        self.assertRaises(ValueError, guard._real, "a\u0000b")
 
 
 class RoleTableTests(unittest.TestCase):
@@ -177,7 +184,6 @@ class SyntaxTests(unittest.TestCase):
         self.assertFalse(guard.valid_id("conv/1:2", composed=True))
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class CliCase(unittest.TestCase):
     """Runs the real script with a temp HOME and XDG_STATE_HOME."""
 
@@ -1151,13 +1157,17 @@ class StateLockTests(CliCase):
         self.assertEqual(len(set(state["edited"])), count)
 
     def test_lock_file_is_private_and_a_held_lock_fails_open(self) -> None:
-        import fcntl
         self.run_guard("claude", claude_prompt(cwd=self.work))
         lock = Path(self.guard_dir, "state", "sess-1.lock")
-        self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
         fd = os.open(str(lock), os.O_RDWR)
         self.addCleanup(os.close, fd)
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        if os.name == "nt":  # no POSIX modes; a byte-range lock on another handle blocks the guard's
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
         event = guard.adapt_claude(claude_tool("Edit", {"file_path": self.path("a")}, cwd=self.work))
         with mock.patch.object(guard, "LOCK_WAIT_SECONDS", 0.05):
             result = guard.evaluate(event, self.env(), Path(self.home))
@@ -1673,7 +1683,7 @@ class ChainCliTests(CliCase):
     def test_member_receives_the_raw_stdin_bytes(self) -> None:
         record = os.path.join(self.home, "seen.txt")
         self.configure(["record", record])
-        raw = b'{"session_id": "sess-1",  "hook_event_name":"PreToolUse", "tool_name":"Read","tool_input":{},"cwd":"%s"}' % self.work.encode()
+        raw = b'{"session_id": "sess-1",  "hook_event_name":"PreToolUse", "tool_name":"Read","tool_input":{},"cwd":%s}' % json.dumps(self.work).encode()
         self.assertEqual(self.run_guard("claude", raw, **self.chain_env), "")
         self.assertEqual(Path(record).read_bytes(), raw + b"\n")
 
@@ -1948,6 +1958,128 @@ class LaneAdapterTests(CliCase):
         out = self.lane("codex", CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor", "task_name": "t", "message": "[complex] m"}, cwd=self.work))
         self.assertEqual(out, "")
         self.assertEqual(self.lane("grok", GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x"}, cwd=self.work)), "")
+
+
+class EnforcementEveryOsTests(CliCase):
+    """Runs on every OS, Windows included: the guard denies, keeps its state and honors the kill switches."""
+
+    def declare(self, payload, **env) -> str:
+        return self.run_guard("claude", payload, **{"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare", **env})
+
+    def edit(self, name="a.py", **env) -> str:
+        return self.declare(claude_tool("Edit", {"file_path": self.path(name)}, cwd=self.work), **env)
+
+    def test_two_event_state_round_trip_never_fails_open(self) -> None:
+        self.declare(claude_prompt(cwd=self.work))
+        self.assertEqual(json.loads(self.edit())["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.declare(claude_tool("Agent", {"subagent_type": "executor"}, cwd=self.work))
+        self.declare(claude_start("shoal:executor", cwd=self.work))
+        self.assertEqual(self.edit(), "")
+        self.assertTrue(Path(self.guard_dir, "state", "sess-1.json").is_file())
+        records = self.log_records()
+        self.assertEqual([r for r in records if r.get("decision") == "skip" or "skip_reason" in r], [], records)
+        self.assertEqual([r["decision"] for r in records if r.get("tool") == "Edit"], ["deny", "allow"], records)
+
+    def test_guard_off_is_silent_where_enforce_denies(self) -> None:
+        self.declare(claude_prompt(cwd=self.work))
+        self.assertIn("deny", self.edit())
+        before = self.log_records()
+        self.assertEqual(self.edit(SHOAL_GUARD="off"), "")
+        self.assertEqual(self.log_records(), before)
+
+    def test_direct_env_releases_the_edit_and_the_deny_names_the_exits(self) -> None:
+        self.declare(claude_prompt(cwd=self.work))
+        reason = json.loads(self.edit())["hookSpecificOutput"]["permissionDecisionReason"]
+        for exit_ in ("shoal-direct", "#direct", "executor"):
+            self.assertIn(exit_, reason)
+        self.assertEqual(self.edit(SHOAL_GUARD_DIRECT="1"), "")
+        self.assertEqual(self.log_records()[-1]["decision"], "allow")
+        self.assertEqual(self.log_records()[-1]["rule"], "direct")
+
+
+class GlobalDeferralTests(CliCase):
+    """K4 on every OS: the plugin copy stays silent when the global hook already covers the event."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.cfg = Path(self.home) / "claude config"
+        self.cfg.mkdir()
+        self.data = Path(self.home) / "xdg-data"
+        self.script = self.data / "shoal" / "guard" / "shoal_guard.py"
+
+    def global_env(self) -> dict:
+        return {**self.env(), "XDG_DATA_HOME": str(self.data), "CLAUDE_CONFIG_DIR": str(self.cfg)}
+
+    def install_global(self) -> bytes:
+        self.script.parent.mkdir(parents=True)
+        shutil.copy(GUARD, self.script)
+        settings = install_hooks.apply_claude({}, install_hooks.command_for(self.script, "claude"))
+        (self.cfg / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+        return json.dumps(claude_prompt(cwd=self.work)).encode()
+
+    def test_defers_when_global_hooks_cover_the_event(self) -> None:
+        raw = self.install_global()
+        self.assertTrue(guard.defer_to_global("claude", raw, self.global_env()))
+        self.assertFalse(guard.defer_to_global("codex", raw, self.global_env()))
+        self.script.unlink()
+        self.assertFalse(guard.defer_to_global("claude", raw, self.global_env()))
+
+    def test_defers_under_windows_semantics(self) -> None:
+        raw = self.install_global()
+        with mock.patch.object(guard, "WINDOWS", True):
+            self.assertTrue(guard.defer_to_global("claude", raw, self.global_env()))
+        import inspect
+        self.assertNotIn("os.name", inspect.getsource(guard.defer_to_global))
+        self.assertNotIn("WINDOWS", inspect.getsource(guard.defer_to_global))
+
+
+class TempExemptionTests(CliCase):
+    def test_env_temp_dirs_are_exempt_under_windows_semantics(self) -> None:
+        with mock.patch.object(guard, "WINDOWS", True):
+            for key in ("TMP", "TEMP", "TMPDIR"):
+                root = self.path("only-" + key.lower())
+                inside = guard.resolve_path(os.path.join(root, "a.txt"), self.work)
+                self.assertTrue(guard.is_exempt(inside, "claude", {key: root}, Path(self.home)), key)
+
+
+@unittest.skipUnless(os.name == "nt", "Windows path spellings")
+class WindowsDecisionTests(CliCase):
+    """The same file gets the same decision however Windows tooling spells it."""
+
+    def spellings(self, name: str) -> list:
+        native = self.path(name)
+        git_bash = "/" + native[0].lower() + native[2:].replace("\\", "/")
+        return [native, native.replace("\\", "/"), git_bash, "\\\\?\\" + native, native.upper()]
+
+    def test_every_spelling_is_denied_with_the_same_reason(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD="enforce", SHOAL_GUARD_R1="declare")
+        reasons = set()
+        for spelling in self.spellings("a.txt"):
+            out = self.run_guard("claude", claude_tool("Edit", {"file_path": spelling}, cwd=self.work),
+                                 SHOAL_GUARD="enforce", SHOAL_GUARD_R1="declare")
+            body = json.loads(out)["hookSpecificOutput"]
+            self.assertEqual(body["permissionDecision"], "deny", spelling)
+            reasons.add(body["permissionDecisionReason"])
+        self.assertEqual(reasons, {guard.MESSAGES["en"]["DECLARE"]})
+
+    def test_extended_length_prefix_is_dropped(self) -> None:
+        native = self.path("x.txt")
+        self.assertEqual(guard._real("\\\\?\\" + native), guard._real(native))
+        self.assertEqual(guard._real("//?/" + native.replace("\\", "/")), guard._real(native))
+
+    def test_only_tmp_set_exempts_writes_under_it(self) -> None:
+        tmp = self.path("only-tmp")
+        os.mkdir(tmp)
+        env = self.env(SHOAL_GUARD="enforce", SHOAL_GUARD_R1="declare", TMP=tmp)
+        del env["TMPDIR"]
+        def fire(payload) -> str:
+            proc = subprocess.run([sys.executable, str(GUARD), "--host", "claude"], input=json.dumps(payload).encode(),
+                                  capture_output=True, env=env, timeout=30)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            return proc.stdout.decode()
+        fire(claude_prompt(cwd=self.work))
+        self.assertEqual(fire(claude_tool("Edit", {"file_path": os.path.join(tmp, "a.txt")}, cwd=self.work)), "")
+        self.assertIn("deny", fire(claude_tool("Edit", {"file_path": self.path("a.txt")}, cwd=self.work)))
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ import re
 import shlex
 import stat
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,8 +29,14 @@ from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Se
 
 try:
     import fcntl
-except ImportError:  # Windows: run() is a no-op there
+except ImportError:  # Windows: msvcrt byte-range locks instead
     fcntl = None  # type: ignore[assignment]
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None  # type: ignore[assignment]
+
+WINDOWS = os.name == "nt"
 
 MAX_INPUT_BYTES = 256 * 1024
 MAX_LOG_BYTES = 1024 * 1024
@@ -383,7 +390,8 @@ MESSAGES = {
 
 
 def _uid() -> int:
-    return os.getuid()
+    # Windows reports st_uid 0 for every file; ownership there comes from the per-user profile ACL.
+    return 0 if WINDOWS else os.getuid()
 
 
 def _no_symlink_below(path: Path, anchor: Path) -> bool:
@@ -403,7 +411,9 @@ def _no_symlink_below(path: Path, anchor: Path) -> bool:
 def _open_private(path: Path, flags: int) -> Optional[int]:
     """Open a regular file owned by us with O_NOFOLLOW; force mode 0600."""
     try:
-        fd = os.open(str(path), flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        if WINDOWS and os.path.islink(str(path)):  # no O_NOFOLLOW on Windows
+            return None
+        fd = os.open(str(path), flags | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)
     except OSError:
         return None
     try:
@@ -411,7 +421,8 @@ def _open_private(path: Path, flags: int) -> Optional[int]:
         if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
             os.close(fd)
             return None
-        os.fchmod(fd, 0o600)
+        if not WINDOWS:
+            os.fchmod(fd, 0o600)
     except OSError:
         os.close(fd)
         return None
@@ -447,7 +458,7 @@ def _guard_dir(env: Dict[str, str], home: Path) -> Optional[Path]:
             info = os.lstat(str(cursor))
             if not stat.S_ISDIR(info.st_mode) or info.st_uid != _uid():
                 return None
-            if strict and stat.S_IMODE(info.st_mode) & 0o077:
+            if strict and not WINDOWS and stat.S_IMODE(info.st_mode) & 0o077:
                 return None
     except OSError:
         return None
@@ -485,7 +496,7 @@ def _state_lock(path: Path) -> Iterator[Optional[str]]:
     Yields None once held, else the skip reason (the caller then fails open).  Waits at
     most LOCK_WAIT_SECONDS; the lock dies with the process, so a crash never wedges it.
     """
-    fd = _open_private(path, os.O_RDWR | os.O_CREAT) if fcntl is not None else None
+    fd = _open_private(path, os.O_RDWR | os.O_CREAT) if (fcntl or msvcrt) is not None else None
     if fd is None:
         yield "state_unavailable"
         return
@@ -493,7 +504,10 @@ def _state_lock(path: Path) -> Iterator[Optional[str]]:
         deadline = time.monotonic() + LOCK_WAIT_SECONDS
         while True:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
                 break
             except OSError:
                 if time.monotonic() >= deadline:
@@ -825,11 +839,35 @@ def _max_files(env: Dict[str, str]) -> Optional[int]:
         return None
 
 
+_MSYS_DRIVE_RE = re.compile(r"^/([A-Za-z])(?=/|$)")
+
+
+def _real(path: str) -> str:
+    """os.path.realpath; on Windows also maps Git Bash paths (`/c/x`, `/tmp`) to native ones and
+    returns a case-folded, `/`-separated form so prefix checks work the same as on POSIX."""
+    if not WINDOWS:
+        return os.path.realpath(path)
+    if "\u0000" in path:  # POSIX realpath raises here; keep the same fail-open path
+        raise ValueError("embedded null byte")
+    path = path.replace("\\", "/")
+    if path.startswith("//?/UNC/"):  # extended-length spellings: \\?\C:\x and \\?\UNC\host\share
+        path = "//" + path[8:]
+    elif path.startswith(("//?/", "//./")):
+        path = path[4:]
+    if path == "/tmp" or path.startswith("/tmp/"):
+        path = tempfile.gettempdir() + path[4:]
+    else:
+        path = _MSYS_DRIVE_RE.sub(lambda m: m.group(1) + ":", path)
+    return os.path.normcase(os.path.realpath(path)).replace("\\", "/")
+
+
 def resolve_path(path: str, cwd: str) -> str:
     """Absolute, symlink-resolved path (`..` collapsed); non-existent tails are kept."""
+    if WINDOWS:
+        path = _real(path) if path.startswith("/") else path
     if not os.path.isabs(path):
         path = os.path.join(cwd or os.getcwd(), path)
-    return os.path.realpath(path)
+    return _real(path)
 
 
 def _under(path: str, root: str) -> bool:
@@ -840,7 +878,7 @@ def _under(path: str, root: str) -> bool:
 def repo_under_test(cwd: str) -> str:
     """Root of the repository under test: the nearest ancestor of `cwd` holding `.git` (a directory or a
     worktree file); `cwd` itself (resolved) when there is none."""
-    start = os.path.realpath(cwd or os.getcwd())
+    start = _real(cwd or os.getcwd())
     cursor = start
     while True:
         if os.path.exists(os.path.join(cursor, ".git")):
@@ -855,15 +893,20 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
     """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts."""
     if ".ai" in path.split("/")[:-1]:
         return True
-    roots = ["/tmp", "/private/tmp", os.path.realpath("/tmp")]
-    tmpdir = env.get("TMPDIR", "")
-    if tmpdir and os.path.isabs(tmpdir) and os.path.realpath(tmpdir) != "/":
-        roots.append(os.path.realpath(tmpdir))
+    roots = ["/tmp", "/private/tmp", _real("/tmp")]
+    if WINDOWS:  # gettempdir() covers the process's TMP/TEMP/TMPDIR; `env` is what the host handed us
+        roots += [_real("/private/tmp"), _real(tempfile.gettempdir())]
+    for key in ("TMPDIR", "TEMP", "TMP") if WINDOWS else ("TMPDIR",):
+        tmpdir = env.get(key, "")
+        if tmpdir and os.path.isabs(tmpdir):
+            real = _real(tmpdir)
+            if os.path.dirname(real) != real:  # never exempt a filesystem root
+                roots.append(real)
     if host == "claude":
-        roots.append(os.path.realpath(str(home / ".claude" / "projects")))
+        roots.append(_real(str(home / ".claude" / "projects")))
         config = env.get("CLAUDE_CONFIG_DIR", "")
         if config and os.path.isabs(config):
-            roots.append(os.path.realpath(os.path.join(config, "projects")))
+            roots.append(_real(os.path.join(config, "projects")))
     return any(_under(path, root) for root in roots)
 
 
@@ -878,7 +921,8 @@ _WORD_BREAK = " \t\r\n;|&<>()"
 _ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 # `$NAME` / `${NAME}` leading a target word, and the literal bases a tracked value or `cd` target may have.
 _VAR_REF_RE = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})(?=/|\Z)")
-_KNOWN_BASE_RE = re.compile(r"/|~(?=/|\Z)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=/|\Z)")
+_DRIVE_RE = re.compile(r"[A-Za-z]:[/\\]") if WINDOWS else re.compile(r"(?!)")  # `C:/x` is absolute only on Windows
+_KNOWN_BASE_RE = re.compile(r"/|~(?=/|\Z)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=/|\Z)|" + _DRIVE_RE.pattern)
 _SET_COMMANDS = frozenset(("export", "declare", "local", "typeset", "readonly"))
 _CD_NAMES = frozenset(("cd", "pushd", "popd"))
 _DOUBLE_BRACKET_END_RE = re.compile(r"(?:^|\s)\]\](?=$|[\s;&|)])")
@@ -1061,7 +1105,7 @@ def _known_path(value: str) -> bool:
 
 def _in_dir(word: str, base: Optional[str]) -> str:
     """A relative literal `word` joined to `base`; anything else (absolute, `~`, `$...`, UNKNOWN_TARGET) as is."""
-    if base and word and word != UNKNOWN_TARGET and word[0] not in "/~$`":
+    if base and word and word != UNKNOWN_TARGET and word[0] not in "/~$`" and not _DRIVE_RE.match(word):
         return base.rstrip("/") + "/" + word
     return word
 
@@ -3118,7 +3162,7 @@ def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_di
     guarded = _GUARDED_COMMAND.fullmatch(command.strip())
     if guarded is not None:
         path, command_host = guarded.groups()
-        return command_host == host and os.path.realpath(_expand_home(path, home, data_dir)) == script
+        return command_host == host and _real(_expand_home(path, home, data_dir)) == script
     try:
         tokens = shlex.split(command)
     except ValueError:
@@ -3128,7 +3172,7 @@ def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_di
             continue
         if tokens[index + 1:index + 3] != ["--host", host]:
             continue
-        if os.path.realpath(_expand_home(token, home, data_dir)) == script:
+        if _real(_expand_home(token, home, data_dir)) == script:
             return True
     return False
 
@@ -3144,7 +3188,7 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
         return False
     data_dir = _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share")
     script = data_dir / "shoal" / "guard" / "shoal_guard.py"
-    script = Path(os.path.realpath(str(script)))
+    script = Path(_real(str(script)))
     if not script.is_file():
         return False
     settings = _abs_env_dir(env, "CLAUDE_CONFIG_DIR", home / ".claude") / "settings.json"
@@ -3167,7 +3211,7 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
             continue
         handlers = group.get("hooks")
         for handler in handlers if isinstance(handlers, list) else []:
-            if _runs_global_guard(_dict(handler).get("command"), str(script), host, home, data_dir):
+            if _runs_global_guard(_dict(handler).get("command"), script.as_posix(), host, home, data_dir):
                 return True
     return False
 
@@ -3193,7 +3237,7 @@ def _open_readable(path: Path) -> Optional[int]:
 
 def defer_to_global(host: str, raw: bytes, env: Dict[str, str]) -> bool:
     """True when the plugin copy must stay silent.  Any doubt returns False: never zero evaluations."""
-    if os.name == "nt" or host != "claude" or not raw or len(raw) > MAX_INPUT_BYTES:
+    if host != "claude" or not raw or len(raw) > MAX_INPUT_BYTES:
         return False
     try:
         payload = json.loads(raw)
@@ -3205,8 +3249,6 @@ def defer_to_global(host: str, raw: bytes, env: Dict[str, str]) -> bool:
 
 def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
     """Process one stdin payload; returns the stdout text, if any."""
-    if os.name == "nt":  # POSIX-only semantics (O_NOFOLLOW, uid ownership); fail-open no-op
-        return None
     home = Path(env.get("HOME") or os.path.expanduser("~"))
     try:
         if not raw:
