@@ -123,7 +123,8 @@ Miyago 2026-10-25 daily interview：shoal「太複雜」，希望 main session �
   （`SHOAL_GUARD_R1=strict`）。
 - 條款改動超過 change budget。緩解：先做 Claude 專屬條款；不行就 lock renewal。
   實測（P2，2026-10-25）：Claude 專屬 addendum 可行，Codex surface 與 LOCK.json 不動、免 renewal。
-  但 `claude-orchestration-policy` 與 `claude-orchestration-skill` 等 Claude surface 在 LOCK 內，
+  但 `claude-orchestration-policy` 與 `claude-orchestration-skill` 等 Claude surface
+  在 LOCK 內，
   任何改動都要升 `hosts/claude/VERSION`（version gate），且 `orchestration-policy.md` 只剩
   19598 / 19600 bytes 預算，`direct-when-small` 改寫須等量精簡。bootstrap 不在 LOCK 內。
   因此 P2 同時改 bootstrap 與 `orchestration.md:59` 的 Claude 版（addendum 精簡到不超過預算），

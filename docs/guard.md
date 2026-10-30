@@ -239,7 +239,8 @@ Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TM
 
 ### 宣告
 
-`declare` 模式（Claude 的預設，其他 host 以 `SHOAL_GUARD_R1=declare` 選用）下，要自己改檔時 main 先單獨執行一次 shell 指令
+`declare` 模式（Claude 的預設，其他 host 以 `SHOAL_GUARD_R1=declare` 選用）下，
+要自己改檔時 main 先單獨執行一次 shell 指令
 （`strict` 下這個指令是普通的空指令，不放行）：
 
 ```bash

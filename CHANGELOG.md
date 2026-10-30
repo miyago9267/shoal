@@ -26,7 +26,8 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   hook 卡住；被拒的 manifest 等同讀不到，guard 維持開啟、不跑 chain，`defer_to_global` 回 False。
   OpenCode 的 `chainMembers` 讀檔失敗改與 Python 一致（被拒或不存在回 `[]`）。
 - `hosts/claude/VERSION` 升為 3.13.2-beta，讓 Claude 的 plugin cache 換新 guard。
-- 試用分支合入 main 的 guard 修正（#43），`hosts/claude/VERSION` 升為 3.14.1-beta；declare 預設與 python 寫檔偵測並存。
+- 試用分支合入 main 的 guard 修正（#43），
+  `hosts/claude/VERSION` 升為 3.14.1-beta；declare 預設與 python 寫檔偵測並存。
 
 ### Claude
 
