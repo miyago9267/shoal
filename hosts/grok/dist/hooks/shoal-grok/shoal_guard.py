@@ -906,7 +906,8 @@ _WORD_BREAK = " \t\r\n;|&<>()"
 _ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 # `$NAME` / `${NAME}` leading a target word, and the literal bases a tracked value or `cd` target may have.
 _VAR_REF_RE = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})(?=/|\Z)")
-_KNOWN_BASE_RE = re.compile(r"/|~(?=/|\Z)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=/|\Z)")
+_DRIVE_RE = re.compile(r"[A-Za-z]:[/\\]") if WINDOWS else re.compile(r"(?!)")  # `C:/x` is absolute only on Windows
+_KNOWN_BASE_RE = re.compile(r"/|~(?=/|\Z)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=/|\Z)|" + _DRIVE_RE.pattern)
 _SET_COMMANDS = frozenset(("export", "declare", "local", "typeset", "readonly"))
 _CD_NAMES = frozenset(("cd", "pushd", "popd"))
 _DOUBLE_BRACKET_END_RE = re.compile(r"(?:^|\s)\]\](?=$|[\s;&|)])")
@@ -1089,7 +1090,7 @@ def _known_path(value: str) -> bool:
 
 def _in_dir(word: str, base: Optional[str]) -> str:
     """A relative literal `word` joined to `base`; anything else (absolute, `~`, `$...`, UNKNOWN_TARGET) as is."""
-    if base and word and word != UNKNOWN_TARGET and word[0] not in "/~$`":
+    if base and word and word != UNKNOWN_TARGET and word[0] not in "/~$`" and not _DRIVE_RE.match(word):
         return base.rstrip("/") + "/" + word
     return word
 
