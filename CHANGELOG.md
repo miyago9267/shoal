@@ -5,12 +5,92 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+### Guard
+
+- G5 看得到 python 寫檔（#32）。指令位置有 `python[0-9.]*` 時，整段指令
+  （heredoc 本文、`-c`）再比對字面 mode 的 `open(..., 'w'/'a'/'x')`、
+  `.write_text(`／`.write_bytes(`、`shutil.copy*(`／`shutil.move(`、
+  `os.remove|unlink|rename|replace(`；`open('路徑', ...)` 回報該路徑，
+  其他回報 `$?`。只是 guardrail：exec、getattr、subprocess、腳本檔、
+  `node -e`、`cp`／`mv` 仍不偵測。E1 的 verify role 共用同一判斷。
+  TypeScript port（OpenCode）同步。
+- G5 的字面掃描認得兩個 verifier／watcher 常見寫法，寫進 `/tmp`、`$TMPDIR` 等 exempt 目錄不再被擋：
+  同一條指令內無條件執行的 `NAME=<絕對路徑或 ~／$HOME／$TMPDIR 開頭的路徑>`（含 `export`）會代換後續
+  `$NAME/...`、`${NAME}/...` 目標；開頭連續（前面只有賦值或 `cd`）的 `cd <絕對路徑> &&|;|換行`
+  之後，相對目標（含 python `open('x')`）改解析到該目錄。值含 `$(`、反引號或未知變數、`cd -`、
+  `cd $(...)`、subshell、`||`、管線、`pushd`／`popd` 一律照舊（未知目標，該 deny 的 role 照 deny）；
+  指向 repo 的變數或 `cd` 仍是 repo 目標。TypeScript port（OpenCode）同步，共用 fixture 補 46 筆指令
+  與 3 個 guard vector。
+- `guard.jsonl` 超過 1 MiB 改名為 `guard.jsonl.1` 後繼續寫（只留一代），不再停寫（#31）。
+- module manifest 以 `O_NONBLOCK` 開啟，且只接受目前使用者擁有的一般檔案（#26）：FIFO 不再讓
+  hook 卡住；被拒的 manifest 等同讀不到，guard 維持開啟、不跑 chain，`defer_to_global` 回 False。
+  OpenCode 的 `chainMembers` 讀檔失敗改與 Python 一致（被拒或不存在回 `[]`）。
+- `hosts/claude/VERSION` 升為 3.13.2-beta，讓 Claude 的 plugin cache 換新 guard。
+
+### Claude
+
+- 背景 role 回報後不再掛著。Claude 的 transcript 顯示 watcher、executor、security-executor 起了
+  背景 Bash 或 Monitor 卻沒 TaskStop 就回報，agent 因為還有 live child 一直列為 running。
+  watcher、executor、security-executor、verifier 的 Claude 區塊現在要求回報前先 TaskStop 自己起的
+  背景 task 與 Monitor；bootstrap 的 collect 條款補上 main 對仍列為 running 的已回報 role 要 TaskStop。
+  `hosts/claude/VERSION` 升為 3.13.1-beta（只動 Claude host）。
+  Claude plugin 與 marketplace 的版本改由 `hosts/claude/VERSION` 產生（原本讀根目錄 `VERSION`，
+  host 單獨升版時 plugin.json 沒跟著動，Claude 依版本號快取 plugin，已安裝的 cache 永遠是舊內容）；
+  `tools/shoal_update.py` 在內容變了但版本相同時回報 skipped 並說明原因，不再假報 updated。
+
+### Repository
+
+- `bench/` 與 27 個 bench 專用測試模組拆到私有 repo `miyago9267/shoal-bench`（歷史以
+  `git filter-repo` 保留）。shoal 的 runtime 不 import bench；shoal-bench 單向讀 shoal，
+  路徑由它的 `shoal_root.py` 解析（`SHOAL_ROOT`，預設 `../shoal`）。
+- shoal-bench 的相容面：下列路徑改名或搬動前須先確認 shoal-bench 的 CI。
+  `install/`、`hooks/shoal_autoroute_gate.py`、`tools/`、`templates/`、`plugins/`、
+  `core/`、`hosts/claude/binding.toml`、`docs/benchmarks/`（`FROZEN_MANIFEST_V2_HASH`
+  釘其中 manifest 的 hash）、`tests/fixtures/benchmark_routing`、
+  `docs/specs/adaptive-intent-routing` 與 `docs/specs/dispatch-verification` 的 corpus。
+- `tests/test_relay_render.py` 的 relay overlay 改指 `tests/fixtures/relay/relay.binding.toml`。
+
+### Windows
+
+- `tools/shoal_relay.py` 在沒有 POSIX process group 的平台（Windows）回 blocked、不呼叫
+  vendor；原本在 `signal.SIGHUP` 就崩潰、沒有 hand-back。H1 落地路徑比對另擋 NTFS 視為同名的
+  寫法（`\` 分隔、結尾 `.` 或空白、`:stream`）。
+- installer 的 rollback 複本在沒有 `O_NOFOLLOW` 時先 lstat、再比對開到的檔，Windows 上
+  symlink 來源一樣拒絕；install state 的 manifest 路徑另拒 `/x`、`\x`、`C:x` 這類 Windows
+  不算 absolute 但會跳出 Codex home 的寫法。
+- 測試 fixture 以 LF 寫入；fake vendor 相關的 relay 測試在 Windows 跳過。
+
+## v3.13.0-beta
+
+2026-10-19。fan_out 路由與 Codex plugin 搬家。
+
+### 路由
+
+- 新增 `fan_out` 互動形狀：只有每一項都夠重時才提議用 Workflow；結尾一定做整合驗證，失敗的項目最多重派一次。Workflow 的
+  opt-in、agentType 與 Agent fallback 細節放在 skill 參考檔 `workflow-extensions`。
+
+### Codex
+
+- Codex plugin 從 `plugin/plugins/shoal-codex` 搬到
+  `plugins/codex`，`shoal-jev-router` 搬到 `plugins/jev-router`；舊的 `plugin/` 目錄與
+  symlink 移除。用舊路徑註冊過的安裝，下次安裝會自動換到新路徑。
+
+### Tests
+
+- `test_shoal_update` 在 Windows 改用真的 git，不再跳過（#20）。
+
 ### Fixes
 
 - dispatch guard 支援原生 Windows：不再 fail-open no-op。檔案開啟改為先檢查 symlink、
   `O_BINARY`、`msvcrt` 鎖；路徑比對統一為小寫 `/` 形式，Git Bash 的 `/c/...`、`/tmp`
-  對應到 Windows 路徑，`%TEMP%` 與 `/tmp` 一樣 exempt。guard 測試在 Windows 不再跳過
-  （只跳過 POSIX 權限位元的兩個 vector）。
+  對應到 Windows 路徑，`\\?\` 長路徑前綴會去掉，`%TEMP%`／`%TMP%`／`TMPDIR` 與 `/tmp` 一樣 exempt。
+  state 目錄在 Windows 不檢查 uid 與 POSIX 權限位元，私有性靠 profile ACL。plugin copy 在
+  Windows 也會讓位給已涵蓋該事件的 global hook（路徑比對改走同一套 Windows 正規化），不再
+  重複計數。guard 測試在 Windows 不再跳過（只跳過 POSIX 權限位元的兩個 vector 與 FIFO／uid 兩個測試），
+  並新增每個 OS 都跑的 deny → dispatch → allow 狀態往返、`SHOAL_GUARD=off`／`SHOAL_GUARD_DIRECT=1`
+  測試。
+- Windows guard 的 rollback：revert 這個 PR 的 merge commit；在那之前 Windows 使用者可設
+  `SHOAL_GUARD=off` 關掉 guard。
 - `install.py::_same_path` 忽略 Codex 回報的 `\\?\` 長路徑前綴，`--update` 在 Windows 不再把已裝好的
   Codex plugin 誤報為 `failed`。
 - `sync agy`：`~/.gemini/config` 下沒有任何 agents、skills 時回報 `roles not installed`，

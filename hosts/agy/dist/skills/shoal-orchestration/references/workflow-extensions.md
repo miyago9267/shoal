@@ -130,8 +130,8 @@ An explicit user pause is honored without inventing a question.
 
 A missing, failed, or timed-out `plan-critic`, `security-reviewer`, or
 `verifier` result is a service failure, not a user decision and not a
-verdict. Allow one bounded retry for the same stable unit and role. If the
-retry also returns no valid verdict, stop dispatching that role for the unit
+verdict. Allow one bounded retry per unit and role. If it
+also returns no valid verdict, stop dispatching that role for the unit
 and record `WAITING_FOR_REVIEW` (plan or security readiness) or
 `PAUSED_VERIFICATION` (outcome or direction verification). Never claim `READY`
 or `CONFIRMED`, never substitute a main-session readiness judgment, and never

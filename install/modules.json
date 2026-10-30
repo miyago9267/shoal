@@ -15,7 +15,7 @@
     },
     "host-codex": {
       "kind": "host", "hosts": ["codex"], "depends_on": ["core"], "default_new": true,
-      "paths": ["templates/agents/", "plugin/"],
+      "paths": ["templates/agents/", "plugins/codex/"],
       "summary": "Codex role TOML、AGENTS.md、config 片段、shoal-codex plugin"
     },
     "host-agy": {
@@ -45,12 +45,12 @@
     },
     "jev-router": {
       "kind": "optional", "hosts": ["codex"], "depends_on": ["host-codex"], "default_new": false,
-      "paths": ["plugin/plugins/shoal-jev-router"],
+      "paths": ["plugins/jev-router"],
       "summary": "Jev router plugin（依賴 Jev 環境，新裝預設關）"
     },
     "claude-explore": {
       "kind": "optional", "hosts": ["claude"], "depends_on": ["host-claude"], "default_new": true,
-      "paths": ["hosts/claude/dist/agents/Explore.md"],
+      "paths": ["plugins/claude/agents/Explore.md"],
       "summary": "Explore agent，裝到 ~/.claude/agents/"
     },
     "external": {

@@ -1,0 +1,5191 @@
+{
+ "_doc": [
+  "Characterization golden for hooks/shoal_guard.py adapt_claude/adapt_codex/adapt_grok/adapt_agy (docs/specs/code-restructure T0.3).",
+  "Each case: host, name, payload (raw host payload), event_name (agy only: the registration's --event), expected (the full normalized dict or null).",
+  "Produced from the code before P1; P1-P5 must NOT edit it.  guard_vectors.json holds already-normalized events, so it is not adapter input."
+ ],
+ "cases": [
+  {
+   "host": "claude",
+   "name": "empty",
+   "payload": {},
+   "expected": null
+  },
+  {
+   "host": "claude",
+   "name": "grok_compat_key",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hookEventName": "x",
+    "hook_event_name": "PreToolUse"
+   },
+   "expected": null
+  },
+  {
+   "host": "claude",
+   "name": "subagent_start",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "SubagentStart",
+    "agent_id": "ag1",
+    "agent_type": "shoal:executor"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "subagent_start",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": "shoal:executor",
+    "agent_id": "ag1",
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "stop_main",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "Stop",
+    "stop_hook_active": false
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "stop",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": false,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "stop_sub",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "Stop",
+    "stop_hook_active": true,
+    "agent_id": "ag1",
+    "agent_type": "shoal:applier"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "stop",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "shoal:applier",
+    "agent_id": "ag1",
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": true,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "prompt_plain",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "please edit"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "prompt_direct",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "do it #direct"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": true,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "prompt_fast",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "#fast go"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": "on",
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "prompt_strict",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "#strict go"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": "off",
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "prompt_quoted_direct",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "do it `#direct`"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "prompt_nonstr",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": 5
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "prompt_no_prompt_id",
+   "payload": {
+    "session_id": "s1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "x"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "post_bash",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "post_shell",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "post_bash_sub",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls"
+    },
+    "agent_id": "ag1",
+    "agent_type": "shoal:verifier"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "post_shell",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "shoal:verifier",
+    "agent_id": "ag1",
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "post_bash_background",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls",
+     "run_in_background": true
+    }
+   },
+   "expected": null
+  },
+  {
+   "host": "claude",
+   "name": "post_failure_bash",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUseFailure",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "false"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "post_shell",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "false",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "post_failure_bash_background",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUseFailure",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "x",
+     "run_in_background": true
+    }
+   },
+   "expected": null
+  },
+  {
+   "host": "claude",
+   "name": "post_read",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+     "file_path": "/a"
+    }
+   },
+   "expected": null
+  },
+  {
+   "host": "claude",
+   "name": "post_bash_nonstr_command",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": 7
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "post_shell",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "post_bash_bad_input",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": "oops"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "post_shell",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_bash",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls -l"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls -l",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_bash_nonstr_command",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": 7
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_bash_background",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "sleep 1",
+     "run_in_background": true
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "background_shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_bash_background_false",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls",
+     "run_in_background": false
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_bash_background_str",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls",
+     "run_in_background": "true"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_bash_sub",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls"
+    },
+    "agent_id": "ag1",
+    "agent_type": "shoal:executor"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "shoal:executor",
+    "agent_id": "ag1",
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Edit",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+     "file_path": "/w/a.py"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Edit",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a.py"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Edit_nopath",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Edit",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Write",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+     "file_path": "/w/a.py"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a.py"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Write_nopath",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Write",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_MultiEdit",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "MultiEdit",
+    "tool_input": {
+     "file_path": "/w/a.py"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "MultiEdit",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a.py"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_MultiEdit_nopath",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "MultiEdit",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "MultiEdit",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Edit_sub",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+     "file_path": "/w/a.py"
+    },
+    "agent_id": "ag1",
+    "agent_type": "shoal:applier"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "shoal:applier",
+    "agent_id": "ag1",
+    "tool_name": "Edit",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a.py"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_NotebookEdit",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "NotebookEdit",
+    "tool_input": {
+     "notebook_path": "/w/n.ipynb"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "NotebookEdit",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/n.ipynb"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_NotebookEdit_both",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "NotebookEdit",
+    "tool_input": {
+     "notebook_path": "/w/n.ipynb",
+     "file_path": "/w/f"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "NotebookEdit",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/f"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Edit_nonstr_path",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+     "file_path": 5
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Edit",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Agent_executor",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_input": {
+     "subagent_type": "shoal:executor",
+     "prompt": "p",
+     "description": "[exec] do"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "shoal:executor",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": "[exec] do",
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Agent_nodesc",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_input": {
+     "subagent_type": "executor"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "executor",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Agent_empty",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Workflow_script",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Workflow",
+    "tool_input": {
+     "script": "x"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Workflow",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Workflow_subagent_type",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Workflow",
+    "tool_input": {
+     "subagent_type": "executor",
+     "description": "d"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Workflow",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Workflow_subagent_type_shoal",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Workflow",
+    "tool_input": {
+     "subagent_type": "shoal:executor",
+     "description": "d",
+     "agentType": "shoal:applier"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Workflow",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Workflow_empty",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Workflow",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Workflow",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Workflow_sub",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Workflow",
+    "tool_input": {
+     "subagent_type": "executor"
+    },
+    "agent_id": "ag1",
+    "agent_type": "shoal:executor"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "shoal:executor",
+    "agent_id": "ag1",
+    "tool_name": "Workflow",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_Read",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+     "file_path": "/a"
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Read",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_unknown_tool",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Frobnicate",
+    "tool_input": {
+     "x": 1
+    }
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Frobnicate",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_no_tool_name",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_bad_tool_input",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": "oops"
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "pre_list_tool_input",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": [
+     1
+    ]
+   },
+   "expected": {
+    "host": "claude",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Edit",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "claude",
+   "name": "unknown_event",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w",
+    "hook_event_name": "SessionEnd"
+   },
+   "expected": null
+  },
+  {
+   "host": "claude",
+   "name": "no_event",
+   "payload": {
+    "session_id": "s1",
+    "prompt_id": "p1",
+    "cwd": "/w"
+   },
+   "expected": null
+  },
+  {
+   "host": "codex",
+   "name": "empty",
+   "payload": {},
+   "expected": null
+  },
+  {
+   "host": "codex",
+   "name": "subagent_start",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "SubagentStart",
+    "agent_id": "a1",
+    "agent_type": "worker"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "subagent_start",
+    "session_id": "s1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": "worker",
+    "agent_id": "a1",
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "stop",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "Stop",
+    "stop_hook_active": false
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "stop",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": false,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "stop_sub",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "Stop",
+    "stop_hook_active": true,
+    "agent_id": "a1",
+    "agent_type": "applier"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "stop",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "applier",
+    "agent_id": "a1",
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": true,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "prompt_direct",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "x #direct"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": true,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "prompt_plain",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "x"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "prompt_fast",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "#fast x"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": "on",
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "post_bash",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "post_shell",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "post_bash_nonstr",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": [
+      "ls"
+     ]
+    }
+   },
+   "expected": null
+  },
+  {
+   "host": "codex",
+   "name": "post_bash_nocommand",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {}
+   },
+   "expected": null
+  },
+  {
+   "host": "codex",
+   "name": "post_apply_patch",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "apply_patch",
+    "tool_input": {
+     "command": "*** Begin Patch"
+    }
+   },
+   "expected": null
+  },
+  {
+   "host": "codex",
+   "name": "post_bash_sub",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls"
+    },
+    "agent_id": "a1",
+    "agent_type": "applier"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "post_shell",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "applier",
+    "agent_id": "a1",
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_bash",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_bash_nonstr",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": [
+      "ls"
+     ]
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_bash_nocommand",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_bash_sub",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+     "command": "ls"
+    },
+    "agent_id": "a1",
+    "agent_type": "applier"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "applier",
+    "agent_id": "a1",
+    "tool_name": "Bash",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_apply_patch",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "apply_patch",
+    "tool_input": {
+     "command": "*** Begin Patch\n*** Update File: /w/a.py\n@@\n-x\n+y\n*** Add File: /w/b.py\n+z\n*** End Patch"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "apply_patch",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a.py",
+     "/w/b.py"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_apply_patch_list",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "apply_patch",
+    "tool_input": {
+     "command": [
+      "*** Begin Patch",
+      "*** Update File: /w/a.py"
+     ]
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "apply_patch",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a.py"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_apply_patch_nonstr",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "apply_patch",
+    "tool_input": {
+     "command": 5
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "apply_patch",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_apply_patch_sub",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "apply_patch",
+    "tool_input": {
+     "command": "*** Begin Patch\n*** Update File: /w/a.py\n@@\n-x\n+y\n*** Add File: /w/b.py\n+z\n*** End Patch"
+    },
+    "agent_id": "a1",
+    "agent_type": "applier"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "applier",
+    "agent_id": "a1",
+    "tool_name": "apply_patch",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a.py",
+     "/w/b.py"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_spawn_agent",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "spawn_agent",
+    "tool_input": {
+     "agent_type": "executor",
+     "message": "[exec] do",
+     "task_name": "t"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "spawn_agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "executor",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": "t",
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_spawn_agent_msg_only",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "spawn_agent",
+    "tool_input": {
+     "agent_type": "worker",
+     "message": "hello"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "spawn_agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "worker",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": "hello",
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_spawn_agent_task_only",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "spawn_agent",
+    "tool_input": {
+     "agent_type": "worker",
+     "task_name": "[exec] x"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "spawn_agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "worker",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": "[exec] x",
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_spawn_agent_empty",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "spawn_agent",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "spawn_agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_collab_spawn_agent",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "collaborationspawn_agent",
+    "tool_input": {
+     "agent_type": "applier",
+     "message": "m"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "collaborationspawn_agent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "applier",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": "m",
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_Workflow",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Workflow",
+    "tool_input": {
+     "subagent_type": "executor"
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Workflow",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_wait_agent",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "wait_agent",
+    "tool_input": {
+     "targets": [
+      "a"
+     ]
+    }
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "wait_agent",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_unknown",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Frobnicate",
+    "tool_input": {}
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Frobnicate",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "pre_bad_input",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": "oops"
+   },
+   "expected": {
+    "host": "codex",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Bash",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "codex",
+   "name": "unknown_event",
+   "payload": {
+    "session_id": "s1",
+    "turn_id": "t1",
+    "cwd": "/w",
+    "hook_event_name": "SessionStart"
+   },
+   "expected": null
+  },
+  {
+   "host": "grok",
+   "name": "empty",
+   "payload": {},
+   "expected": null
+  },
+  {
+   "host": "grok",
+   "name": "prompt_plain",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "user_prompt_submit",
+    "prompt": "x"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "prompt_direct",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "user_prompt_submit",
+    "prompt": "x #direct"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": true,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "prompt_fast",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "user_prompt_submit",
+    "prompt": "#strict"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": "off",
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "prompt_sub",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "user_prompt_submit",
+    "prompt": "x",
+    "subagentType": "applier"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "prompt",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "applier",
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "subagent_start",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "subagent_start",
+    "subagentId": "sa1",
+    "subagentType": "executor"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "subagent_start",
+    "session_id": "s1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": "executor",
+    "agent_id": "sa1",
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "stop_end_turn",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "stop",
+    "reason": "end_turn",
+    "stopHookActive": false
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "stop",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": false,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "stop_end_turn_active",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "stop",
+    "reason": "end_turn",
+    "stopHookActive": true
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "stop",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": true,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "stop_other_reason",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "stop",
+    "reason": "tool_use"
+   },
+   "expected": null
+  },
+  {
+   "host": "grok",
+   "name": "stop_no_reason",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "stop"
+   },
+   "expected": null
+  },
+  {
+   "host": "grok",
+   "name": "stop_sub",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "stop",
+    "reason": "end_turn",
+    "subagentType": "applier"
+   },
+   "expected": null
+  },
+  {
+   "host": "grok",
+   "name": "post_tool_use",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "post_tool_use",
+    "toolName": "write"
+   },
+   "expected": null
+  },
+  {
+   "host": "grok",
+   "name": "pre_shell",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "run_terminal_command",
+    "toolInput": {
+     "command": "ls"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "run_terminal_command",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_shell_nonstr",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "run_terminal_command",
+    "toolInput": {
+     "command": 3
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "run_terminal_command",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_shell_nocommand",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "run_terminal_command",
+    "toolInput": {}
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "run_terminal_command",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_shell_sub",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "run_terminal_command",
+    "toolInput": {
+     "command": "ls"
+    },
+    "subagentType": "applier"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "applier",
+    "agent_id": null,
+    "tool_name": "run_terminal_command",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_search_replace",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "search_replace",
+    "toolInput": {
+     "file_path": "/w/a"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "search_replace",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_write",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "file_path": "/w/a"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_write_file",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write_file",
+    "toolInput": {
+     "file_path": "/w/a"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write_file",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "edit",
+    "toolInput": {
+     "file_path": "/w/a"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "edit",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_multi_edit",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "multi_edit",
+    "toolInput": {
+     "file_path": "/w/a"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "multi_edit",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_create_file",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "create_file",
+    "toolInput": {
+     "file_path": "/w/a"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "create_file",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_nopath",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "edit",
+    "toolInput": {}
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "edit",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_path_key",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "path": "/w/p"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/p"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_target_file",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "target_file": "/w/t"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/t"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_filePath",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "filePath": "/w/f"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/f"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_key_order",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "filePath": "/w/f",
+     "target_file": "/w/t",
+     "path": "/w/p",
+     "file_path": "/w/fp"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/fp"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_key_order2",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "filePath": "/w/f",
+     "target_file": "/w/t",
+     "path": "/w/p"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/p"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_key_order3",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "filePath": "/w/f",
+     "target_file": "/w/t"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/t"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_empty_first",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "file_path": "",
+     "path": "/w/p"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/p"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_edit_sub",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": {
+     "file_path": "/w/a"
+    },
+    "subagentType": "applier"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": true,
+    "role": "applier",
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_spawn_subagent",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "spawn_subagent",
+    "toolInput": {
+     "subagent_type": "executor",
+     "description": "[exec] d"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "spawn_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "executor",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": "[exec] d",
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_spawn_subagent_empty",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "spawn_subagent",
+    "toolInput": {}
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "spawn_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_read_file",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "read_file",
+    "toolInput": {
+     "path": "/a"
+    }
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "read_file",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_unknown",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "Frobnicate",
+    "toolInput": {}
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "Frobnicate",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_bad_input",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use",
+    "toolName": "write",
+    "toolInput": "oops"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "pre_no_tool",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "pre_tool_use"
+   },
+   "expected": {
+    "host": "grok",
+    "kind": "tool",
+    "session_id": "s1",
+    "turn_id": "p1",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "grok",
+   "name": "unknown_event",
+   "payload": {
+    "sessionId": "s1",
+    "promptId": "p1",
+    "cwd": "/w",
+    "hookEventName": "session_start"
+   },
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "empty_event_None",
+   "payload": {},
+   "event_name": null,
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "empty_event_SessionStart",
+   "payload": {},
+   "event_name": "SessionStart",
+   "expected": {
+    "host": "agy",
+    "kind": "session_start",
+    "session_id": null,
+    "turn_id": null,
+    "cwd": null,
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "empty_event_PreInvocation",
+   "payload": {},
+   "event_name": "PreInvocation",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "empty_event_PreToolUse",
+   "payload": {},
+   "event_name": "PreToolUse",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "empty_event_Stop",
+   "payload": {},
+   "event_name": "Stop",
+   "expected": {
+    "host": "agy",
+    "kind": "stop",
+    "session_id": null,
+    "turn_id": null,
+    "cwd": null,
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": false,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "empty_event_Bogus",
+   "payload": {},
+   "event_name": "Bogus",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "empty_event_",
+   "payload": {},
+   "event_name": "",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "session_start",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ]
+   },
+   "event_name": "SessionStart",
+   "expected": {
+    "host": "agy",
+    "kind": "session_start",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "session_start_cwd",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "cwd": "/c"
+   },
+   "event_name": "SessionStart",
+   "expected": {
+    "host": "agy",
+    "kind": "session_start",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/c",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "session_start_nows",
+   "payload": {
+    "conversationId": "c1"
+   },
+   "event_name": "SessionStart",
+   "expected": {
+    "host": "agy",
+    "kind": "session_start",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": null,
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "stop",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "fullyIdle": true
+   },
+   "event_name": "Stop",
+   "expected": {
+    "host": "agy",
+    "kind": "stop",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": false,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": true,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "stop_noidle",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ]
+   },
+   "event_name": "Stop",
+   "expected": {
+    "host": "agy",
+    "kind": "stop",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": false,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "preinv_0",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "invocationNum": 0,
+    "initialNumSteps": 4
+   },
+   "event_name": "PreInvocation",
+   "expected": {
+    "host": "agy",
+    "kind": "turn_boundary",
+    "session_id": "c1",
+    "turn_id": "c1:4",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "preinv_1",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "invocationNum": 1,
+    "initialNumSteps": 4
+   },
+   "event_name": "PreInvocation",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "preinv_bool",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "invocationNum": false,
+    "initialNumSteps": 4
+   },
+   "event_name": "PreInvocation",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "preinv_nosteps",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "invocationNum": 0
+   },
+   "event_name": "PreInvocation",
+   "expected": {
+    "host": "agy",
+    "kind": "turn_boundary",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "preinv_noevent_shape",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "invocationNum": 0,
+    "initialNumSteps": 2
+   },
+   "event_name": null,
+   "expected": {
+    "host": "agy",
+    "kind": "turn_boundary",
+    "session_id": "c1",
+    "turn_id": "c1:2",
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": null,
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": null,
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "preinv_noevent_nothing",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ]
+   },
+   "event_name": null,
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "tool_write",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "write_to_file",
+     "args": {
+      "TargetFile": "/w/a"
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write_to_file",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_write_noevent",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "write_to_file",
+     "args": {
+      "TargetFile": "/w/a"
+     }
+    }
+   },
+   "event_name": null,
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write_to_file",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_write_nopath",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "write_to_file",
+     "args": {}
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "write_to_file",
+    "tool_kind": "edit",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_replace",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "replace_file_content",
+     "args": {
+      "TargetFile": "/w/a"
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "replace_file_content",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_multi_replace",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "multi_replace_file_content",
+     "args": {
+      "TargetFile": "/w/a"
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "multi_replace_file_content",
+    "tool_kind": "edit",
+    "paths": [
+     "/w/a"
+    ],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_run",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "run_command",
+     "args": {
+      "CommandLine": "ls",
+      "Cwd": "/x"
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/x",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "run_command",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_run_nocwd",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "run_command",
+     "args": {
+      "CommandLine": "ls"
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "run_command",
+    "tool_kind": "shell",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": "ls",
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_run_nonstr",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "run_command",
+     "args": {
+      "CommandLine": 1
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "run_command",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_view",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "view_file",
+     "args": {
+      "AbsolutePath": "/a"
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "view_file",
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_noname",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "args": {}
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": null,
+    "tool_kind": "other",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": null,
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": null
+   }
+  },
+  {
+   "host": "agy",
+   "name": "tool_not_dict",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": "x"
+   },
+   "event_name": "PreToolUse",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "tool_no_call",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ]
+   },
+   "event_name": "PreToolUse",
+   "expected": null
+  },
+  {
+   "host": "agy",
+   "name": "invoke_one",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {
+      "Subagents": [
+       {
+        "TypeName": "executor",
+        "Role": "[exec] do"
+       }
+      ]
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "executor",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [
+     "executor"
+    ],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": [
+     "[exec] do"
+    ]
+   }
+  },
+  {
+   "host": "agy",
+   "name": "invoke_two_write",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {
+      "Subagents": [
+       {
+        "TypeName": "executor",
+        "Role": "[exec] do"
+       },
+       {
+        "TypeName": "applier",
+        "Role": "[mech] x"
+       }
+      ]
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "executor",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [
+     "executor",
+     "applier"
+    ],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": [
+     "[exec] do",
+     "[mech] x"
+    ]
+   }
+  },
+  {
+   "host": "agy",
+   "name": "invoke_mixed",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {
+      "Subagents": [
+       {
+        "TypeName": "executor",
+        "Role": "[exec] do"
+       },
+       {
+        "TypeName": "scout",
+        "Role": "look"
+       }
+      ]
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "scout",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [
+     "executor",
+     "scout"
+    ],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": [
+     "[exec] do",
+     "look"
+    ]
+   }
+  },
+  {
+   "host": "agy",
+   "name": "invoke_role_only",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {
+      "Subagents": [
+       {
+        "Role": "executor"
+       }
+      ]
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": "executor",
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [
+     "executor"
+    ],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": [
+     "executor"
+    ]
+   }
+  },
+  {
+   "host": "agy",
+   "name": "invoke_unnamed",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {
+      "Subagents": [
+       {}
+      ]
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [
+     ""
+    ],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": [
+     null
+    ]
+   }
+  },
+  {
+   "host": "agy",
+   "name": "invoke_empty",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {
+      "Subagents": []
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": []
+   }
+  },
+  {
+   "host": "agy",
+   "name": "invoke_noargs",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {}
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": []
+   }
+  },
+  {
+   "host": "agy",
+   "name": "invoke_nonlist",
+   "payload": {
+    "conversationId": "c1",
+    "workspacePaths": [
+     "/w",
+     "/w2"
+    ],
+    "toolCall": {
+     "name": "invoke_subagent",
+     "args": {
+      "Subagents": "x"
+     }
+    }
+   },
+   "event_name": "PreToolUse",
+   "expected": {
+    "host": "agy",
+    "kind": "tool",
+    "session_id": "c1",
+    "turn_id": null,
+    "cwd": "/w",
+    "is_subagent": false,
+    "role": null,
+    "agent_id": null,
+    "tool_name": "invoke_subagent",
+    "tool_kind": "dispatch",
+    "paths": [],
+    "dispatched_role": null,
+    "direct": false,
+    "fast": null,
+    "command": null,
+    "stop_hook_active": null,
+    "workspace": "/w\n/w2",
+    "dispatched_roles": [],
+    "fully_idle": null,
+    "dispatch_desc": null,
+    "dispatch_descs": []
+   }
+  }
+ ]
+}

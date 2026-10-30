@@ -12,20 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import render  # noqa: E402
 
-GOLDEN = ROOT / "tests" / "golden" / "codex"
 RENDER = ROOT / "tools" / "render.py"
 POLICY = "agents-md.orchestration.md"
 MIRROR = render.MIRRORS["codex"][POLICY]
 # binding [policy.mirrors] 另外鏡像 on-demand extensions 文件到 plugin reference。
-EXT_MIRROR = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
-
-
-def golden_files() -> dict[str, bytes]:
-    return {
-        p.relative_to(GOLDEN).as_posix(): p.read_bytes()
-        for p in GOLDEN.rglob("*")
-        if p.is_file() and p.name != "SOURCE"
-    }
+EXT_MIRROR = "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
 
 
 def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
@@ -40,6 +31,7 @@ def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
 
 def make_root(root: Path) -> None:
     shutil.copytree(ROOT / "core", root / "core")
+    shutil.copytree(ROOT / "prompts", root / "prompts")
     shutil.copytree(ROOT / "hosts" / "codex", root / "hosts" / "codex")
     shutil.copytree(ROOT / "templates", root / "templates")
     (root / MIRROR).parent.mkdir(parents=True)
@@ -47,23 +39,7 @@ def make_root(root: Path) -> None:
     shutil.copyfile(ROOT / EXT_MIRROR, root / EXT_MIRROR)
 
 
-class GoldenTests(unittest.TestCase):
-    def test_render_is_byte_identical_to_golden(self) -> None:
-        golden = golden_files()
-        self.assertEqual(len(golden), 15)
-        rendered = render.RENDERERS["codex"](ROOT)
-        self.assertEqual(sorted(rendered), sorted(golden))
-        for rel, data in golden.items():
-            self.assertEqual(rendered[rel], data, rel)
-
-    def test_golden_records_source(self) -> None:
-        self.assertRegex((GOLDEN / "SOURCE").read_text(encoding="utf-8"), r"(?m)^ref: shoal@[0-9a-f]{7}$")
-
-    def test_committed_templates_match_golden(self) -> None:
-        dist = ROOT / "templates"
-        actual = {p.relative_to(dist).as_posix(): p.read_bytes() for p in dist.rglob("*") if p.is_file()}
-        self.assertEqual(actual, golden_files())
-
+class MirrorTests(unittest.TestCase):
     def test_plugin_policy_mirror_is_rendered(self) -> None:
         self.assertEqual((ROOT / MIRROR).read_bytes(), render.RENDERERS["codex"](ROOT)[POLICY])
 
@@ -107,10 +83,10 @@ class CheckCommandTests(unittest.TestCase):
         self.assertIn(f"缺少: {MIRROR}", run_render(self.root, "--check").stderr)
 
     def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
-        # executor 是 core 模式：來源是 core/contracts；sol-executor 是 legacy：來源是 src/agents
-        contract = self.root / "core" / "contracts" / "executor.toml"
+        # executor 是 core 模式：來源是 prompts/roles；sol-executor 是 legacy：來源是 src/agents
+        contract = self.root / "prompts" / "roles" / "executor.md"
         contract.write_text(contract.read_text(encoding="utf-8")
-                            + '\n[[clause]]\nid = "extra"\nkind = "procedure"\ntext = "extra line"\n',
+                            + '\n<!-- clause: extra kind=procedure -->\nextra line\n',
                             encoding="utf-8", newline="\n")
         result = run_render(self.root, "--check")
         self.assertEqual(result.returncode, 1)
@@ -158,7 +134,7 @@ class BindingTests(unittest.TestCase):
         self.assert_rejected("scout")
 
     def test_role_override_cannot_make_read_only_role_writable(self) -> None:
-        self.edit(self.binding, 'effort = "low"\ndescription = "Read-only reconnaissance', 'effort = "low"\nsandbox_mode = "workspace-write"\ndescription = "Read-only reconnaissance')
+        self.edit(self.binding, '[roles.scout]\neffort = "low"', '[roles.scout]\neffort = "low"\nsandbox_mode = "workspace-write"')
         self.assert_rejected("scout")
 
     def test_write_role_cannot_be_read_only(self) -> None:
@@ -181,8 +157,8 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
 
     def test_developer_instructions_cannot_break_the_toml_string(self) -> None:
-        contract = self.root / "core" / "contracts" / "scout.toml"
-        contract.write_text("[[clause]]\nid = \"bad\"\nkind = \"procedure\"\ntext = \'\'\'bad \"\"\" body\'\'\'\n",
+        contract = self.root / "prompts" / "roles" / "scout.md"
+        contract.write_text('<!-- clause: bad kind=procedure -->\nbad """ body\n',
                             encoding="utf-8", newline="\n")
         self.assert_rejected("scout")
 

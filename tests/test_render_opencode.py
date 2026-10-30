@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
-import tempfile
 import unittest
-from pathlib import Path
 
 import render_helpers as rh
 from render_helpers import ROOT, render
@@ -14,10 +9,8 @@ from render_helpers import ROOT, render
 
 class OpencodeRenderTests(rh.HostRenderCase):
     HOST = "opencode"
-    GOLDEN_COUNT = 11
-    SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.md"
-    SRC_FILE = "../frames/executor.md"  # core 模式下 src/roles 不參與 render，改改外框（路徑相對 src/）
+    SRC_FILE = ""  # core 模式下 hosts/opencode/src 已不存在；改來源的測試覆寫成改 prompts/hosts/opencode/frames/executor.md
 
     def test_every_core_role_is_rendered_and_none_is_omitted(self) -> None:
         rendered = render.RENDERERS["opencode"](ROOT)
@@ -84,40 +77,16 @@ class OpencodeRenderTests(rh.HostRenderCase):
         self.edit(self.binding, 'supported = ["tools", "streaming"]', 'supported = ["tools"]')
         self.assert_rejected("streaming")
 
+    def test_check_fails_when_source_changes_without_rewriting_dist(self) -> None:
+        frame = self.root / "prompts" / "hosts" / "opencode" / "frames" / "executor.md"
+        frame.write_text(frame.read_text(encoding="utf-8") + "extra line\n", encoding="utf-8", newline="\n")
+        self.assertEqual(self.check().returncode, 1)
+
     def test_stray_role_md_is_rejected(self) -> None:
-        (self.root / "hosts" / "opencode" / "src" / "roles" / "ghost.md").write_text("x\n", encoding="utf-8", newline="\n")
+        ghost = self.root / "hosts" / "opencode" / "src" / "roles" / "ghost.md"
+        ghost.parent.mkdir(parents=True, exist_ok=True)
+        ghost.write_text("x\n", encoding="utf-8", newline="\n")
         self.assert_rejected("ghost.md")
-
-
-class RefreshGoldenTests(unittest.TestCase):
-    def test_imports_two_source_repos(self) -> None:
-        def make_repo(path: Path, files: dict[str, bytes]) -> str:
-            for rel, data in files.items():
-                (path / rel).parent.mkdir(parents=True, exist_ok=True)
-                (path / rel).write_bytes(data)
-            git = ["git", "-c", "core.autocrlf=false", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t"]
-            subprocess.run([*git, "init", "-q"], check=True)
-            subprocess.run([*git, "add", "."], check=True)
-            subprocess.run([*git, "commit", "-qm", "x"], check=True)
-            return subprocess.run([*git, "rev-parse", "--short", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            sha1 = make_repo(base / "oc", {"roles/scout.md": b"scout\n"})
-            sha2 = make_repo(base / "dot", {".opencode/shoal/catalog.json": b"{}\n", ".opencode/shoal/routing.json": b"[]\n",
-                                            ".opencode/shoal/pi-routing.json": b"pi\n"})
-            args = [sys.executable, str(ROOT / "tools" / "refresh_golden.py"), "--host", "opencode",
-                    "--from", str(base / "oc"), "--ref", sha1, "--root", str(base / "root")]
-            self.assertEqual(subprocess.run(args, capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"}).returncode, 2)  # 缺 --extra-*
-            result = subprocess.run([*args, "--extra-from", str(base / "dot"), "--extra-ref", sha2], capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-            self.assertEqual(result.returncode, 0, result.stderr)
-            golden = base / "root" / "tests" / "golden" / "opencode"
-            self.assertEqual((golden / "roles" / "scout.md").read_bytes(), b"scout\n")
-            self.assertEqual((golden / "catalog.json").read_bytes(), b"{}\n")
-            self.assertFalse((golden / "pi-routing.json").exists())
-            source = (golden / "SOURCE").read_text()
-            self.assertIn(f"ref: {sha1}", source)
-            self.assertIn(f"ref: {sha2}", source)
 
 
 if __name__ == "__main__":

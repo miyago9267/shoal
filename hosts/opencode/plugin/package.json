@@ -1,6 +1,6 @@
 {
   "name": "shoal-opencode",
-  "version": "3.12.0-beta",
+  "version": "3.13.0-beta",
   "description": "Role-based routing primitives and an explicit OpenCode plugin.",
   "license": "MIT",
   "type": "module",

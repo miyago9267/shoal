@@ -5,10 +5,8 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "install/**"
-      - "bench/**"
       - "hooks/**"
       - "templates/**"
-      - "plugin/**"
       - "tests/**"
       - "tools/**"
       - "core/**"
@@ -18,6 +16,10 @@ on:
       - "CHANGELOG.md"
       - "hosts/claude/**"
       - "hosts/codex/**"
+      - "hosts/agy/**"
+      - "hosts/grok/**"
+      - "hosts/opencode/**"
+      - "prompts/**"
       - "docs/README.*.md"
       - "docs/specs/dispatch-verification/**"
       - "docs/specs/prompt-document-lock/**"
@@ -29,10 +31,8 @@ on:
       - "v*"
     paths:
       - "install/**"
-      - "bench/**"
       - "hooks/**"
       - "templates/**"
-      - "plugin/**"
       - "tests/**"
       - "tools/**"
       - "core/**"
@@ -42,6 +42,10 @@ on:
       - "CHANGELOG.md"
       - "hosts/claude/**"
       - "hosts/codex/**"
+      - "hosts/agy/**"
+      - "hosts/grok/**"
+      - "hosts/opencode/**"
+      - "prompts/**"
       - "docs/README.*.md"
       - "docs/specs/dispatch-verification/**"
       - "docs/specs/prompt-document-lock/**"
@@ -81,6 +85,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      # 輸出與 render 結果不同時直接指名檔案；不到 5 秒，先於整套測試之外單獨報錯。
+      - name: Render check for all hosts
+        shell: bash
+        run: |
+          for host in claude codex agy grok opencode claude-plugin; do
+            python tools/render.py --host "${host}" --check
+          done
+
       # PR：ubuntu 跑完整套件，macOS / Windows 只跑跨平台敏感子集（清單集中在
       # tests/ci_cross_platform.txt）。push main、tag、nightly 三平台都跑完整套件。
       - name: Run unit tests (full)
@@ -118,7 +130,7 @@ jobs:
           sys.exit("dry-run failed: " + ", ".join(failed) if failed else 0)
 
       - name: Check Python syntax
-        run: python -m py_compile tools/shoal_install.py tools/shoal_update.py tools/opencode_global.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py bench/evaluate_dispatch.py install/validate_prompt_lock.py
+        run: python -m py_compile tools/shoal_install.py tools/shoal_update.py tools/opencode_global.py hooks/shoal_autoroute_gate.py install/install.py install/probe_hybrid_runtime.py install/validate_agents.py install/verify_dispatch.py install/validate_prompt_lock.py
 
       # Renewal 綠燈路徑：只有 PR 帶 label lock-renewal，或 push 到 main 的 head
       # commit message 含一行 "Lock-Renewal: approved"，才放寬 LOCK.json 的變動。

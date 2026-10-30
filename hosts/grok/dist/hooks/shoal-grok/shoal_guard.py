@@ -1,80 +1,14 @@
 #!/usr/bin/env python3
-"""Shoal dispatch guard: host-neutral PreToolUse guard for shoal dispatch rules.
+"""Shoal dispatch guard: host-neutral hook guard for shoal dispatch rules (claude, codex, grok, agy).
 
-One script serves claude, codex, grok and agy.  Each host gets a small adapter that
-normalizes the hook payload into an event; the core decides on the event only, so a
-TypeScript port can replay tests/fixtures/guard_vectors.json against the same logic.
+    python3 hooks/shoal_guard.py --host {claude,codex,grok,agy} [--plugin]   (JSON on stdin; SHOAL_GUARD_HOST if no --host)
 
-    python3 hooks/shoal_guard.py --host {claude,codex,grok,agy} [--plugin]   (JSON on stdin)
-
---plugin is set only by the Claude plugin's hooks.json.  When the user settings already
-register the tools/install_hooks.py guard (and its script exists) the plugin copy does
-nothing, so each event is judged once; in every other case it runs normally.
-
-SHOAL_GUARD_HOST supplies the host when --host is absent (grok runs the hook path
-directly and sets it through the hook's env map).
-
-Always exits 0 and fails open: any exception means "no opinion".  The guard is a
-policy nudge, not a security boundary (see docs/specs/dispatch-enforcement/SPEC.md).
-
-Modes (SHOAL_GUARD): enforce | shadow | off.  The hard rules (LEAF, VERIFY_EDIT) deny on every
-host.  Main-session rules: R2 (file count) only advises, on claude/codex in enforce with a
-one-per-turn `additionalContext` reminder.  G4 (claude only) denies main's background shell (`Bash`
-with run_in_background); it is released for one turn by a standalone `#direct` token in the user's
-prompt, or for good by SHOAL_GUARD_DIRECT=1.
-Fast mode (a standalone `#fast` in the prompt until `#strict`, or SHOAL_GUARD_FAST=1) only marks the session as the light
-lane (recorded in state and the log); it does not release main edits, only `#direct` does.
-
-The main-session edit rule (R1 for edit tools, G5 for a foreground `Bash` that literally writes a
-file, see shell_write_targets) is chosen by SHOAL_GUARD_R1 (docs/specs/guard-declared-direct):
-  strict      (default on claude, codex, grok and agy) deny unless this turn has a dispatched write role,
-              `#direct` / SHOAL_GUARD_DIRECT=1, or the target is exempt.  A `: shoal-direct` command is an
-              ordinary no-op here and a classification file has no effect (docs/specs/guard-declared-direct,
-              M9).  The only exits are dispatch and the user's `#direct`.
-  declare     (3.2.x default) deny unless this turn has a dispatched write role, `#direct` /
-              SHOAL_GUARD_DIRECT=1, a declaration (a shell call that is exactly
-              `: shoal-direct <reason>`, see parse_declaration) or a classification file whose role
-              is `parent_local`.  No classification file, or any other role, has no effect.
-  classified  the v3.1.0 rule: deny (claude) or advise (other hosts) only when the turn is
-              classified judgment/mechanical by the optional classification file.  Selectable with
-              SHOAL_GUARD_R1=classified; the default on no shipped host (an unknown host falls back to it).
-  off         no R1/G5; the hard rules, G4 and R2 are untouched.
-
-"A write-level role was dispatched" (the unlock in every mode) means, on claude, codex and grok, that the role has
-started (M11, E3, E4): the dispatch call records a pending write dispatch and the start event releases it
-(claude and codex: SubagentStart of the same session, codex once per agent_id and its subagent's first edit or shell
-call also counts, see START_UNLOCK_HOSTS; grok: its `subagent_start`; agy: the SessionStart of the new subagent
-conversation).  Every host this script serves is in START_UNLOCK_HOSTS, so none unlocks at the dispatch call itself.
-
-Subagent write rule E1 (docs/specs/guard-every-gate), switch SHOAL_GUARD_SUBAGENT_WRITE: `off` leaves the subagent rules exactly as they were; `on` (the default on claude, codex, grok and agy) makes a subagent that is not a shoal write-capable role (an edit
-tool or a literal shell write, as in G5, outside the exempt paths) get E1: deny in enforce, `would_deny` in shadow.
-Exits: dispatch a shoal write role, put the agent type in SHOAL_GUARD_WRITE_AGENTS (comma-separated, exact match on the
-raw type or the type without a `shoal:` prefix), or SHOAL_GUARD_DIRECT=1.  On claude a user's `#direct`
-also releases it: the subagent event carries the main session's session_id and the prompt_id of the turn that started
-it, and the prompt event keeps the last DIRECT_TURNS_MAX turn ids that carried `#direct` in the state file
-(`direct_turns`), so a background Workflow child that edits after the main session moved on is still judged by the turn
-that launched it.  Codex: a subagent has its own turn id, so the SubagentStart event of an agent records its agent_id when main's
-current turn carried `#direct` (`direct_agents`, the last AGENTS_MAX) and that agent is released.  Other hosts have no
-such payload evidence: not released (agy has no prompt text at all).  Grok: a subagent's events carry its own session id, so `subagent_start` (sent
-under main's session id, with the subagent's id and type) records subagent id -> {main session, role, whether main's
-turn carried `#direct`} in `state/grok.agents.json` (the last GROK_AGENTS_MAX); a tool event whose session id is in that
-file is a subagent call of that role, and the recorded flag releases it.  A subagent event with a `subagentType` and no
-record is still judged by its role, never released by `#direct`.  Verify-level roles keep VERIFY_EDIT.
-
-Completion check (docs/specs/shared-rules B2-B4).  Per turn the guard records `changed` (a main-session edit or
-shell write was allowed and is not exempt, or a write-level role counts as dispatched by the rule above) and
-`checked` (after the latest change, a verify-level role was dispatched or started, or main or a write-level role
-ran a foreground shell call that is neither a file write nor a declaration; that role's own edit or shell write
-unchecks the turn again; on claude and codex that call counts at its PostToolUse, i.e. when
-it really ran, and its PreToolUse counts only until the session has seen its first PostToolUse, see POST_HOSTS).  On claude and codex the `Stop` event is blocked once per
-turn when `changed` is set, `checked` is not, no write role of this turn may still be running (`role_running`,
-below), `stop_hook_active` is exactly false, the mode is enforce and SHOAL_GUARD_STOP is not `off`; everything else (other turn, bad payload, unreadable state, shadow, off) fails
-open.  Grok's `stop` event (only `reason == end_turn`) is attached, but its `{"decision": "block"}` output has not been
-exercised on the real host: it logs `would_block` and blocks only with SHOAL_GUARD_STOP=enforce (in enforce mode).
-Other hosts never block: their adapters receive no end-of-turn event that carries a verified payload.
-Running role (`role_running`, claude only): no registered event reports a role's hand-back, so the conservative variant applies: a
-write role's start sets the flag, the first Stop after it skips the block once and clears it, and any observed edit
-(main's or the role's) clears it too, so the next Stop after the hand-back is judged by the normal rule.
+Per-host adapters normalize the payload into an event; the core decides on the event only, so the TypeScript port
+replays tests/fixtures/guard_vectors.json against the same logic.  --plugin (the Claude plugin's hooks.json) does nothing
+when the user settings already register the tools/install_hooks.py guard.  Always exits 0 and fails open: a policy
+nudge, not a security boundary.  Modes, rules and switches (SHOAL_GUARD, SHOAL_GUARD_R1, SHOAL_GUARD_SUBAGENT_WRITE,
+SHOAL_GUARD_STOP, `#direct`, `#fast`) are specified in docs/specs/dispatch-enforcement, docs/specs/guard-declared-direct,
+docs/specs/guard-every-gate and docs/specs/shared-rules (B2-B4 completion check).
 """
 
 from __future__ import annotations
@@ -91,7 +25,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 try:
     import fcntl
@@ -110,90 +44,76 @@ MAX_STATE_BYTES = 64 * 1024
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 LOCK_WAIT_SECONDS = 2.0
 
-# Default mode per host.  E6: claude/codex/grok enforce (grok: tests/fixtures/grok_guard_event_shapes.json shows deny is
-# honoured for main and subagent writes); agy enforces too (tests/fixtures/agy_guard_event_shapes.json: deny is honoured
-# for main and subagent writes, and a subagent runs in its own conversation, which the guard records, see CONVERSATION_HOSTS).
-HOST_DEFAULT_MODE = {
-    "claude": "enforce",
-    "codex": "enforce",
-    "grok": "enforce",
-    "agy": "enforce",
+# Per-host table: default mode (None: the host has no Python guard entry) and the traits it has.  Each legacy
+# `*_HOSTS` name below is derived from it; the traits (fixture evidence in parentheses):
+#   role_aware        the payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
+#   stop              `Stop` payload recorded (tests/fixtures/stop_payload_shapes.json) and blocking accepted (B4);
+#                     SHOAL_GUARD_STOP switches the check off here and has no effect elsewhere.
+#   stop_shadow       stop defaults to `would_block` only, until SHOAL_GUARD_STOP=enforce (block output unexercised).
+#   post              registration carries PostToolUse for the shell tool: `checked` counts a call that really ran
+#                     (guard-every-gate E8); PreToolUse is the fallback until the session's first PostToolUse (`post_seen`).
+#   role_running      a write dispatch returns at once while the role runs (claude's async Agent, B3).
+#   conversation      a subagent runs in its own conversation; main vs subagent is inferred from event order and kept
+#                     in `state/agy.conversations.json` (_Guard.agy_route).  Not exact under concurrent dispatch.
+#   prompt_direct     the prompt event carries the user's text, so `#direct` exists (agy's PreInvocation has none).
+#   composed_turn     turn ids are `conversation:invocation`; the tool payload may lack one.
+#   state_turn        the tool payload may lack a turn id (grok: only user_prompt_submit has promptId; claude after
+#                     `/login` resumes without prompt_id): the state turn is used.
+#   advise_output     PreToolUse accepts a non-blocking `additionalContext` (the R2 reminder); elsewhere log only.
+#   prompt_keep       the prompt event may lack a turn id: it clears `dispatched`, keeps turn and edits (M1).
+#   deny_main         R1 denies (G1), main's background shell is denied (G4), a shell file write is judged by R1 (G5).
+#   declare           SHOAL_GUARD_R1 `declare` / `strict` are selectable (the adapter delivers main's shell calls;
+#                     opencode is the TypeScript port, listed so both replay the same vectors); others: `classified`.
+#   start_unlock      a write dispatch unlocks only once the role started (M11): the dispatch call records a pending
+#                     dispatch, the start event releases it (claude SubagentStart, tests/fixtures/
+#                     claude_subagent_start_shape.json; codex SubagentStart or the role's first agent_id call,
+#                     `started_agents`; grok `subagent_start`; agy SessionStart of a new conversation).
+#   subagent_write_on SHOAL_GUARD_SUBAGENT_WRITE defaults to `on` (E1, docs/specs/guard-every-gate).
+#   subagent_direct   a subagent's events can be traced to main's turn, so the user's `#direct` releases it.
+#   mapped            a subagent's events carry its own session id; `subagent_start` records the mapping (grok).
+#   agent_keyed       a subagent has its own turn id: `#direct` is looked up by agent_id (`direct_agents`, codex).
+HOSTS = {
+    "claude": ("enforce", "role_aware stop post role_running prompt_direct state_turn advise_output prompt_keep "
+                          "deny_main declare start_unlock subagent_write_on subagent_direct"),
+    "codex": ("enforce", "role_aware stop post prompt_direct advise_output declare start_unlock subagent_write_on "
+                         "subagent_direct agent_keyed"),
+    "grok": ("enforce", "role_aware stop stop_shadow prompt_direct state_turn declare start_unlock subagent_write_on "
+                        "subagent_direct mapped"),
+    "agy": ("enforce", "stop stop_shadow conversation composed_turn state_turn declare start_unlock subagent_write_on"),
+    "opencode": (None, "prompt_direct declare"),
 }
-# Hosts whose payload identifies the calling role: LEAF / VERIFY_EDIT apply (spec R6).
-ROLE_AWARE_HOSTS = frozenset({"claude", "codex", "grok"})
-# Hosts whose `Stop` payload is recorded (tests/fixtures/stop_payload_shapes.json) and whose hook accepts
-# `{"decision": "block", "reason": ...}`: only they block an unverified completion (B4).  grok and agy record a
-# `would_block` only (STOP_SHADOW_DEFAULT_HOSTS); opencode has no recorded end-of-turn payload for the main session, so
-# it never blocks.  SHOAL_GUARD_STOP switches the check off on these hosts and has no effect elsewhere.  Grok has the payload (tests/fixtures/grok_guard_event_shapes.json)
-# but its block output is not yet exercised: its default is shadow (`would_block` only) until SHOAL_GUARD_STOP=enforce.
-STOP_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
-# Hosts whose registration carries PostToolUse for the shell tool (claude plugin / settings.json, codex shoal-dispatch-guard-v1).
-# There `checked` is set by a shell call that really ran (docs/specs/guard-every-gate E8); PreToolUse only counts as the
-# fallback until the first PostToolUse of the session arrives (state `post_seen`), because the guard cannot read whether
-# the user has approved the new hook (Codex) or restarted onto the new registration (Claude).
-POST_HOSTS = frozenset({"claude", "codex"})
-# B3: hosts whose write dispatch returns at once while the role runs (claude's async Agent); see `role_running`.
-ROLE_RUNNING_HOSTS = frozenset({"claude"})
-STOP_SHADOW_DEFAULT_HOSTS = frozenset({"grok", "agy"})
-# agy (tests/fixtures/agy_guard_event_shapes.json): the payload names no role and no parent, but a subagent runs in its OWN
-# conversation (new conversationId, announced by a `SessionStart`).  The guard infers main vs subagent from the order of
-# events and keeps it in `state/agy.conversations.json`; see _Guard.agy_route.  Nothing here is exact: two sessions
-# dispatching at the same moment in one workspace can be confused, and a mixed dispatch leaves the class unknown.
-CONVERSATION_HOSTS = frozenset({"agy"})
+
+
+def _hosts_with(trait: str) -> "frozenset[str]":
+    return frozenset(host for host, (_, traits) in HOSTS.items() if trait in traits.split())
+
+
+HOST_DEFAULT_MODE = {host: mode for host, (mode, _) in HOSTS.items() if mode is not None}
+ROLE_AWARE_HOSTS = _hosts_with("role_aware")
+STOP_HOSTS = _hosts_with("stop")
+STOP_SHADOW_DEFAULT_HOSTS = _hosts_with("stop_shadow")
+POST_HOSTS = _hosts_with("post")
+ROLE_RUNNING_HOSTS = _hosts_with("role_running")
+CONVERSATION_HOSTS = _hosts_with("conversation")
+PROMPT_DIRECT_HOSTS = _hosts_with("prompt_direct")
+COMPOSED_TURN_HOSTS = _hosts_with("composed_turn")
+STATE_TURN_HOSTS = _hosts_with("state_turn")
+ADVISE_OUTPUT_HOSTS = _hosts_with("advise_output")
+PROMPT_KEEP_HOSTS = _hosts_with("prompt_keep")
+DENY_MAIN_HOSTS = _hosts_with("deny_main")
+DECLARE_HOSTS = _hosts_with("declare")
+START_UNLOCK_HOSTS = _hosts_with("start_unlock")
+SUBAGENT_WRITE_DEFAULT_ON_HOSTS = _hosts_with("subagent_write_on")
+SUBAGENT_DIRECT_HOSTS = _hosts_with("subagent_direct")
+MAPPED_HOSTS = _hosts_with("mapped")
+AGENT_KEYED_HOSTS = _hosts_with("agent_keyed")
+
 AGY_RECORD_FILE = "agy.conversations"  # state/<this>.json; not a valid id (dot), so it never collides with a session
 AGY_RECORD_MAX = 64
 AGY_PENDING_TTL = 600.0  # seconds a dispatch waits for its subagent's SessionStart
 AGY_EVENTS = frozenset({"SessionStart", "PreInvocation", "PreToolUse", "Stop"})
-# Hosts whose prompt event carries the user's text, so that `#direct` exists.  agy's PreInvocation carries none.
-PROMPT_DIRECT_HOSTS = frozenset({"claude", "codex", "grok", "opencode"})
-# agy turn ids are composed `conversation:invocation`; its tool payload may not carry one.
-COMPOSED_TURN_HOSTS = frozenset({"agy"})
-# Hosts whose tool payload may lack a turn id (grok: only user_prompt_submit has promptId; claude
-# after `/login` resumes without prompt_id); use the state turn.
-STATE_TURN_HOSTS = frozenset({"agy", "grok", "claude"})
-# Hosts whose PreToolUse accepts a non-blocking `additionalContext`: only they print the advise
-# reminder.  grok, agy (and opencode in the TS port) have no verified equivalent: log only.
-ADVISE_OUTPUT_HOSTS = frozenset({"claude", "codex"})
-# Hosts whose prompt event may lack a turn id: it clears `dispatched` and keeps turn and edits (M1).
-PROMPT_KEEP_HOSTS = frozenset({"claude"})
-# Hosts where R1 denies (claude only, G1), where main's background shell is denied (G4) and where a
-# shell command that writes a file is judged by R1 (G5).
-DENY_MAIN_HOSTS = frozenset({"claude"})
-# SHOAL_GUARD_R1 (main-session edit rule).  `declare` needs a way to declare, so it is selectable only on
-# hosts whose adapter delivers main's shell calls to the guard: claude's `Bash`, since 3.2.1 codex's
-# `Bash` (recorded payload, docs/specs/guard-declared-direct/PROGRESS.md) and the OpenCode adapter's `bash`
-# (run by the TypeScript port; listed here so both implementations replay the same vectors).  Any other value falls back to
-# the host default; every other host keeps the v3.1.0 behaviour (`classified`).  `strict` (3.3.0) needs the
-# same events (edit tools plus main's shell calls), so it is selectable on the same hosts and is their default.
-DECLARE_HOSTS = frozenset({"claude", "codex", "opencode", "grok", "agy"})
-# Hosts where "a write-level role was dispatched" unlocks only once the role has actually started (M11):
-# the PreToolUse of the dispatch call records a pending write dispatch and the SubagentStart event of the
-# same session releases it.  Claude's SubagentStart payload (session_id equal to main's, agent_id, agent_type,
-# prompt_id) is recorded in tests/fixtures/claude_subagent_start_shape.json.  Grok's `subagent_start` and agy's
-# SessionStart of a new conversation are the start events there.  A host outside this set would unlock at the dispatch
-# call itself (none ships); without a start event a pending dispatch would never be released.  The registration (plugin hooks.json, install_hooks.py) and this script ship
-# together; a Claude install whose registration lacks SubagentStart has no start event and would stay locked.
-START_UNLOCK_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
-# Codex (docs/specs/guard-every-gate E3; tests/fixtures/codex_subagent_tool_shapes.json): SubagentStart carries the new
-# agent's agent_id and agent_type with the main session's session_id, and fires only when the role really started (a
-# spawn of an unknown agent_type fires none).  The registration is a separate hook group that the user approves in
-# `/hooks`; until then no start event arrives.  So the first tool call of a write-level role that carries an agent_id is
-# start evidence as well (it needs only the PreToolUse registration that already exists): each agent_id releases at
-# most one pending dispatch, whichever of the two arrives first (`started_agents`).
-# E1 (docs/specs/guard-every-gate): hosts where SHOAL_GUARD_SUBAGENT_WRITE defaults to `on`, and hosts whose
-# subagent PreToolUse carries the main session's session_id and the prompt_id of the turn that started it
-# (claude: tests/fixtures/claude_subagent_tool_shapes.json), so the user's `#direct` can release a subagent.
-SUBAGENT_WRITE_DEFAULT_ON_HOSTS = frozenset({"claude", "codex", "grok", "agy"})
-SUBAGENT_DIRECT_HOSTS = frozenset({"claude", "codex", "grok"})
-# Grok (tests/fixtures/grok_guard_event_shapes.json): a subagent's tool events carry its OWN session id (= the subagentId
-# of the `subagent_start` event, which is sent under main's session id).  `subagent_start` records the mapping.
-MAPPED_HOSTS = frozenset({"grok"})
 GROK_AGENTS_MAX = 64
 GROK_AGENTS_FILE = "grok.agents"  # state/<this>.json; not a valid id (no dots), so it never collides with a session
-# Codex: a subagent runs in its own turn (turn_id differs from main's, constant for that agent), so `#direct` cannot be
-# looked up by turn.  SubagentStart records the agent_id as released when main's current turn carried `#direct`
-# (`direct_agents`); the subagent's later events are judged by their agent_id.
-AGENT_KEYED_HOSTS = frozenset({"codex"})
 AGENTS_MAX = 32
 # The state file remembers this many most recent turn ids that carried `#direct`.
 DIRECT_TURNS_MAX = 16
@@ -278,6 +198,14 @@ LANE_ROLES = {
 LANE_RE = re.compile(r"^\s*\[(fast|complex|rigorous)\]")
 
 CLASSIFIED_ROLE = {"judgment": "executor", "mechanical": "applier"}
+
+# Cross-vendor relay (docs/specs/cross-vendor-relay S1.11, Security review F4/F5): tools/shoal_relay.py runs a role in
+# `codex exec` with SHOAL_RELAY_ROLE / SHOAL_RELAY_NONCE set and a `<guard dir>/relay-<nonce>` file holding
+# {"role", "pid"}.  Only when all of it checks out is the whole session that named role; the env alone changes nothing.
+RELAY_HOST = "codex"
+RELAY_ROLES = frozenset({"executor", "applier"})
+RELAY_NONCE_RE = re.compile(r"[0-9a-f]{32}")
+RELAY_NONCE_MAX_BYTES = 4096
 DISPATCH_NAME = {
     "claude": "Agent",
     "codex": "spawn_agent",
@@ -315,6 +243,10 @@ MESSAGES = {
         "LEAF": (
             "Shoal dispatch guard: subagents are leaf workers and must not dispatch other "
             "agents. Finish the task yourself and report back to the parent."
+        ),
+        "RELAY": (
+            "Shoal dispatch guard: this session runs the relayed shoal role `{role}` and must not dispatch "
+            "or message other agents. Finish the task yourself and report back in the hand-back."
         ),
         "VERIFY_EDIT": (
             "Shoal dispatch guard: verify-level roles must not edit files with editing tools. "
@@ -383,6 +315,10 @@ MESSAGES = {
             "`applier` / `executor`；否則直接做下去也可以。"
         ),
         "LEAF": "Shoal dispatch guard：subagent 是 leaf worker，不可再派其他 agent。請自己完成並回報給上層。",
+        "RELAY": (
+            "Shoal dispatch guard：這個 session 是 relay 過來的 shoal role `{role}`，不可派出或聯繫其他 agent。"
+            "請自己完成並在 hand-back 回報。"
+        ),
         "VERIFY_EDIT": "Shoal dispatch guard：verify 等級的 role 不可用編輯工具改檔，請把發現回報給上層。",
         "R1": (
             "Shoal dispatch guard：本輪已被分類為實作工作，且尚未派出 write role。"
@@ -585,7 +521,7 @@ def short_hash(value: Any) -> Optional[str]:
 
 
 def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
-    """Append one whitelisted record to guard.jsonl (1 MiB cap).  Never raises."""
+    """Append one whitelisted record to guard.jsonl; past 1 MiB it becomes guard.jsonl.1 (one generation).  Never raises."""
     if guard is None:
         return
     line: Dict[str, Any] = {"ts": datetime.now(timezone.utc).isoformat()}
@@ -603,7 +539,7 @@ def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
     path = guard / "guard.jsonl"
     try:
         if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
-            return
+            os.replace(path, guard / "guard.jsonl.1")
         fd = _open_private(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
         if fd is None:
             return
@@ -679,6 +615,26 @@ def _agents(state: Dict[str, Any], key: str) -> List[str]:
     if not isinstance(raw, list):
         return []
     return [a for a in raw if valid_id(a)][-AGENTS_MAX:]
+
+
+# Per-turn booleans of a state file: dispatched, advised, direct (this turn's prompt carried #direct), declared (main
+# declared direct work, M3), changed (B2, see _mark_changed), checked (B2: a check after the latest change),
+# stop_blocked (B3: this turn's one block is spent).
+_STATE_FLAGS = ("dispatched", "advised", "direct", "declared", "changed", "checked", "stop_blocked")
+
+
+def _new_state(turn_id: Optional[str], edited: List[Any], **values: Any) -> Dict[str, Any]:
+    """A turn's state with the fixed defaults and key order of the state file; `values` are explicit per-key results
+    computed by the caller, never a prior state (docs/specs/code-restructure F7).  `pending` counts write dispatches
+    whose role has not started yet (M11)."""
+    state: Dict[str, Any] = {"turn_id": turn_id, "dispatched": False, "advised": False, "edited": edited,
+                             "direct": False, "declared": False, "pending": 0, "changed": False, "checked": False,
+                             "stop_blocked": False}
+    unknown = set(values) - set(state)
+    if unknown:
+        raise KeyError(sorted(unknown))
+    state.update(values)
+    return state
 
 
 def _carry_agents(state: Dict[str, Any], prior: Dict[str, Any]) -> None:
@@ -879,6 +835,10 @@ def _real(path: str) -> str:
     if "\u0000" in path:  # POSIX realpath raises here; keep the same fail-open path
         raise ValueError("embedded null byte")
     path = path.replace("\\", "/")
+    if path.startswith("//?/UNC/"):  # extended-length spellings: \\?\C:\x and \\?\UNC\host\share
+        path = "//" + path[8:]
+    elif path.startswith(("//?/", "//./")):
+        path = path[4:]
     if path == "/tmp" or path.startswith("/tmp/"):
         path = tempfile.gettempdir() + path[4:]
     else:
@@ -919,11 +879,14 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
     if ".ai" in path.split("/")[:-1]:
         return True
     roots = ["/tmp", "/private/tmp", _real("/tmp")]
-    if WINDOWS:
+    if WINDOWS:  # gettempdir() covers the process's TMP/TEMP/TMPDIR; `env` is what the host handed us
         roots += [_real("/private/tmp"), _real(tempfile.gettempdir())]
-    tmpdir = env.get("TMPDIR", "")
-    if tmpdir and os.path.isabs(tmpdir) and _real(tmpdir) != "/":
-        roots.append(_real(tmpdir))
+    for key in ("TMPDIR", "TEMP", "TMP") if WINDOWS else ("TMPDIR",):
+        tmpdir = env.get(key, "")
+        if tmpdir and os.path.isabs(tmpdir):
+            real = _real(tmpdir)
+            if os.path.dirname(real) != real:  # never exempt a filesystem root
+                roots.append(real)
     if host == "claude":
         roots.append(_real(str(home / ".claude" / "projects")))
         config = env.get("CLAUDE_CONFIG_DIR", "")
@@ -941,6 +904,11 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
 UNKNOWN_TARGET = "$?"
 _WORD_BREAK = " \t\r\n;|&<>()"
 _ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+# `$NAME` / `${NAME}` leading a target word, and the literal bases a tracked value or `cd` target may have.
+_VAR_REF_RE = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})(?=/|\Z)")
+_KNOWN_BASE_RE = re.compile(r"/|~(?=/|\Z)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=/|\Z)")
+_SET_COMMANDS = frozenset(("export", "declare", "local", "typeset", "readonly"))
+_CD_NAMES = frozenset(("cd", "pushd", "popd"))
 _DOUBLE_BRACKET_END_RE = re.compile(r"(?:^|\s)\]\](?=$|[\s;&|)])")
 # Words after which the next word is still a command (`FOO=1 tee f`, `then tee f`).
 _COMMAND_KEEP = frozenset(("then", "do", "else", "elif", "if", "while", "until", "!", "{"))
@@ -950,6 +918,15 @@ _COMMAND_WRAPPERS = frozenset(("sudo", "command", "exec", "env", "time", "nohup"
 _FIND_EXEC = frozenset(("-exec", "-execdir"))
 # sed flags that take no value; the first other letter ends a short-option cluster.
 _SED_FLAG_LETTERS = "Enrsuzb"
+# Python file writes, matched over the whole command only when a `python[0-9.]*` runs in it.
+_PYTHON_NAME_RE = re.compile(r"python[0-9.]*")
+_PY_WRITE_RE = re.compile(
+    r"""\bopen\(\s*(?:(['"])([^'"\n]*)\1)?[^\n]{0,200}?,\s*(?:mode=)?['"][rbt]*[wax][rbt+]*['"]"""
+    r"|\.write_(?:text|bytes)\("
+    r"|\bshutil\.(?:copy\w*|move)\("
+    r"|\bos\.(?:remove|unlink|rename|replace)\(",
+    re.ASCII,
+)
 
 
 def _skip_parens(text: str, start: int) -> int:
@@ -1104,6 +1081,19 @@ def _perl_in_place_files(args: List[str]) -> List[str]:
     return files or [UNKNOWN_TARGET]
 
 
+def _known_path(value: str) -> bool:
+    """An absolute path, or one led by `~` / `$HOME` / `$TMPDIR` (braces ok), with no other `$` or backtick."""
+    m = _KNOWN_BASE_RE.match(value)
+    return bool(m) and "$" not in value[m.end():] and "`" not in value[m.end():]
+
+
+def _in_dir(word: str, base: Optional[str]) -> str:
+    """A relative literal `word` joined to `base`; anything else (absolute, `~`, `$...`, UNKNOWN_TARGET) as is."""
+    if base and word and word != UNKNOWN_TARGET and word[0] not in "/~$`":
+        return base.rstrip("/") + "/" + word
+    return word
+
+
 def shell_write_targets(command: str) -> List[str]:
     """File targets that `command` writes by a literal reading of its text (G5).
 
@@ -1115,8 +1105,26 @@ def shell_write_targets(command: str) -> List[str]:
     `$` or a backtick has no known value and is the caller's call.  Writes through any other
     interpreter or command (python, node, `perl -e` code that opens a file, cp, mv, patch,
     git apply, dd, ...) are not detected.  The TypeScript port (guard/shell-writes.ts) must return the same list.
+
+    Python (`python[0-9.]*` at command position, absolute path included): when one runs, the whole
+    command text (here-document body and `-c` code alike) is scanned for `open(..., '<w|a|x mode>')`
+    with a literal mode, `.write_text(` / `.write_bytes(`, `shutil.copy*(` / `shutil.move(` and
+    `os.remove|unlink|rename|replace(`.  `open('literal', ...)` reports that path; every other hit
+    reports UNKNOWN_TARGET; these come after the shell targets.  This is a guardrail against routine
+    edits, not a sandbox: exec/eval, getattr, subprocess, script files (`python x.py`), computed modes,
+    `node -e`, cp and mv are not covered.
+
+    Two literal rewrites make routine temp-dir work readable.  (1) A standalone `NAME=<known path>` (or
+    `export NAME=...`) that runs unconditionally -- not after `&&` / `||` / `|` of a non-assignment command, not
+    inside `( )`, `if`, `do`, `case` -- is substituted into a later target that starts with `$NAME` / `${NAME}`;
+    a value that is not a known path (see `_known_path`) makes NAME unknown again.  (2) A `cd <known path>`
+    (also via a known NAME) followed by `;`, `&&` or a newline, while every command so far was an assignment
+    or a `cd`, makes later relative targets (python `open('x')` too) absolute under it.  `cd -`, `cd $(...)`,
+    a relative or unknown `cd`, `pushd` / `popd`, a `cd` in a subshell, pipeline or `||` leave relative
+    targets as written.
     """
-    if ">" not in command and "tee" not in command and "sed" not in command and "perl" not in command:
+    if (">" not in command and "tee" not in command and "sed" not in command and "perl" not in command
+            and "python" not in command):
         return []
     targets: List[str] = []
     n = len(command)
@@ -1125,15 +1133,60 @@ def shell_write_targets(command: str) -> List[str]:
     name: Optional[str] = None
     args: List[str] = []
     heredocs: List[Tuple[str, bool]] = []
+    python_ran = False
+    variables: Dict[str, Optional[str]] = {}
+    pending: List[str] = []  # assignments before the current command word
+    cur_dir: Optional[str] = None
+    py_dirs: Set[Optional[str]] = set()
+    leading = True  # every command so far was an assignment or a `cd`
+    sticky = False  # saw a keyword, `(` or `)`: later assignments may not run as written
+    guarded = False  # the next statement follows `&&` / `||` / `|` / `&` of a command that may not succeed
 
-    def flush() -> None:
-        nonlocal name, args, cmd_pos, wrapped
-        if name == "tee":
-            targets.extend(_tee_files(args))
-        elif name == "sed":
-            targets.extend(_sed_in_place_files(args))
-        elif name == "perl":
-            targets.extend(_perl_in_place_files(args))
+    def resolve(word: str) -> str:
+        m = _VAR_REF_RE.match(word)
+        value = variables.get(m.group(1) or m.group(2)) if m else None
+        return value + word[m.end():] if m and value else word
+
+    def locate(word: str) -> str:
+        return _in_dir(resolve(word), cur_dir)
+
+    def set_var(assignment: str) -> None:
+        key, _, value = assignment.partition("=")
+        value = resolve(value)
+        variables[key] = value if not (sticky or guarded) and _known_path(value) else None
+
+    def flush(sep: str = "") -> None:
+        nonlocal name, args, cmd_pos, wrapped, python_ran, cur_dir, leading, guarded
+        if name is None:
+            for assignment in pending:
+                set_var(assignment)
+        elif name in _CD_NAMES:
+            positional = [a for a in args if not (a.startswith("-") and a != "-")]
+            if name == "cd" and leading and sep in (";", "&&", "\n"):
+                target = resolve(positional[0]) if len(positional) == 1 else ""
+                cur_dir = target if _known_path(target) else None
+            else:
+                cur_dir, leading = None, False
+        elif name in _SET_COMMANDS:
+            for a in args:
+                if _ASSIGNMENT_RE.match(a):
+                    set_var(a)
+        else:
+            leading = False
+            if _PYTHON_NAME_RE.fullmatch(name):
+                python_ran = True
+                py_dirs.add(cur_dir)
+            elif name == "tee":
+                targets.extend(locate(f) for f in _tee_files(args))
+            elif name == "sed":
+                targets.extend(locate(f) for f in _sed_in_place_files(args))
+            elif name == "perl":
+                targets.extend(locate(f) for f in _perl_in_place_files(args))
+        pending.clear()
+        if sep in ("||", "|", "|&", "&") or (sep == "&&" and not leading):
+            guarded = True
+        elif sep in (";", ";;", "\n"):
+            guarded = False
         name, args, cmd_pos, wrapped = None, [], True, False
 
     while i < n:
@@ -1142,7 +1195,7 @@ def shell_write_targets(command: str) -> List[str]:
         if c in " \t\r":
             i += 1
         elif c == "\n":
-            flush()
+            flush("\n")
             i += 1
             for delim, strip in heredocs:  # bodies start on the next line
                 while i < n:
@@ -1157,10 +1210,12 @@ def shell_write_targets(command: str) -> List[str]:
             end = command.find("\n", i)
             i = n if end < 0 else end
         elif c in ";|" or (c == "&" and nxt != ">"):
-            flush()
+            sep = c
             i += 1
             if i < n and command[i] in ";|&":
+                sep += command[i]
                 i += 1
+            flush(sep)
         elif c == ">" or c == "&":  # `&>` writes both streams to a file
             i += 2 if c == "&" else 1
             if i < n and command[i] in ">|":
@@ -1175,7 +1230,7 @@ def shell_write_targets(command: str) -> List[str]:
             word, i = _read_word(command, i)
             fd_only = dup and (word in ("", "-") or word.isdigit() or word.startswith("$"))
             if word and not fd_only:
-                targets.append(word)
+                targets.append(locate(word))
         elif c == "<":
             if command.startswith("<<<", i):
                 i += 3
@@ -1206,9 +1261,11 @@ def shell_write_targets(command: str) -> List[str]:
                 cmd_pos = False
             else:
                 flush()
+                sticky, leading = True, False
                 i += 1
         elif c == ")":
             flush()
+            sticky = True
             i += 1
         elif c.isdigit() and _fd_prefix(command, i):
             while command[i].isdigit():
@@ -1224,8 +1281,10 @@ def shell_write_targets(command: str) -> List[str]:
                 cmd_pos = False
             elif not cmd_pos:
                 args.append(word)
-            elif _ASSIGNMENT_RE.match(word) or word in _COMMAND_KEEP:
-                pass
+            elif _ASSIGNMENT_RE.match(word):
+                pending.append(word)
+            elif word in _COMMAND_KEEP:
+                sticky, leading = True, False
             elif wrapped and word.startswith("-"):
                 pass
             elif word in _COMMAND_WRAPPERS:
@@ -1233,6 +1292,9 @@ def shell_write_targets(command: str) -> List[str]:
             else:
                 name, args, cmd_pos, wrapped = word.rsplit("/", 1)[-1], [], False, False
     flush()
+    if python_ran:
+        base = next(iter(py_dirs)) if len(py_dirs) == 1 else None
+        targets.extend(_in_dir(m.group(2), base) if m.group(2) else UNKNOWN_TARGET for m in _PY_WRITE_RE.finditer(command))
     return targets
 
 
@@ -1481,6 +1543,63 @@ class _Guard:
                 _write_json(path, {"agents": entries[-GROK_AGENTS_MAX:]})
         except Exception:
             return
+
+    # -- cross-vendor relay (S1.11) ------------------------------------------
+    def relay_check(self) -> Tuple[Optional[str], Optional[str]]:
+        """(role, None) when this session is a relayed named role; (None, reason) when relay env is present but not
+        trusted; (None, None) when there is no relay env.  Trusted only on codex, for executor / applier, with the
+        runner's `relay-<nonce>` file: opened without following symlinks, regular, ours, exactly {"role", "pid"}
+        with the same role and a live pid.  Read-only; any doubt is a rejection."""
+        role, nonce = self.env.get("SHOAL_RELAY_ROLE"), self.env.get("SHOAL_RELAY_NONCE")
+        if role is None and nonce is None:
+            return None, None
+        if self.host != RELAY_HOST:
+            return None, "relay_host"
+        if role not in RELAY_ROLES:
+            return None, "relay_role"
+        if not isinstance(nonce, str) or RELAY_NONCE_RE.fullmatch(nonce) is None:
+            return None, "relay_nonce_format"
+        guard = self.guard_dir
+        if guard is None:
+            return None, "state_unavailable"
+        fd = _open_private(guard / ("relay-" + nonce), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        if fd is None:
+            return None, "relay_nonce_file"
+        try:
+            data = json.loads(os.read(fd, RELAY_NONCE_MAX_BYTES))
+        except (OSError, ValueError):
+            return None, "relay_nonce_content"
+        finally:
+            os.close(fd)
+        if not isinstance(data, dict) or set(data) != {"role", "pid"} or not _is_int(data["pid"]) or data["pid"] <= 1:
+            return None, "relay_nonce_content"
+        if data["role"] != role:
+            return None, "relay_role_mismatch"
+        try:
+            os.kill(data["pid"], 0)
+        except OSError:  # gone, or a recycled pid we may not signal: not our runner
+            return None, "relay_pid_dead"
+        return role, None
+
+    def relay(self) -> Optional[Dict[str, Any]]:
+        """An adopted relay session is judged as a subagent of its role (edits allowed, no dispatch required); a
+        dispatch or any other collaboration tool is denied whatever the mode (it replaces Codex's ineffective
+        `features.multi_agent=false`, SPEC "T1.0 後的決策").  None: judge the event as usual."""
+        role, reason = self.relay_check()
+        if reason is not None:
+            if self.mode != "off":  # an off guard writes nothing, as before
+                self.log("relay_ignore", rule="RELAY", skip_reason=reason, tool=None)  # vectors: no tool name
+            return None
+        if role is None:
+            return None
+        self.event = dict(self.event, is_subagent=True, role=role)
+        self.log("relay_adopt", rule="RELAY")
+        tool = self.event.get("tool_name")
+        if self.event.get("kind") == "tool" and (
+            self.event.get("tool_kind") == "dispatch" or (isinstance(tool, str) and tool.startswith("collaboration"))
+        ):
+            return self.result("deny", "RELAY", reason=_text(self.env, "RELAY", role=role))
+        return None
 
     def _none(self) -> Dict[str, Any]:
         return {"decision": "none", "rule": None, "skip_reason": None, "reason": None, "mode": self.mode}
@@ -1865,10 +1984,7 @@ class _Guard:
                 direct = self._prompt_direct(prior)
                 edited = prior.get("edited") if isinstance(prior.get("edited"), list) else []
                 prior_tid = prior.get("turn_id")
-                state = {"turn_id": prior_tid if isinstance(prior_tid, str) else None,
-                         "dispatched": False, "advised": False, "edited": edited,
-                         "direct": direct, "declared": False, "pending": 0,
-                         "changed": False, "checked": False, "stop_blocked": False}
+                state = _new_state(prior_tid if isinstance(prior_tid, str) else None, edited, direct=direct)
                 if direct and isinstance(prior_tid, str):
                     prior_turns = (prior_turns + [prior_tid])[-DIRECT_TURNS_MAX:]
                 if prior_turns:
@@ -1882,9 +1998,7 @@ class _Guard:
                 direct = self._prompt_direct(prior)
                 if direct and isinstance(tid, str):
                     prior_turns = (prior_turns + [tid])[-DIRECT_TURNS_MAX:]
-                state = {"turn_id": tid, "dispatched": False, "advised": False, "edited": [],
-                         "direct": direct, "declared": False, "pending": 0,
-                         "changed": False, "checked": False, "stop_blocked": False}
+                state = _new_state(tid, [], direct=direct)
                 if prior_turns:
                     state["direct_turns"] = prior_turns
                 if self.fast_state:
@@ -1900,18 +2014,8 @@ class _Guard:
         if tid is not None and state.get("turn_id") != tid:
             state = {}
         edited = state.get("edited") if isinstance(state.get("edited"), list) else []
-        state = {
-            "turn_id": tid if tid is not None else state.get("turn_id"),
-            "dispatched": state.get("dispatched") is True,
-            "advised": state.get("advised") is True,
-            "edited": edited,
-            "direct": state.get("direct") is True,  # this turn's prompt carried #direct
-            "declared": state.get("declared") is True,  # main declared direct work this turn (M3)
-            "pending": _pending(state),  # write dispatches whose role has not started yet (M11)
-            "changed": state.get("changed") is True,  # B2: a change this turn (see _mark_changed)
-            "checked": state.get("checked") is True,  # B2: a check after the latest change
-            "stop_blocked": state.get("stop_blocked") is True,  # B3: this turn's one block is spent
-        }
+        state = _new_state(tid if tid is not None else state.get("turn_id"), edited, pending=_pending(state),
+                           **{flag: state.get(flag) is True for flag in _STATE_FLAGS})
         if state["changed"] and prior_state.get("role_changed") is True:
             state["role_changed"] = True  # B2: the latest change is a write role's own edit (note_role_change)
         if state["changed"] and prior_state.get("role_running") is True:
@@ -2102,8 +2206,7 @@ class _Guard:
                 return self.result("state", "declare", note=log_reason(reason))
         target = self.shell_write_target()
         if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
-            self._shell_wrote(state_path, target)
-            return self.result("allow", "direct", file=target)
+            return self.result("allow", "direct", file=target)  # main's own declared work: not a STOP change
         if state["dispatched"]:
             self._shell_wrote(state_path, target)
             return self.result("allow", "dispatched", file=target)
@@ -2111,8 +2214,7 @@ class _Guard:
             return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "STRICT"))
         if self.r1 == "declare":
             if self._declared(state, guard):
-                self._shell_wrote(state_path, target)
-                return self.result("allow", "declared", file=target)
+                return self.result("allow", "declared", file=target)  # not a STOP change (write roles only)
             return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "DECLARE"))
         if self._classified(state, guard) is None:
             self._shell_wrote(state_path, target)
@@ -2221,7 +2323,8 @@ class _Guard:
                 file=raw_paths[0],
             )
         state["edited"] = edited
-        self.pending_change = state_path  # B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
+        if not (direct or declared):  # B2: main's own direct/declared edits are not a change; STOP is for write roles
+            self.pending_change = state_path
         notify = (
             advise_rule is not None
             and not state["advised"]
@@ -2302,7 +2405,7 @@ def evaluate(event: Dict[str, Any], env: Dict[str, str], home: Path) -> Dict[str
     """Decide on a normalized event: shoal's own decision, then the guard chain.  Raises only on
     programming/OS errors (caller fails open); a chain failure never changes shoal's decision."""
     guard = _Guard(event, env, home)
-    result = _decide(guard, event)
+    result = guard.relay() or _decide(guard, guard.event)
     try:
         result = _apply_chain(guard, event, result)
     except BaseException:
@@ -2652,78 +2755,6 @@ def _event(
     }
 
 
-def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    event = _adapt_claude(payload)
-    if event is not None:
-        event["agent_id"] = _str(payload.get("agent_id"))  # present on every subagent event; only logged on claude
-    return event
-
-
-def _adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if (
-        "hookEventName" in payload
-    ):  # grok running Claude-compat hooks: grok's own entry handles it
-        return None
-    name = payload.get("hook_event_name")
-    if name == "SubagentStart":
-        # Its agent_id/agent_type name the NEW subagent; the event belongs to the main session's session
-        # (payload keys recorded in tests/fixtures/claude_subagent_start_shape.json), so it is not a subagent call.
-        return _event("claude", "subagent_start", payload.get("session_id"), payload.get("prompt_id"),
-                      payload.get("cwd"), False, payload.get("agent_type"))
-    sub = bool(payload.get("agent_id"))
-    base = (
-        payload.get("session_id"),
-        payload.get("prompt_id"),
-        payload.get("cwd"),
-        sub,
-        payload.get("agent_type"),
-    )
-    if name == "Stop":
-        # tests/fixtures/stop_payload_shapes.json: session_id, prompt_id, stop_hook_active (bool), ...
-        return _event("claude", "stop", *base, stop_hook_active=payload.get("stop_hook_active"))
-    if name == "UserPromptSubmit":
-        prompt = payload.get("prompt")  # read for the #direct token only; never stored or logged
-        has_direct = has_direct_token(prompt)
-        return _event("claude", "prompt", *base, direct=has_direct, fast=fast_switch(prompt))
-    if name in ("PostToolUse", "PostToolUseFailure"):
-        # PostToolUseFailure (a Bash call that failed, e.g. a test run exiting non-zero) is a call that ran too.  Its
-        # payload shape was not captured: only tool_name, tool_input, agent_id, session_id, prompt_id are relied on.
-        # tests/fixtures/claude_subagent_tool_shapes.json: same keys as PreToolUse plus tool_response; a subagent's
-        # call carries agent_id (sub).  Only a foreground Bash call matters: it ran, so it can count as a check.
-        tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
-        if tool != "Bash" or tin.get("run_in_background") is True:
-            return None
-        return _event("claude", "post_shell", *base, tool=tool, tool_kind="shell", command=tin.get("command"))
-    if name != "PreToolUse":
-        return None
-    tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
-    if tool == "Bash" and tin.get("run_in_background") is True:  # G4 first: one deny, not two
-        return _event("claude", "tool", *base, tool=tool, tool_kind="background_shell")
-    if tool == "Bash":
-        return _event("claude", "tool", *base, tool=tool, tool_kind="shell", command=tin.get("command"))
-    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
-        path = _str(tin.get("file_path")) or _str(tin.get("notebook_path"))
-        return _event(
-            "claude",
-            "tool",
-            *base,
-            tool=tool,
-            tool_kind="edit",
-            paths=[path] if path else [],
-        )
-    if tool in ("Agent", "Workflow"):
-        return _event(
-            "claude",
-            "tool",
-            *base,
-            tool=tool,
-            tool_kind="dispatch",
-            dispatched_role=tin.get("subagent_type") if tool == "Agent" else None,
-            dispatch_desc=tin.get("description") if tool == "Agent" else None,
-        )
-    return _event("claude", "tool", *base, tool=tool, tool_kind="other")
-
-
 def patch_paths(command: Any) -> List[str]:
     if isinstance(command, list):
         command = "\n".join(str(part) for part in command)
@@ -2739,125 +2770,171 @@ def _codex_lane_text(tin: Dict[str, Any]) -> Optional[str]:
     return next((t for t in texts if lane_label(t)), texts[0] if texts else None)
 
 
-def adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    event = _adapt_codex(payload)
-    if event is not None:
-        event["agent_id"] = _str(payload.get("agent_id"))  # present on every subagent event (and SubagentStart)
-    return event
+class AdapterSpec(NamedTuple):
+    """How one host's hook payload maps onto an event (claude, codex, grok; agy has no event name, see adapt_agy).
+    Classification by content stays a predicate (docs/specs/code-restructure F3); only names are table data."""
+
+    host: str
+    keys: Tuple[str, str, str, str, str, str, str]  # event, session, turn, agent type, tool, tool input, stop flag
+    events: Dict[str, str]  # host event name -> prompt | subagent_start | stop | post | pre
+    is_sub: Callable[[Dict[str, Any]], bool]
+    agent_key: Optional[str]  # copied to every event's agent_id (claude, codex)
+    start_agent_key: str  # names the NEW subagent on subagent_start
+    start_turn: bool  # subagent_start keeps the payload's turn id (claude prompt_id; codex/grok: the subagent's own)
+    stop_ok: Callable[[Dict[str, Any], bool], bool]
+    post_shell: Callable[[Any, Dict[str, Any]], bool]
+    background: Callable[[Any, Dict[str, Any]], bool]  # checked first: one G4 deny, not two
+    shell: Callable[[Any, Dict[str, Any]], bool]
+    edit_tools: "frozenset[str]"
+    path_keys: Tuple[str, ...]  # first non-empty string wins; () reads apply_patch headers
+    dispatch_tools: "frozenset[str]"
+    role_tools: "frozenset[str]"  # dispatch tools that carry a role and lane text (F2: claude Workflow carries none)
+    role_key: str
+    lane: Callable[[Dict[str, Any]], Any]
+    foreign_key: Optional[str] = None  # a payload with this key belongs to another host's entry
 
 
-def _adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    name = payload.get("hook_event_name")
-    sub = bool(payload.get("agent_id"))
-    agent_id = payload.get("agent_id")
-    if name == "SubagentStart":
-        # tests/fixtures/codex_subagent_tool_shapes.json: agent_id/agent_type name the NEW subagent, session_id is
-        # main's, turn_id is the subagent's own (not main's), so it is not passed on.  The event belongs to the
-        # main session, so it is not a subagent call.
-        return _event("codex", "subagent_start", payload.get("session_id"), None, payload.get("cwd"), False,
-                      payload.get("agent_type"), agent_id=agent_id)
-    base = (
-        payload.get("session_id"),
-        payload.get("turn_id"),
-        payload.get("cwd"),
-        sub,
-        payload.get("agent_type"),
-    )
-    if name == "Stop":
-        # tests/fixtures/stop_payload_shapes.json: session_id, turn_id, stop_hook_active (bool), ...
-        return _event("codex", "stop", *base, stop_hook_active=payload.get("stop_hook_active"))
-    if name == "UserPromptSubmit":
-        # The payload's `prompt` field is what shoal_autoroute_gate.py reads on Codex too.
-        return _event("codex", "prompt", *base, direct=has_direct_token(payload.get("prompt")),
-                      fast=fast_switch(payload.get("prompt")))
-    if name == "PostToolUse":
-        # tests/fixtures/codex_subagent_tool_shapes.json: PostToolUse has tool_name, tool_input and tool_response; it
-        # does not fire for a call that failed to start, and a subagent's call carries agent_id (sub).
-        tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
-        if tool != "Bash" or not isinstance(tin.get("command"), str):
-            return None
-        return _event("codex", "post_shell", *base, tool=tool, tool_kind="shell", command=tin["command"])
-    if name != "PreToolUse":
+def _never(*_: Any) -> bool:
+    return False
+
+
+def _str_command(tin: Dict[str, Any]) -> bool:
+    return isinstance(tin.get("command"), str)
+
+
+# claude: SubagentStart's agent_id/agent_type name the NEW subagent under main's session (tests/fixtures/
+# claude_subagent_start_shape.json); PostToolUseFailure is a Bash call that ran too (only tool_name, tool_input,
+# agent_id, session_id, prompt_id are relied on); a subagent's call carries agent_id (claude_subagent_tool_shapes.json).
+# A payload with `hookEventName` is grok running Claude-compat hooks: grok's own entry handles it.
+CLAUDE = AdapterSpec(
+    host="claude",
+    keys=("hook_event_name", "session_id", "prompt_id", "agent_type", "tool_name", "tool_input", "stop_hook_active"),
+    events={"SubagentStart": "subagent_start", "Stop": "stop", "UserPromptSubmit": "prompt",
+            "PostToolUse": "post", "PostToolUseFailure": "post", "PreToolUse": "pre"},
+    is_sub=lambda p: bool(p.get("agent_id")),
+    agent_key="agent_id",
+    start_agent_key="agent_id",
+    start_turn=True,
+    stop_ok=lambda p, sub: True,
+    post_shell=lambda tool, tin: tool == "Bash" and tin.get("run_in_background") is not True,
+    background=lambda tool, tin: tool == "Bash" and tin.get("run_in_background") is True,
+    shell=lambda tool, tin: tool == "Bash",
+    edit_tools=frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"}),
+    path_keys=("file_path", "notebook_path"),
+    dispatch_tools=frozenset({"Agent", "Workflow"}),
+    role_tools=frozenset({"Agent"}),
+    role_key="subagent_type",
+    lane=lambda tin: tin.get("description"),
+    foreign_key="hookEventName",
+)
+# codex (tests/fixtures/codex_subagent_tool_shapes.json): SubagentStart's turn_id is the subagent's own, not main's;
+# PostToolUse does not fire for a call that failed to start; the shell tool's input is exactly {"command": str}.
+CODEX = AdapterSpec(
+    host="codex",
+    keys=("hook_event_name", "session_id", "turn_id", "agent_type", "tool_name", "tool_input", "stop_hook_active"),
+    events={"SubagentStart": "subagent_start", "Stop": "stop", "UserPromptSubmit": "prompt",
+            "PostToolUse": "post", "PreToolUse": "pre"},
+    is_sub=lambda p: bool(p.get("agent_id")),
+    agent_key="agent_id",
+    start_agent_key="agent_id",
+    start_turn=False,
+    stop_ok=lambda p, sub: True,
+    post_shell=lambda tool, tin: tool == "Bash" and _str_command(tin),
+    background=_never,
+    shell=lambda tool, tin: tool == "Bash" and _str_command(tin),
+    edit_tools=frozenset({"apply_patch"}),
+    path_keys=(),
+    dispatch_tools=frozenset({"collaborationspawn_agent", "spawn_agent"}),
+    role_tools=frozenset({"collaborationspawn_agent", "spawn_agent"}),
+    role_key="agent_type",
+    lane=_codex_lane_text,
+)
+# grok (tests/fixtures/grok_guard_event_shapes.json): subagent_start is sent under MAIN's sessionId and names the new
+# subagent, whose own events carry sessionId == subagentId.  Two stops fire per run; only `reason == end_turn` ends a
+# turn, and a subagent's own stop is not main's.
+GROK = AdapterSpec(
+    host="grok",
+    keys=("hookEventName", "sessionId", "promptId", "subagentType", "toolName", "toolInput", "stopHookActive"),
+    events={"user_prompt_submit": "prompt", "subagent_start": "subagent_start", "stop": "stop", "pre_tool_use": "pre"},
+    is_sub=lambda p: _str(p.get("subagentType")) is not None,
+    agent_key=None,
+    start_agent_key="subagentId",
+    start_turn=False,
+    stop_ok=lambda p, sub: p.get("reason") == "end_turn" and not sub,
+    post_shell=_never,
+    background=_never,
+    shell=lambda tool, tin: tool == "run_terminal_command" and _str_command(tin),
+    edit_tools=frozenset({"search_replace", "write", "write_file", "edit", "multi_edit", "create_file"}),
+    path_keys=("file_path", "path", "target_file", "filePath"),
+    dispatch_tools=frozenset({"spawn_subagent"}),
+    role_tools=frozenset({"spawn_subagent"}),
+    role_key="subagent_type",
+    lane=lambda tin: tin.get("description"),
+)
+
+
+def adapt(spec: AdapterSpec, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Normalize one claude / codex / grok hook payload into an event, or None when the guard has no use for it.
+    The prompt text is read for the `#direct` / `#fast` tokens only; it is never stored or logged."""
+    if spec.foreign_key is not None and spec.foreign_key in payload:
         return None
-    tool, tin = payload.get("tool_name"), _dict(payload.get("tool_input"))
-    if tool == "apply_patch":
-        return _event(
-            "codex",
-            "tool",
-            *base,
-            tool=tool,
-            tool_kind="edit",
-            paths=patch_paths(tin.get("command")),
-        )
-    if tool == "Bash" and isinstance(tin.get("command"), str):
-        # Codex's shell tool: tool_input is exactly {"command": str}; there is no run_in_background.
-        return _event("codex", "tool", *base, tool=tool, tool_kind="shell", command=tin["command"])
-    if tool in ("collaborationspawn_agent", "spawn_agent"):
-        return _event(
-            "codex",
-            "tool",
-            *base,
-            tool=tool,
-            tool_kind="dispatch",
-            dispatched_role=tin.get("agent_type"),
-            dispatch_desc=_codex_lane_text(tin),
-        )
-    return _event("codex", "tool", *base, tool=tool, tool_kind="other")
+    ev_key, sid_key, tid_key, type_key, tool_key, tin_key, stop_key = spec.keys
+    name = payload.get(ev_key)
+    kind = spec.events.get(name) if isinstance(name, str) else None
+    host, cwd, role = spec.host, payload.get("cwd"), payload.get(type_key)
+    if kind == "subagent_start":
+        return _event(host, "subagent_start", payload.get(sid_key), payload.get(tid_key) if spec.start_turn else None,
+                      cwd, False, role, agent_id=payload.get(spec.start_agent_key))
+    agent_id = payload.get(spec.agent_key) if spec.agent_key else None
+    sub = spec.is_sub(payload)
+    base = (payload.get(sid_key), payload.get(tid_key), cwd, sub, role)
+    if kind == "stop":
+        if not spec.stop_ok(payload, sub):
+            return None
+        return _event(host, "stop", *base, stop_hook_active=payload.get(stop_key), agent_id=agent_id)
+    if kind == "prompt":
+        prompt = payload.get("prompt")
+        return _event(host, "prompt", *base, direct=has_direct_token(prompt), fast=fast_switch(prompt),
+                      agent_id=agent_id)
+    if kind not in ("post", "pre"):
+        return None
+    tool, tin = payload.get(tool_key), _dict(payload.get(tin_key))
+    if kind == "post":
+        if not spec.post_shell(tool, tin):
+            return None
+        return _event(host, "post_shell", *base, tool=tool, tool_kind="shell", command=tin.get("command"),
+                      agent_id=agent_id)
+    extra: Dict[str, Any] = {"tool": tool, "agent_id": agent_id}
+    named = tool if isinstance(tool, str) else None  # a list or dict tool name is unhashable: never a set member
+    if spec.background(tool, tin):
+        return _event(host, "tool", *base, tool_kind="background_shell", **extra)
+    if spec.shell(tool, tin):
+        return _event(host, "tool", *base, tool_kind="shell", command=tin.get("command"), **extra)
+    if named in spec.edit_tools:
+        if spec.path_keys:
+            path = next((p for p in (_str(tin.get(k)) for k in spec.path_keys) if p), None)
+            paths = [path] if path else []
+        else:
+            paths = patch_paths(tin.get("command"))
+        return _event(host, "tool", *base, tool_kind="edit", paths=paths, **extra)
+    if named in spec.dispatch_tools:
+        carries = named in spec.role_tools
+        return _event(host, "tool", *base, tool_kind="dispatch", **extra,
+                      dispatched_role=tin.get(spec.role_key) if carries else None,
+                      dispatch_desc=spec.lane(tin) if carries else None)
+    return _event(host, "tool", *base, tool_kind="other", **extra)
+
+
+def adapt_claude(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    return adapt(CLAUDE, payload)
+
+
+def adapt_codex(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    return adapt(CODEX, payload)
 
 
 def adapt_grok(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    name = payload.get("hookEventName")
-    sub_type = _str(payload.get("subagentType"))
-    base = (
-        payload.get("sessionId"),
-        payload.get("promptId"),
-        payload.get("cwd"),
-        sub_type is not None,
-        sub_type,
-    )
-    if name == "user_prompt_submit":
-        return _event("grok", "prompt", *base, direct=has_direct_token(payload.get("prompt")),
-                      fast=fast_switch(payload.get("prompt")))
-    if name == "subagent_start":
-        # tests/fixtures/grok_guard_event_shapes.json: sessionId is MAIN's; subagentId/subagentType name the NEW subagent,
-        # whose own events carry sessionId == subagentId.
-        return _event("grok", "subagent_start", payload.get("sessionId"), None, payload.get("cwd"), False,
-                      payload.get("subagentType"), agent_id=payload.get("subagentId"))
-    if name == "stop":
-        # Two stops fire per run; only `reason == end_turn` ends a turn.  A subagent's own stop is not main's.
-        if payload.get("reason") != "end_turn" or sub_type is not None:
-            return None
-        return _event("grok", "stop", *base, stop_hook_active=payload.get("stopHookActive"))
-    if name != "pre_tool_use":
-        return None
-    tool, tin = payload.get("toolName"), _dict(payload.get("toolInput"))
-    if tool == "run_terminal_command" and isinstance(tin.get("command"), str):
-        return _event("grok", "tool", *base, tool=tool, tool_kind="shell", command=tin["command"])
-    if tool in ("search_replace", "write", "write_file", "edit", "multi_edit", "create_file"):
-        path = None
-        for key in ("file_path", "path", "target_file", "filePath"):
-            path = _str(tin.get(key))
-            if path:
-                break
-        return _event(
-            "grok",
-            "tool",
-            *base,
-            tool=tool,
-            tool_kind="edit",
-            paths=[path] if path else [],
-        )
-    if tool == "spawn_subagent":
-        return _event(
-            "grok",
-            "tool",
-            *base,
-            tool=tool,
-            tool_kind="dispatch",
-            dispatched_role=tin.get("subagent_type"),
-            dispatch_desc=tin.get("description"),
-        )
-    return _event("grok", "tool", *base, tool=tool, tool_kind="other")
+    return adapt(GROK, payload)
 
 
 def _is_int(value: Any) -> bool:
@@ -3066,7 +3143,7 @@ def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_di
     guarded = _GUARDED_COMMAND.fullmatch(command.strip())
     if guarded is not None:
         path, command_host = guarded.groups()
-        return command_host == host and os.path.realpath(_expand_home(path, home, data_dir)) == script
+        return command_host == host and _real(_expand_home(path, home, data_dir)) == script
     try:
         tokens = shlex.split(command)
     except ValueError:
@@ -3076,7 +3153,7 @@ def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_di
             continue
         if tokens[index + 1:index + 3] != ["--host", host]:
             continue
-        if os.path.realpath(_expand_home(token, home, data_dir)) == script:
+        if _real(_expand_home(token, home, data_dir)) == script:
             return True
     return False
 
@@ -3092,7 +3169,7 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
         return False
     data_dir = _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share")
     script = data_dir / "shoal" / "guard" / "shoal_guard.py"
-    script = Path(os.path.realpath(str(script)))
+    script = Path(_real(str(script)))
     if not script.is_file():
         return False
     settings = _abs_env_dir(env, "CLAUDE_CONFIG_DIR", home / ".claude") / "settings.json"
@@ -3115,18 +3192,22 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
             continue
         handlers = group.get("hooks")
         for handler in handlers if isinstance(handlers, list) else []:
-            if _runs_global_guard(_dict(handler).get("command"), str(script), host, home, data_dir):
+            if _runs_global_guard(_dict(handler).get("command"), script.as_posix(), host, home, data_dir):
                 return True
     return False
 
 
 def _open_readable(path: Path) -> Optional[int]:
+    """fd of `path` when it is a regular file owned by the current user, else None.
+
+    O_NONBLOCK keeps a FIFO from blocking the open; it is then refused as not regular (#26)."""
     try:
-        fd = os.open(str(path), os.O_RDONLY)
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     except OSError:
         return None
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or (hasattr(os, "getuid") and info.st_uid != os.getuid()):
             os.close(fd)
             return None
     except OSError:

@@ -1,17 +1,14 @@
-"""core/policy 機制：條款格式、placeholder、omit、required、policy_text 開關與 preview（core-policy P1）。
+"""prompts/policy 機制：條款格式、placeholder、omit、required、policy_text 開關與 preview（core-policy P1）。
 
 機制測試用 temp 目錄的假條款與 repo 的 Claude 設定副本；鎖定測試（EXPECTED_*）直接檢查 repo 目前的
-core/policy 與各 host 的 binding / policy-addenda，變更要同時改這裡。所有 host 的 renderer 都能輸出 core，repo 內只有 claude 是 core。
+prompts/policy 與各 host 的 binding / policy-addenda，變更要同時改這裡。所有 host 的 renderer 都能輸出 core，repo 內只有 claude 是 core。
 """
 
 from __future__ import annotations
 
-import difflib
-import json
 import re
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -43,6 +40,7 @@ EXPECTED_POLICY_OMITS["codex"] = [
     "discovery-scope-exclusive",
     "dispatch-kind-label",
     "effort-per-delegation",
+    "executor-brief-bound",
     "first-move-heading",
     "first-move-steps",
     "parallel-writers",
@@ -106,6 +104,10 @@ EXPECTED_POLICY_TEXT["codex"] = "core"
 EXPECTED_POLICY_OMITS["agy"] = [
     "auto-ask-selection", "bootstrap-effort", "effort-per-delegation", "parallel-writers",
 ]
+EXPECTED_POLICY_ADDENDA["claude"] = {
+    "bootstrap": ["claude-stop-reported-role"],
+    "extensions": ["claude-fan-out-workflow"],
+}
 EXPECTED_POLICY_ADDENDA["agy"] = {
     "orchestration": [
         "agy-plan-mode", "pending-shared-auto-approved-permissions", "agy-readiness-brief",
@@ -141,12 +143,6 @@ EXPECTED_REQUIRED = {
 }
 EXPECTED_DOCS = ("bootstrap", "extensions", "orchestration", "skill")
 
-# Claude 的 core 輸出與 legacy 原文逐字（忽略空白）相同，只有這些因禁字詞而改寫的地方（P1 對照表有說明）。
-KNOWN_WORDING_CHANGES = [
-    ("workflow", "procedure"),
-    ("workflow", "policy"),
-]
-
 
 def rewrite_policy_sections(root: Path, host: str, policy_toml: str, frame: bool = False) -> None:
     """改寫 root 副本中 host binding 的 [policy*] 區段：先移除既有的 [policy]、[policy.*] 表與
@@ -164,28 +160,24 @@ def rewrite_policy_sections(root: Path, host: str, policy_toml: str, frame: bool
     text = "\n".join(kept).rstrip("\n") + "\n\n" + policy_toml
     binding.write_text(text, encoding="utf-8", newline="\n")
     for sub in ("policy-frames", "policy-addenda"):
-        shutil.rmtree(root / "hosts" / host / sub, ignore_errors=True)
+        shutil.rmtree(root / "prompts" / "hosts" / host / sub, ignore_errors=True)
     if frame:
-        frames = root / "hosts" / host / "policy-frames"
-        frames.mkdir()
+        frames = root / "prompts" / "hosts" / host / "policy-frames"
+        frames.mkdir(parents=True)
         (frames / "default.md").write_text("<!-- frame -->\n{{role_body}}", encoding="utf-8", newline="\n")
 
 
 def policy_doc(text: str) -> list[contracts.Clause]:
-    return contracts.parse_contract(
-        tomllib.loads(text), kinds=contracts.POLICY_KINDS, allow_required=True
+    return contracts.parse_markdown_contract(
+        text, kinds=contracts.POLICY_KINDS, allow_required=True
     )
-
-
-def normalized(text: str) -> str:
-    return " ".join(text.split())
 
 
 class PolicyContractFormatTests(unittest.TestCase):
     def test_policy_clauses_accept_required_and_policy_kinds(self) -> None:
         text = (
-            "[[clause]]\nid = \"a\"\nkind = \"gate\"\nrequired = true\ntext = '''\nA.'''\n\n"
-            "[[clause]]\nid = \"b\"\nkind = \"heading\"\ntext = '''\n## B'''\n"
+            "<!-- clause: a kind=gate required -->\nA.\n\n"
+            "<!-- clause: b kind=heading -->\n## B\n"
         )
         clauses = policy_doc(text)
         self.assertEqual([c.required for c in clauses], [True, False])
@@ -193,16 +185,12 @@ class PolicyContractFormatTests(unittest.TestCase):
     def test_role_contracts_do_not_accept_required(self) -> None:
         text = clause("a", "A.") + "\n"
         with self.assertRaisesRegex(contracts.ContractError, "未知欄位 required"):
-            contracts.parse_contract(
-                tomllib.loads(
-                    text.replace(
-                        'kind = "procedure"', 'kind = "procedure"\nrequired = true'
-                    )
-                )
+            contracts.parse_markdown_contract(
+                text.replace("kind=procedure", "kind=procedure required")
             )
 
     def test_required_must_be_a_boolean(self) -> None:
-        text = "[[clause]]\nid = \"a\"\nkind = \"gate\"\nrequired = \"yes\"\ntext = '''\nA.'''\n"
+        text = "<!-- clause: a kind=gate required=yes -->\nA.\n"
         with self.assertRaisesRegex(
             contracts.ContractError, "required 必須是 true 或 false"
         ):
@@ -210,9 +198,7 @@ class PolicyContractFormatTests(unittest.TestCase):
 
     def test_policy_kind_vocabulary_is_separate_from_role_kinds(self) -> None:
         with self.assertRaisesRegex(contracts.ContractError, "kind 必須是"):
-            policy_doc(
-                "[[clause]]\nid = \"a\"\nkind = \"identity\"\ntext = '''\nA.'''\n"
-            )
+            policy_doc("<!-- clause: a kind=identity -->\nA.\n")
         with self.assertRaisesRegex(contracts.ContractError, "kind 必須是"):
             parse_clauses(clause("a", "A.", kind="gate"))
 
@@ -257,9 +243,9 @@ class PlaceholderTests(unittest.TestCase):
 class OmitAndRequiredTests(unittest.TestCase):
     def doc(self) -> list[contracts.Clause]:
         return policy_doc(
-            "[[clause]]\nid = \"a\"\nkind = \"gate\"\ntext = '''\nA.'''\n\n"
-            "[[clause]]\nid = \"b\"\nkind = \"gate\"\ntext = '''\nB.'''\n\n"
-            "[[clause]]\nid = \"c\"\nkind = \"gate\"\nrequired = true\ntext = '''\nC.'''\n"
+            "<!-- clause: a kind=gate -->\nA.\n\n"
+            "<!-- clause: b kind=gate -->\nB.\n\n"
+            "<!-- clause: c kind=gate required -->\nC.\n"
         )
 
     def test_omit_removes_exactly_that_clause(self) -> None:
@@ -293,14 +279,12 @@ class OmitAndRequiredTests(unittest.TestCase):
             contracts.compose_policy("d", self.doc(), addenda, {"b"}, {})
 
     def test_document_with_every_clause_omitted_is_skipped(self) -> None:
-        clauses = policy_doc(
-            "[[clause]]\nid = \"a\"\nkind = \"gate\"\ntext = '''\nA.'''\n"
-        )
+        clauses = policy_doc("<!-- clause: a kind=gate -->\nA.\n")
         self.assertIsNone(contracts.compose_policy("d", clauses, [], {"a"}, {}))
 
 
 class RepoPolicyTests(unittest.TestCase):
-    """repo 內 core/policy 與各 host 設定的鎖定檢查。"""
+    """repo 內 prompts/policy 與各 host 設定的鎖定檢查。"""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -344,7 +328,7 @@ class RepoPolicyTests(unittest.TestCase):
             replaces: dict[str, list[str]] = {}
             addenda: dict[str, list[str]] = {}
             for path in sorted(
-                (ROOT / "hosts" / host / "policy-addenda").glob("*.toml")
+                (ROOT / "prompts" / "hosts" / host / "policy-addenda").glob("*.md")
             ):
                 loaded = contracts.load_addenda(path)
                 self.assertIn(path.stem, self.policy["docs"], path)
@@ -356,9 +340,7 @@ class RepoPolicyTests(unittest.TestCase):
                 self.assertEqual(addenda, EXPECTED_POLICY_ADDENDA[host])
 
     def test_core_clauses_have_no_host_specific_names(self) -> None:
-        for path in sorted((ROOT / "core" / "policy").glob("*.toml")):
-            if path.name == "placeholders.toml":
-                continue
+        for path in sorted((ROOT / "prompts" / "policy").glob("*.md")):
             for item in contracts.load_policy_contract(path):
                 lowered = item.text.lower()
                 for term in HOST_SPECIFIC_TERMS:
@@ -404,52 +386,6 @@ class RepoPolicyTests(unittest.TestCase):
         ).items():
             self.assertNotIn("{{", data.decode("utf-8"), rel)
 
-    def test_claude_core_preview_equals_legacy_apart_from_known_wording(self) -> None:
-        """P1 的行為等價檢查：忽略空白後逐詞相同，只允許 KNOWN_WORDING_CHANGES。"""
-        files = render.policy_files(
-            self.core, self.bindings["claude"], ROOT / "hosts" / "claude"
-        )
-        self.assertEqual(
-            sorted(files),
-            sorted(self.bindings["claude"]["policy"]["documents"].values()),
-        )
-        changes: list[tuple[str, str]] = []
-        for rel, data in files.items():
-            legacy = (
-                (ROOT / "hosts" / "claude" / "src" / rel)
-                .read_text(encoding="utf-8")
-                .split()
-            )
-            core = data.decode("utf-8").split()
-            matcher = difflib.SequenceMatcher(None, legacy, core, autojunk=False)
-            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-                if tag != "equal":
-                    changes.append((" ".join(legacy[i1:i2]), " ".join(core[j1:j2])))
-        self.assertEqual(changes, KNOWN_WORDING_CHANGES)
-
-    def test_claude_core_preview_keeps_lock_required_fragments(self) -> None:
-        """Decision 4：core 條款保留各 lock surface 的 required_fragments 原文。"""
-        lock = json.loads(
-            (ROOT / "docs/specs/prompt-document-lock/LOCK.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        surfaces = {s["path"]: s for s in lock["surfaces"]}
-        files = render.policy_files(
-            self.core, self.bindings["claude"], ROOT / "hosts" / "claude"
-        )
-        checked = 0
-        for rel, data in files.items():
-            surface = surfaces.get(f"hosts/claude/dist/{rel}")
-            if surface is None:  # bootstrap 不是 lock surface
-                continue
-            content = normalized(data.decode("utf-8")).casefold()
-            for fragment in surface["required_fragments"]:
-                checked += 1
-                with self.subTest(surface=surface["id"], fragment=fragment[:40]):
-                    self.assertIn(normalized(fragment).casefold(), content)
-        self.assertEqual(checked, 12)
-
 
 class PolicyRenderCase(unittest.TestCase):
     """在 temp 目錄的 Claude 副本上測 policy_text、omit、preview 與錯誤。"""
@@ -459,16 +395,15 @@ class PolicyRenderCase(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(
             ROOT / "hosts" / "claude",
             self.root / "hosts" / "claude",
             ignore=shutil.ignore_patterns("plugin"),
         )
         self.binding = self.root / "hosts" / "claude" / "binding.toml"
-        self.dist = self.root / "hosts" / "claude" / "dist"
-        # repo 的 Claude 已是 core；這組測試以 legacy 為基準，副本改回 legacy 並重寫 dist。
+        # repo 的 Claude 已是 core；這組測試以 legacy 為基準，副本改回 legacy。
         self.edit(self.binding, 'policy_text = "core"', 'policy_text = "legacy"')
-        self.assertEqual(self.render("--write").returncode, 0)
 
     def edit(self, path: Path, old: str, new: str) -> None:
         text = path.read_text(encoding="utf-8")
@@ -487,25 +422,17 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertIn(expected, result.stderr)
 
     # --- legacy 與 core 開關（P4） ---
-    def test_legacy_is_byte_identical_to_dist(self) -> None:
+    def test_legacy_check_passes(self) -> None:
         self.assertEqual(self.render("--check").returncode, 0)
 
-    def test_core_replaces_exactly_the_four_policy_documents(self) -> None:
+    def test_core_adds_exactly_the_policy_documents(self) -> None:
+        # legacy 原文已刪（死檔）：legacy 模式輸出不含 policy 文件，core 模式只多出這些文件，其餘逐位元組相同。
         legacy = render.render_host(self.root, "claude")
         self.core_mode()
         core = render.render_host(self.root, "claude")
         documents = set(render.load_toml(self.binding)["policy"]["documents"].values())
-        self.assertEqual(sorted(core), sorted(legacy))
-        self.assertTrue(all(core[p] == legacy[p] for p in core if p not in documents))
-        self.assertNotEqual(
-            core["claude-md.bootstrap.md"], legacy["claude-md.bootstrap.md"]
-        )
-
-    def test_core_check_fails_until_dist_is_rewritten(self) -> None:
-        self.core_mode()
-        self.assertEqual(self.render("--check").returncode, 1)
-        self.assertEqual(self.render("--write").returncode, 0)
-        self.assertEqual(self.render("--check").returncode, 0)
+        self.assertEqual(set(core) - set(legacy), documents)
+        self.assertTrue(all(core[p] == legacy[p] for p in legacy))
 
     def test_every_host_accepts_core_policy_text_in_validation(self) -> None:
         # 所有 host 的 renderer 都能輸出 core；repo 內只有 claude 切過去（EXPECTED_POLICY_TEXT）。
@@ -597,7 +524,7 @@ class PolicyRenderCase(unittest.TestCase):
 
     def test_unknown_placeholder_in_a_core_clause_is_rejected(self) -> None:
         self.edit(
-            self.root / "core" / "policy" / "bootstrap.toml",
+            self.root / "prompts" / "policy" / "bootstrap.md",
             "{{named_roles}}",
             "{{unlisted}}",
         )
@@ -608,9 +535,9 @@ class PolicyRenderCase(unittest.TestCase):
 
     # --- addenda 與 frame ---
     def addenda(self, doc: str, text: str) -> None:
-        folder = self.root / "hosts" / "claude" / "policy-addenda"
-        folder.mkdir(exist_ok=True)
-        (folder / f"{doc}.toml").write_text(text, encoding="utf-8", newline="\n")
+        folder = self.root / "prompts" / "hosts" / "claude" / "policy-addenda"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{doc}.md").write_text(text, encoding="utf-8", newline="\n")
 
     def test_addendum_can_replace_a_non_required_clause(self) -> None:
         self.core_mode()
@@ -640,7 +567,7 @@ class PolicyRenderCase(unittest.TestCase):
         self.rejected(
             "--policy-preview",
             str(self.root / "out"),
-            expected="core/policy 沒有對應的文件",
+            expected="prompts/policy 沒有對應的文件",
         )
 
     def test_addendum_may_add_host_text_after_a_clause(self) -> None:
@@ -652,9 +579,10 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertTrue(text.endswith("- Host-only rule.\n"))
 
     def test_document_with_every_clause_omitted_is_not_emitted(self) -> None:
-        (self.root / "core" / "policy" / "extra.toml").write_text(
-            "[[clause]]\nid = \"extra-note\"\nkind = \"extension\"\ntext = '''\nExtra.'''\n",
+        (self.root / "prompts" / "policy" / "extra.md").write_text(
+            "<!-- clause: extra-note kind=extension -->\nExtra.\n",
             encoding="utf-8",
+            newline="\n",
         )
         self.edit(
             self.binding,
@@ -669,8 +597,7 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertEqual(len(files), len(render.render_host(ROOT, "claude")))
 
     # --- preview ---
-    def test_preview_writes_core_documents_without_touching_dist(self) -> None:
-        before = {p: p.read_bytes() for p in self.dist.rglob("*") if p.is_file()}
+    def test_preview_writes_core_documents_without_creating_a_dist(self) -> None:
         out = self.root / "preview"
         result = self.render("--policy-preview", str(out))
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -681,9 +608,7 @@ class PolicyRenderCase(unittest.TestCase):
             written,
             sorted(render.load_toml(self.binding)["policy"]["documents"].values()),
         )
-        self.assertEqual(
-            {p: p.read_bytes() for p in self.dist.rglob("*") if p.is_file()}, before
-        )
+        self.assertFalse((self.root / "hosts" / "claude" / "dist").exists())
         self.assertEqual(
             render.load_toml(self.binding)["policy"]["policy_text"], "legacy"
         )
@@ -696,8 +621,12 @@ class PolicyRenderCase(unittest.TestCase):
         self.assertTrue((out / "keep.txt").exists())
 
     def test_preview_refuses_a_directory_inside_dist(self) -> None:
-        self.rejected("--policy-preview", str(self.dist / "agents"), expected="不可在")
-        self.rejected("--policy-preview", str(self.dist), expected="不可在")
+        # claude 沒有 committed dist；有 dist 的 host 以 codex（templates/）驗證這道保護。
+        shutil.copytree(ROOT / "hosts" / "codex", self.root / "hosts" / "codex")
+        for target in (self.root / "templates" / "agents", self.root / "templates"):
+            result = run_render("codex", self.root, "--policy-preview", str(target))
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("不可在", result.stderr)
 
     def test_preview_is_rejected_for_a_host_without_documents(self) -> None:
         shutil.copytree(ROOT / "hosts" / "codex", self.root / "hosts" / "codex")

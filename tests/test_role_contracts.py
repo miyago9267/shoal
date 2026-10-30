@@ -1,7 +1,7 @@
-"""role 條款機制：core/contracts 的格式、frames 與 addenda 的定位語法、role_text 開關、R1 / R5 / R7 / R9。
+"""role 條款機制：prompts/roles 的格式、frames 與 addenda 的定位語法、role_text 開關、R1 / R5 / R7 / R9。
 
 機制測試用 temp 目錄的假 contract 與假 host 外框，不依賴實際條款內容；
-R1、R5 與 replace 清單則直接檢查 repo 目前的 core/contracts 與各 host 的 addenda。
+R1、R5 與 replace 清單則直接檢查 repo 目前的 prompts/roles 與各 host 的 addenda。
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ import re
 import shutil
 import sys
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -180,20 +179,20 @@ HOST_SPECIFIC_TERMS = (
 
 
 def clause(cid: str, text: str, sep: str = "paragraph", kind: str = "procedure") -> str:
-    return f"[[clause]]\nid = \"{cid}\"\nkind = \"{kind}\"\nsep = \"{sep}\"\ntext = '''\n{text}'''\n\n"
+    return f"<!-- clause: {cid} kind={kind} sep={sep} -->\n{text}\n\n"
 
 
 def addendum(aid: str, at: str, text: str, sep: str | None = None, join: str | None = None) -> str:
-    sep_line = ("" if sep is None else f'sep = "{sep}"\n') + ("" if join is None else f'join = "{join}"\n')
-    return f"[[addendum]]\nid = \"{aid}\"\nat = \"{at}\"\n{sep_line}text = '''\n{text}'''\n\n"
+    attrs = f"at={at}" + ("" if sep is None else f" sep={sep}") + ("" if join is None else f" join={join}")
+    return f"<!-- addendum: {aid} {attrs} -->\n{text}\n\n"
 
 
 def parse_clauses(text: str) -> list[contracts.Clause]:
-    return contracts.parse_contract(tomllib.loads(text))
+    return contracts.parse_markdown_contract(text)
 
 
 def parse_addenda(text: str) -> list[contracts.Addendum]:
-    return contracts.parse_addenda(tomllib.loads(text))
+    return contracts.parse_markdown_addenda(text)
 
 
 ABC = (
@@ -310,16 +309,14 @@ class FormatTests(unittest.TestCase):
         good = clause("a", "A.")
         cases = {
             "重複": good + good,
-            "kind": good.replace('kind = "procedure"', 'kind = "vibes"'),
-            "id": good.replace('id = "a"', 'id = "Not_Valid"'),
-            "sep": good.replace('sep = "paragraph"', 'sep = "tab"'),
-            "未知欄位": good.replace(
-                'kind = "procedure"', 'kind = "procedure"\nextra = 1'
-            ),
-            "缺少欄位": '[[clause]]\nid = "a"\ntext = "A."\n',
-            "頭尾不可有空白": '[[clause]]\nid = "a"\nkind = "procedure"\ntext = " A. "\n',
+            "kind": good.replace("kind=procedure", "kind=vibes"),
+            "id": good.replace("clause: a ", "clause: Not_Valid "),
+            "sep": good.replace("sep=paragraph", "sep=tab"),
+            "未知欄位": good.replace("kind=procedure", "kind=procedure extra=1"),
+            "缺少欄位": "<!-- clause: a -->\nA.\n",
+            "頭尾不可有空白": "<!-- clause: a kind=procedure -->\n A. \n",
             "至少要有": "",
-            "未知的頂層": "stray = 1\n" + good,
+            "第一個 marker 之前": "stray\n" + good,
         }
         for expected, text in cases.items():
             with (
@@ -332,8 +329,8 @@ class FormatTests(unittest.TestCase):
         good = addendum("a", "end", "A.")
         for expected, text in {
             "重複": good + good,
-            "缺少欄位": '[[addendum]]\nid = "a"\ntext = "A."\n',
-            "頭尾不可有空白": addendum("a", "end", "A.\n\n"),
+            "缺少欄位": "<!-- addendum: a -->\nA.\n",
+            "頭尾不可有空白": addendum("a", "end", " A. "),
         }.items():
             with (
                 self.subTest(expected=expected),
@@ -342,7 +339,7 @@ class FormatTests(unittest.TestCase):
                 parse_addenda(text)
 
     def test_missing_addenda_file_means_no_addenda(self) -> None:
-        self.assertEqual(contracts.load_addenda(Path("/nonexistent/addenda.toml")), [])
+        self.assertEqual(contracts.load_addenda(Path("/nonexistent/addenda.md")), [])
 
     def test_frame_needs_exactly_one_placeholder_and_role_frame_wins(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -379,6 +376,7 @@ class TempHost(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(
             ROOT / "hosts",
             self.root / "hosts",
@@ -387,10 +385,10 @@ class TempHost(unittest.TestCase):
         # grok 的 render 需要 hooks/shoal_guard.py（dist 內 guard 副本的唯一來源）
         (self.root / "hooks").mkdir()
         shutil.copy(ROOT / "hooks" / "shoal_guard.py", self.root / "hooks" / "shoal_guard.py")
-        shutil.rmtree(self.root / "core" / "contracts", ignore_errors=True)
+        shutil.rmtree(self.root / "prompts" / "roles", ignore_errors=True)
         for host in HOSTS:
-            shutil.rmtree(self.root / "hosts" / host / "addenda", ignore_errors=True)
-            shutil.rmtree(self.root / "hosts" / host / "frames", ignore_errors=True)
+            shutil.rmtree(self.root / "prompts" / "hosts" / host / "addenda", ignore_errors=True)
+            shutil.rmtree(self.root / "prompts" / "hosts" / host / "frames", ignore_errors=True)
             # 不管 repo 目前哪個 host 已切到 core，這裡都從 legacy 開始
             path = self.binding(host)
             path.write_text(
@@ -404,8 +402,20 @@ class TempHost(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
 
+    def legacy_sources(self, host: str, keep: tuple[str, ...] = ()) -> None:
+        """repo 已沒有 legacy 原文；legacy 模式的測試自備最小樣本。keep 以外的 role 檔會被刪（core 的 role 不可有 src 同名檔）。"""
+        folder = "roles" if host == "opencode" else "agents"
+        core, binding = render.load_core(self.root), render.load_toml(self.binding(host))
+        for role in binding["roles"]:
+            path = self.root / "hosts" / host / "src" / folder / f"{role}.md"
+            if role in keep:  # grok 要求原文 frontmatter 的 model 等於解析結果
+                model = render.resolve_model(role, core, binding)
+                self.write(f"hosts/{host}/src/{folder}/{role}.md", f"---\nmodel: {model}\n---\n{role} legacy {host}\n")
+            else:
+                path.unlink(missing_ok=True)
+
     def contract(self, role: str, *clauses: str) -> None:
-        self.write(f"core/contracts/{role}.toml", "".join(clauses))
+        self.write(f"prompts/roles/{role}.md", "".join(clauses))
 
     def fake_contracts(self) -> None:
         for role in render.load_toml(self.root / "core" / "roles.toml")["roles"]:
@@ -434,19 +444,21 @@ class TempHost(unittest.TestCase):
 
 class RoleTextSwitchTests(TempHost):
     def test_legacy_ignores_contracts_entirely(self) -> None:
+        for host in HOSTS:
+            self.legacy_sources(host, keep=tuple(render.load_toml(self.binding(host))["roles"]))
         before = {h: self.render(h) for h in HOSTS}
         self.fake_contracts()
-        self.write("hosts/claude/frames/default.md", "# frame\n\n{{role_body}}")
-        self.write("hosts/claude/addenda/scout.toml", addendum("x", "end", "X"))
+        self.write("prompts/hosts/claude/frames/default.md", "# frame\n\n{{role_body}}")
+        self.write("prompts/hosts/claude/addenda/scout.md", addendum("x", "end", "X"))
         self.assertEqual({h: self.render(h) for h in HOSTS}, before)
 
     def test_core_renders_frontmatter_frame_clauses_and_addenda(self) -> None:
         self.fake_contracts()
         self.edit(self.binding("claude"), 'role_text = "legacy"', 'role_text = "core"')
-        self.write("hosts/claude/frames/default.md", "# Host preamble\n\n{{role_body}}")
-        self.write("hosts/claude/frames/scout.md", "# Scout only\n\n{{role_body}}")
+        self.write("prompts/hosts/claude/frames/default.md", "# Host preamble\n\n{{role_body}}")
+        self.write("prompts/hosts/claude/frames/scout.md", "# Scout only\n\n{{role_body}}")
         self.write(
-            "hosts/claude/addenda/scout.toml",
+            "prompts/hosts/claude/addenda/scout.md",
             addendum("x", "after:one", "Host sentence.", "space"),
         )
         files = self.render("claude")
@@ -463,20 +475,23 @@ class RoleTextSwitchTests(TempHost):
     def test_frames_and_addenda_never_reach_dist(self) -> None:
         self.fake_contracts()
         for host in HOSTS:
-            self.write(f"hosts/{host}/frames/default.md", "{{role_body}}")
-            self.write(f"hosts/{host}/addenda/scout.toml", addendum("x", "end", "X"))
+            self.legacy_sources(host, keep=tuple(render.load_toml(self.binding(host))["roles"]))
+            self.write(f"prompts/hosts/{host}/frames/default.md", "{{role_body}}")
+            self.write(f"prompts/hosts/{host}/addenda/scout.md", addendum("x", "end", "X"))
         for host in HOSTS:
             for rel in self.render(host):
                 self.assertFalse(rel.startswith(("frames/", "addenda/")), (host, rel))
 
     def test_role_level_override_switches_one_role(self) -> None:
         self.fake_contracts()
+        self.legacy_sources("claude", keep=tuple(render.load_toml(self.binding("claude"))["roles"]))
         legacy = self.render("claude")
         self.edit(
             self.binding("claude"),
             "[roles.scout]\n",
             '[roles.scout]\nrole_text = "core"\n',
         )
+        self.legacy_sources("claude", keep=tuple(r for r in render.load_toml(self.binding("claude"))["roles"] if r != "scout"))
         after = self.render("claude")
         changed = {rel for rel in legacy if legacy[rel] != after[rel]}
         self.assertEqual(changed, {"agents/scout.md"})
@@ -486,7 +501,9 @@ class RoleTextSwitchTests(TempHost):
 
     def test_role_level_legacy_overrides_a_core_host(self) -> None:
         self.fake_contracts()
+        self.legacy_sources("claude", keep=tuple(render.load_toml(self.binding("claude"))["roles"]))
         legacy = self.render("claude")
+        self.legacy_sources("claude", keep=("scout",))  # core 的 role 不可有 src 同名檔
         self.edit(self.binding("claude"), 'role_text = "legacy"', 'role_text = "core"')
         self.edit(
             self.binding("claude"),
@@ -501,7 +518,7 @@ class RoleTextSwitchTests(TempHost):
 
     def test_core_role_without_contract_is_rejected(self) -> None:
         self.edit(self.binding("claude"), 'role_text = "legacy"', 'role_text = "core"')
-        self.assert_rejected("claude", "core/contracts/")
+        self.assert_rejected("claude", "prompts/roles/")
 
     def test_invalid_role_text_is_rejected(self) -> None:
         self.edit(self.binding("claude"), 'role_text = "legacy"', 'role_text = "both"')
@@ -534,10 +551,10 @@ class RoleTextSwitchTests(TempHost):
     def test_broken_contract_or_addendum_is_rejected_with_the_role_name(self) -> None:
         self.fake_contracts()
         self.edit(self.binding("claude"), 'role_text = "legacy"', 'role_text = "core"')
-        self.write("hosts/claude/addenda/scout.toml", addendum("x", "after:nope", "X"))
+        self.write("prompts/hosts/claude/addenda/scout.md", addendum("x", "after:nope", "X"))
         self.assert_rejected("claude", "scout")
         self.contract("executor", clause("a", "A.", kind="vibes"))
-        self.assert_rejected("claude", "executor.toml")
+        self.assert_rejected("claude", "executor.md")
 
 
 class OmittedRoleTests(TempHost):
@@ -553,7 +570,6 @@ class OmittedRoleTests(TempHost):
             '[roles.applier]\nfallback = "none"\nfallback_candidates = []\n\n',
             "",
         )
-        (self.root / "hosts" / "opencode" / "src" / "roles" / "applier.md").unlink()
         files = self.render("opencode")
         omitted = render.load_toml(self.binding("opencode"))["omitted_roles"]
         self.assertEqual(omitted, ["applier"])
@@ -581,7 +597,7 @@ def unreplaced_texts(
 
 
 def load_host_addenda(root: Path, host: str, role: str) -> list[contracts.Addendum]:
-    return contracts.load_addenda(root / "hosts" / host / "addenda" / f"{role}.toml")
+    return contracts.load_addenda(root / "prompts" / "hosts" / host / "addenda" / f"{role}.md")
 
 
 class VerbatimClauseTests(unittest.TestCase):
@@ -606,7 +622,7 @@ class VerbatimClauseTests(unittest.TestCase):
         actual: dict[str, dict[str, list[str]]] = {}
         for host in HOSTS:
             actual[host] = {}
-            for path in sorted((ROOT / "hosts" / host / "addenda").glob("*.toml")):
+            for path in sorted((ROOT / "prompts" / "hosts" / host / "addenda").glob("*.md")):
                 ids = contracts.replaced_ids(contracts.load_addenda(path))
                 if ids:
                     actual[host][path.stem] = ids
@@ -627,7 +643,7 @@ class VerbatimClauseTests(unittest.TestCase):
         for host, expected in EXPECTED_ADDENDA.items():
             actual = {
                 path.stem: [a.id for a in contracts.load_addenda(path)]
-                for path in sorted((ROOT / "hosts" / host / "addenda").glob("*.toml"))
+                for path in sorted((ROOT / "prompts" / "hosts" / host / "addenda").glob("*.md"))
             }
             with self.subTest(host=host):
                 self.assertEqual(actual, expected)
@@ -659,7 +675,7 @@ class VerbatimClauseTests(unittest.TestCase):
     def test_addenda_files_belong_to_core_roles(self) -> None:
         roles = render.load_core(ROOT)["roles"]
         for host in HOSTS:
-            for path in (ROOT / "hosts" / host / "addenda").glob("*.toml"):
+            for path in (ROOT / "prompts" / "hosts" / host / "addenda").glob("*.md"):
                 self.assertIn(path.stem, roles, path)
 
     def test_check_logic_excludes_only_replaced_clauses(self) -> None:
@@ -676,10 +692,10 @@ class VerbatimClauseTests(unittest.TestCase):
 
 
 class CoreContractTests(unittest.TestCase):
-    """R1：repo 內的 core/contracts 一律 host 中立。"""
+    """R1：repo 內的 prompts/roles 一律 host 中立。"""
 
     def contract_files(self) -> list[Path]:
-        return sorted((ROOT / "core" / "contracts").glob("*.toml"))
+        return sorted((ROOT / "prompts" / "roles").glob("*.md"))
 
     def test_contracts_are_valid_and_name_core_roles(self) -> None:
         roles = render.load_toml(ROOT / "core" / "roles.toml")["roles"]
@@ -731,19 +747,10 @@ class CodexCutTests(unittest.TestCase):
             self.assertEqual(render.role_text_mode(name, binding), "core", name)
         self.assertNotIn("role_text", binding["extra_roles"]["sol-executor"])
 
-    def test_core_and_addenda_reassemble_the_legacy_text(self) -> None:
-        for name in CODEX_CORE_ROLES:
-            clauses = contracts.load_contract(ROOT / "core" / "contracts" / f"{name}.toml")
-            addenda = load_host_addenda(ROOT, "codex", name)
-            legacy = (ROOT / "hosts" / "codex" / "src" / "agents" / f"{name}.md").read_bytes()
-            with self.subTest(role=name):
-                self.assertGreater(len(clauses), 1)
-                self.assertEqual(contracts.compose(clauses, addenda).encode("utf-8"), legacy)
-
     def test_codex_specific_content_lives_only_in_the_expected_addenda(self) -> None:
         actual = {
             path.stem: [a.id for a in contracts.load_addenda(path)]
-            for path in sorted((ROOT / "hosts" / "codex" / "addenda").glob("*.toml"))
+            for path in sorted((ROOT / "prompts" / "hosts" / "codex" / "addenda").glob("*.md"))
         }
         self.assertEqual(actual, CODEX_ADDENDA)
 

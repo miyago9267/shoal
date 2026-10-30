@@ -18,7 +18,6 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
-sys.path.insert(0, str(ROOT / "bench"))
 import install as installer  # noqa: E402
 import hook_registration  # noqa: E402
 import stage_smoke_home  # noqa: E402
@@ -423,25 +422,6 @@ class NativeInstallTests(unittest.TestCase):
             data = tomllib.loads((home / "config.toml").read_text())
             self.assertEqual(data["agents"]["max_concurrent_threads_per_session"], 3)
 
-    def test_legacy_v2_migration_allows_canonical_security_reviewer_upgrade(self) -> None:
-        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.0" / "agents" / "security-reviewer.toml"
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            state_path = self._legacy_home(home)
-            target = home / "agents" / "security-reviewer.toml"
-            target.write_bytes(previous.read_bytes())
-            state = json.loads(state_path.read_text())
-            state["target_fingerprints"]["agents/security-reviewer.toml"] = hashlib.sha256(
-                target.read_bytes()
-            ).hexdigest()
-            state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
-
-            self.assertEqual(self.run_install(home), 0)
-            self.assertEqual(
-                target.read_bytes(),
-                (ROOT / "templates" / "agents" / "security-reviewer.toml").read_bytes(),
-            )
-
     def test_legacy_v2_extra_state_entry_aborts_before_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
@@ -646,7 +626,7 @@ class NativeInstallTests(unittest.TestCase):
     def _export_fixture(self, root: Path) -> Path:
         """A throwaway git repo carrying the committed plugin tree and root manifest."""
         repo = root / "checkout"
-        for relative in (".agents/plugins/marketplace.json", "plugin/plugins"):
+        for relative in (".agents/plugins/marketplace.json", *installer.CODEX_PLUGIN_DIRS):
             source = ROOT / relative
             target = repo / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -681,20 +661,20 @@ class NativeInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             repo = self._export_fixture(root)
-            (repo / "plugin" / "plugins" / "uncommitted.txt").write_text("wip")
+            (repo / "plugins" / "codex" / "uncommitted.txt").write_text("wip")
             target = root / "data" / "shoal" / "codex-marketplace"
             (target).mkdir(parents=True)
             (target / "stale.txt").write_text("old")
             installer._export_codex_marketplace(repo, target)
             self.assertFalse((target / "stale.txt").exists())
             self.assertFalse((target / "README.md").exists())
-            self.assertFalse((target / "plugin" / "plugins" / "uncommitted.txt").exists())
+            self.assertFalse((target / "plugins" / "codex" / "uncommitted.txt").exists())
             manifest = json.loads((target / ".agents/plugins/marketplace.json").read_text())
             self.assertEqual(manifest["name"], "shoal-codex")
             names = []
             for entry in manifest["plugins"]:
                 path = entry["source"]["path"]
-                self.assertTrue(path.startswith("./plugin/plugins/"))
+                self.assertTrue(path.startswith("./plugins/"))
                 self.assertTrue((target / path / ".codex-plugin" / "plugin.json").is_file())
                 names.append(entry["name"])
             self.assertEqual(names, ["shoal-codex", "shoal-jev-router"])
@@ -1148,7 +1128,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "3.12.1-beta",
+                            "version": "3.13.1-beta",
                             "enabled": True,
                         }
                     ]
@@ -1349,56 +1329,6 @@ class NativeInstallTests(unittest.TestCase):
             self.assertEqual(after, before)
             self.assertEqual(state_path.read_bytes(), state_before)
             self.assertFalse(state_path.with_suffix(".json.pending").exists())
-
-    def test_state_proven_legacy_hook_script_upgrades_and_commits(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            self.assertEqual(self.run_install(home), 0)
-            _make_pre_guard(home)
-            script = home / "hooks" / "shoal_autoroute_gate.py"
-            previous_payload = b"# previously installed trusted hook payload\n"
-            script.write_bytes(previous_payload)
-
-            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
-            state = json.loads(state_path.read_text())
-            state.pop("state_version")
-            state.pop("hook_registration")
-            state["target_fingerprints"][
-                "hooks/shoal_autoroute_gate.py"
-            ] = hashlib.sha256(previous_payload).hexdigest()
-            registration_payload = (ROOT / "templates" / "hooks.json").read_bytes()
-            state["target_fingerprints"]["hooks.json"] = hashlib.sha256(
-                registration_payload
-            ).hexdigest()
-            state["original_targets"]["hooks.json"] = {
-                "present": False,
-                "sha256": None,
-                "bytes_b64": None,
-            }
-            state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
-
-            # pre-v2 raw-fingerprint states only ever named legacy projections; map this
-            # fixture's raw fingerprint to the current one to exercise the upgrade path.
-            raw = {hashlib.sha256(registration_payload).hexdigest(): CURRENT_PROJECTION_ID}
-            with mock.patch.dict(hook_registration.LEGACY_RAW_REGISTRATIONS, raw):
-                self.assertEqual(self.run_install(home), 0)
-            selected_payload = (
-                ROOT / "hooks" / "shoal_autoroute_gate.py"
-            ).read_bytes()
-            self.assertEqual(script.read_bytes(), selected_payload)
-            committed = json.loads(state_path.read_text())
-            self.assertEqual(committed["state_version"], 3)
-            self.assertEqual(
-                committed["target_fingerprints"][
-                    "hooks/shoal_autoroute_gate.py"
-                ],
-                hashlib.sha256(selected_payload).hexdigest(),
-            )
-
-            committed_before = state_path.read_bytes()
-            self.assertEqual(self.run_install(home), 0)
-            self.assertEqual(script.read_bytes(), selected_payload)
-            self.assertEqual(state_path.read_bytes(), committed_before)
 
     def test_guard_is_registered_next_to_autoroute_with_its_own_projection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1731,47 +1661,6 @@ class NativeInstallTests(unittest.TestCase):
             with self.assertRaisesRegex(InstallAbort, "projection state"):
                 self.run_install(home)
 
-    def test_exact_legacy_raw_state_migrates_with_foreign_groups(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            self.assertEqual(self.run_install(home), 0)
-            _make_pre_guard(home)
-            hooks = home / "hooks.json"
-            document = json.loads(hooks.read_text())
-            foreign = _foreign_group("/legacy-foreign")
-            document["hooks"]["Stop"].insert(0, foreign)
-            _write_registration(hooks, document)
-
-            state_path = home.with_name(f"{home.name}.shoal-install-state.json")
-            state = json.loads(state_path.read_text())
-            state.pop("state_version")
-            state.pop("hook_registration")
-            source_payload = (ROOT / "templates" / "hooks.json").read_bytes()
-            state["target_fingerprints"]["hooks.json"] = hashlib.sha256(
-                source_payload
-            ).hexdigest()
-            state["original_targets"]["hooks.json"] = {
-                "present": False,
-                "sha256": None,
-                "bytes_b64": None,
-            }
-            state_path.write_text(json.dumps(state, sort_keys=True) + "\n")
-
-            raw = {hashlib.sha256(source_payload).hexdigest(): CURRENT_PROJECTION_ID}
-            with mock.patch.dict(hook_registration.LEGACY_RAW_REGISTRATIONS, raw):
-                self.assertEqual(self.run_install(home), 0)
-            installed = json.loads(hooks.read_text())
-            # the foreign group and the autoroute groups survive; the guard is added
-            self.assertEqual(installed["hooks"]["Stop"][0], foreign)
-            for event, group in TRUSTED_PROJECTIONS[CURRENT_PROJECTION_ID].items():
-                self.assertIn(group, installed["hooks"][event])
-            for event, group in TRUSTED_PROJECTIONS[GUARD_PROJECTION_ID].items():
-                self.assertIn(group, installed["hooks"][event])
-            migrated = json.loads(state_path.read_text())
-            self.assertEqual(migrated["state_version"], 3)
-            self.assertNotIn("hooks.json", migrated["target_fingerprints"])
-            self.assertEqual(self.run_install(home), 0)
-
     def test_transaction_preserves_foreign_hook_race_before_replacement(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
@@ -1879,243 +1768,6 @@ class NativeInstallTests(unittest.TestCase):
             self.assertFalse((home / "agents").exists())
             self.assertFalse((home / "AGENTS.md").exists())
             self.assertFalse(home.with_name(f"{home.name}.shoal-install-state.json").exists())
-
-    def test_release_pinned_v130_roles_upgrade_but_custom_bytes_abort(self) -> None:
-        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.0" / "agents"
-        expected = installer.CANONICAL_ROLE_UPGRADE_DIGESTS
-        for role in ("security-reviewer",):
-            payload = (previous / f"{role}.toml").read_bytes()
-            self.assertIn(hashlib.sha256(payload).hexdigest(), expected[role])
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            for role in installer.ROLES:
-                source = ROOT / "templates" / "agents" / f"{role}.toml"
-                prior = previous / f"{role}.toml"
-                (agents / f"{role}.toml").write_bytes(
-                    prior.read_bytes() if prior.exists() else source.read_bytes()
-                )
-
-            self.assertEqual(self.run_install(home), 0)
-            for role in ("security-reviewer",):
-                self.assertEqual(
-                    (agents / f"{role}.toml").read_bytes(),
-                    (ROOT / "templates" / "agents" / f"{role}.toml").read_bytes(),
-                )
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            payload = (previous / "security-reviewer.toml").read_bytes() + b"# custom\n"
-            (agents / "security-reviewer.toml").write_bytes(payload)
-            with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
-                self.run_install(home)
-
-            self.assertEqual(
-                self.run_install(home, replace_drifted_roles=True),
-                0,
-            )
-            self.assertEqual(
-                (agents / "security-reviewer.toml").read_bytes(),
-                (ROOT / "templates/agents/security-reviewer.toml").read_bytes(),
-            )
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            (agents / "security-reviewer.toml").write_bytes(
-                (previous / "security-reviewer.toml").read_bytes() + b"# custom\n"
-            )
-            with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
-                self.run_install(
-                    home,
-                    replace_drifted_role=("verifier",),
-                )
-            self.assertEqual(
-                self.run_install(
-                    home,
-                    replace_drifted_role=("security-reviewer",),
-                ),
-                0,
-            )
-
-    def test_dry_run_names_canonical_role_upgrades_without_writes(self) -> None:
-        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.0" / "agents"
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            for role in installer.ROLES:
-                source = ROOT / "templates" / "agents" / f"{role}.toml"
-                prior = previous / f"{role}.toml"
-                (agents / f"{role}.toml").write_bytes(
-                    prior.read_bytes() if prior.exists() else source.read_bytes()
-                )
-            before = {
-                path.relative_to(home): path.read_bytes()
-                for path in home.rglob("*")
-                if path.is_file()
-            }
-            state = home.with_name(f"{home.name}.shoal-install-state.json")
-            pending = state.with_suffix(".json.pending")
-            self.assertFalse(state.exists())
-            self.assertFalse(pending.exists())
-
-            buffer = io.StringIO()
-            with redirect_stdout(buffer):
-                code = install(
-                    source_root=ROOT, codex_home=home, dry_run=True, check_codex=False
-                )
-            stdout = buffer.getvalue()
-
-            self.assertEqual(code, 0)
-            self.assertIn("note: upgraded canonical role security-reviewer", stdout)
-            self.assertIn("would change", stdout)
-            after = {
-                path.relative_to(home): path.read_bytes()
-                for path in home.rglob("*")
-                if path.is_file()
-            }
-            self.assertEqual(after, before)
-            self.assertFalse(state.exists())
-            self.assertFalse(pending.exists())
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            (agents / "security-reviewer.toml").write_bytes(
-                (previous / "security-reviewer.toml").read_bytes() + b"# custom\n"
-            )
-            with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
-                install(source_root=ROOT, codex_home=home, dry_run=True, check_codex=False)
-
-    def test_release_pinned_v131_roles_upgrade_but_custom_bytes_abort(self) -> None:
-        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.1" / "agents"
-        for role in ("verifier",):
-            digest = hashlib.sha256((previous / f"{role}.toml").read_bytes()).hexdigest()
-            self.assertIn(digest, installer.CANONICAL_ROLE_UPGRADE_DIGESTS[role])
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            for role in installer.ROLES:
-                source = ROOT / "templates" / "agents" / f"{role}.toml"
-                (agents / f"{role}.toml").write_bytes(source.read_bytes())
-            for role in ("verifier",):
-                (agents / f"{role}.toml").write_bytes(
-                    (previous / f"{role}.toml").read_bytes()
-                )
-
-            self.assertEqual(self.run_install(home), 0)
-            for role in ("verifier",):
-                self.assertEqual(
-                    (agents / f"{role}.toml").read_bytes(),
-                    (ROOT / "templates" / "agents" / f"{role}.toml").read_bytes(),
-                )
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            (agents / "verifier.toml").write_bytes(
-                (previous / "verifier.toml").read_bytes() + b"# custom\n"
-            )
-            with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
-                self.run_install(home)
-
-        runbook = (ROOT / "install" / "AGENT-INSTALL.md").read_text()
-        self.assertIn(
-            "released canonical\nv1.3.1 `verifier` payloads",
-            runbook,
-        )
-        self.assertIn("released canonical v1.3.3 payloads", runbook)
-
-    def test_release_pinned_v132_security_executor_upgrades(self) -> None:
-        previous = (
-            ROOT
-            / "tests"
-            / "fixtures"
-            / "install-history"
-            / "previous"
-            / "v1.3.2"
-            / "agents"
-            / "security-executor.toml"
-        )
-        digest = hashlib.sha256(previous.read_bytes()).hexdigest()
-        self.assertIn(
-            digest,
-            installer.CANONICAL_ROLE_UPGRADE_DIGESTS["security-executor"],
-        )
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            for role in installer.ROLES:
-                source = ROOT / "templates" / "agents" / f"{role}.toml"
-                (agents / f"{role}.toml").write_bytes(source.read_bytes())
-            (agents / "security-executor.toml").write_bytes(previous.read_bytes())
-
-            self.assertEqual(self.run_install(home), 0)
-            installed = agents / "security-executor.toml"
-            self.assertEqual(
-                installed.read_bytes(),
-                (ROOT / "templates" / "agents" / "security-executor.toml").read_bytes(),
-            )
-            state = json.loads(
-                home.with_name(f"{home.name}.shoal-install-state.json").read_text()
-            )
-            self.assertEqual(
-                state["target_fingerprints"]["agents/security-executor.toml"],
-                hashlib.sha256(installed.read_bytes()).hexdigest(),
-            )
-            self.assertEqual(
-                state["original_targets"]["agents/security-executor.toml"]["sha256"],
-                digest,
-            )
-            self.assertEqual(self.run_install(home), 0)
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            (agents / "security-executor.toml").write_bytes(
-                previous.read_bytes() + b"# custom\n"
-            )
-            with self.assertRaisesRegex(InstallAbort, "installed_role_drift"):
-                self.run_install(home)
-
-    def test_release_pinned_v133_routing_roles_upgrade(self) -> None:
-        previous = ROOT / "tests" / "fixtures" / "install-history" / "previous" / "v1.3.3" / "agents"
-        roles = ("verifier",)
-        for role in roles:
-            digest = hashlib.sha256((previous / f"{role}.toml").read_bytes()).hexdigest()
-            self.assertIn(digest, installer.CANONICAL_ROLE_UPGRADE_DIGESTS[role])
-
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory) / "home"
-            agents = home / "agents"
-            agents.mkdir(parents=True)
-            for role in installer.ROLES:
-                source = ROOT / "templates" / "agents" / f"{role}.toml"
-                (agents / f"{role}.toml").write_bytes(source.read_bytes())
-            for role in roles:
-                (agents / f"{role}.toml").write_bytes(
-                    (previous / f"{role}.toml").read_bytes()
-                )
-
-            self.assertEqual(self.run_install(home), 0)
-            for role in roles:
-                self.assertEqual(
-                    (agents / f"{role}.toml").read_bytes(),
-                    (ROOT / "templates" / "agents" / f"{role}.toml").read_bytes(),
-                )
 
     def test_two_nonempty_policy_files_abort_before_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

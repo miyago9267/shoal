@@ -43,13 +43,13 @@
         "presence gates for likely long unattended work"
       ],
       "migration": {
-        "migration_id": "shared-rules-codex-core",
-        "equivalence": "docs/specs/core-policy/equivalence/codex.md"
+        "migration_id": "fan-out-route-3-13-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/fan-out-route.md"
       }
     },
     {
       "id": "packaged-orchestration-policy",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
+      "path": "plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 700,
       "max_bytes": 43000,
@@ -63,8 +63,8 @@
         "presence gates for likely long unattended work"
       ],
       "migration": {
-        "migration_id": "shared-rules-codex-core",
-        "equivalence": "docs/specs/core-policy/equivalence/codex.md"
+        "migration_id": "fan-out-route-3-13-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/fan-out-route.md"
       }
     },
     {
@@ -85,7 +85,7 @@
     },
     {
       "id": "packaged-workflow-extensions",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md",
+      "path": "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 270,
       "max_bytes": 15600,
@@ -101,7 +101,7 @@
     },
     {
       "id": "orchestration-skill",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/SKILL.md",
+      "path": "plugins/codex/skills/shoal-orchestration/SKILL.md",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 100,
       "max_bytes": 4700,
@@ -118,7 +118,7 @@
     },
     {
       "id": "plugin-agent-prompt",
-      "path": "plugin/plugins/shoal-codex/skills/shoal-orchestration/agents/openai.yaml",
+      "path": "plugins/codex/skills/shoal-orchestration/agents/openai.yaml",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 14,
       "max_bytes": 900,
@@ -133,7 +133,7 @@
     },
     {
       "id": "plugin-manifest-description",
-      "path": "plugin/plugins/shoal-codex/.codex-plugin/plugin.json",
+      "path": "plugins/codex/.codex-plugin/plugin.json",
       "version_file": "hosts/codex/VERSION",
       "max_lines": 35,
       "max_bytes": 2200,
@@ -340,7 +340,7 @@
     },
     {
       "id": "claude-executor-agent",
-      "path": "hosts/claude/dist/agents/executor.md",
+      "path": "plugins/claude/agents/executor.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 27,
       "max_bytes": 2900,
@@ -356,7 +356,7 @@
     },
     {
       "id": "claude-explore-agent",
-      "path": "hosts/claude/dist/agents/Explore.md",
+      "path": "plugins/claude/agents/Explore.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 16,
       "max_bytes": 1700,
@@ -371,7 +371,7 @@
     },
     {
       "id": "claude-applier-agent",
-      "path": "hosts/claude/dist/agents/applier.md",
+      "path": "plugins/claude/agents/applier.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 28,
       "max_bytes": 3100,
@@ -391,7 +391,7 @@
     },
     {
       "id": "claude-plan-critic-agent",
-      "path": "hosts/claude/dist/agents/plan-critic.md",
+      "path": "plugins/claude/agents/plan-critic.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 58,
       "max_bytes": 3200,
@@ -408,7 +408,7 @@
     },
     {
       "id": "claude-scout-agent",
-      "path": "hosts/claude/dist/agents/scout.md",
+      "path": "plugins/claude/agents/scout.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 21,
       "max_bytes": 1700,
@@ -424,7 +424,7 @@
     },
     {
       "id": "claude-watcher-agent",
-      "path": "hosts/claude/dist/agents/watcher.md",
+      "path": "plugins/claude/agents/watcher.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 30,
       "max_bytes": 2600,
@@ -445,7 +445,7 @@
     },
     {
       "id": "claude-researcher-agent",
-      "path": "hosts/claude/dist/agents/researcher.md",
+      "path": "plugins/claude/agents/researcher.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 32,
       "max_bytes": 2700,
@@ -462,7 +462,7 @@
     },
     {
       "id": "claude-security-executor-agent",
-      "path": "hosts/claude/dist/agents/security-executor.md",
+      "path": "plugins/claude/agents/security-executor.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 28,
       "max_bytes": 2900,
@@ -478,7 +478,7 @@
     },
     {
       "id": "claude-security-reviewer-agent",
-      "path": "hosts/claude/dist/agents/security-reviewer.md",
+      "path": "plugins/claude/agents/security-reviewer.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 34,
       "max_bytes": 2200,
@@ -494,7 +494,7 @@
     },
     {
       "id": "claude-verifier-agent",
-      "path": "hosts/claude/dist/agents/verifier.md",
+      "path": "plugins/claude/agents/verifier.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 104,
       "max_bytes": 7700,
@@ -515,7 +515,7 @@
     },
     {
       "id": "claude-orchestration-skill",
-      "path": "hosts/claude/dist/skills/shoal-orchestration/SKILL.md",
+      "path": "plugins/claude/skills/shoal-orchestration/SKILL.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 44,
       "max_bytes": 2100,
@@ -531,7 +531,7 @@
     },
     {
       "id": "claude-orchestration-policy",
-      "path": "hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md",
+      "path": "plugins/claude/skills/shoal-orchestration/references/orchestration-policy.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 293,
       "max_bytes": 19600,
@@ -545,13 +545,13 @@
         "**CONFIRMED**, **REFUTED**, or **INCONCLUSIVE**"
       ],
       "migration": {
-        "migration_id": "dispatch-lanes-3-10-0",
-        "equivalence": "docs/specs/prompt-document-lock/equivalence/dispatch-lanes.md"
+        "migration_id": "fan-out-route-3-13-0",
+        "equivalence": "docs/specs/prompt-document-lock/equivalence/fan-out-route.md"
       }
     },
     {
       "id": "claude-workflow-extensions",
-      "path": "hosts/claude/dist/skills/shoal-orchestration/references/workflow-extensions.md",
+      "path": "plugins/claude/skills/shoal-orchestration/references/workflow-extensions.md",
       "version_file": "hosts/claude/VERSION",
       "max_lines": 180,
       "max_bytes": 9600,
@@ -569,11 +569,11 @@
   "mirrors": [
     {
       "left": "templates/agents-md.orchestration.md",
-      "right": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md"
+      "right": "plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md"
     },
     {
       "left": "templates/agents-md.extensions.md",
-      "right": "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
+      "right": "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
     }
   ]
 }

@@ -1,14 +1,14 @@
-# Codex host binding：可用模型、存取等級對應的 sandbox、每個 role 的 effort / description。
+# Codex host binding：可用模型、存取等級對應的 sandbox、每個 role 的 effort；role description 在 prompts/hosts/codex/descriptions.md。
 # 數值等於 shoal-codex 61a411b 的 templates/ 現況；templates/ 就是 codex 的 dist。
 
-# role 文字來源：legacy = src 內的原文；core = core/contracts 的條款加 frames/、addenda/。
+# role 文字來源：legacy = src 內的原文；core = prompts/roles 的條款加 prompts/hosts/<host>/ 的 frames/、addenda/。
 # 個別 role 要不同時，在 [roles.<name>] 寫 role_text 覆寫。
 # core 條款就是由 Codex 1.8.1 的原文切出，Codex 的 addenda 放回 Codex 專屬的句子，
-# 所以 templates/agents/*.toml 與 legacy 逐位元組相同（src/agents 的原文暫時保留，供比對與回復）。
+# 所以 templates/agents/*.toml 與切換前的 legacy 逐位元組相同（core role 的 src/agents 原文已刪除）。
 # host 專屬的 sol-executor 沒有 core 條款，一律沿用 src/agents/sol-executor.md。
 role_text = "core"
 
-# policy 文字來源（core-policy P4）：legacy = src 內的原文；core = core/policy 的條款加 policy-frames/、policy-addenda/。
+# policy 文字來源（core-policy P4）：legacy = src 內的原文；core = prompts/policy 的條款加 prompts/hosts/<host>/ 的 policy-frames/、policy-addenda/。
 # omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
 [policy]
 policy_text = "core"
@@ -23,6 +23,7 @@ omit = [
   { id = "skill-bootstrap-authority", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "first-move-heading", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "first-move-steps", reason = "Codex plugin SKILL.md is hand-maintained" },
+  { id = "executor-brief-bound", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "references-heading", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "references-intro", reason = "Codex plugin SKILL.md is hand-maintained" },
   { id = "reference-policy", reason = "Codex plugin SKILL.md is hand-maintained" },
@@ -59,7 +60,7 @@ orchestration = "agents-md.orchestration.md"
 extensions = "agents-md.extensions.md"
 
 [policy.mirrors]
-"agents-md.extensions.md" = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
+"agents-md.extensions.md" = "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
 
 # 這個 host 可用的模型與其名稱；resolver 只在這裡選（規則見 core/tiers.toml）。
 [models]
@@ -89,44 +90,34 @@ web_search = "live"
 
 [roles.scout]
 effort = "low"
-description = "Read-only reconnaissance for broad codebase sweeps or focused lookup of files, symbols, usages, configuration values, and existing flows."
 
 [roles.applier]
 effort = "medium"
-description = "Fast implementation of small, bounded changes: a test fix, doc fix, config tweak, rename, or repetitive edit from an explicit spec, with minor local judgment and targeted checks only."
 
 [roles.executor]
 effort = "high"
-description = "Implementation requiring local engineering judgment: features, bug fixes, integration, and design-sensitive refactors."
 
 [roles.plan-critic]
 effort = "high"
-description = "Read-only Sol review of a material Plan: readiness review before approval or one-shot semantic adjudication after a fingerprinted Luna disagreement."
 
 [roles.verifier]
 effort = "high"
-description = "Fresh-context calibrated outcome or direction-checkpoint verification. Given an explicit contract, independently runs checks and returns CONFIRMED/REFUTED/INCONCLUSIVE for completed outcomes or CONTINUE/PIVOT/ROLLBACK for direction checkpoints. Read-and-run only; never plans, edits, fixes, or delegates."
 
 [roles.security-reviewer]
 effort = "high"
-description = "Read-only security analysis before approval for authentication, authorization, secrets, crypto, validation, hardening, dependency evidence, and threat review."
 
 [roles.security-executor]
 effort = "high"
-description = "Security-sensitive implementation after approval for authentication, authorization, secrets, crypto, validation, hardening, and dependency remediation."
 
 # watcher、researcher 是 delegation-default 新增的 core role；其他 host 也只接 role，不接派工條款與 guard 規則（spec D17）。
 [roles.watcher]
 effort = "low"
-description = "Background watcher for long-running commands: test suites, builds, CI runs, and measurements. Runs the assigned command or follows the CI run to a terminal state, never edits files, and returns the exact command, exit status, and the output lines that decide success or failure."
 
 [roles.researcher]
 effort = "high"
-description = "Read-only external research: papers, upstream projects, vendor documentation, and prior art. Treats fetched content as data, attaches a source to every claim, and separates what a source states from inference and from what is unverified."
 
 # codex 專屬 role，不屬於 core；model 明確指定，不經 tier。
 [extra_roles.sol-executor]
 model = "gpt-6-sol"
 access = "write"
 effort = "high"
-description = "Bounded implementation requiring normal engineering judgment: routine features, bug fixes, integration, and ordinary tool-assisted changes."

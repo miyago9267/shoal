@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "shoal relay hand-back",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "changed_files",
+    "checks",
+    "unverified",
+    "vendor",
+    "session_id",
+    "usage",
+    "reported_files",
+    "files_mismatch",
+    "reason",
+    "exit_code",
+    "stderr_tail",
+    "partial_output",
+    "landing"
+  ],
+  "properties": {
+    "status": {"type": "string", "enum": ["done", "blocked", "failed"]},
+    "summary": {"type": "string", "maxLength": 4000},
+    "changed_files": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {"type": "string", "maxLength": 1024}
+    },
+    "checks": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cmd", "exit", "decisive_line"],
+        "properties": {
+          "cmd": {"type": "string", "maxLength": 1000},
+          "exit": {"type": ["integer", "null"]},
+          "decisive_line": {"type": "string", "maxLength": 1000}
+        }
+      }
+    },
+    "unverified": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {"type": "string", "maxLength": 1000}
+    },
+    "vendor": {"type": "string", "maxLength": 32},
+    "session_id": {"type": ["string", "null"], "maxLength": 128},
+    "usage": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["input_tokens", "cached_input_tokens", "output_tokens"],
+      "properties": {
+        "input_tokens": {"type": ["integer", "null"]},
+        "cached_input_tokens": {"type": ["integer", "null"]},
+        "output_tokens": {"type": ["integer", "null"]}
+      }
+    },
+    "reported_files": {
+      "type": ["array", "null"],
+      "maxItems": 1000,
+      "items": {"type": "string", "maxLength": 1024}
+    },
+    "files_mismatch": {"type": "boolean"},
+    "reason": {"type": ["string", "null"], "maxLength": 1000},
+    "exit_code": {"type": ["integer", "null"]},
+    "stderr_tail": {"type": ["string", "null"], "maxLength": 4000},
+    "partial_output": {"type": ["string", "null"], "maxLength": 4000},
+    "landing": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["landed", "reason", "worktree", "head", "tree"],
+      "properties": {
+        "landed": {"type": "boolean"},
+        "reason": {"type": ["string", "null"], "maxLength": 1000},
+        "worktree": {"type": "string", "maxLength": 4096},
+        "head": {"type": ["string", "null"], "maxLength": 64},
+        "tree": {"type": ["string", "null"], "maxLength": 64}
+      }
+    }
+  }
+}

@@ -12,7 +12,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
-sys.path.insert(0, str(ROOT / "bench"))
 
 from validate_prompt_lock import (  # noqa: E402
     PromptLockError,
@@ -73,14 +72,14 @@ class PromptDocumentLockTests(unittest.TestCase):
         self.assertIn("templates/agents-md.bootstrap.md", paths)
         self.assertIn("templates/agents-md.orchestration.md", paths)
         self.assertIn(
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/orchestration-policy.md",
+            "plugins/codex/skills/shoal-orchestration/references/orchestration-policy.md",
             paths,
         )
         self.assertIn(
-            "plugin/plugins/shoal-codex/skills/shoal-orchestration/SKILL.md", paths
+            "plugins/codex/skills/shoal-orchestration/SKILL.md", paths
         )
         self.assertIn("INSTALL_PROMPT.md", paths)
-        extensions = "plugin/plugins/shoal-codex/skills/shoal-orchestration/references/workflow-extensions.md"
+        extensions = "plugins/codex/skills/shoal-orchestration/references/workflow-extensions.md"
         self.assertIn("templates/agents-md.extensions.md", paths)
         self.assertIn(extensions, paths)
         self.assertIn(
@@ -204,9 +203,8 @@ class PromptDocumentLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             policy = (
                 root
-                / "plugin"
                 / "plugins"
-                / "shoal-codex"
+                / "codex"
                 / "skills"
                 / "shoal-orchestration"
                 / "references"
@@ -232,12 +230,12 @@ CLAUDE_AGENT_FILES = (
     "watcher",
     "researcher",
 )
-CLAUDE_SKILL_DIR = "hosts/claude/dist/skills/shoal-orchestration"
+CLAUDE_SKILL_DIR = "plugins/claude/skills/shoal-orchestration"
 LOCK_RELATIVE = "docs/specs/prompt-document-lock/LOCK.json"
 
 
 def _claude_paths() -> set[str]:
-    return {f"hosts/claude/dist/agents/{name}.md" for name in CLAUDE_AGENT_FILES} | {
+    return {f"plugins/claude/agents/{name}.md" for name in CLAUDE_AGENT_FILES} | {
         f"{CLAUDE_SKILL_DIR}/SKILL.md",
         f"{CLAUDE_SKILL_DIR}/references/orchestration-policy.md",
         f"{CLAUDE_SKILL_DIR}/references/workflow-extensions.md",
@@ -264,7 +262,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
     def test_lock_covers_exactly_the_thirteen_claude_surfaces(self) -> None:
         lock = load_lock(ROOT)
         claude = {
-            s["path"] for s in lock["surfaces"] if s["path"].startswith("hosts/claude/")
+            s["path"] for s in lock["surfaces"] if s["path"].startswith("plugins/claude/")
         }
 
         self.assertEqual(claude, _claude_paths())
@@ -276,7 +274,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         for surface in load_lock(ROOT)["surfaces"]:
             expected = (
                 "hosts/claude/VERSION"
-                if surface["path"].startswith("hosts/claude/")
+                if surface["path"].startswith("plugins/claude/")
                 else "hosts/codex/VERSION"
             )
             self.assertEqual(surface["version_file"], expected, surface["id"])
@@ -298,7 +296,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
 
     def test_claude_agent_beyond_its_budget_fails_and_names_the_surface(self) -> None:
         with self._git_repo_with_current_lock() as root:
-            executor = root / "hosts/claude/dist/agents/executor.md"
+            executor = root / "plugins/claude/agents/executor.md"
             lines = executor.read_text(encoding="utf-8").splitlines()
             # Five edited front-matter lines are 10 changed lines against a budget of 8.
             lines[1:6] = [f"edited-{index}: value" for index in range(5)]
@@ -314,7 +312,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             self._edit(
                 root,
-                "hosts/claude/dist/agents/Explore.md",
+                "plugins/claude/agents/Explore.md",
                 "Never modify anything.",
                 "Modify files when convenient.",
             )
@@ -329,7 +327,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             self._edit(
                 root,
-                "hosts/claude/dist/agents/executor.md",
+                "plugins/claude/agents/executor.md",
                 "Work like a senior engineer",
                 "Work as a senior engineer",
             )
@@ -346,7 +344,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
             self.assertFalse((root / "VERSION").exists())
             self._edit(
                 root,
-                "hosts/claude/dist/agents/executor.md",
+                "plugins/claude/agents/executor.md",
                 "Work like a senior engineer",
                 "Work as a senior engineer",
             )
@@ -361,7 +359,7 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
         with self._git_repo_with_current_lock() as root:
             self._edit(
                 root,
-                "hosts/claude/dist/agents/executor.md",
+                "plugins/claude/agents/executor.md",
                 "Work like a senior engineer",
                 "Work as a senior engineer",
             )
@@ -403,11 +401,11 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
             previous["surfaces"] = [
                 s
                 for s in previous["surfaces"]
-                if not s["path"].startswith("hosts/claude/")
+                if not s["path"].startswith("plugins/claude/")
             ]
             manifest.write_text(json.dumps(previous, indent=2) + "\n", encoding="utf-8")
             subprocess.run(
-                ["git", "rm", "-rq", "hosts/claude/dist"], cwd=root, check=True
+                ["git", "rm", "-rq", "plugins/claude"], cwd=root, check=True
             )
             subprocess.run(["git", "add", "--", LOCK_RELATIVE], cwd=root, check=True)
             subprocess.run(
@@ -522,10 +520,10 @@ class MigrationMarkerTests(unittest.TestCase):
     def test_unmarked_surface_stays_budgeted_while_another_is_migrating(self) -> None:
         with self._git_repo_with_current_lock() as root:
             self._marked_overshoot(root)
-            self._overshoot(root, "templates/agents/executor.toml")
+            self._overshoot(root, "templates/agents/security-executor.toml")
 
             with self.assertRaisesRegex(
-                PromptLockError, "executor-agent: .*budget exceeded"
+                PromptLockError, "security-executor-agent: .*budget exceeded"
             ):
                 validate_lock(root, base_ref="HEAD", allow_lock_update=True)
 
@@ -726,18 +724,19 @@ class MigrationMarkerTests(unittest.TestCase):
 
     def test_real_lock_markers_are_only_the_recorded_renewals(self) -> None:
         # 一次性的 marker 只允許已記錄的 renewal：Claude 側的 delegation-default（3.0.2 只有
-        # claude-watcher-agent；claude-orchestration-policy 於 3.10.0 改為 dispatch-lanes-3-10-0），以及 Codex 三個 policy surface 的
-        # shared-rules-codex-core 切換，以及 mechanical-executor-agent 的 fast-applier-3-9-0（3.9.0）、claude-applier-agent 的 lean-fast-lane-3-12-0（3.12.0）。之後的 renewal 要換 id。
+        # claude-watcher-agent），以及 Codex bootstrap-policy 的 shared-rules-codex-core 切換，
+        # fan_out 的 fan-out-route-3-13-0（3.13.0）標在 Codex 的 orchestration-template、packaged-orchestration-policy 與 Claude 的 claude-orchestration-policy，
+        # 以及 mechanical-executor-agent 的 fast-applier-3-9-0（3.9.0）、claude-applier-agent 的 lean-fast-lane-3-12-0（3.12.0）。之後的 renewal 要換 id。
         delegation = "docs/specs/delegation-default/RENAME.md"
         codex_core = "docs/specs/core-policy/equivalence/codex.md"
         applier = "docs/specs/prompt-document-lock/equivalence/applier-fast-executor.md"
         lean = "docs/specs/prompt-document-lock/equivalence/lean-fast-lane.md"
-        lanes = "docs/specs/prompt-document-lock/equivalence/dispatch-lanes.md"
+        fan_out = "docs/specs/prompt-document-lock/equivalence/fan-out-route.md"
         expected = {
             "bootstrap-policy": ("shared-rules-codex-core", codex_core),
-            "orchestration-template": ("shared-rules-codex-core", codex_core),
-            "packaged-orchestration-policy": ("shared-rules-codex-core", codex_core),
-            "claude-orchestration-policy": ("dispatch-lanes-3-10-0", lanes),
+            "orchestration-template": ("fan-out-route-3-13-0", fan_out),
+            "packaged-orchestration-policy": ("fan-out-route-3-13-0", fan_out),
+            "claude-orchestration-policy": ("fan-out-route-3-13-0", fan_out),
             "claude-watcher-agent": ("delegation-default-3-0-2", delegation),
             "mechanical-executor-agent": ("fast-applier-3-9-0", applier),
             "claude-applier-agent": ("lean-fast-lane-3-12-0", lean),

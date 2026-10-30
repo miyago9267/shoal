@@ -17,17 +17,6 @@ import render  # noqa: E402
 RENDER = ROOT / "tools" / "render.py"
 
 
-def golden_files(host: str) -> dict[str, bytes]:
-    golden = ROOT / "tests" / "golden" / host
-    return {p.relative_to(golden).as_posix(): p.read_bytes()
-            for p in golden.rglob("*") if p.is_file() and p.name != "SOURCE"}
-
-
-def dist_files(host: str) -> dict[str, bytes]:
-    dist = ROOT / render.DIST_DIRS[host]
-    return {p.relative_to(dist).as_posix(): p.read_bytes() for p in dist.rglob("*") if p.is_file()}
-
-
 def run_render(host: str, root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, str(RENDER), "--host", host, "--root", str(root), *flags],
                           capture_output=True, text=True, encoding="utf-8",
@@ -35,11 +24,9 @@ def run_render(host: str, root: Path, *flags: str) -> subprocess.CompletedProces
 
 
 class HostRenderCase(unittest.TestCase):
-    """子類設定 HOST、GOLDEN_COUNT、SOURCE_REFS；共用 golden 與 --check/--write 行為。"""
+    """子類設定 HOST、DIST_FILE、SRC_FILE；共用 --check/--write 行為。"""
 
     HOST = ""
-    GOLDEN_COUNT = 0
-    SOURCE_REFS: tuple[str, ...] = ()
     # (dist 內要被改動的檔案, 來源檔（相對 hosts/<host>/src）)
     DIST_FILE = ""
     SRC_FILE = ""
@@ -49,6 +36,7 @@ class HostRenderCase(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         # grok 的 dist 內有 hooks/shoal_guard.py 的副本，來源是 repo 根的 hooks/shoal_guard.py。
         (self.root / "hooks").mkdir()
         shutil.copy(ROOT / "hooks" / "shoal_guard.py", self.root / "hooks" / "shoal_guard.py")
@@ -70,23 +58,6 @@ class HostRenderCase(unittest.TestCase):
         result = self.check()
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn(expected, result.stderr)
-
-    # --- golden ---
-    def test_render_is_byte_identical_to_golden(self) -> None:
-        golden = golden_files(self.HOST)
-        self.assertEqual(len(golden), self.GOLDEN_COUNT)
-        rendered = render.RENDERERS[self.HOST](ROOT)
-        self.assertEqual(sorted(rendered), sorted(golden))
-        for rel, data in golden.items():
-            self.assertEqual(rendered[rel], data, rel)
-
-    def test_golden_records_source(self) -> None:
-        source = (ROOT / "tests" / "golden" / self.HOST / "SOURCE").read_text(encoding="utf-8")
-        for ref in self.SOURCE_REFS:
-            self.assertRegex(source, rf"(?m)^ref: {ref}[0-9a-f]{{7}}$")
-
-    def test_committed_dist_matches_golden(self) -> None:
-        self.assertEqual(dist_files(self.HOST), golden_files(self.HOST))
 
     # --- --check / --write ---
     def test_check_passes_when_dist_matches(self) -> None:

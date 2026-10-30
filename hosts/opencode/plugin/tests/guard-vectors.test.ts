@@ -251,6 +251,12 @@ function checkPost(vector: Json, sandbox: Sandbox, state: string, whitelist: str
   if ("log_size_max" in vector && Buffer.byteLength(logText) > vector.log_size_max) {
     failures.push(`${name}: log grew past cap`);
   }
+  if ("log_rotated_bytes" in vector) {
+    const rotated = `${logPath}.1`;
+    if (!existsSync(rotated) || lstatSync(rotated).size !== vector.log_rotated_bytes) {
+      failures.push(`${name}: guard.jsonl.1 missing or wrong size`);
+    }
+  }
   return failures;
 }
 

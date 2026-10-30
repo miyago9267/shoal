@@ -10,6 +10,7 @@ dry-run 會呼叫底層 installer 的 dry-run 並顯示輸出；claude、codex�
 agy 的 agents、skills 連到 hosts/agy/dist（symlink 失敗時改複製並在 manifest 記 agy_mode: copy）。
   python3 tools/shoal_install.py --chain-add NAME --chain-command '["argv","..."]' --chain-hosts h1,h2 [--chain-events E1,E2] [--chain-order N] [--apply]
   python3 tools/shoal_install.py --chain-remove NAME [--apply]
+  python3 tools/shoal_install.py --doctor    檢查 cross-vendor-relay 的 vendor CLI（唯讀；見 do_doctor）
   python3 tools/shoal_install.py --update [--apply]    把本機 checkout 的 committed HEAD 同步到各 host（不 git pull；見 tools/shoal_update.py）
 
 --without 現在對這三個模組真的生效（再跑一次不帶它們，只移除 shoal 自己的 entry）：
@@ -45,7 +46,10 @@ REGISTRY_PATH = REPO / "install" / "modules.json"
 JEV_PLUGIN = "shoal-jev-router@shoal-codex"
 # 與 hooks/shoal_guard.py 的 CHAIN_EVENTS 相同（tests 比對）；不 import guard，installer 保持獨立。
 CHAIN_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionEnd", "Stop")
-EXPLORE_DIST = "hosts/claude/dist/agents/Explore.md"
+EXPLORE_DIST = "plugins/claude/agents/Explore.md"
+VENDORS_FILE = REPO / "core" / "vendors.toml"
+# 有這些變數時 vendor CLI 可能改走 API 計費；doctor 只報名稱，不碰值（relay 的 child env 本來就不帶它們）。
+API_KEY_NAMES = ("OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY")
 
 Runner = Callable[[list[str], Mapping[str, str]], int]
 Previewer = Callable[[list[str], Mapping[str, str]], tuple[int, str]]
@@ -747,6 +751,104 @@ def do_install(args: argparse.Namespace, reg: dict, env: Mapping[str, str], runn
     return 0
 
 
+# ---- doctor：cross-vendor-relay 的 vendor CLI 健康檢查（SPEC D8、F7、S1.12）----
+def _vendor_output(argv: list[str], cfg: dict, env: Mapping[str, str]) -> tuple[int, str]:
+    """以 vendors.toml 的 env allowlist 執行 vendor CLI（stdin 關閉、30 秒上限）；無法啟動時 exit code 為 127。"""
+    child = {k: env[k] for k in cfg.get("env", []) if k in env}
+    try:
+        proc = subprocess.run(argv, env=child, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return 127, ""
+    return proc.returncode, proc.stdout + proc.stderr
+
+
+def login_method(rc: int, output: str) -> str:
+    """只從 `login status` 的輸出分類出登入方式；原文可能帶 token 片段，永遠不轉印。"""
+    low = output.lower()
+    if rc != 0 or "not logged in" in low:
+        return "not logged in"
+    if "chatgpt" in low:
+        return "ChatGPT subscription"
+    if "api key" in low:
+        return "API key (billed per use)"
+    return "unknown"
+
+
+def _is_linked_worktree(project: str) -> bool:
+    """`.git` 是檔案且 gitdir 指向 .git/worktrees/（submodule 指向 .git/modules/，不算）。"""
+    try:
+        with open(os.path.join(project, ".git"), encoding="utf-8", errors="replace") as fh:
+            return "/worktrees/" in fh.readline().replace("\\", "/")
+    except OSError:
+        return False
+
+
+def relay_trust_entries(env: Mapping[str, str]) -> list[tuple[str, str]]:
+    """~/.codex/config.toml 的 [projects."<path>"] 中指向 worktree 的項目（路徑含 /.claude/worktrees/，或是 linked worktree）。
+
+    codex exec -s workspace-write 會把未登記的 repo 自動寫成 trusted（SPEC T1.0 後的決策）；只列出，不修改。
+    """
+    import tomllib  # 3.11+；只有 doctor 需要，不讓舊 Python 的其他安裝流程受影響
+
+    codex_home = Path(env.get("CODEX_HOME") or _home(env) / ".codex")
+    try:
+        projects = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8")).get("projects", {})
+    except (OSError, ValueError):
+        return []
+    found = []
+    for project, table in projects.items():
+        if "/.claude/worktrees/" in project.replace("\\", "/") or _is_linked_worktree(project):
+            found.append((project, str(table.get("trust_level", "?")) if isinstance(table, dict) else "?"))
+    return found
+
+
+def do_doctor(env: Mapping[str, str], vendors_file: Path = VENDORS_FILE) -> int:
+    """唯讀。每個 vendor 回報 binary 絕對路徑、版本是否 >= 最低版本、登入方式；再報 API key 變數名稱與 relay 造成的 trust 項目。
+
+    有任何 vendor 缺 binary、版本過舊或未登入時 exit 1；警告不影響 exit code。
+    """
+    import tomllib
+
+    import shoal_relay  # 與 runner 共用 binary 解析與版本比對
+
+    try:
+        vendors = tomllib.loads(vendors_file.read_text(encoding="utf-8")).get("vendors", {})
+    except (OSError, ValueError) as exc:
+        print(f"error: cannot read {vendors_file}: {exc}", file=sys.stderr)
+        return 2
+    ok = True
+    for name, cfg in vendors.items():
+        print(f"vendor {name}")
+        try:
+            binary = shoal_relay._resolve_binary(cfg, env.get("HOME", ""))
+        except shoal_relay.Blocked as exc:
+            print(f"  binary: MISSING ({exc})")
+            ok = False
+            continue
+        print(f"  binary: {binary}")
+        rc, out = _vendor_output([binary, *cfg.get("version_args", ["--version"])], cfg, env)
+        found = shoal_relay.VERSION_RE.search(out) if rc == 0 else None
+        good = rc == 0 and shoal_relay._version_ok(out, cfg["min_version"])
+        print(f"  version: {found.group(0) if found else 'unknown'} (min {cfg['min_version']}) {'ok' if good else 'TOO OLD OR UNREADABLE'}")
+        rc, out = _vendor_output([binary, *cfg.get("login_args", [])], cfg, env)
+        method = login_method(rc, out)
+        print(f"  login: {method}")
+        ok = ok and good and method != "not logged in"
+        if method.startswith("API key"):
+            print("  warn: logged in with an API key, so relay runs are billed per use")
+    for var in API_KEY_NAMES:
+        if env.get(var):
+            print(f"warn: {var} is set; tools that read it bill API usage instead of your subscription login "
+                  "(the relay drops it from the vendor env)")
+    entries = relay_trust_entries(env)
+    if entries:
+        print("codex trust entries that point at worktrees (clean up yourself in config.toml; doctor never edits it):")
+        for project, level in entries:
+            print(f"  {project} ({level})")
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     reg = load_registry()
@@ -761,6 +863,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--chain-events", metavar="EVENTS", help=f"成員訂閱的事件（逗號分隔，{', '.join(CHAIN_EVENTS)}）；省略＝只有 PreToolUse，重新登記時沿用原值")
     p.add_argument("--chain-order", type=_num, metavar="N", help="執行順序（升冪）；預設：同名成員沿用原值，新成員為現有最大值加 1")
     p.add_argument("--chain-remove", metavar="NAME", help="從 chain 移除成員")
+    p.add_argument("--doctor", action="store_true", help="檢查 cross-vendor-relay 的 vendor CLI：binary 路徑、版本、登入方式、API key 警告、worktree trust 項目（唯讀）")
     p.add_argument("--update", action="store_true", help="匯出 committed HEAD、刷新 Claude／Codex marketplace、同步各 host、sha256 檢查；預設 dry-run")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="預設；印出指令不寫入")
@@ -778,6 +881,10 @@ def main(
     args = parser.parse_args(argv)
     env = os.environ if env is None else env
     reg = load_registry()
+    if args.doctor:
+        if args.update or args.apply or args.dry_run or args.host or args.list or args.chain_add is not None or args.chain_remove is not None or args.with_ or args.without or args.only:
+            parser.error("--doctor 不能和其他動作或選項一起用")
+        return do_doctor(env)
     if args.update:
         if args.host or args.list or args.chain_add is not None or args.chain_remove is not None or args.with_ or args.without or args.only:
             parser.error("--update 不能和 --host、--list、--chain-*、--with、--without、--only 一起用")

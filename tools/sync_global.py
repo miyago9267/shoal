@@ -63,7 +63,6 @@ from typing import Callable, Mapping, Optional
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "install"))
-import legacy_codex  # noqa: E402
 import opencode_global  # noqa: E402
 import shoal_install  # noqa: E402
 HOSTS = ("codex", "grok", "agy", "opencode")
@@ -272,22 +271,15 @@ def sync_codex_roles(
     return updated, added, drift, removed
 
 
-# 遷移後由正常的 installer 安裝的新名（只用在 dry-run 的計畫文字）。
-CODEX_INSTALL_NEW = (
-    "shoal_autoroute_gate.py, shoal-autoroute-v1 and shoal-dispatch-guard-v2 hook groups, "
-    "shoal-codex AGENTS.md block, new install state"
-)
-
-
 def run_codex_install(ctx: Ctx, home: Path, what: str) -> None:
     """Run install/install.py from the working tree; it must match HEAD (the committed export source)."""
     commit = git(ctx, "rev-parse", "--verify", f"{ctx.ref}^{{commit}}").decode().strip()
     head = git(ctx, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
     if commit != head:
         raise SyncError(f"{what} runs install/install.py from the working tree; --ref must be HEAD")
-    dirty = git(ctx, "status", "--porcelain", "--", "install", "templates", "hooks", "plugin", ".agents").decode().strip()
+    dirty = git(ctx, "status", "--porcelain", "--", "install", "templates", "hooks", "plugin", "plugins", ".agents").decode().strip()
     if dirty:
-        raise SyncError(f"{what} needs install/, templates/, hooks/, plugin/ and .agents/ to match HEAD; commit or stash first")
+        raise SyncError(f"{what} needs install/, templates/, hooks/, plugin/, plugins/ and .agents/ to match HEAD; commit or stash first")
     done = run(
         [sys.executable, str(ctx.repo / "install" / "install.py"), "--codex-home", str(home)],
         ctx,
@@ -316,24 +308,6 @@ def marketplace_stale(ctx: Ctx, home: Path) -> bool:
     )
 
 
-def migrate_codex_legacy(ctx: Ctx, home: Path) -> Optional[str]:
-    """2.0.0 之前的舊名安裝：dry-run 回報計畫；--apply 先移除舊名再跑 install/install.py 以新名安裝。
-
-    回傳摘要片段；沒有舊名安裝時回 None。dry-run 之後的步驟不能在舊名還在的 home 上模擬，所以略過。
-    """
-    try:
-        legacy = legacy_codex.detect(home, ctx.repo / "plugin")
-    except legacy_codex.LegacyMigrationError as exc:
-        raise SyncError(f"legacy migration: {exc}") from exc
-    if not legacy.found:
-        return None
-    summary = "legacy migration: " + "; ".join(legacy.plan()) + "; install " + CODEX_INSTALL_NEW
-    if not ctx.apply:
-        return summary
-    run_codex_install(ctx, home, "legacy migration")
-    return summary
-
-
 JEV_PLUGIN = "shoal-jev-router@shoal-codex"
 
 
@@ -358,11 +332,6 @@ def sync_codex(ctx: Ctx) -> Result:
     if not home.is_dir():
         return "skipped", f"{home} 不存在"
     parts: list[str] = []
-    migrated = migrate_codex_legacy(ctx, home)
-    if migrated is not None:
-        parts.append(migrated)
-        if not ctx.apply:
-            return "updated", migrated
     if marketplace_stale(ctx, home):
         if ctx.apply:
             run_codex_install(ctx, home, "marketplace migration")

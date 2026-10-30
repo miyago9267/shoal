@@ -1,1 +1,0 @@
-Run the full test suite with scripts/run_tests.sh and tell me the result.

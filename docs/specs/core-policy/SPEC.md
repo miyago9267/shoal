@@ -12,7 +12,7 @@ updated: 2026-10-06
 
 ## Background
 
-自 [generic-shoal](../generic-shoal/SPEC.md) 拆出（plan-verifier 2026-10-06
+自 generic-shoal (archived, see git history) 拆出（plan-verifier 2026-10-06
 建議：P 有獨立的 rollback、lock renewal 與逐 host 驗證迴圈）。現況（main
 `7bed030` 查證）：
 

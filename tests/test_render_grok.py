@@ -8,16 +8,10 @@ import unittest
 import render_helpers as rh
 from render_helpers import ROOT, render, run_render
 
-sys.path.insert(0, str(ROOT / "tools"))
-from check_rename import apply_rename  # noqa: E402
-
-UPSTREAM_RULES = ROOT / "tests" / "fixtures" / "grok" / "rules.pilotfish-grok.upstream-v1.0.6.txt"
 
 
 class GrokRenderTests(rh.HostRenderCase):
     HOST = "grok"
-    GOLDEN_COUNT = 24
-    SOURCE_REFS = ("shoal@",)
     DIST_FILE = "roles/scout.toml"
     SRC_FILE = "config.snippet.toml"  # core 模式下 agents/*.md 不參與 render，改用 passthrough 檔
 
@@ -63,17 +57,7 @@ class GrokRenderTests(rh.HostRenderCase):
         rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
         self.assertEqual(re.findall(r"(?m)^<!-- shoal-grok v.+ -->$", rules),
                          [f"<!-- shoal-grok v{version} -->"])
-        self.assertEqual(version, "3.12.0-beta")
-
-    def test_rules_equal_upstream_except_the_rename(self) -> None:  # AC-GW-003
-        # 2.0.0 起 rules 不再逐字等於上游：只差 docs/specs/shoal-rebrand/RENAME.md 的名稱替換與版本 marker。
-        # 另加 docs/specs/delegation-default/RENAME.md 的 role 改名（上游仍用舊名）。
-        upstream = apply_rename(UPSTREAM_RULES.read_text(encoding="utf-8"), "rules.md")
-        upstream = upstream.replace("mech-executor", "applier").replace("plan-verifier", "plan-critic")
-        version = (ROOT / "hosts" / "grok" / "VERSION").read_text(encoding="utf-8").strip()
-        upstream = upstream.replace("<!-- shoal-grok v2.0.0 -->", f"<!-- shoal-grok v{version} -->")  # apply_rename stamps 2.0.0
-        rules = render.RENDERERS["grok"](ROOT)["rules/shoal-grok.md"].decode("utf-8")
-        self.assertEqual(rules, upstream)
+        self.assertEqual(version, "3.13.0-beta")
 
     def test_changing_version_requires_rewriting_dist(self) -> None:  # AC-GW-002
         (self.root / "hosts" / "grok" / "VERSION").write_text("2.0.1\n", encoding="utf-8", newline="\n")
@@ -95,20 +79,12 @@ class GrokRenderTests(rh.HostRenderCase):
     def test_rules_source_needs_exactly_one_marker(self) -> None:  # AC-GW-005
         src = self.root / "hosts" / "grok" / "src" / "rules" / "shoal-grok.md"
         text = src.read_text(encoding="utf-8")
-        marker = "<!-- shoal-grok v3.12.0-beta -->\n"
+        marker = "<!-- shoal-grok v3.13.0-beta -->\n"
         self.assertIn(marker, text)
         src.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
         src.write_text(text + marker, encoding="utf-8", newline="\n")
         self.assert_rejected("marker")
-
-    def test_agents_are_rendered_from_core_not_from_src(self) -> None:
-        src = ROOT / "hosts" / "grok" / "src" / "agents"
-        rendered = render.RENDERERS["grok"](ROOT)
-        for path in src.glob("*.md"):
-            if path.stem in ("watcher", "researcher"):
-                continue  # 沒有上游原文；legacy 檔是 core 輸出的快照，供 role_text = "legacy" 回復用
-            self.assertNotEqual(rendered[f"agents/{path.name}"], path.read_bytes(), path.name)
 
     def test_role_toml_carries_reasoning_effort(self) -> None:
         rendered = render.RENDERERS["grok"](ROOT)
@@ -117,7 +93,7 @@ class GrokRenderTests(rh.HostRenderCase):
         self.assertEqual(efforts, {"scout": "low", "applier": "low", "security-reviewer": "high"})
 
     def test_agent_model_must_match_binding(self) -> None:
-        self.edit(self.root / "hosts" / "grok" / "frames" / "scout.md", "model: inherit", "model: grok-4.5")
+        self.edit(self.root / "prompts" / "hosts" / "grok" / "frames" / "scout.md", "model: inherit", "model: grok-4.5")
         self.assert_rejected("scout")
 
     def test_read_only_role_must_use_read_only_capability(self) -> None:

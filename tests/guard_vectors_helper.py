@@ -257,4 +257,8 @@ def check_post(vector: Dict[str, Any], sandbox: Sandbox, state: str, whitelist: 
             failures.append("%s: log must not contain %r" % (name, needle))
     if "log_size_max" in vector and len(log_text.encode()) > vector["log_size_max"]:
         failures.append("%s: log grew past cap" % name)
+    if "log_rotated_bytes" in vector:
+        rotated = log_path + ".1"
+        if not os.path.isfile(rotated) or os.path.getsize(rotated) != vector["log_rotated_bytes"]:
+            failures.append("%s: guard.jsonl.1 missing or wrong size" % name)
     return failures

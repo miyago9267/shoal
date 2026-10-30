@@ -1,8 +1,4 @@
-"""Claude plugin (generic-shoal K1, K2, K4, K5, K6): render, golden, quoting, guard `--plugin` deferral.
-
-tests/golden/claude-plugin is a copy of the render output (repo-relative paths); refresh it by
-copying `plugins/claude/`, `plugins/claude-guard/` and `.claude-plugin/marketplace.json` after `render.py --host claude-plugin --write`.
-"""
+"""Claude plugin (generic-shoal K1, K2, K4, K5, K6): render, quoting, guard `--plugin` deferral."""
 
 from __future__ import annotations
 
@@ -25,11 +21,11 @@ import install_hooks  # noqa: E402
 import render  # noqa: E402
 import shoal_guard as guard  # noqa: E402
 
-GOLDEN = ROOT / "tests" / "golden" / "claude-plugin"
 GUARD = ROOT / "hooks" / "shoal_guard.py"
 PLUGIN = ROOT / "plugins" / "claude"
 GUARD_PLUGIN = ROOT / "plugins" / "claude-guard"
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+CLAUDE_VERSION = (ROOT / "hosts" / "claude" / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
@@ -50,28 +46,12 @@ def run_render(root: Path, *flags: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def golden_files() -> dict[str, bytes]:
-    return {
-        p.relative_to(GOLDEN).as_posix(): p.read_bytes()
-        for p in GOLDEN.rglob("*")
-        if p.is_file() and p.name != "SOURCE"
-    }
-
-
-class GoldenTests(unittest.TestCase):
-    def test_render_is_byte_identical_to_golden(self) -> None:
-        golden = golden_files()
-        self.assertEqual(len(golden), 23)
-        rendered = render.render_claude_plugin(ROOT)
-        self.assertEqual(sorted(rendered), sorted(golden))
-        for rel, data in golden.items():
-            self.assertEqual(rendered[rel], data, rel)
-
+class CommittedOutputTests(unittest.TestCase):
     def test_committed_files_match_render(self) -> None:
         for rel, data in render.render_claude_plugin(ROOT).items():
             self.assertEqual((ROOT / rel).read_bytes(), data, rel)
 
-    def test_claude_dist_is_not_changed_by_the_plugin_target(self) -> None:
+    def test_claude_renderer_output_is_not_changed_by_the_plugin_target(self) -> None:
         self.assertEqual(len(render.RENDERERS["claude"](ROOT)), 15)
         self.assertNotIn("claude-plugin", render.RENDERERS)
 
@@ -100,7 +80,8 @@ class ContentTests(unittest.TestCase):
         )
         self.assertNotIn("plugins/claude/settings.snippet.json", rendered)
 
-    def test_versions_equal_the_product_version(self) -> None:
+    def test_versions_equal_the_claude_host_version(self) -> None:
+        # Claude 依版本號快取 plugin；內容變了版本沒跟著動，已安裝的 cache 不會刷新。
         plugin = json.loads(
             (PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
@@ -110,13 +91,13 @@ class ContentTests(unittest.TestCase):
         guard_plugin = json.loads(
             (GUARD_PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(plugin["version"], VERSION)
+        self.assertEqual(plugin["version"], CLAUDE_VERSION)
         self.assertEqual(plugin["name"], "shoal")
-        self.assertEqual((guard_plugin["name"], guard_plugin["version"]), ("shoal-dispatch-guard", VERSION))
+        self.assertEqual((guard_plugin["name"], guard_plugin["version"]), ("shoal-dispatch-guard", CLAUDE_VERSION))
         self.assertEqual(market["name"], "shoal")
         self.assertEqual(
             [(e["name"], e["version"]) for e in market["plugins"]],
-            [("shoal", VERSION), ("shoal-dispatch-guard", VERSION)],
+            [("shoal", CLAUDE_VERSION), ("shoal-dispatch-guard", CLAUDE_VERSION)],
         )
 
     def test_marketplace_source_is_the_plugin_dir_and_not_the_codex_one(self) -> None:
@@ -369,10 +350,10 @@ class RenderCommandTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "hosts" / "claude", self.root / "hosts" / "claude")
         (self.root / "hooks").mkdir()
         shutil.copy(GUARD, self.root / "hooks" / "shoal_guard.py")
-        shutil.copy(ROOT / "VERSION", self.root / "VERSION")
         self.assertEqual(run_render(self.root, "--write").returncode, 0)
 
     def test_check_passes_after_write(self) -> None:
@@ -409,14 +390,14 @@ class RenderCommandTests(unittest.TestCase):
         self.assertEqual(run_render(self.root, "--check").returncode, 0)
 
     def test_changing_the_version_requires_rewriting_the_manifests(self) -> None:
-        (self.root / "VERSION").write_text("9.9.9\n", encoding="utf-8")
+        (self.root / "hosts" / "claude" / "VERSION").write_text("9.9.9\n", encoding="utf-8")
         self.assertEqual(run_render(self.root, "--check").returncode, 1)
         run_render(self.root, "--write")
         manifest = json.loads((self.root / "plugins" / "claude" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["version"], "9.9.9")
 
     def test_bad_version_is_rejected(self) -> None:
-        (self.root / "VERSION").write_text("one\n", encoding="utf-8")
+        (self.root / "hosts" / "claude" / "VERSION").write_text("one\n", encoding="utf-8")
         result = run_render(self.root, "--check")
         self.assertEqual(result.returncode, 2)
         self.assertIn("版本格式不合法", result.stderr)

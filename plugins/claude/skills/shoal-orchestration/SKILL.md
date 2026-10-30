@@ -2,7 +2,7 @@
 name: shoal-orchestration
 description: Full shoal orchestration workflow - interaction-shape routing, Plan and approval gates, dispatch brakes, named-role delegation, security separation, verification, recovery, outcome continuation, review intent, decision checkpoints, and blocked-task isolation. Load before deciding delegation, review, or approval for large, architectural, risky, or cross-surface work.
 ---
-<!-- shoal-claude v3.12.0-beta -->
+<!-- shoal-claude v3.13.4-beta -->
 
 # Shoal orchestration
 
@@ -12,13 +12,14 @@ complete contract.
 
 ## First move
 
-1. Classify the interaction shape: `co_discover`, `explore_then_plan`, or
+1. Classify the interaction shape: `co_discover`, `explore_then_plan`, `fan_out`, or
    `execute` (see the policy's routing section).
 2. Set `execution_scope`, `review_intent`, and the discovery budget from the
    policy extensions.
 3. Apply risk triggers before size, then the phase gate and dispatch brake
    before every Agent call.
 
+An `executor` brief names its file/module bound; work larger than that is split into several executors or routed to `applier`.
 ## References
 
 Read only the part needed for the current decision:

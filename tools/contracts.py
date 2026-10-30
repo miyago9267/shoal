@@ -1,13 +1,15 @@
-"""role 條款（core/contracts）、host 外框（frames）與 host 補充（addenda）的格式、載入與組合。
+"""role 條款（prompts/roles）、host 外框（frames）與 host 補充（addenda）的格式、載入與組合。
 
 純函式加上讀檔的 loader，不依賴 render.py。條款與 addendum 的 text 都是逐字文字：
 條款之間的分隔由前一個條款的 sep 決定，最後一個條款之後固定補一個換行。
+
+來源是 Markdown：一行 marker（`<!-- clause: <id> kind=<kind> ... -->`）之後到下一個 marker 之間、去掉頭尾空行
+的內容就是 text。語法見 core/README.md。
 """
 
 from __future__ import annotations
 
 import re
-import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -29,7 +31,7 @@ KINDS = frozenset(
         "leaf",
     }
 )
-# policy 條款（core/policy）的 kind 詞彙；與 role 的 KINDS 分開，新增同樣要改 core/README.md。
+# policy 條款（prompts/policy）的 kind 詞彙；與 role 的 KINDS 分開，新增同樣要改 core/README.md。
 POLICY_KINDS = frozenset(
     {
         "heading",
@@ -49,6 +51,12 @@ FRAME_PLACEHOLDER = "{{role_body}}"
 _PLACEHOLDER = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
 _ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _ANCHOR = re.compile(r"^(?:(start|end)|(after|before|replace):(.+))$")
+# marker 行：`<!-- <tag>: <內容> -->`，整行；正文內任何以 `<!-- <tag>:` 開頭的行都被視為 marker。
+_MARKER_TAGS = ("clause", "addendum", "description", "text")
+_MARKER_PREFIX = tuple(f"<!-- {tag}:" for tag in _MARKER_TAGS)
+_MARKER = re.compile(r"^<!-- (clause|addendum|description|text): (\S.*?) -->$")
+# description / text 區塊的 key：role 名稱（可含大寫，例如 Explore）或 text key。
+_BLOCK_KEY = re.compile(r"^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$")
 
 
 class ContractError(Exception):
@@ -76,11 +84,11 @@ class Addendum:
     join: str | None = None
 
 
-def _load(path: Path) -> dict:
+def _read(path: Path) -> str:
+    """逐位元組讀 UTF-8，不轉換換行。"""
     try:
-        with path.open("rb") as handle:
-            return tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         raise ContractError(f"無法讀取 {path}: {exc}") from exc
 
 
@@ -199,14 +207,88 @@ def parse_addenda(data: dict, label: str = "addenda") -> list[Addendum]:
     return out
 
 
+def _blocks(text: str, label: str, tag: str) -> list[tuple[str, list[str], str]]:
+    """把 Markdown 切成 [(marker 內容, 屬性 token, 正文)]。
+
+    正文是 marker 之後到下一個 marker 之間、去掉頭尾空行的內容；中間的空行與縮排逐字保留。
+    第一個 marker 之前只允許空行；含 CR、marker 的 tag 與檔案種類不符、marker 行格式不合都是錯誤。
+    """
+    if "\r" in text:
+        raise ContractError(f"{label}: 不可含 CR")
+    found: list[tuple[str, list[str], list[str]]] = []
+    for number, line in enumerate(text.split("\n"), 1):
+        if line.startswith(_MARKER_PREFIX):
+            match = _MARKER.match(line)
+            if not match:
+                raise ContractError(f"{label} 第 {number} 行: marker 格式必須是 `<!-- {tag}: ... -->`")
+            if match.group(1) != tag:
+                raise ContractError(f"{label} 第 {number} 行: 這個檔案只接受 `{tag}` marker，不是 `{match.group(1)}`")
+            name, *attrs = match.group(2).split()
+            found.append((name, attrs, []))
+        elif found:
+            found[-1][2].append(line)
+        elif line.strip():
+            raise ContractError(f"{label} 第 {number} 行: 第一個 marker 之前只允許空行")
+    out = []
+    for name, attrs, lines in found:
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        while lines and not lines[-1].strip():
+            lines.pop()
+        out.append((name, attrs, "\n".join(lines)))
+    return out
+
+
+def _table(where: str, name: str, attrs: list[str], text: str) -> dict:
+    """marker 的 `key=value` 與單獨的旗標（例如 required）轉成與 TOML 相同形狀的 table。"""
+    table: dict = {"id": name, "text": text}
+    for attr in attrs:
+        key, eq, value = attr.partition("=")
+        if key in table:
+            raise ContractError(f"{where}: 屬性 {key} 重複")
+        table[key] = value if eq else True
+    return table
+
+
+def parse_markdown_contract(
+    text: str,
+    label: str = "contract",
+    *,
+    kinds: frozenset[str] = KINDS,
+    allow_required: bool = False,
+) -> list[Clause]:
+    items = [_table(f"{label} clause {n}", n, a, t) for n, a, t in _blocks(text, label, "clause")]
+    return parse_contract({"clause": items}, label, kinds=kinds, allow_required=allow_required)
+
+
+def parse_markdown_addenda(text: str, label: str = "addenda") -> list[Addendum]:
+    items = [_table(f"{label} addendum {n}", n, a, t) for n, a, t in _blocks(text, label, "addendum")]
+    return parse_addenda({"addendum": items}, label)
+
+
+def parse_markdown_blocks(text: str, label: str, tag: str) -> dict[str, str]:
+    """description / text 檔：`<!-- <tag>: <key> -->` 之後的正文，回傳 {key: text}。"""
+    out: dict[str, str] = {}
+    for key, attrs, body in _blocks(text, label, tag):
+        where = f"{label} {tag} {key}"
+        if attrs:
+            raise ContractError(f"{where}: marker 只能有一個 key")
+        if not _BLOCK_KEY.match(key):
+            raise ContractError(f"{where}: key 必須是英數加連字號")
+        if key in out:
+            raise ContractError(f"{where}: key 重複")
+        out[key] = _check_text(where, body)
+    return out
+
+
 def load_contract(path: Path) -> list[Clause]:
-    return parse_contract(_load(path), str(path.name))
+    return parse_markdown_contract(_read(path), str(path.name))
 
 
 def load_policy_contract(path: Path) -> list[Clause]:
-    """core/policy/<doc>.toml：kind 用 POLICY_KINDS，條款可標 required。"""
-    return parse_contract(
-        _load(path), str(path.name), kinds=POLICY_KINDS, allow_required=True
+    """prompts/policy/<doc>.md：kind 用 POLICY_KINDS，條款可標 required。"""
+    return parse_markdown_contract(
+        _read(path), str(path.name), kinds=POLICY_KINDS, allow_required=True
     )
 
 
@@ -214,7 +296,14 @@ def load_addenda(path: Path) -> list[Addendum]:
     """檔案不存在代表這個 host 對該 role 沒有補充。"""
     if not path.is_file():
         return []
-    return parse_addenda(_load(path), str(path.name))
+    return parse_markdown_addenda(_read(path), str(path.name))
+
+
+def load_blocks(path: Path, tag: str) -> dict[str, str]:
+    """檔案不存在代表沒有任何區塊。"""
+    if not path.is_file():
+        return {}
+    return parse_markdown_blocks(_read(path), str(path.name), tag)
 
 
 def load_frame(frames_dir: Path, role: str) -> str | None:
@@ -222,10 +311,7 @@ def load_frame(frames_dir: Path, role: str) -> str | None:
     for name in (f"{role}.md", "default.md"):
         path = frames_dir / name
         if path.is_file():
-            try:
-                text = path.read_bytes().decode("utf-8")
-            except (OSError, UnicodeDecodeError) as exc:
-                raise ContractError(f"無法讀取 {path}: {exc}") from exc
+            text = _read(path)
             if text.count(FRAME_PLACEHOLDER) != 1:
                 raise ContractError(f"{path.name}: 必須恰好有一個 {FRAME_PLACEHOLDER}")
             return text

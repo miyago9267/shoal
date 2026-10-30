@@ -141,7 +141,7 @@ class AutorouteHookTests(unittest.TestCase):
     def test_installed_plugin_config_drives_canonical_route_without_live_network(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "codex-home"
-            package = ROOT / "plugin/plugins/shoal-jev-router"
+            package = ROOT / "plugins/jev-router"
             installed = (
                 home
                 / "plugins/cache/shoal-codex/shoal-jev-router/0.1.0"

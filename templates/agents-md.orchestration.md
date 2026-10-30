@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.12.0-beta -->
+<!-- shoal-codex v3.13.1-beta -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -162,6 +162,13 @@ Clear intent does not require `explore_then_plan` by itself: a bounded release r
   applicable readiness gate is `READY`, otherwise label the blocking or paused
   gate, then end the turn. Execution is unreachable until later explicit
   approval. Stop discovery when more evidence cannot change next gate.
+**`fan_out` shape (before `execute`):** only for an explicit list from a light
+  scout whose items are independent (disjoint files, no ordering, each
+  verifiable alone) and each substantial (minutes of reading or judgment; the
+  main gate, else `applier` calls), or when independent perspectives are the
+  goal (audit, review, design comparison). Not for one coherent change,
+  sequential work, unclear scope. End with an integration check;
+  re-dispatch failures once; never report done on fan-out results alone.
 - After shape selection, inspect available skills.
   Large/architectural/risky/cross-surface task + listed `baton-dispatch` →
   invoke before dispatch brake/direct-vs-delegated choice; never pre-screen it
@@ -187,8 +194,7 @@ main session and do not add an independent verifier.
   `applier`, effort `low`; brief = goal, files, exact edits (old -> new or
   whole file) for files main read, done check. No plan-critic or verifier; a
   passing check quoted in the hand-back is main's verification unless
-  ambiguous. Main keeps reads, diagnosis, integration. Else see
-  lifecycle below.
+  ambiguous. Main keeps reads, diagnosis, integration.
 - Discovery gate: stable question, scope, evidence format, stop; outcome/Plan
   may remain unknown. Eligible delegation: bounded read-only `scout`
   across disjoint evidence surfaces reducing Plan uncertainty.
@@ -205,9 +211,7 @@ main session and do not add an independent verifier.
   Plan. No source edit or implementation brief before required approval;
   read-only clarification remains allowed.
 - Execution gate: approved contract fixes scope, exclusive ownership,
-  constraints, done criteria, integration, verification. Routes: `applier`
-  small bounded changes, `executor` multi-file/judgment work,
-  `security-executor` approved security work.
+  constraints, done criteria, integration, verification.
 
 - Send an approved, bounded implementation requiring judgment to `sol-executor` or `executor` when the deep boundary is evidenced.
 
@@ -230,19 +234,16 @@ main session and do not add an independent verifier.
   facts; main reconciles evidence and writes Plan.
 - Stable same-shape multi-file mechanical repetition defaults to one
   `applier` with complete one-shot brief, exclusive ownership, independent
-  items, per-item acceptance. Foreground unless a long command needs background.
+  items, per-item acceptance.
 - Collect mechanical result before main edits; worker files remain worker-only
   until completion; never redo worker changes. Main retains per-item triage,
   exceptions, integration, acceptance.
 - Direct main execution of mechanical work needs `#direct`. Evolving/coupled
   evidence, ownership/integration conflict, or an unavailable worker is reported
   to the user, not worked around.
-- Implementation with a stable execution contract (goal, scope, constraints, done
-  criteria known without rediscovery) is delegated by default: `applier` for
+- Implementation with a stable execution contract is delegated by default: `applier` for
   small bounded changes, `executor` for multi-file/judgment-heavy work,
-  `security-executor` for approved security work. Main edits only under the
-  user's `#direct`; otherwise diagnose in main, delegate the fix, and report an
-  unavailable worker.
+  `security-executor` for approved security work.
 
 Weigh lower cost or quota use, preservation of scarce main-session context, true
 parallelism, isolated ownership, and fresh-context independence against context
@@ -250,8 +251,7 @@ reconstruction, coordination, integration, and verification cost.
 
 - Dispatch brakes judge one call at a time. Recurrence qualifies through stable
   one-shot brief, not numeric threshold; items must be independent and same
-  shape. Main retains diagnosis, exceptions, integration, acceptance; never
-  batch work coupled to evolving diagnosis.
+  shape. Never batch work coupled to evolving diagnosis.
 - Research is the fan-out exception: main may launch several `researcher` calls at
   once for different questions or arms. When a research conclusion will drive a
   design or decision, launch two independent `researcher` calls in parallel,
@@ -265,8 +265,8 @@ reconstruction, coordination, integration, and verification cost.
   that neither owns nor blocks diagnosis. Once root cause and remedy are known,
   the fix is Execution work and is delegated.
 - Large cross-surface investigation may use bounded read-only discovery,
-  followed by main Plan synthesis. Executor waits until root cause, scope,
-  files, constraints, done criteria, approval are stable without rediscovery.
+  then main Plan synthesis. Executor waits until root cause, scope, files,
+  constraints, done criteria, approval are stable.
   Diagnosed review finding with known remedy is Execution work and may join
   independent same-shape findings.
 - One-shot spec includes goal, constraints, done criteria, relevant paths,
@@ -280,8 +280,8 @@ Before required approval and first readiness review, finish tool-enforced
   pre-approval reviews concurrently or send pre-approval work to write-capable
   security executor.
 - Any independent-review trigger makes that unit risky: pre-approval
-  `plan-critic` and post-implementation `verifier` are mandatory spawn_agent calls,
-  with no extra opt-in. Higher-priority prohibition → pause before edits, never
+  `plan-critic` and post-implementation `verifier` are mandatory spawn_agent calls.
+  Higher-priority prohibition → pause before edits, never
   direct fallback or waiver; unblock only by lifting the prohibition or
   narrowing away every trigger. Bounded fail-soft exception applies only without
   listed risk. After readiness, present Plan and end turn; implementation begins

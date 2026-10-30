@@ -1,1 +1,0 @@
-請在 calc.py 新增 sub(a, b) 函式（回傳 a - b），並在 test_calc.py 補一個對應的測試。完成條件：python3 -m unittest 全部通過，請實際執行並回報結果。

@@ -11,13 +11,14 @@ complete contract.
 
 ## First move
 
-1. Classify the interaction shape: `co_discover`, `explore_then_plan`, or
+1. Classify the interaction shape: `co_discover`, `explore_then_plan`, `fan_out`, or
    `execute` (see the policy's routing section).
 2. Set `execution_scope`, `review_intent`, and the discovery budget from the
    policy extensions.
 3. Apply risk triggers before size, then the phase gate and dispatch brake
    before every invoke_subagent call.
 
+An `executor` brief names its file/module bound; work larger than that is split into several executors or routed to `applier`.
 ## References
 
 Read only the part needed for the current decision:

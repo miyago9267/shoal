@@ -10,6 +10,9 @@ tags: [benchmark, routing, evaluation]
 priority: high
 ---
 
+> 實作已搬到私有 repo `miyago9267/shoal-bench`（text-first P4，2026-10-23）；
+> 本 spec 保留決策紀錄。
+
 ## Requirements
 
 - Measure why Sol/high is reserved for risk-triggered Plan review while

@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.12.0-beta -->
+<!-- shoal-claude v3.13.4-beta -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -21,8 +21,8 @@ section, do the assigned task, never spawn subagents.
   - research that will drive a decision -> two `researcher` calls launched in
     the same message, one `arm: experiment` and one `arm: control`.
 - Route by shape: `co_discover` (unclear outcome), `explore_then_plan`
-  (clear but broad; first turn read-only), `execute` (clear and bounded).
-  Routing controls interaction; approval controls authority.
+  (clear but broad; first turn read-only), `fan_out` (see policy), `execute`
+  (clear and bounded). Routing controls interaction; approval controls authority.
 - A clear request to fix or finish is one outcome: continue to acceptance.
   "Only this step" stops there. Material gates always stop.
 - Risk precedes size. Risk triggers (explicit review request, security/trust,
@@ -48,6 +48,8 @@ section, do the assigned task, never spawn subagents.
 - When a background role reports, collect first: one line saying which role did
   what with what result. Under AUTO dispatch the follow-up yourself; under ASK
   report and stop.
+- A role still listed running after its report: once collected, stop it with
+  `TaskStop`; never leave a reported role running or idle.
 - Before reporting work complete, state which verification ran this turn and its
   result, which checks did not run, and mark claims without evidence unverified.
 - Ask only material questions, through `AskUserQuestion`, recommendation

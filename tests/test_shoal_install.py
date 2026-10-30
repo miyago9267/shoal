@@ -479,7 +479,7 @@ class InferenceTests(Base):
 
     def test_agy_guard_group_in_hooks_file_is_installed(self) -> None:
         gem = self.agy_with_links()
-        group = {"shoal-guard": {"PreToolUse": [{"type": "command", "command": self.GUARD_CMD % "agy"}]}}
+        group = {"shoal-dispatch-guard": {"PreToolUse": [{"type": "command", "command": self.GUARD_CMD % "agy"}]}}
         (gem / "config" / "hooks.json").write_text(json.dumps(group))
         self.assertEqual(shoal_install.infer("agy", self.env), ["core", "host-agy", "dispatch-guard"])
 
@@ -487,7 +487,7 @@ class InferenceTests(Base):
         gem = self.agy_with_links()
         real = self.tmp / "dotfile" / "hooks.json"
         real.parent.mkdir()
-        group = {"shoal-guard": {"PreToolUse": [{"type": "command", "command": self.GUARD_CMD % "agy"}]}}
+        group = {"shoal-dispatch-guard": {"PreToolUse": [{"type": "command", "command": self.GUARD_CMD % "agy"}]}}
         real.write_text(json.dumps(group))
         (gem / "config" / "hooks.json").symlink_to(real)
         self.assertIn("dispatch-guard", shoal_install.infer("agy", self.env))

@@ -5,7 +5,7 @@
       "name": "shoal-codex",
       "source": {
         "source": "local",
-        "path": "./plugin/plugins/shoal-codex"
+        "path": "./plugins/codex"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -17,7 +17,7 @@
       "name": "shoal-jev-router",
       "source": {
         "source": "local",
-        "path": "./plugin/plugins/shoal-jev-router"
+        "path": "./plugins/jev-router"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -28,6 +28,7 @@ class HostPolicyCase(unittest.TestCase):
         self.host = host
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "hosts" / host, self.root / "hosts" / host,
                         ignore=shutil.ignore_patterns("plugin", "node_modules"))
         if host == "grok":
