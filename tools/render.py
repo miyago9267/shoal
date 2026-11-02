@@ -1439,7 +1439,7 @@ CLAUDE_PLUGIN_OWNED = (CLAUDE_PLUGIN, CLAUDE_GUARD_PLUGIN, CLAUDE_MARKETPLACE)
 CLAUDE_PLUGIN_AUTHOR = {"name": "Miyago", "url": "https://github.com/miyago9267"}
 CLAUDE_PLUGIN_REPO = "https://github.com/miyago9267/shoal"
 # 與 tools/install_hooks.py 的 CLAUDE_MATCHER 相同；全域安裝與 plugin 的 guard 要看到同一批工具。
-CLAUDE_PLUGIN_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
+CLAUDE_PLUGIN_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash|Read|Grep|Glob|WebSearch|WebFetch|Skill"
 # hooks/run.sh starts the guard with the interpreter recorded at install/update (tools/shoal_update.py).
 CLAUDE_PLUGIN_GUARD = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" "${CLAUDE_PLUGIN_ROOT}/hooks/shoal_guard.py" --host claude --plugin'
 CLAUDE_PLUGIN_SESSIONSTART = '/bin/sh "${CLAUDE_PLUGIN_ROOT}/hooks/emit-sessionstart.sh"'

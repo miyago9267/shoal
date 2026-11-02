@@ -40,11 +40,11 @@ class NewRoleRenderTests(unittest.TestCase):
     def test_watcher_is_pinned_haiku_low_and_cannot_edit(self) -> None:
         front = frontmatter(self.files["agents/watcher.md"])
         self.assertEqual((front["model"], front["effort"]), ("haiku", "low"))
-        self.assertNotIn("tools", front)
-        denied = front["disallowedTools"].split(", ")
+        self.assertNotIn("disallowedTools", front)
+        allowed = front["tools"].split(", ")
         for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"):
-            self.assertIn(tool, denied)
-        self.assertNotIn("Bash", denied)
+            self.assertNotIn(tool, allowed)
+        self.assertIn("Bash", allowed)
 
     def test_researcher_is_opus_high_read_only_with_web(self) -> None:
         front = frontmatter(self.files["agents/researcher.md"])

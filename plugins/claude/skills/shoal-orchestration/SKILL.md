@@ -2,7 +2,7 @@
 name: shoal-orchestration
 description: Full shoal orchestration workflow - interaction-shape routing, Plan and approval gates, dispatch brakes, named-role delegation, security separation, verification, recovery, outcome continuation, review intent, decision checkpoints, and blocked-task isolation. Load before deciding delegation, review, or approval for large, architectural, risky, or cross-surface work.
 ---
-<!-- shoal-claude v3.14.4-beta -->
+<!-- shoal-claude v3.14.6-beta -->
 
 # Shoal orchestration
 
@@ -20,6 +20,7 @@ complete contract.
    before every Agent call.
 
 An `executor` brief names its file/module bound; work larger than that is split into several executors or routed to `applier`.
+Lane size `:s` (20 tool calls), `:m` (60, default), `:l` (120): prefer several small dispatches. A capped role hands back; send the rest to a FRESH role with the hand-back, never resume it.
 ## References
 
 Read only the part needed for the current decision:

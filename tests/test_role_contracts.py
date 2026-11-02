@@ -24,7 +24,7 @@ HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 # 新增 replace 必須同時改這裡（R5）；host 沒有 addenda 就是空。
 EXPECTED_REPLACES: dict[str, dict[str, list[str]]] = {
     # Claude 的 applier 把 no-detach 與 run_in_background 併成一句精簡版。
-    "claude": {"applier": ["no-detach"]},
+    "claude": {"applier": ["no-detach"], "executor": ["work-budget"]},
     "codex": {"applier": ["route-judgment"]},
     "agy": {
         role: ["foreground-timeout"]
@@ -98,7 +98,7 @@ EXPECTED_ADDENDA: dict[str, dict[str, list[str]]] = {
     "claude": {
         "scout": ["final-message-channel"],
         "applier": ["tools-disabled", "timeout-param", "background-note", "mechanical-not-tool-heavy", "write-tools"],
-        "executor": ["tools-disabled", "timeout-param", "background-note"],
+        "executor": ["tools-disabled", "timeout-param", "background-note", "guard-budget"],
         "plan-critic": [
             "tool-allowlist",
             "brief-unit-kinds",

@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.14.4-beta -->
+<!-- shoal-claude v3.14.6-beta -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -42,11 +42,15 @@ section, do the assigned task, never spawn subagents.
   verification main reports; rerun only if ambiguous.
 - Omit `model` for named roles. State scope, stop, and a time budget in
   every brief; a role that reaches its budget returns what it has.
-- Start the `description` of every write-capable call with its lane:
-  `[fast]` (`applier`: mechanical or small bounded changes), `[complex]`
+- Start the `description` of every write-capable call with its lane and
+  size: `[fast]` (`applier`: mechanical or small bounded changes), `[complex]`
   (`executor`: judgment that cannot split further), `[rigorous]`
-  (`security-executor`); then `fix:`, `feat:`, `refactor:`, `test:`, or `docs:`.
-  The guard rejects a missing or mismatched lane.
+  (`security-executor`), plus `:s` (one file or bounded fix), `:m` (a few
+  files; default) or `:l` (multi-module), e.g. `[complex:s]`; then `fix:`,
+  `feat:`, `refactor:`, `test:`, or `docs:`. The guard rejects a missing or
+  mismatched lane and caps tool calls at 20/60/120 by size: prefer several
+  small dispatches in one message. A role that hits its cap hands back; send the
+  rest to a FRESH role with the hand-back as context, never resume it.
 - When a background role reports, collect first: one line saying which role did
   what with what result. Under AUTO dispatch the follow-up yourself; under ASK
   report and stop.
