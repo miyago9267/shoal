@@ -46,19 +46,20 @@ extensions = "skills/shoal-orchestration/references/workflow-extensions.md"
 "anthropic/fable" = "fable"
 
 # 存取等級 -> 工具限制（role 的 access 在 core/roles.toml；host 專屬 role 在自己的 [extra_roles] 宣告 access）。
-# read-only 用 tools allowlist；write 與 verify 用 disallowedTools denylist。
+# 三個等級都用 tools allowlist：denylist 會讓 subagent 繼承所有 MCP 工具（首輪 context 約 43k，allowlist 約 14k）。
+# write 的 allowlist 不含 Agent / Workflow；verify 另外不含 Write / Edit / MultiEdit / NotebookEdit。
 # role 要例外時才在 [roles.<name>] 寫 tools / disallowedTools 覆寫；覆寫不能讓 read-only role 取得寫入工具。
 [access.read-only]
 tools = ["Read", "Glob", "Grep"]
 
 [access.write]
-disallowedTools = ["Agent", "Workflow"]
+tools = ["Read", "Write", "Edit", "MultiEdit", "Bash", "Grep", "Glob", "WebSearch", "WebFetch", "Skill"]
 
 [access.verify]
-disallowedTools = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]
+tools = ["Read", "Bash", "Grep", "Glob", "WebSearch", "WebFetch"]
 
 # capability 疊加在 access 之上：list 附加到 access 表同名的 allowlist；
-# write / verify 是 denylist，本來就允許 web 工具，所以不會輸出任何東西。
+# write / verify 的 allowlist 已含 web 工具，附加時略過重複，輸出不變。
 [capabilities.web]
 tools = ["WebSearch", "WebFetch"]
 

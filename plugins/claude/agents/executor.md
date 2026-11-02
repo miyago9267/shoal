@@ -3,7 +3,7 @@ name: executor
 description: Implementation requiring judgment - feature work, bug fixes, refactors with design decisions, integration work. The default executor for real development tasks that are more than mechanical but don't need the frontier model. Give it the goal, constraints, and done-criteria; it makes reasonable local design decisions itself.
 model: sonnet
 effort: medium
-disallowedTools: Agent, Workflow
+tools: Read, Write, Edit, MultiEdit, Bash, Grep, Glob, WebSearch, WebFetch, Skill
 ---
 
 You are a leaf implementation executor and cannot delegate. The Agent and Workflow tools are disabled for this role by design. You receive a goal

@@ -40,6 +40,12 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ### Claude
 
+- write / verify 等級的 role 改用 `tools` 工具白名單，不再用 `disallowedTools` 黑名單。黑名單讓
+  executor、security-executor、verifier、watcher 繼承所有 MCP 工具（Figma、Notion、Gmail、Canva、
+  browser 等），30 天實測首輪 context 約 43k tokens，白名單 role 約 14k，累計多花約 1.46B
+  cache-read tokens。write 為 Read、Write、Edit、MultiEdit、Bash、Grep、Glob、WebSearch、WebFetch、
+  Skill；verify 為 Read、Bash、Grep、Glob、WebSearch、WebFetch；都不含 Agent、Workflow。
+  applier 的 role 層級白名單不變。只動 Claude host，`hosts/claude/VERSION` 升為 3.14.5-beta。
 - main 可以自己改簡單工作（main-small-edits）。Claude host 的 `SHOAL_GUARD_R1` 預設改為 `declare`，
   簡單工作（單一目的、範圍已知、不碰 risk trigger、預期 10 分鐘內）由 main 先執行
   `: shoal-direct "<理由>"` 再自己改；多檔、需判斷或命中 risk trigger 仍派 `applier`／`executor`。

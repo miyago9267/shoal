@@ -711,9 +711,6 @@ class ReproduceExistingHostsTests(unittest.TestCase):
         self.assertEqual(sorted(files), sorted(f"agents/{r}.md" for r in CORE_ROLES))
         for rel, data in files.items():
             real = (ROOT / "plugins/claude" / rel).read_bytes()
-            if rel == "agents/applier.md":
-                # applier 的 tools 覆寫在 Claude host 會丟掉 disallowedTools；generic-md 沒有互斥欄位，兩者都輸出。
-                data = data.replace(b"\ndisallowedTools: Agent, Workflow\n", b"\n", 1)
             self.assertEqual(data, real, rel)
 
     def test_agy_scout_is_byte_identical(self) -> None:
