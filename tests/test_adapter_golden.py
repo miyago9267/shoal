@@ -83,6 +83,7 @@ class SecurityRegressionTests(unittest.TestCase):
         frozen = {
             "ADVISE_OUTPUT_HOSTS": {"claude", "codex"},
             "AGENT_KEYED_HOSTS": {"codex"},
+            "CAP_HOSTS": {"claude"},
             "COMPOSED_TURN_HOSTS": {"agy"},
             "CONVERSATION_HOSTS": {"agy"},
             "DECLARE_HOSTS": {"agy", "claude", "codex", "grok", "opencode"},

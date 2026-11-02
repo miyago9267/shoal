@@ -166,7 +166,7 @@ class ClaudeTests(Case):
         self.assertEqual(len(prompt), 2)
         self.assertEqual(len(tool), 2)
         self.assertEqual(
-            tool[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
+            tool[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash|Read|Grep|Glob|WebSearch|WebFetch|Skill"
         )
         (start,) = data["hooks"]["SubagentStart"]  # M11: the role's start event releases a pending dispatch
         self.assertNotIn("matcher", start)
@@ -261,7 +261,7 @@ class ClaudeTests(Case):
         groups = self.load(path)["hooks"]["PreToolUse"]
         self.assertEqual(groups[0], FOREIGN_TOOL)
         self.assertEqual(
-            groups[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
+            groups[1]["matcher"], "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash|Read|Grep|Glob|WebSearch|WebFetch|Skill"
         )
         self.assertEqual(groups[1]["hooks"][0]["command"], PORTABLE_CLAUDE)
         # the neighbour that shared the stale group stays, as its own group

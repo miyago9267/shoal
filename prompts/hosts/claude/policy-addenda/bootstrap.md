@@ -17,3 +17,14 @@
     start a background shell yourself;
   - research that will drive a decision -> two `researcher` calls launched in
     the same message, one `arm: experiment` and one `arm: control`.
+
+<!-- addendum: claude-kind-label at=replace:bootstrap-kind-label -->
+- Start the `{{label_param}}` of every write-capable call with its lane and
+  size: `[fast]` (`applier`: mechanical or small bounded changes), `[complex]`
+  (`executor`: judgment that cannot split further), `[rigorous]`
+  (`security-executor`), plus `:s` (one file or bounded fix), `:m` (a few
+  files; default) or `:l` (multi-module), e.g. `[complex:s]`; then `fix:`,
+  `feat:`, `refactor:`, `test:`, or `docs:`. The guard rejects a missing or
+  mismatched lane and caps tool calls at 20/60/120 by size: prefer several
+  small dispatches in one message. A role that hits its cap hands back; send the
+  rest to a FRESH role with the hand-back as context, never resume it.

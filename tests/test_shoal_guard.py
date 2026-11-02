@@ -1961,6 +1961,117 @@ class LaneAdapterTests(CliCase):
         self.assertEqual(self.lane("grok", GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x"}, cwd=self.work)), "")
 
 
+class ToolCapTests(CliCase):
+    """Size-labelled tool-call budget (claude): lane suffix, dispatch -> SubagentStart link, count, deny after the cap."""
+
+    def go(self, payload, **env) -> str:
+        """One guard evaluation in this process (the budget fires once per tool call, so a loop of subprocesses is slow)."""
+        return guard.run("claude", json.dumps(payload).encode(),
+                         self.env(SHOAL_GUARD="enforce", SHOAL_GUARD_R1="", **env)) or ""
+
+    def dispatch(self, role, desc, **env) -> str:
+        return self.go(claude_tool("Agent", {"subagent_type": role, "description": desc}, cwd=self.work), **env)
+
+    def start(self, role, agent, **env) -> None:
+        self.go(claude_start("shoal:" + role, agent_id=agent, cwd=self.work), **env)
+
+    def call(self, role, agent, **env) -> str:
+        return self.go(claude_tool("Read", {"file_path": self.path("f")}, agent_id=agent, agent_type="shoal:" + role,
+                                   cwd=self.work), **env)
+
+    def first_deny(self, role, agent, limit, **env) -> int:
+        """The 1-based index of the first denied call among `limit` calls, 0 when none was denied."""
+        for n in range(1, limit + 1):
+            if self.call(role, agent, **env):
+                return n
+        return 0
+
+    def test_lane_suffix_parsing(self) -> None:
+        for desc, label, size in (("[complex:s] fix: x", "complex", "s"), ("[fast:l] x", "fast", "l"),
+                                  ("  [rigorous:m] x", "rigorous", "m"), ("[complex] fix: x", "complex", None)):
+            self.assertEqual((guard.lane_label(desc), guard.lane_size(desc)), (label, size))
+        self.assertIsNone(guard.lane_violation("executor", "[complex:s] fix: x"))
+        self.assertIsNone(guard.lane_violation("shoal:applier", "[fast:l] x"))
+        for bad in ("[complex:x] x", "[complex:] x", "[complex:sm] x", "[complex: s] x", "[complex:S] x"):
+            self.assertEqual(guard.lane_violation("executor", bad)[0], "LANE_MISSING", bad)
+        self.assertEqual(guard.lane_violation("executor", "[fast:s] x")[0], "LANE_MISMATCH")
+
+    def test_claude_lane_check_takes_the_suffix_and_still_rejects_mismatches(self) -> None:
+        lane = {"SHOAL_GUARD_LANES": "on"}
+        self.assertEqual(self.dispatch("executor", "[complex:s] fix: x", **lane), "")
+        self.assertIn("lane label", self.dispatch("executor", "[complex:x] fix: x", **lane))
+        out = self.dispatch("executor", "[fast:s] fix: x", **lane)
+        self.assertIn("Dispatch applier for [fast]", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_denies_exactly_after_the_labelled_cap(self) -> None:
+        for suffix, cap in ((":s", 20), ("", 60)):
+            agent = "ag" + str(cap)
+            self.dispatch("executor", "[complex%s] fix: x" % suffix)
+            self.start("executor", agent)
+            self.assertEqual(self.first_deny("executor", agent, cap + 1), cap + 1)
+        entry = json.loads(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").read_text(encoding="utf-8"))
+        self.assertEqual({k: (v["size"], v["cap"], v["n"]) for k, v in entry["agents"].items()},
+                         {"ag20": ("s", 20, 21), "ag60": ("m", 60, 61)})
+        record = [r for r in self.log_records() if r.get("rule") == "CAP"][0]
+        self.assertEqual((record["decision"], record["reason"], record["agent_id"]), ("deny", "size=s cap=20 count=21", "ag20"))
+
+    def test_deny_reason_asks_for_the_hand_back(self) -> None:
+        self.dispatch("executor", "[complex:s] fix: x")
+        self.start("executor", "ag1")
+        for _ in range(20):
+            self.call("executor", "ag1")
+        reason = json.loads(self.call("executor", "ag1"))["hookSpecificOutput"]["permissionDecisionReason"]
+        for word in ("budget", "20", "hand-back", "remains", "split"):
+            self.assertIn(word, reason)
+        zh = json.loads(self.call("executor", "ag1", SHOAL_GUARD_LANG="zh-TW"))["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("hand-back", zh)
+
+    def test_fifo_links_each_start_to_the_oldest_dispatch_of_its_role(self) -> None:
+        self.dispatch("executor", "[complex:l] fix: a")
+        self.dispatch("applier", "[fast:s] fix: b")
+        self.dispatch("executor", "[complex:s] fix: c")
+        self.start("applier", "ap1")
+        self.start("executor", "ex1")
+        self.start("executor", "ex2")
+        agents = json.loads(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").read_text(encoding="utf-8"))["agents"]
+        self.assertEqual({k: v["cap"] for k, v in agents.items()}, {"ap1": 20, "ex1": 120, "ex2": 20})
+
+    def test_missing_queue_falls_back_to_the_role_default(self) -> None:
+        self.start("executor", "ex1")  # SubagentStart with nothing queued
+        self.assertEqual(self.first_deny("executor", "ex1", 61), 61)
+        self.assertEqual(self.first_deny("applier", "never-started", 61), 61)  # no SubagentStart at all
+
+    def test_verify_and_read_only_roles_are_never_capped(self) -> None:
+        for role in ("verifier", "watcher", "scout"):
+            self.start(role, "v-" + role)
+            self.assertEqual(self.first_deny(role, "v-" + role, 130), 0, role)
+        self.assertFalse(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").exists())
+
+    def test_security_executor_is_capped_only_with_a_size(self) -> None:
+        self.dispatch("security-executor", "[rigorous] fix: a")
+        self.start("security-executor", "se1")
+        self.assertEqual(self.first_deny("security-executor", "se1", 130), 0)
+        self.start("security-executor", "se2")  # nothing queued either
+        self.assertEqual(self.first_deny("security-executor", "se2", 130), 0)
+        self.dispatch("security-executor", "[rigorous:s] fix: b")
+        self.start("security-executor", "se3")
+        self.assertEqual(self.first_deny("security-executor", "se3", 30), 21)
+
+    def test_off_switch_disables_the_cap(self) -> None:
+        off = {"SHOAL_GUARD_TOOL_CAP": "off"}
+        self.dispatch("executor", "[complex:s] fix: x", **off)
+        self.start("executor", "ag1", **off)
+        self.assertEqual(self.first_deny("executor", "ag1", 70, **off), 0)
+        self.assertFalse(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").exists())
+
+    def test_agent_map_is_bounded(self) -> None:
+        for i in range(guard.AGENTS_MAX + 5):
+            self.start("executor", "ag%d" % i)
+        agents = json.loads(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").read_text(encoding="utf-8"))["agents"]
+        self.assertEqual(len(agents), guard.AGENTS_MAX)
+        self.assertNotIn("ag0", agents)
+
+
 class EnforcementEveryOsTests(CliCase):
     """Runs on every OS, Windows included: the guard denies, keeps its state and honors the kill switches."""
 

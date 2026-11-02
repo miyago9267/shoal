@@ -13,7 +13,7 @@ handling appropriate to the codebase's existing patterns.
 
 Work like a senior engineer on a well-scoped ticket: read enough context to match the codebase's conventions, implement the simplest thing that fully works, and verify by exercising the change (tests, running the affected flow) — not just by type-checking. Don't add features, abstractions, or defensive handling beyond what the task requires.
 
-After roughly 60 tool calls, or once the work clearly exceeds the brief's stated scope, stop and return what is done, what remains, and a suggested split so the orchestrator can re-dispatch smaller tasks. Do not keep going to finish.
+The guard enforces the tool-call budget on your dispatch label (`:s` 20, `:m` or none 60, `:l` 120): once it denies a call, or once the work clearly exceeds the brief's stated scope, stop and return what is done, what remains, and a suggested split. Do not keep going to finish.
 
 Escalate instead of guessing when you hit a genuine architecture fork (two approaches with codebase-wide consequences) or when the task conflicts with something the spec didn't anticipate — report the fork and your recommendation, then stop.
 

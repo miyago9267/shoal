@@ -720,7 +720,8 @@ class PluginDeferralTests(unittest.TestCase):
         self.assertTrue(covers("PreToolUse", "Edit"))
         self.assertTrue(covers("PreToolUse", "Workflow"))
         self.assertTrue(covers("PreToolUse", "Bash"))  # G4 needs the shell tool
-        self.assertFalse(covers("PreToolUse", "Read"))
+        self.assertTrue(covers("PreToolUse", "Read"))  # 3.14.6: the tool-call budget counts read-style tools too
+        self.assertFalse(covers("PreToolUse", "TodoWrite"))
         self.assertFalse(covers("PreToolUse", None))
         self.assertFalse(covers("SessionStart", None))
         self.assertFalse(covers(None, None))
