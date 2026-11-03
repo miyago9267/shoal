@@ -389,14 +389,10 @@ MESSAGES = {
             "請現在做一次驗證（測試、verifier 或 watcher role），或在回報中明確寫出這次修改尚未驗證。"
         ),
         "DECLARE": (
-            "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
-            "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
-            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。'
+            'Shoal：改檔請派 applier/executor，或先單獨送一次 : shoal-direct "<理由>"。'
         ),
         "DECLARE_COMBINED": (
-            "Shoal dispatch guard：: shoal-direct 宣告和其他指令寫在同一個 shell 指令裡，所以沒有生效。"
-            '請把 : shoal-direct "<理由>" 單獨當成一次 shell 呼叫送出（不要接 ;、&&、|、換行或其他指令），'
-            "改檔留到下一次呼叫。"
+            'Shoal：: shoal-direct 要單獨一次 shell 呼叫才生效，改檔放下一次。'
         ),
     },
 }
