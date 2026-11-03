@@ -1804,8 +1804,8 @@
    "env": {"SHOAL_GUARD_R1": "declare", "SHOAL_GUARD_LANG": "zh-TW"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal：改檔請派 applier/executor，或先單獨送一次 : shoal-direct \"<理由>\"。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal：改檔請派 applier/executor，或先單獨送一次 : shoal-direct \"<理由>\"。"}}
    ]
   },
   {
@@ -2266,8 +2266,8 @@
    "env": {"SHOAL_GUARD_R1": "declare", "SHOAL_GUARD_LANG": "zh-TW"},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}},
-    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal dispatch guard：main session 預設把改檔交給別的 role。請派出可寫的 role（executor 或 applier），或先宣告直接做：把 : shoal-direct \"<理由>\" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "tool_name": "apply_patch", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal：改檔請派 applier/executor，或先單獨送一次 : shoal-direct \"<理由>\"。"}},
+    {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "cat > src/a.py <<'EOF'\nx\nEOF"}, "expect": {"decision": "deny", "rule": "R1", "reason": "Shoal：改檔請派 applier/executor，或先單獨送一次 : shoal-direct \"<理由>\"。"}}
    ]
   },
   {
