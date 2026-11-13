@@ -1,7 +1,7 @@
 ---
 name: plan-critic
 description: Read-only fresh-context review of one stable Plan envelope or execution slice before approval. Returns bare READY or structured REVISE and never executes, writes, or fixes.
-model: fable
+model: claude-fable-5-2
 effort: medium
 tools: Read, Glob, Grep
 ---

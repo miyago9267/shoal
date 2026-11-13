@@ -241,7 +241,7 @@ class CalibrationTests(unittest.TestCase):
             "scout": "haiku",  # [roles.scout].model 的 pin，不是 tier pin
             "applier": "haiku",
             "executor": "sonnet",
-            "plan-critic": "fable",
+            "plan-critic": "claude-fable-5-2",
             "verifier": "opus",
             "security-reviewer": "opus",
             "security-executor": "opus",
@@ -342,7 +342,7 @@ class CliOverrideTests(unittest.TestCase):
 
     def test_explain_fails_the_same_way(self) -> None:
         self.edit(self.binding, '"anthropic/opus" = "opus"\n', "")
-        self.edit(self.binding, '"anthropic/fable" = "fable"\n', "")
+        self.edit(self.binding, '"anthropic/fable" = "claude-fable-5-2"\n', "")
         self.edit(self.binding, '"anthropic/sonnet" = "sonnet"\n', "")
         result = run_render("claude", self.root, "--explain")
         self.assertEqual(result.returncode, 2, result.stderr)
@@ -359,7 +359,7 @@ class CliOverrideTests(unittest.TestCase):
         self.edit(
             self.binding,
             "[roles.security-reviewer]\n",
-            '[roles.security-reviewer]\nmodel = "fable"\n',
+            '[roles.security-reviewer]\nmodel = "claude-fable-5-2"\n',
         )
         self.assert_rejected(FLAG)
 
