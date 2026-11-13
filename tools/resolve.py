@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 TIER_NAMES = ("fast", "standard", "strong", "frontier")
@@ -121,11 +122,17 @@ def _pick(core: dict, tier: str, eligible: list[Candidate]) -> Candidate:
 
 
 def _reject_flagged_pin(core: dict, binding: dict, pin: tuple[object, str]) -> None:
-    """手動 pin 優先於選模規則，但不能繞過 security 排除：pin 到帶旗標的模型直接失敗。"""
+    """手動 pin 優先於選模規則，但不能繞過 security 排除：pin 到帶旗標的模型直接失敗。
+
+    比對 host 內名稱，也比對 catalog key 的 family 名（例如 anthropic/fable 的 fable），
+    所以 binding 寫完整 ID 時，用 alias 或其他版本 ID（claude-fable-5-1、fable[1m]）pin 一樣會被擋。
+    """
+    pinned = str(pin[0])
+    tokens = set(re.split(r"[^a-z0-9]+", pinned.lower()))
     for key, host_name in binding.get("models", {}).items():
-        if host_name == pin[0] and SECURITY_EXCLUDE_FLAG in core["models"][key].get(
-            "flags", []
-        ):
+        family = key.split("/", 1)[-1].lower()
+        hit = pinned == host_name or family in tokens
+        if hit and SECURITY_EXCLUDE_FLAG in core["models"][key].get("flags", []):
             raise ResolveError(
                 f"security role 被 {pin[1]} 指定到 {key}，"
                 f"但它帶有 {SECURITY_EXCLUDE_FLAG} 旗標"
