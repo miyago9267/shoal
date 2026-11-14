@@ -23,7 +23,7 @@
 
 ## P2 首次使用
 
-- [ ] T2.1 寫入本機覆寫檔，跑 `shoal_install.py --update --apply`，確認
+- [x] T2.1 寫入本機覆寫檔，跑 `shoal_install.py --update --apply`，確認
   `shoal:security-reviewer` 使用 Mythos。
 - [ ] T2.2 在 PMS repo 派 `security-reviewer` 做 Defense 範圍的審查（攻擊紀錄分類、
   auth / 輸入驗證弱點、偵測規則），結果在 PMS repo 另開工作處理。

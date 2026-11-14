@@ -28,3 +28,8 @@
   uninstall 再 install 兩個方向都正確。加入 D7。
 - 修正後 overlay 測試 14 個、整套 1880 tests OK，六個 host `render --check` 通過。修正未再送 review，
   以 T2.1 實機安裝作為驗證。
+- T2.1 完成：寫入 `~/.config/shoal/claude.local.toml` 後 `--update --apply`，core 與 guard plugin
+  reinstall，cache 的 `security-reviewer.md` 為 `model: claude-mythos-5-2`，`security-executor`
+  仍是 opus；重跑全部 up-to-date，不再 reinstall。headless 派 `shoal:security-reviewer`，
+  modelUsage 含 `claude-mythos-5-2`（S2.1）。
+- T2.2 阻塞：PMS 不在這台 Linux 機器上，需在 Mac 執行。

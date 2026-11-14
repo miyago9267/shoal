@@ -17,7 +17,7 @@
 - S1.2 WHEN 已套用覆寫並安裝，THE SYSTEM SHALL 讓 `verify` 回報 up-to-date。
 - S1.3 IF 覆寫檔指定不存在的 role，THEN THE SYSTEM SHALL 以非零 exit 失敗，且不 swap marketplace。
 - S1.4 IF 覆寫檔含 `[roles.<name>].model` 以外的 key，THEN THE SYSTEM SHALL 以非零 exit 失敗。
-- S1.5 IF model 值不符合 `[a-z0-9.\-\[\]]+`，THEN THE SYSTEM SHALL 以非零 exit 失敗。
+- S1.5 IF model 值不符合 D3 的格式，THEN THE SYSTEM SHALL 以非零 exit 失敗。
 - S1.6 IF 覆寫檔把帶 `refuses_defensive_security` 的模型（`fable`）指定給 security role，
   THEN THE SYSTEM SHALL 以非零 exit 失敗。
 - S1.7 WHEN 套用覆寫，THE SYSTEM SHALL 在 `--update` 輸出中列出每個被覆寫的 role 與 model。
