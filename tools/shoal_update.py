@@ -151,7 +151,8 @@ class Updater:
         self._role_models: Optional[dict[str, str]] = None
         self._catalog: Optional[tuple[dict, set[str], set[str]]] = None
         self._binding: dict = {}
-        self._probed: dict[str, bool] = {}
+        self._probed: dict[str, str] = {}
+        self._uninstalled: list[str] = []
 
     # ---- output ----
     def emit(self, step: str, status: str, detail: str = "") -> None:
@@ -500,6 +501,10 @@ class Updater:
                     code, text = self.claude(exe, "plugin", sub, pid)
                     if code != 0:
                         return out, f"claude plugin {sub} {pid} exit {code}: {_last(text)}"
+                    if sub == "uninstall":
+                        self._uninstalled.append(pid)
+                    elif pid in self._uninstalled:
+                        self._uninstalled.remove(pid)
             out.append((step, "updated", verb))
         return out, None
 
@@ -583,6 +588,7 @@ class Updater:
                     self.emit("marketplace", "updated", "swapped")
                 else:
                     self.emit("marketplace", "failed", f"{error}; 已還原")
+                    self.restore_uninstalled(exe)
                     results = []
             if not (self.apply and changed):
                 if error is not None:
@@ -596,6 +602,20 @@ class Updater:
                 for leftover in self.data.glob(".claude-marketplace.*"):
                     shutil.rmtree(leftover, ignore_errors=True)
         self.update_explore()
+
+    def restore_uninstalled(self, exe: str) -> None:
+        """reinstall 途中失敗時，swap 只還原目錄；已 uninstall 的 plugin 用還原後的 marketplace 裝回去（T3.5）。"""
+        if not self._uninstalled or not self.mp.is_dir():
+            return
+        code, text = self.claude(exe, "plugin", "marketplace", "update", MARKETPLACE_NAME)
+        for pid in list(self._uninstalled):
+            if code == 0:
+                code, text = self.claude(exe, "plugin", "install", pid)
+            ok = code == 0
+            self.emit(f"claude plugin {pid}", "failed",
+                      "restored previous install" if ok else f"restore failed: {_last(text)}")
+            if ok:
+                self._uninstalled.remove(pid)
 
     def update_explore(self) -> None:
         mods = si.manifest_modules(self.env, "claude")

@@ -249,6 +249,22 @@ class OverlayTests(UpdateBase):
         probe = self.probes()[0]
         self.assertIn("--no-session-persistence", probe)
 
+    def test_failed_reinstall_restores_previous_plugin(self) -> None:
+        manifest = json.loads(self.head(".claude-plugin/marketplace.json"))
+        (self.state / "claude.version").write_text(
+            next(p["version"] for p in manifest["plugins"] if p["name"] == "shoal")
+        )
+        self.available("claude-mythos-5-2")
+        self.probe_update("--apply")
+        self.available()
+        (self.state / "claude.fail_match").write_text("plugin install shoal@shoal")
+        code, out, err = self.probe_update("--apply")
+        self.assertNotEqual(code, 0, out + err)
+        db = json.loads((self.state / "claude.json").read_text())
+        self.assertIn("shoal@shoal", db["plugins"], "install 失敗後要用還原的 marketplace 補裝")
+        self.assertEqual(self.model_of("security-reviewer"), "claude-mythos-5-2")
+        self.assertIn("restored previous install", out)
+
     def test_flagged_model_on_non_security_role_is_allowed(self) -> None:
         self.write_overlay('[roles.verifier]\nmodel = "fable"\n')
         code, out, err = self.update("--apply")

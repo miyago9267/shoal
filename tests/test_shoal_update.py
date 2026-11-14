@@ -36,6 +36,11 @@ log = state / (f"{name}.probe.log" if argv[:1] == ["-p"] else f"{name}.log")
 with log.open("a") as fh:
     fh.write(" ".join(argv) + "\n")
 count = len(log.read_text().splitlines())
+match = state / f"{name}.fail_match"
+if match.exists() and " ".join(argv) == match.read_text().strip():
+    match.unlink()
+    sys.stderr.write(f"fake {name}: forced failure on {' '.join(argv)}\n")
+    sys.exit(1)
 fail = state / f"{name}.fail_on"
 if fail.exists() and str(count) in fail.read_text().split():
     sys.stderr.write(f"fake {name}: forced failure on call {count}\n")
