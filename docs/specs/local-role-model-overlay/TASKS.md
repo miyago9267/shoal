@@ -17,7 +17,8 @@
   `update_claude()` 與 `verify()` 的 export 之後（D2）。
 - [x] T1.3 `--update` 輸出覆寫狀態（D5）。
 - [x] T1.4 `docs/model-catalog.md` 補一節「本機覆寫」。
-- [ ] T1.4a（移出 P1）D6 寫進 policy 會觸發 prompt document lock（版本升級、legacy src、lock 續期），另開 slice；P1 先記在 `docs/model-catalog.md`。
+- [ ] T1.4a（移出 P1）D6 寫進 policy 會觸發 prompt document lock（版本升級、legacy src、lock
+  續期），另開 slice；P1 先記在 `docs/model-catalog.md`。
 - [x] T1.5 `security-reviewer` 審 D2–D3 的實作（risk trigger：security role 與 installer）。
 - [x] T1.6 fresh `verifier` 驗 S0.x、S1.x。
 

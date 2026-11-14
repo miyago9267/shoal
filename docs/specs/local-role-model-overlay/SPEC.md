@@ -79,7 +79,8 @@ security role 退回 opus，frontier role（plan-critic）退回 fable。
   `security-reviewer`、`plan-critic` 為 `["claude-mythos-5-2"]`；`security-executor`
   維持 Non-goal，不升級。dist 不變，仍是 opus 與 fable。
 - D9 `shoal_install.py --update`（含 dry-run）對每個候選模型探測一次：
-  `claude -p --model <id> --tools "" --setting-sources "" --strict-mcp-config --max-turns 1
+  `claude -p --model <id> --tools "" --setting-sources "" --strict-mcp-config
+  --max-turns 1
   --output-format json "Reply OK"`，在空的 temp cwd、timeout 60 秒。exit 0、`is_error`
   為 false、`modelUsage` 含該 ID 才算可用；其餘（含 timeout、overload）都算不可用。
   `--setting-sources ""` 避開使用者的 `fallbackModel`，否則不可用的 ID 會被靜默換掉。

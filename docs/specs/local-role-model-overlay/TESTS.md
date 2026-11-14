@@ -28,7 +28,8 @@
   THEN THE SYSTEM SHALL 以非零 exit 失敗。
 - S1.10 IF model 值會改變 YAML 型別（`[1m]`、`-`、`]`、`1.0`、`0`），THEN THE SYSTEM SHALL
   以非零 exit 失敗；`opus[1m]` 可通過。
-- S1.11 WHEN overlay 改變而 plugin 版本相同，THE SYSTEM SHALL 對 core plugin 先 uninstall 再 install。
+- S1.11 WHEN overlay 改變而 plugin 版本相同，THE SYSTEM SHALL 對 core plugin 先 uninstall
+  再 install。
 
 ## P2
 
@@ -43,4 +44,5 @@
 - S3.3 THE SYSTEM SHALL 每次 update 對同一個模型只探測一次。
 - S3.4 WHERE overlay 與探測都指定同一個 role，THE SYSTEM SHALL 採用 overlay。
 - S3.5 WHEN 原本可用的模型變成不可用，THE SYSTEM SHALL 回到 dist 並 reinstall core plugin。
-- S3.6 IF `[probe.roles]` 把 flagged 模型指定給 security role，THEN THE SYSTEM SHALL 以非零 exit 失敗。
+- S3.6 IF `[probe.roles]` 把 flagged 模型指定給 security role，THEN THE SYSTEM SHALL
+  以非零 exit 失敗。

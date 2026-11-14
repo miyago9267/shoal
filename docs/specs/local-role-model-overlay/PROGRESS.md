@@ -15,9 +15,11 @@
   Mythos 獨有：超過 256 KiB payload 放行、subagent 背景 Bash 繞過 E1、`projects/` 豁免可寫 memory。
   Opus 獨有：chmod guard dir 使 state 失效、relay 檔可偽造、agy conversation 誤判。
   單一樣本，finding 未逐條驗證；O1 結論：每次約 $2.7，security review 頻率低，維持 effort high。
-- T0.3 完成：`~/Project/Active/shoal` symlink 到 Forks 下的 checkout，`--update` dry-run 全部 up-to-date。
+- T0.3 完成：`~/Project/Active/shoal` symlink 到 Forks 下的 checkout，`--update`
+  dry-run 全部 up-to-date。
 - T1.1–T1.4 完成：`tools/shoal_update.py` 加入 overlay 讀取、驗證與套用；
-  `tests/test_local_overlay.py` 8 個測試先紅後綠；整套 1874 tests OK，六個 host `render --check` 通過。
+  `tests/test_local_overlay.py` 8 個測試先紅後綠；整套 1874 tests OK，六個 host `render
+  --check` 通過。
 - T1.4a 移出 P1：policy 文字變更觸發 prompt document lock，另開 slice。
 - T1.5 完成：Mythos 5.2 審 diff（$1.18）。確認成立：role 名稱可 path traversal 寫出 stage 外
   （dry-run 也會寫）、`./security-reviewer` 繞過 flagged 檢查、`fable[1m]` / 完整 ID 繞過、
@@ -28,7 +30,8 @@
   uninstall 再 install 兩個方向都正確。加入 D7。
 - 修正後 overlay 測試 14 個、整套 1880 tests OK，六個 host `render --check` 通過。修正未再送 review，
   以 T2.1 實機安裝作為驗證。
-- T2.1 完成：寫入 `~/.config/shoal/claude.local.toml` 後 `--update --apply`，core 與 guard plugin
+- T2.1 完成：寫入 `~/.config/shoal/claude.local.toml` 後 `--update --apply`，core 與
+  guard plugin
   reinstall，cache 的 `security-reviewer.md` 為 `model: claude-mythos-5-2`，`security-executor`
   仍是 opus；重跑全部 up-to-date，不再 reinstall。headless 派 `shoal:security-reviewer`，
   modelUsage 含 `claude-mythos-5-2`（S2.1）。
