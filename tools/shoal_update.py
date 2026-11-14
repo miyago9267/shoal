@@ -53,6 +53,8 @@ PROBE_TIMEOUT = 60
 MODEL_UNAVAILABLE = "issue with the selected model"
 # 會解析成其他模型的 alias；security role 不接受，避免間接落到 fable 或 main 的模型
 INDIRECT_ALIASES = {"best", "inherit", "opusplan", "default"}
+# YAML 1.1 會解析成 bool 或 null 的字
+YAML_RESERVED = {"true", "false", "yes", "no", "on", "off", "null", "y", "n"}
 
 
 class UpdateError(Exception):
@@ -74,6 +76,17 @@ def model_lines(root: Path) -> dict[str, str]:
         match = FRONTMATTER_MODEL.search(path.read_text(encoding="utf-8").partition("\n---\n")[0])
         out[path.stem] = match.group(0) if match else ""
     return out
+
+
+def content_digest(root: Path) -> str:
+    """marketplace 內容的 sha256，忽略 agent frontmatter 的 model 行（本機 overlay 與探測會改它）。"""
+    h = hashlib.sha256()
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        data = path.read_bytes()
+        if path.suffix == ".md" and path.parent.name == "agents":
+            data = FRONTMATTER_MODEL.sub("model:", data.decode("utf-8", "replace"), count=1).encode()
+        h.update(path.relative_to(root).as_posix().encode() + b"\0" + data + b"\0")
+    return h.hexdigest()
 
 
 def apply_overlay(stage: Path, overlay: Mapping[str, str]) -> None:
@@ -162,6 +175,7 @@ class Updater:
         self._probed: dict[str, str] = {}
         self._uninstalled: list[str] = []
         self._model_flip = False
+        self._content_changed = True
 
     # ---- output ----
     def emit(self, step: str, status: str, detail: str = "") -> None:
@@ -256,7 +270,7 @@ class Updater:
         roles, known, flagged = self.catalog()
         if role not in known:
             raise UpdateError(f"{source} 指定了未知的 role（只接受 core/roles.toml 與 extra_roles 的名稱）")
-        if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model):
+        if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model) or model in YAML_RESERVED:
             raise UpdateError(f"{source} 的 {role} model 格式不合法")
         if roles.get(role, {}).get("security") and model in INDIRECT_ALIASES:
             raise UpdateError(f"security role {role} 不可指定間接 alias {model}")
@@ -484,6 +498,8 @@ class Updater:
                 continue
             row = installed.get(pid)
             source = plugins[name]["version"]
+            # 只有 agent 的 model 行翻轉時，其他 plugin 的內容沒變，不算 changed
+            changed_here = changed and (self._content_changed or name == CORE_PLUGIN)
             if row is None:
                 verb = "install"
             elif (
@@ -493,10 +509,10 @@ class Updater:
             ):
                 # beta -> stable：plugin manager 用純 SemVer，會把 stable 當成較舊，先移除再裝。
                 verb = "reinstall"
-            elif changed and self._model_flip and row.get("version") == source:
+            elif changed_here and self._model_flip and name == CORE_PLUGIN and row.get("version") == source:
                 # 只有本機 role model（overlay、探測）翻轉時沒有版本可升；plugin update 不刷新 cache，改成先移除再裝（D7）。
                 verb = "reinstall"
-            elif changed or (
+            elif changed_here or (
                 row.get("version")
                 and plugins[name]["version"]
                 and row["version"] != plugins[name]["version"]
@@ -577,6 +593,7 @@ class Updater:
                 stage = Path(scratch.name) / "stage"  # type: ignore[union-attr]
             self.export_marketplace(paths, stage)
             self._model_flip = self.mp.is_dir() and model_lines(stage) != model_lines(self.mp)
+            self._content_changed = not self.mp.is_dir() or content_digest(stage) != content_digest(self.mp)
             if self.role_models():
                 self.emit("overlay", "applied", ", ".join(f"{r}={m}" for r, m in sorted(self.role_models().items())))
             changed = not self.mp.is_dir() or si.tree_digest(stage) != si.tree_digest(

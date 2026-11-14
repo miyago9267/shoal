@@ -101,7 +101,7 @@ class OverlayTests(UpdateBase):
                     self.assert_rejected(f'[roles.{role}]\nmodel = "{model}"\n')
 
     def test_model_values_that_change_yaml_type_are_rejected(self) -> None:
-        for model in ("[1m]", "-", "]", "1.0", "0"):
+        for model in ("[1m]", "-", "]", "1.0", "0", "true", "null", "yes", "on", "off"):
             with self.subTest(model=model):
                 self.assert_rejected(f'[roles.verifier]\nmodel = "{model}"\n')
 
@@ -193,6 +193,8 @@ class OverlayTests(UpdateBase):
         self.assertEqual(self.model_of("security-reviewer"), "opus")
         self.assertEqual(self.model_of("plan-critic"), "fable")
         self.assertIn("plugin uninstall shoal@shoal", self.calls()[before:])
+        self.assertNotIn("plugin uninstall shoal-dispatch-guard@shoal", self.calls()[before:])
+        self.assertIn("claude plugin shoal-dispatch-guard@shoal: up-to-date", out)
 
     def test_probe_table_is_validated_like_overlay(self) -> None:
         self.available("fable")
