@@ -33,3 +33,7 @@
   仍是 opus；重跑全部 up-to-date，不再 reinstall。headless 派 `shoal:security-reviewer`，
   modelUsage 含 `claude-mythos-5-2`（S2.1）。
 - T2.2 阻塞：PMS 不在這台 Linux 機器上，需在 Mac 執行。
+- P3：Miyago 決定 Mythos 進 shoal 預設，security 退回 opus、plan-critic 退回 fable。實作
+  `[probe.roles]` 探測；實機在沒有 overlay 下由探測升級兩個 role。
+- T3.3 審查（Mythos，$1.85）6 個 finding：F2–F6 已修（D11–D13）；F3 後半（reinstall 補裝）與
+  F1（D6 進 policy）列為 T3.5、T3.6。

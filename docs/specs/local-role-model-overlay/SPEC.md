@@ -34,10 +34,11 @@ Claude host，用來把 `security-reviewer` 換成 `claude-mythos-5-2`。
 
 ## Non-goals
 
-- 不把 Mythos 寫進 `core/models.toml` 或任何 host 的 `binding.toml`：CVP 綁
-  帳號，別人 render 出來會指定到用不了的模型。
+- 不把 Mythos 寫進 `core/models.toml`，dist 也不指定 Mythos：CVP 綁帳號，別人直接
+  安裝會指定到用不了的模型。P3 只在 binding 的 `[probe.roles]` 列為探測候選。
 - 不改 `security-executor`：它照已核准的 contract 實作，嚴謹度在 review 關卡。
-- 不改 `plan-critic`：Fable 與 Mythos 一般能力相同，換了沒有收益。
+- P1 不改 `plan-critic`（Fable 與 Mythos 一般能力相同）；P3 由 Miyago 決定加入探測，
+  理由是 Fable 會把資安相關的 Plan 內容擋給 Opus 4.8。
 - 不新增紅隊 role：Defense Access 不涵蓋攻擊性工作。
 - PMS 的資安補強不在本 spec；它是 P2 的第一個實際使用案例，在 PMS repo 另開工作。
 
@@ -85,7 +86,15 @@ security role 退回 opus，frontier role（plan-critic）退回 fable。
   一次約 $0.056（2026-11-14 實測）。
 - D10 優先序：本機 overlay > 探測結果 > dist。沒跑 `--update` 的人（直接從 marketplace
   安裝）就是 dist，等於自動退回。
-- D11 `[probe.roles]` 的 role 與 model 用 D3 同一套驗證。
+- D11 `[probe.roles]` 的 role 與 model 用 D3 同一套驗證，探測前先驗整張表。security role
+  另外拒絕間接 alias（`best`、`inherit`、`opusplan`、`default`）。
+- D12 探測結果分三種：可用、明確不可用（回覆含 "issue with the selected model"）、無法判定
+  （timeout、overload、非 JSON）。無法判定時沿用目前已安裝的 model，不翻轉、不 reinstall；
+  首次安裝就沿用 dist。避免一次網路問題觸發無人值守的 uninstall／install。
+- D13 使用者 settings 有 `availableModels` 且不含候選時，直接視為不可用，不探測。
+- 探測加 `--no-session-persistence`，不留 session transcript。
+- 隱私：`plan-critic` 升級後，所有 risk-trigger 的 Plan 都會進入 CVP 的資料保留範圍。
+  不想要的人用 overlay 把它 pin 回 `fable`。
 - 失去資格後，下一次 `--update` 探測失敗，依 D7 reinstall 回到 dist。兩次 update 之間
   仍會落到 Claude Code 的全域 `fallbackModel`，由 D6 處理。
 

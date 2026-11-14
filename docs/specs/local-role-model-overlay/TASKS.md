@@ -33,5 +33,11 @@
 - [x] T3.1 `tools/shoal_update.py` 加入 `[probe.roles]` 探測與優先序（D8–D11）；
   fake CLI 支援 `-p`；`tests/test_local_overlay.py` 補 S3.x。
 - [x] T3.2 claude binding 加入 `[probe.roles]`。
-- [ ] T3.3 實機：移除本機 overlay 後 `--update --apply`，確認由探測升級；`security-reviewer`
-  再審一次 P3 diff。
+- [x] T3.3 實機：移除本機 overlay 後 `--update --apply`，由探測升級；`security-reviewer`
+  （Mythos，$1.85）審 P3 diff。
+- [x] T3.4 處理 T3.3 審查：F3 三態探測（D12）、F2 `availableModels`（D13）、F4 間接 alias、
+  F5 先驗整張表、F6 隱私說明與 `--no-session-persistence`。
+- [ ] T3.5 reinstall 時 uninstall 成功但 install 失敗，swap 只還原目錄、不會補裝 plugin
+  （F3 後半；channel switch 既有同樣風險）。
+- [ ] T3.6 D6 進 policy（F1，即 T1.4a）：探測成功後到下次 update 之間失去資格，會落到全域
+  `fallbackModel`；`plan-critic` 也要涵蓋。

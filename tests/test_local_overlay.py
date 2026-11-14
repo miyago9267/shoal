@@ -135,6 +135,9 @@ class OverlayTests(UpdateBase):
     def available(self, *models: str) -> None:
         (self.state / "claude.models").write_text(" ".join(models))
 
+    def probes(self) -> list[str]:
+        return self.calls("claude.probe")
+
     def model_of(self, role: str) -> str:
         text = (self.mp / f"{AGENTS}/{role}.md").read_text()
         return next(line for line in text.splitlines() if line.startswith("model: "))[7:]
@@ -166,7 +169,7 @@ class OverlayTests(UpdateBase):
     def test_each_model_is_probed_once_per_run(self) -> None:
         self.available("claude-mythos-5-2")
         self.probe_update("--apply")
-        self.assertEqual(sum(c.startswith("-p ") for c in self.calls()), 1)
+        self.assertEqual(len(self.probes()), 1)
 
     def test_overlay_wins_over_probe(self) -> None:
         self.available("claude-mythos-5-2")
@@ -196,6 +199,55 @@ class OverlayTests(UpdateBase):
         code, out, err = self.probe_update("--apply", table={"security-reviewer": ["fable"]})
         self.assertNotEqual(code, 0, out + err)
         self.assertFalse(self.mp.exists())
+
+    def test_inconclusive_probe_keeps_installed_model_without_reinstall(self) -> None:
+        manifest = json.loads(self.head(".claude-plugin/marketplace.json"))
+        (self.state / "claude.version").write_text(
+            next(p["version"] for p in manifest["plugins"] if p["name"] == "shoal")
+        )
+        self.available("claude-mythos-5-2")
+        self.probe_update("--apply")
+        for mode in ("garbage", "overloaded"):
+            with self.subTest(mode=mode):
+                (self.state / "claude.probe_mode").write_text(mode)
+                before = len(self.calls())
+                code, out, err = self.probe_update("--apply")
+                self.assertEqual(code, 0, out + err)
+                self.assertEqual(self.model_of("security-reviewer"), "claude-mythos-5-2")
+                self.assertNotIn("plugin uninstall shoal@shoal", self.calls()[before:])
+                self.assertIn("probe: skipped (claude-mythos-5-2 inconclusive)", out)
+
+    def test_inconclusive_probe_on_fresh_install_uses_dist(self) -> None:
+        (self.state / "claude.probe_mode").write_text("garbage")
+        code, out, err = self.probe_update("--apply")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.model_of("security-reviewer"), "opus")
+
+    def test_available_models_setting_excludes_candidate(self) -> None:
+        self.available("claude-mythos-5-2")
+        settings = Path(self.env["CLAUDE_CONFIG_DIR"]) / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({"availableModels": ["opus", "sonnet"]}))
+        code, out, err = self.probe_update("--apply")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.model_of("security-reviewer"), "opus")
+        self.assertEqual(self.probes(), [])
+
+    def test_whole_probe_table_is_validated_before_probing(self) -> None:
+        self.available("claude-mythos-5-2")
+        code, out, err = self.probe_update("--apply", table={"security-reviewer": ["claude-mythos-5-2", "fable"]})
+        self.assertNotEqual(code, 0, out + err)
+
+    def test_indirect_aliases_are_rejected_for_security_roles(self) -> None:
+        for model in ("best", "inherit", "opusplan", "default"):
+            with self.subTest(model=model):
+                self.assert_rejected(f'[roles.security-reviewer]\nmodel = "{model}"\n')
+
+    def test_probe_does_not_persist_sessions(self) -> None:
+        self.available("claude-mythos-5-2")
+        self.probe_update("--apply")
+        probe = self.probes()[0]
+        self.assertIn("--no-session-persistence", probe)
 
     def test_flagged_model_on_non_security_role_is_allowed(self) -> None:
         self.write_overlay('[roles.verifier]\nmodel = "fable"\n')

@@ -49,6 +49,10 @@ GUARD_SOURCE_FILE = (
 )
 CLI_TIMEOUT = 120
 PROBE_TIMEOUT = 60
+# Claude Code 對不存在或沒有權限的模型回的訊息（2026-11-14，2.1.325 實測）
+MODEL_UNAVAILABLE = "issue with the selected model"
+# 會解析成其他模型的 alias；security role 不接受，避免間接落到 fable 或 main 的模型
+INDIRECT_ALIASES = {"best", "inherit", "opusplan", "default"}
 
 
 class UpdateError(Exception):
@@ -244,6 +248,8 @@ class Updater:
             raise UpdateError(f"{source} 指定了未知的 role（只接受 core/roles.toml 與 extra_roles 的名稱）")
         if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model):
             raise UpdateError(f"{source} 的 {role} model 格式不合法")
+        if roles.get(role, {}).get("security") and model in INDIRECT_ALIASES:
+            raise UpdateError(f"security role {role} 不可指定間接 alias {model}")
         if roles.get(role, {}).get("security") and flagged & set(re.split(r"[-.\[\]]", model)):
             raise UpdateError(f"security role {role} 不可指定帶 refuses_defensive_security 的 {model}")
         return model
@@ -272,20 +278,26 @@ class Updater:
         return out
 
     def probe_picks(self) -> dict[str, str]:
-        """binding `[probe.roles]` 每個 role 取清單中第一個探測可用的模型；都不可用就不覆寫，沿用 dist（D8、D9）。"""
+        """binding `[probe.roles]` 每個 role 取清單中第一個可用的模型（D8、D9）。
+        明確不可用就試下一個，都不可用沿用 dist；無法判定時沿用目前已安裝的 model，不翻轉（D12）。"""
         table = self.probe_table()
-        if not table:
-            return {}
-        if not isinstance(table, dict):
-            raise UpdateError("claude binding 的 [probe.roles] 格式不合法")
+        if not isinstance(table, dict) or not all(isinstance(v, list) for v in table.values()):
+            raise UpdateError("claude binding 的 [probe.roles] 必須是 role -> 模型清單")
+        for role, candidates in table.items():
+            for model in candidates:
+                self.check_role_model("claude binding [probe.roles]", role, model)
         exe = si.which("claude", self.env)
         picks = {}
         for role, candidates in table.items():
-            if not isinstance(candidates, list):
-                raise UpdateError(f"claude binding 的 [probe.roles].{role} 必須是清單")
             for model in candidates:
-                if exe and self.probe(exe, self.check_role_model("claude binding [probe.roles]", role, model)):
+                state = self.probe(exe, model) if exe else "no"
+                if state == "yes":
                     picks[role] = model
+                    break
+                if state == "unknown":
+                    installed = self.installed_model(role)
+                    if installed:
+                        picks[role] = self.check_role_model("已安裝的 marketplace", role, installed)
                     break
         return picks
 
@@ -293,24 +305,51 @@ class Updater:
         self.catalog()
         return self._binding.get("probe", {}).get("roles", {})
 
-    def probe(self, exe: str, model: str) -> bool:
+    def installed_model(self, role: str) -> Optional[str]:
+        try:
+            head = (self.mp / "plugins" / "claude" / "agents" / f"{role}.md").read_text(encoding="utf-8").partition("\n---\n")[0]
+        except OSError:
+            return None
+        match = FRONTMATTER_MODEL.search(head)
+        return match.group(0)[len("model: "):] if match else None
+
+    def allowed_by_settings(self, model: str) -> bool:
+        """使用者 settings 有 availableModels 時，不在清單內的模型 Claude Code 不會用（D13）。"""
+        base = self.env.get("CLAUDE_CONFIG_DIR") or str(Path(self.env.get("HOME", str(Path.home()))) / ".claude")
+        try:
+            allowed = json.loads((Path(base) / "settings.json").read_text(encoding="utf-8")).get("availableModels")
+        except (OSError, ValueError, AttributeError):
+            return True
+        return not isinstance(allowed, list) or model in allowed
+
+    def probe(self, exe: str, model: str) -> str:
+        """回傳 yes（可用）、no（明確不可用）、unknown（timeout、overload、輸出無法解析）。"""
         if model not in self._probed:
-            with tempfile.TemporaryDirectory(prefix="shoal-probe-") as cwd:
-                try:
-                    proc = subprocess.run(
-                        [exe, "-p", "--model", model, "--tools", "", "--setting-sources", "",
-                         "--strict-mcp-config", "--max-turns", "1", "--output-format", "json", "Reply OK"],
-                        env=dict(self.env), cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
-                        text=True, encoding="utf-8", errors="replace", timeout=PROBE_TIMEOUT,
-                    )
-                    text = proc.stdout
-                    doc = json.loads(text[text.find("{"):]) if proc.returncode == 0 and "{" in text else {}
-                except (OSError, subprocess.TimeoutExpired, ValueError):
-                    doc = {}
-            ok = isinstance(doc, dict) and doc.get("is_error") is False and model in (doc.get("modelUsage") or {})
-            self._probed[model] = ok
-            self.emit("probe", "up-to-date" if ok else "skipped", f"{model} {'available' if ok else 'unavailable'}")
+            state = "no" if not self.allowed_by_settings(model) else self.run_probe(exe, model)
+            self._probed[model] = state
+            label = {"yes": "available", "no": "unavailable", "unknown": "inconclusive"}[state]
+            self.emit("probe", "up-to-date" if state == "yes" else "skipped", f"{model} {label}")
         return self._probed[model]
+
+    def run_probe(self, exe: str, model: str) -> str:
+        with tempfile.TemporaryDirectory(prefix="shoal-probe-") as cwd:
+            try:
+                proc = subprocess.run(
+                    [exe, "-p", "--model", model, "--tools", "", "--setting-sources", "",
+                     "--strict-mcp-config", "--no-session-persistence", "--max-turns", "1",
+                     "--output-format", "json", "Reply OK"],
+                    env=dict(self.env), cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
+                    text=True, encoding="utf-8", errors="replace", timeout=PROBE_TIMEOUT,
+                )
+                text = proc.stdout
+                doc = json.loads(text[text.find("{"):]) if proc.returncode == 0 and "{" in text else None
+            except (OSError, subprocess.TimeoutExpired, ValueError):
+                doc = None
+        if not isinstance(doc, dict):
+            return "unknown"
+        if doc.get("is_error") is False and model in (doc.get("modelUsage") or {}):
+            return "yes"
+        return "no" if MODEL_UNAVAILABLE in str(doc.get("result", "")) else "unknown"
 
     def export_marketplace(self, paths: list[str], dest: Path) -> None:
         self.export(paths, dest)

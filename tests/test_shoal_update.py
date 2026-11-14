@@ -32,7 +32,7 @@ state = Path(sys.argv[1])
 name, argv = sys.argv[2], sys.argv[3:]
 db = state / f"{name}.json"
 data = json.loads(db.read_text()) if db.exists() else {"marketplaces": [], "plugins": []}
-log = state / f"{name}.log"
+log = state / (f"{name}.probe.log" if argv[:1] == ["-p"] else f"{name}.log")
 with log.open("a") as fh:
     fh.write(" ".join(argv) + "\n")
 count = len(log.read_text().splitlines())
@@ -43,7 +43,18 @@ if fail.exists() and str(count) in fail.read_text().split():
 if name == "claude" and argv[:1] == ["-p"]:
     model = argv[argv.index("--model") + 1]
     avail = (state / "claude.models").read_text().split() if (state / "claude.models").exists() else []
-    print(json.dumps({"is_error": model not in avail, "modelUsage": {model: {}} if model in avail else {}}))
+    mode = (state / "claude.probe_mode").read_text().strip() if (state / "claude.probe_mode").exists() else ""
+    if mode == "garbage":
+        print("not json")
+        sys.exit(1)
+    if mode == "overloaded":
+        print(json.dumps({"is_error": True, "result": "API Error: 529 Overloaded", "modelUsage": {}}))
+        sys.exit(0)
+    if model in avail:
+        print(json.dumps({"is_error": False, "modelUsage": {model: {}}}))
+    else:
+        print(json.dumps({"is_error": True, "modelUsage": {},
+                          "result": f"There's an issue with the selected model ({model}). It may not exist or you may not have access to it."}))
     sys.exit(0)
 rest = [a for a in argv if a != "--json"]
 version = (state / "codex.version").read_text().strip() if (state / "codex.version").exists() else ""
@@ -186,7 +197,7 @@ class UpdateFlowTests(UpdateBase):
         self.assertFalse(self.data.exists())
         self.assertFalse(Path(self.env["CLAUDE_CONFIG_DIR"]).exists())
         # 只有唯讀的 list，沒有 add、install、update
-        self.assertTrue(all(" list" in c or c.startswith("-p ") for c in self.calls()), self.calls())
+        self.assertTrue(all(" list" in c for c in self.calls()), self.calls())
 
     def test_apply_installs_then_rerun_is_all_up_to_date(self) -> None:
         code, out, err = self.update("--apply")
