@@ -1,6 +1,6 @@
 # local-role-model-overlay：本機為個別 role 換模型（Mythos 用於 security-reviewer）
 
-狀態：草稿，待 Miyago 核准。
+狀態：Miyago 2026-11-14 核准；P3 於同日追加。
 
 ## Background
 
@@ -68,6 +68,26 @@ Claude host，用來把 `security-reviewer` 換成 `claude-mythos-5-2`。
   latest version，不刷新 cache，overlay 的新增與移除都到不了 Claude Code。
 - D5 `--update` 的輸出在套用覆寫時加一行 `overlay: applied (security-reviewer=claude-mythos-5-2)`，
   讓覆寫在 log 中可見。
+
+## P3 預設升級（安裝時探測）
+
+Miyago 2026-11-14 決定：Mythos 寫進 shoal 預設，但不是每個人都有，所以要能退回。
+security role 退回 opus，frontier role（plan-critic）退回 fable。
+
+- D8 claude binding 新增 `[probe.roles]`：role -> 候選模型清單。目前
+  `security-reviewer`、`plan-critic` 為 `["claude-mythos-5-2"]`；`security-executor`
+  維持 Non-goal，不升級。dist 不變，仍是 opus 與 fable。
+- D9 `shoal_install.py --update`（含 dry-run）對每個候選模型探測一次：
+  `claude -p --model <id> --tools "" --setting-sources "" --strict-mcp-config --max-turns 1
+  --output-format json "Reply OK"`，在空的 temp cwd、timeout 60 秒。exit 0、`is_error`
+  為 false、`modelUsage` 含該 ID 才算可用；其餘（含 timeout、overload）都算不可用。
+  `--setting-sources ""` 避開使用者的 `fallbackModel`，否則不可用的 ID 會被靜默換掉。
+  一次約 $0.056（2026-11-14 實測）。
+- D10 優先序：本機 overlay > 探測結果 > dist。沒跑 `--update` 的人（直接從 marketplace
+  安裝）就是 dist，等於自動退回。
+- D11 `[probe.roles]` 的 role 與 model 用 D3 同一套驗證。
+- 失去資格後，下一次 `--update` 探測失敗，依 D7 reinstall 回到 dist。兩次 update 之間
+  仍會落到 Claude Code 的全域 `fallbackModel`，由 D6 處理。
 
 ## Open questions
 

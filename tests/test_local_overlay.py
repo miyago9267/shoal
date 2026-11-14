@@ -9,8 +9,11 @@ import json
 import subprocess
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from test_shoal_update import ROOT, UpdateBase
+
+import shoal_update  # noqa: E402  test_shoal_update 已把 tools/ 加進 sys.path
 
 AGENTS = "plugins/claude/agents"
 
@@ -121,6 +124,78 @@ class OverlayTests(UpdateBase):
         calls = self.calls()[before:]
         self.assertIn("plugin uninstall shoal@shoal", calls)
         self.assertIn("plugin install shoal@shoal", calls)
+
+    # ---- P3：安裝時探測（D8–D10）----
+    PROBE = {"security-reviewer": ["claude-mythos-5-2"], "plan-critic": ["claude-mythos-5-2"]}
+
+    def probe_update(self, *argv: str, table: dict | None = None) -> tuple[int, str, str]:
+        with mock.patch.object(shoal_update.Updater, "probe_table", return_value=table or self.PROBE):
+            return self.update(*argv)
+
+    def available(self, *models: str) -> None:
+        (self.state / "claude.models").write_text(" ".join(models))
+
+    def model_of(self, role: str) -> str:
+        text = (self.mp / f"{AGENTS}/{role}.md").read_text()
+        return next(line for line in text.splitlines() if line.startswith("model: "))[7:]
+
+    def test_available_probe_model_replaces_dist_model(self) -> None:
+        self.available("claude-mythos-5-2")
+        code, out, err = self.probe_update("--apply")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.model_of("security-reviewer"), "claude-mythos-5-2")
+        self.assertEqual(self.model_of("plan-critic"), "claude-mythos-5-2")
+        self.assertEqual(self.model_of("security-executor"), "opus")
+        self.assertIn("probe: up-to-date (claude-mythos-5-2 available)", out)
+
+    def test_unavailable_probe_model_keeps_dist_byte_for_byte(self) -> None:
+        code, out, err = self.probe_update("--apply")
+        self.assertEqual(code, 0, out + err)
+        for role in ("security-reviewer", "plan-critic"):
+            rel = f"{AGENTS}/{role}.md"
+            self.assertEqual((self.mp / rel).read_bytes(), self.head(rel))
+        self.assertIn("probe: skipped (claude-mythos-5-2 unavailable)", out)
+
+    def test_first_available_candidate_wins(self) -> None:
+        self.available("claude-mythos-5-2", "claude-mythos-5-1")
+        table = {"security-reviewer": ["claude-mythos-9-9", "claude-mythos-5-2", "claude-mythos-5-1"]}
+        code, out, err = self.probe_update("--apply", table=table)
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.model_of("security-reviewer"), "claude-mythos-5-2")
+
+    def test_each_model_is_probed_once_per_run(self) -> None:
+        self.available("claude-mythos-5-2")
+        self.probe_update("--apply")
+        self.assertEqual(sum(c.startswith("-p ") for c in self.calls()), 1)
+
+    def test_overlay_wins_over_probe(self) -> None:
+        self.available("claude-mythos-5-2")
+        self.write_overlay('[roles.plan-critic]\nmodel = "opus"\n')
+        code, out, err = self.probe_update("--apply")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.model_of("plan-critic"), "opus")
+        self.assertEqual(self.model_of("security-reviewer"), "claude-mythos-5-2")
+
+    def test_losing_access_falls_back_to_dist_with_reinstall(self) -> None:
+        manifest = json.loads(self.head(".claude-plugin/marketplace.json"))
+        (self.state / "claude.version").write_text(
+            next(p["version"] for p in manifest["plugins"] if p["name"] == "shoal")
+        )
+        self.available("claude-mythos-5-2")
+        self.probe_update("--apply")
+        self.available()
+        before = len(self.calls())
+        code, out, err = self.probe_update("--apply")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.model_of("security-reviewer"), "opus")
+        self.assertEqual(self.model_of("plan-critic"), "fable")
+        self.assertIn("plugin uninstall shoal@shoal", self.calls()[before:])
+
+    def test_probe_table_is_validated_like_overlay(self) -> None:
+        self.available("fable")
+        code, out, err = self.probe_update("--apply", table={"security-reviewer": ["fable"]})
+        self.assertNotEqual(code, 0, out + err)
+        self.assertFalse(self.mp.exists())
 
     def test_flagged_model_on_non_security_role_is_allowed(self) -> None:
         self.write_overlay('[roles.verifier]\nmodel = "fable"\n')

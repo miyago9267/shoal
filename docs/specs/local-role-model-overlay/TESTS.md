@@ -34,3 +34,13 @@
 
 - S2.1 WHEN 派 `shoal:security-reviewer`，THE SYSTEM SHALL 在 transcript 中記錄
   model 為 `claude-mythos-5-2`。
+
+## P3
+
+- S3.1 WHERE 候選模型可用，THE SYSTEM SHALL 把該 role 的 `model:` 改成第一個可用的候選；
+  未列在 `[probe.roles]` 的 role（`security-executor`）不變。
+- S3.2 WHERE 候選都不可用，THE SYSTEM SHALL 安裝與 HEAD 位元組相同的 agent 檔。
+- S3.3 THE SYSTEM SHALL 每次 update 對同一個模型只探測一次。
+- S3.4 WHERE overlay 與探測都指定同一個 role，THE SYSTEM SHALL 採用 overlay。
+- S3.5 WHEN 原本可用的模型變成不可用，THE SYSTEM SHALL 回到 dist 並 reinstall core plugin。
+- S3.6 IF `[probe.roles]` 把 flagged 模型指定給 security role，THEN THE SYSTEM SHALL 以非零 exit 失敗。

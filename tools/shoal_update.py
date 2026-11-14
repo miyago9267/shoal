@@ -48,6 +48,7 @@ GUARD_SOURCE_FILE = (
     "hooks/shoal_guard.py"  # repo 內的 guard 正本；guard plugin 內的副本必須相同
 )
 CLI_TIMEOUT = 120
+PROBE_TIMEOUT = 60
 
 
 class UpdateError(Exception):
@@ -143,6 +144,10 @@ class Updater:
         ).parent  # ${XDG_DATA_HOME:-~/.local/share}/shoal
         self.mp = self.data / "claude-marketplace"
         self._overlay: Optional[dict[str, str]] = None
+        self._role_models: Optional[dict[str, str]] = None
+        self._catalog: Optional[tuple[dict, set[str], set[str]]] = None
+        self._binding: dict = {}
+        self._probed: dict[str, bool] = {}
 
     # ---- output ----
     def emit(self, step: str, status: str, detail: str = "") -> None:
@@ -207,9 +212,44 @@ class Updater:
         ]
         return paths, plugins
 
-    # ---- local overlay ----
+    # ---- role model：probe 與 local overlay ----
+    def role_models(self) -> dict[str, str]:
+        """安裝時要寫進 agents/<role>.md 的 model（local-role-model-overlay D10）：overlay > probe > dist。"""
+        if self._role_models is None:
+            self._role_models = {**self.probe_picks(), **self.overlay()}
+        return self._role_models
+
+    def catalog(self) -> tuple[dict, set[str], set[str]]:
+        """HEAD 的 (core roles, 已知 role 名稱, security role 不可用的 flagged alias)。"""
+        if self._catalog is None:
+            try:
+                roles = tomllib.loads(self.blob("core/roles.toml").decode())["roles"]
+                models = tomllib.loads(self.blob("core/models.toml").decode())["models"]
+                binding = tomllib.loads(self.blob("hosts/claude/binding.toml").decode())
+                aliases = binding["models"]
+            except (tomllib.TOMLDecodeError, KeyError, UnicodeDecodeError) as exc:
+                raise UpdateError(f"core 或 claude binding 無法解析: {exc}") from exc
+            flagged = {
+                aliases[key]
+                for key, spec in models.items()
+                if key in aliases and "refuses_defensive_security" in spec.get("flags", [])
+            }
+            self._binding = binding
+            self._catalog = (roles, set(roles) | set(binding.get("extra_roles", {})), flagged)
+        return self._catalog
+
+    def check_role_model(self, source: str, role: str, model: object) -> str:
+        roles, known, flagged = self.catalog()
+        if role not in known:
+            raise UpdateError(f"{source} 指定了未知的 role（只接受 core/roles.toml 與 extra_roles 的名稱）")
+        if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model):
+            raise UpdateError(f"{source} 的 {role} model 格式不合法")
+        if roles.get(role, {}).get("security") and flagged & set(re.split(r"[-.\[\]]", model)):
+            raise UpdateError(f"security role {role} 不可指定帶 refuses_defensive_security 的 {model}")
+        return model
+
     def overlay(self) -> dict[str, str]:
-        """讀取並驗證本機覆寫檔（local-role-model-overlay D1、D3）；不存在時回傳空 dict。"""
+        """讀取並驗證本機覆寫檔（D1、D3）；不存在時回傳空 dict。"""
         if self._overlay is None:
             self._overlay = self.read_overlay()
         return self._overlay
@@ -220,37 +260,61 @@ class Updater:
             return {}
         try:
             doc = tomllib.loads(path.read_text(encoding="utf-8"))
-            roles = tomllib.loads(self.blob("core/roles.toml").decode())["roles"]
-            models = tomllib.loads(self.blob("core/models.toml").decode())["models"]
-            binding = tomllib.loads(self.blob("hosts/claude/binding.toml").decode())
-            aliases = binding["models"]
-        except (tomllib.TOMLDecodeError, KeyError, UnicodeDecodeError) as exc:
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
             raise UpdateError(f"{path} 無法解析: {exc}") from exc
         if set(doc) != {"roles"} or not isinstance(doc["roles"], dict):
             raise UpdateError(f"{path} 只能有 [roles.<name>]")
-        flagged = {
-            aliases[key]
-            for key, spec in models.items()
-            if key in aliases and "refuses_defensive_security" in spec.get("flags", [])
-        }
-        known = set(roles) | set(binding.get("extra_roles", {}))
         out = {}
         for role, spec in doc["roles"].items():
-            if role not in known:
-                raise UpdateError(f"{path} 指定了未知的 role（只接受 core/roles.toml 與 extra_roles 的名稱）")
             if not isinstance(spec, dict) or set(spec) != {"model"}:
-                raise UpdateError(f"{path} 的 [roles.{role}] 只能有 model")
-            model = spec["model"]
-            if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model):
-                raise UpdateError(f"{path} 的 [roles.{role}].model 格式不合法")
-            if roles.get(role, {}).get("security") and flagged & set(re.split(r"[-.\[\]]", model)):
-                raise UpdateError(f"security role {role} 不可指定帶 refuses_defensive_security 的 {model}")
-            out[role] = model
+                raise UpdateError(f"{path} 的每個 [roles.<name>] 只能有 model")
+            out[role] = self.check_role_model(str(path), role, spec["model"])
         return out
+
+    def probe_picks(self) -> dict[str, str]:
+        """binding `[probe.roles]` 每個 role 取清單中第一個探測可用的模型；都不可用就不覆寫，沿用 dist（D8、D9）。"""
+        table = self.probe_table()
+        if not table:
+            return {}
+        if not isinstance(table, dict):
+            raise UpdateError("claude binding 的 [probe.roles] 格式不合法")
+        exe = si.which("claude", self.env)
+        picks = {}
+        for role, candidates in table.items():
+            if not isinstance(candidates, list):
+                raise UpdateError(f"claude binding 的 [probe.roles].{role} 必須是清單")
+            for model in candidates:
+                if exe and self.probe(exe, self.check_role_model("claude binding [probe.roles]", role, model)):
+                    picks[role] = model
+                    break
+        return picks
+
+    def probe_table(self) -> dict:
+        self.catalog()
+        return self._binding.get("probe", {}).get("roles", {})
+
+    def probe(self, exe: str, model: str) -> bool:
+        if model not in self._probed:
+            with tempfile.TemporaryDirectory(prefix="shoal-probe-") as cwd:
+                try:
+                    proc = subprocess.run(
+                        [exe, "-p", "--model", model, "--tools", "", "--setting-sources", "",
+                         "--strict-mcp-config", "--max-turns", "1", "--output-format", "json", "Reply OK"],
+                        env=dict(self.env), cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
+                        text=True, encoding="utf-8", errors="replace", timeout=PROBE_TIMEOUT,
+                    )
+                    text = proc.stdout
+                    doc = json.loads(text[text.find("{"):]) if proc.returncode == 0 and "{" in text else {}
+                except (OSError, subprocess.TimeoutExpired, ValueError):
+                    doc = {}
+            ok = isinstance(doc, dict) and doc.get("is_error") is False and model in (doc.get("modelUsage") or {})
+            self._probed[model] = ok
+            self.emit("probe", "up-to-date" if ok else "skipped", f"{model} {'available' if ok else 'unavailable'}")
+        return self._probed[model]
 
     def export_marketplace(self, paths: list[str], dest: Path) -> None:
         self.export(paths, dest)
-        apply_overlay(dest, self.overlay())
+        apply_overlay(dest, self.role_models())
 
     # ---- cleanup ----
     def cleanup(self) -> None:
@@ -455,8 +519,8 @@ class Updater:
             else:
                 stage = Path(scratch.name) / "stage"  # type: ignore[union-attr]
             self.export_marketplace(paths, stage)
-            if self.overlay():
-                self.emit("overlay", "applied", ", ".join(f"{r}={m}" for r, m in self.overlay().items()))
+            if self.role_models():
+                self.emit("overlay", "applied", ", ".join(f"{r}={m}" for r, m in sorted(self.role_models().items())))
             changed = not self.mp.is_dir() or si.tree_digest(stage) != si.tree_digest(
                 self.mp
             )

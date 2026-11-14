@@ -27,3 +27,11 @@
   `shoal:security-reviewer` 使用 Mythos。
 - [ ] T2.2 在 PMS repo 派 `security-reviewer` 做 Defense 範圍的審查（攻擊紀錄分類、
   auth / 輸入驗證弱點、偵測規則），結果在 PMS repo 另開工作處理。
+
+## P3 預設升級（安裝時探測）
+
+- [x] T3.1 `tools/shoal_update.py` 加入 `[probe.roles]` 探測與優先序（D8–D11）；
+  fake CLI 支援 `-p`；`tests/test_local_overlay.py` 補 S3.x。
+- [x] T3.2 claude binding 加入 `[probe.roles]`。
+- [ ] T3.3 實機：移除本機 overlay 後 `--update --apply`，確認由探測升級；`security-reviewer`
+  再審一次 P3 diff。

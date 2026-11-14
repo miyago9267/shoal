@@ -40,6 +40,11 @@ fail = state / f"{name}.fail_on"
 if fail.exists() and str(count) in fail.read_text().split():
     sys.stderr.write(f"fake {name}: forced failure on call {count}\n")
     sys.exit(1)
+if name == "claude" and argv[:1] == ["-p"]:
+    model = argv[argv.index("--model") + 1]
+    avail = (state / "claude.models").read_text().split() if (state / "claude.models").exists() else []
+    print(json.dumps({"is_error": model not in avail, "modelUsage": {model: {}} if model in avail else {}}))
+    sys.exit(0)
 rest = [a for a in argv if a != "--json"]
 version = (state / "codex.version").read_text().strip() if (state / "codex.version").exists() else ""
 out = None
@@ -181,7 +186,7 @@ class UpdateFlowTests(UpdateBase):
         self.assertFalse(self.data.exists())
         self.assertFalse(Path(self.env["CLAUDE_CONFIG_DIR"]).exists())
         # 只有唯讀的 list，沒有 add、install、update
-        self.assertTrue(all(" list" in c for c in self.calls()), self.calls())
+        self.assertTrue(all(" list" in c or c.startswith("-p ") for c in self.calls()), self.calls())
 
     def test_apply_installs_then_rerun_is_all_up_to_date(self) -> None:
         code, out, err = self.update("--apply")
