@@ -265,6 +265,19 @@ class OverlayTests(UpdateBase):
         self.assertEqual(self.model_of("security-reviewer"), "claude-mythos-5-2")
         self.assertIn("restored previous install", out)
 
+    def test_content_change_without_model_flip_keeps_upstream_skip(self) -> None:
+        manifest = json.loads(self.head(".claude-plugin/marketplace.json"))
+        (self.state / "claude.version").write_text(
+            next(p["version"] for p in manifest["plugins"] if p["name"] == "shoal")
+        )
+        self.probe_update("--apply")
+        scout = self.mp / "plugins" / "claude" / "agents" / "scout.md"
+        scout.write_text(scout.read_text() + "stale body\n")
+        before = len(self.calls())
+        code, out, err = self.probe_update("--apply")
+        self.assertNotIn("plugin uninstall shoal@shoal", self.calls()[before:])
+        self.assertIn("版本沒升", out)
+
     def test_flagged_model_on_non_security_role_is_allowed(self) -> None:
         self.write_overlay('[roles.verifier]\nmodel = "fable"\n')
         code, out, err = self.update("--apply")

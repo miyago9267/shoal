@@ -21,15 +21,22 @@ import re
 import shlex
 import stat
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 try:
     import fcntl
-except ImportError:  # Windows: run() is a no-op there
+except ImportError:  # Windows: msvcrt byte-range locks instead
     fcntl = None  # type: ignore[assignment]
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None  # type: ignore[assignment]
+
+WINDOWS = os.name == "nt"
 
 MAX_INPUT_BYTES = 256 * 1024
 MAX_LOG_BYTES = 1024 * 1024
@@ -300,6 +307,11 @@ MESSAGES = {
             'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add '
             "#direct to the prompt."
         ),
+        "DECLARE_COMBINED": (
+            "Shoal dispatch guard: the : shoal-direct declaration was combined with other commands, so it "
+            "was not recorded. Send exactly : shoal-direct \"<reason>\" as its own shell call (no ;, &&, |, "
+            "newline or other command in it), then run the edit in a separate call."
+        ),
     },
     "zh-TW": {
         "ADVISE": (
@@ -363,6 +375,11 @@ MESSAGES = {
             "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
             ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。'
         ),
+        "DECLARE_COMBINED": (
+            "Shoal dispatch guard：: shoal-direct 宣告和其他指令寫在同一個 shell 指令裡，所以沒有生效。"
+            '請把 : shoal-direct "<理由>" 單獨當成一次 shell 呼叫送出（不要接 ;、&&、|、換行或其他指令），'
+            "改檔留到下一次呼叫。"
+        ),
     },
 }
 
@@ -373,7 +390,8 @@ MESSAGES = {
 
 
 def _uid() -> int:
-    return os.getuid()
+    # Windows reports st_uid 0 for every file; ownership there comes from the per-user profile ACL.
+    return 0 if WINDOWS else os.getuid()
 
 
 def _no_symlink_below(path: Path, anchor: Path) -> bool:
@@ -393,7 +411,9 @@ def _no_symlink_below(path: Path, anchor: Path) -> bool:
 def _open_private(path: Path, flags: int) -> Optional[int]:
     """Open a regular file owned by us with O_NOFOLLOW; force mode 0600."""
     try:
-        fd = os.open(str(path), flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        if WINDOWS and os.path.islink(str(path)):  # no O_NOFOLLOW on Windows
+            return None
+        fd = os.open(str(path), flags | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)
     except OSError:
         return None
     try:
@@ -401,7 +421,8 @@ def _open_private(path: Path, flags: int) -> Optional[int]:
         if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
             os.close(fd)
             return None
-        os.fchmod(fd, 0o600)
+        if not WINDOWS:
+            os.fchmod(fd, 0o600)
     except OSError:
         os.close(fd)
         return None
@@ -437,7 +458,7 @@ def _guard_dir(env: Dict[str, str], home: Path) -> Optional[Path]:
             info = os.lstat(str(cursor))
             if not stat.S_ISDIR(info.st_mode) or info.st_uid != _uid():
                 return None
-            if strict and stat.S_IMODE(info.st_mode) & 0o077:
+            if strict and not WINDOWS and stat.S_IMODE(info.st_mode) & 0o077:
                 return None
     except OSError:
         return None
@@ -475,7 +496,7 @@ def _state_lock(path: Path) -> Iterator[Optional[str]]:
     Yields None once held, else the skip reason (the caller then fails open).  Waits at
     most LOCK_WAIT_SECONDS; the lock dies with the process, so a crash never wedges it.
     """
-    fd = _open_private(path, os.O_RDWR | os.O_CREAT) if fcntl is not None else None
+    fd = _open_private(path, os.O_RDWR | os.O_CREAT) if (fcntl or msvcrt) is not None else None
     if fd is None:
         yield "state_unavailable"
         return
@@ -483,7 +504,10 @@ def _state_lock(path: Path) -> Iterator[Optional[str]]:
         deadline = time.monotonic() + LOCK_WAIT_SECONDS
         while True:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
                 break
             except OSError:
                 if time.monotonic() >= deadline:
@@ -507,7 +531,7 @@ def short_hash(value: Any) -> Optional[str]:
 
 
 def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
-    """Append one whitelisted record to guard.jsonl (1 MiB cap).  Never raises."""
+    """Append one whitelisted record to guard.jsonl (per-member chain_* records go to chain.jsonl); past 1 MiB a file becomes <name>.1 (one generation).  Never raises."""
     if guard is None:
         return
     line: Dict[str, Any] = {"ts": datetime.now(timezone.utc).isoformat()}
@@ -522,10 +546,13 @@ def _append_log(guard: Optional[Path], record: Dict[str, Any]) -> None:
         value = _safe_text(value)
         if value is not None:
             line[key] = value
-    path = guard / "guard.jsonl"
+    # Per-member chain bookkeeping (chain_allow, chain_report, ...) is high volume: keep it out of the decision log.
+    chatter = line.get("rule") == "chain" and str(line.get("decision", "")).startswith("chain_")
+    name = "chain.jsonl" if chatter else "guard.jsonl"
+    path = guard / name
     try:
         if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
-            return
+            os.replace(path, guard / (name + ".1"))
         fd = _open_private(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
         if fd is None:
             return
@@ -731,6 +758,8 @@ def resolve_r1(host: str, env: Dict[str, str]) -> str:
 # ---------------------------------------------------------------------------
 
 _DECLARE_PREFIX_RE = re.compile(r":[ \t]+shoal-direct[ \t]+")
+# A denied command that mentions a declaration without being one: it was combined with other commands.
+_DECLARE_MENTION_RE = re.compile(r":[ \t]+shoal-direct\b")
 # Controls other than TAB: a declaration is one line of printable text.
 _DECLARE_CONTROL_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")
 # A bare reason is plain words: no shell syntax, expansion or globbing (bash and zsh alike).
@@ -810,11 +839,35 @@ def _max_files(env: Dict[str, str]) -> Optional[int]:
         return None
 
 
+_MSYS_DRIVE_RE = re.compile(r"^/([A-Za-z])(?=/|$)")
+
+
+def _real(path: str) -> str:
+    """os.path.realpath; on Windows also maps Git Bash paths (`/c/x`, `/tmp`) to native ones and
+    returns a case-folded, `/`-separated form so prefix checks work the same as on POSIX."""
+    if not WINDOWS:
+        return os.path.realpath(path)
+    if "\u0000" in path:  # POSIX realpath raises here; keep the same fail-open path
+        raise ValueError("embedded null byte")
+    path = path.replace("\\", "/")
+    if path.startswith("//?/UNC/"):  # extended-length spellings: \\?\C:\x and \\?\UNC\host\share
+        path = "//" + path[8:]
+    elif path.startswith(("//?/", "//./")):
+        path = path[4:]
+    if path == "/tmp" or path.startswith("/tmp/"):
+        path = tempfile.gettempdir() + path[4:]
+    else:
+        path = _MSYS_DRIVE_RE.sub(lambda m: m.group(1) + ":", path)
+    return os.path.normcase(os.path.realpath(path)).replace("\\", "/")
+
+
 def resolve_path(path: str, cwd: str) -> str:
     """Absolute, symlink-resolved path (`..` collapsed); non-existent tails are kept."""
+    if WINDOWS:
+        path = _real(path) if path.startswith("/") else path
     if not os.path.isabs(path):
         path = os.path.join(cwd or os.getcwd(), path)
-    return os.path.realpath(path)
+    return _real(path)
 
 
 def _under(path: str, root: str) -> bool:
@@ -825,7 +878,7 @@ def _under(path: str, root: str) -> bool:
 def repo_under_test(cwd: str) -> str:
     """Root of the repository under test: the nearest ancestor of `cwd` holding `.git` (a directory or a
     worktree file); `cwd` itself (resolved) when there is none."""
-    start = os.path.realpath(cwd or os.getcwd())
+    start = _real(cwd or os.getcwd())
     cursor = start
     while True:
         if os.path.exists(os.path.join(cursor, ".git")):
@@ -840,15 +893,20 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
     """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts."""
     if ".ai" in path.split("/")[:-1]:
         return True
-    roots = ["/tmp", "/private/tmp", os.path.realpath("/tmp")]
-    tmpdir = env.get("TMPDIR", "")
-    if tmpdir and os.path.isabs(tmpdir) and os.path.realpath(tmpdir) != "/":
-        roots.append(os.path.realpath(tmpdir))
+    roots = ["/tmp", "/private/tmp", _real("/tmp")]
+    if WINDOWS:  # gettempdir() covers the process's TMP/TEMP/TMPDIR; `env` is what the host handed us
+        roots += [_real("/private/tmp"), _real(tempfile.gettempdir())]
+    for key in ("TMPDIR", "TEMP", "TMP") if WINDOWS else ("TMPDIR",):
+        tmpdir = env.get(key, "")
+        if tmpdir and os.path.isabs(tmpdir):
+            real = _real(tmpdir)
+            if os.path.dirname(real) != real:  # never exempt a filesystem root
+                roots.append(real)
     if host == "claude":
-        roots.append(os.path.realpath(str(home / ".claude" / "projects")))
+        roots.append(_real(str(home / ".claude" / "projects")))
         config = env.get("CLAUDE_CONFIG_DIR", "")
         if config and os.path.isabs(config):
-            roots.append(os.path.realpath(os.path.join(config, "projects")))
+            roots.append(_real(os.path.join(config, "projects")))
     return any(_under(path, root) for root in roots)
 
 
@@ -861,6 +919,12 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
 UNKNOWN_TARGET = "$?"
 _WORD_BREAK = " \t\r\n;|&<>()"
 _ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+# `$NAME` / `${NAME}` leading a target word, and the literal bases a tracked value or `cd` target may have.
+_VAR_REF_RE = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})(?=/|\Z)")
+_DRIVE_RE = re.compile(r"[A-Za-z]:[/\\]") if WINDOWS else re.compile(r"(?!)")  # `C:/x` is absolute only on Windows
+_KNOWN_BASE_RE = re.compile(r"/|~(?=/|\Z)|\$(?:HOME|TMPDIR|\{HOME\}|\{TMPDIR\})(?=/|\Z)|" + _DRIVE_RE.pattern)
+_SET_COMMANDS = frozenset(("export", "declare", "local", "typeset", "readonly"))
+_CD_NAMES = frozenset(("cd", "pushd", "popd"))
 _DOUBLE_BRACKET_END_RE = re.compile(r"(?:^|\s)\]\](?=$|[\s;&|)])")
 # Words after which the next word is still a command (`FOO=1 tee f`, `then tee f`).
 _COMMAND_KEEP = frozenset(("then", "do", "else", "elif", "if", "while", "until", "!", "{"))
@@ -870,6 +934,15 @@ _COMMAND_WRAPPERS = frozenset(("sudo", "command", "exec", "env", "time", "nohup"
 _FIND_EXEC = frozenset(("-exec", "-execdir"))
 # sed flags that take no value; the first other letter ends a short-option cluster.
 _SED_FLAG_LETTERS = "Enrsuzb"
+# Python file writes, matched over the whole command only when a `python[0-9.]*` runs in it.
+_PYTHON_NAME_RE = re.compile(r"python[0-9.]*")
+_PY_WRITE_RE = re.compile(
+    r"""\bopen\(\s*(?:(['"])([^'"\n]*)\1)?[^\n]{0,200}?,\s*(?:mode=)?['"][rbt]*[wax][rbt+]*['"]"""
+    r"|\.write_(?:text|bytes)\("
+    r"|\bshutil\.(?:copy\w*|move)\("
+    r"|\bos\.(?:remove|unlink|rename|replace)\(",
+    re.ASCII,
+)
 
 
 def _skip_parens(text: str, start: int) -> int:
@@ -1024,6 +1097,19 @@ def _perl_in_place_files(args: List[str]) -> List[str]:
     return files or [UNKNOWN_TARGET]
 
 
+def _known_path(value: str) -> bool:
+    """An absolute path, or one led by `~` / `$HOME` / `$TMPDIR` (braces ok), with no other `$` or backtick."""
+    m = _KNOWN_BASE_RE.match(value)
+    return bool(m) and "$" not in value[m.end():] and "`" not in value[m.end():]
+
+
+def _in_dir(word: str, base: Optional[str]) -> str:
+    """A relative literal `word` joined to `base`; anything else (absolute, `~`, `$...`, UNKNOWN_TARGET) as is."""
+    if base and word and word != UNKNOWN_TARGET and word[0] not in "/~$`" and not _DRIVE_RE.match(word):
+        return base.rstrip("/") + "/" + word
+    return word
+
+
 def shell_write_targets(command: str) -> List[str]:
     """File targets that `command` writes by a literal reading of its text (G5).
 
@@ -1035,8 +1121,26 @@ def shell_write_targets(command: str) -> List[str]:
     `$` or a backtick has no known value and is the caller's call.  Writes through any other
     interpreter or command (python, node, `perl -e` code that opens a file, cp, mv, patch,
     git apply, dd, ...) are not detected.  The TypeScript port (guard/shell-writes.ts) must return the same list.
+
+    Python (`python[0-9.]*` at command position, absolute path included): when one runs, the whole
+    command text (here-document body and `-c` code alike) is scanned for `open(..., '<w|a|x mode>')`
+    with a literal mode, `.write_text(` / `.write_bytes(`, `shutil.copy*(` / `shutil.move(` and
+    `os.remove|unlink|rename|replace(`.  `open('literal', ...)` reports that path; every other hit
+    reports UNKNOWN_TARGET; these come after the shell targets.  This is a guardrail against routine
+    edits, not a sandbox: exec/eval, getattr, subprocess, script files (`python x.py`), computed modes,
+    `node -e`, cp and mv are not covered.
+
+    Two literal rewrites make routine temp-dir work readable.  (1) A standalone `NAME=<known path>` (or
+    `export NAME=...`) that runs unconditionally -- not after `&&` / `||` / `|` of a non-assignment command, not
+    inside `( )`, `if`, `do`, `case` -- is substituted into a later target that starts with `$NAME` / `${NAME}`;
+    a value that is not a known path (see `_known_path`) makes NAME unknown again.  (2) A `cd <known path>`
+    (also via a known NAME) followed by `;`, `&&` or a newline, while every command so far was an assignment
+    or a `cd`, makes later relative targets (python `open('x')` too) absolute under it.  `cd -`, `cd $(...)`,
+    a relative or unknown `cd`, `pushd` / `popd`, a `cd` in a subshell, pipeline or `||` leave relative
+    targets as written.
     """
-    if ">" not in command and "tee" not in command and "sed" not in command and "perl" not in command:
+    if (">" not in command and "tee" not in command and "sed" not in command and "perl" not in command
+            and "python" not in command):
         return []
     targets: List[str] = []
     n = len(command)
@@ -1045,15 +1149,60 @@ def shell_write_targets(command: str) -> List[str]:
     name: Optional[str] = None
     args: List[str] = []
     heredocs: List[Tuple[str, bool]] = []
+    python_ran = False
+    variables: Dict[str, Optional[str]] = {}
+    pending: List[str] = []  # assignments before the current command word
+    cur_dir: Optional[str] = None
+    py_dirs: Set[Optional[str]] = set()
+    leading = True  # every command so far was an assignment or a `cd`
+    sticky = False  # saw a keyword, `(` or `)`: later assignments may not run as written
+    guarded = False  # the next statement follows `&&` / `||` / `|` / `&` of a command that may not succeed
 
-    def flush() -> None:
-        nonlocal name, args, cmd_pos, wrapped
-        if name == "tee":
-            targets.extend(_tee_files(args))
-        elif name == "sed":
-            targets.extend(_sed_in_place_files(args))
-        elif name == "perl":
-            targets.extend(_perl_in_place_files(args))
+    def resolve(word: str) -> str:
+        m = _VAR_REF_RE.match(word)
+        value = variables.get(m.group(1) or m.group(2)) if m else None
+        return value + word[m.end():] if m and value else word
+
+    def locate(word: str) -> str:
+        return _in_dir(resolve(word), cur_dir)
+
+    def set_var(assignment: str) -> None:
+        key, _, value = assignment.partition("=")
+        value = resolve(value)
+        variables[key] = value if not (sticky or guarded) and _known_path(value) else None
+
+    def flush(sep: str = "") -> None:
+        nonlocal name, args, cmd_pos, wrapped, python_ran, cur_dir, leading, guarded
+        if name is None:
+            for assignment in pending:
+                set_var(assignment)
+        elif name in _CD_NAMES:
+            positional = [a for a in args if not (a.startswith("-") and a != "-")]
+            if name == "cd" and leading and sep in (";", "&&", "\n"):
+                target = resolve(positional[0]) if len(positional) == 1 else ""
+                cur_dir = target if _known_path(target) else None
+            else:
+                cur_dir, leading = None, False
+        elif name in _SET_COMMANDS:
+            for a in args:
+                if _ASSIGNMENT_RE.match(a):
+                    set_var(a)
+        else:
+            leading = False
+            if _PYTHON_NAME_RE.fullmatch(name):
+                python_ran = True
+                py_dirs.add(cur_dir)
+            elif name == "tee":
+                targets.extend(locate(f) for f in _tee_files(args))
+            elif name == "sed":
+                targets.extend(locate(f) for f in _sed_in_place_files(args))
+            elif name == "perl":
+                targets.extend(locate(f) for f in _perl_in_place_files(args))
+        pending.clear()
+        if sep in ("||", "|", "|&", "&") or (sep == "&&" and not leading):
+            guarded = True
+        elif sep in (";", ";;", "\n"):
+            guarded = False
         name, args, cmd_pos, wrapped = None, [], True, False
 
     while i < n:
@@ -1062,7 +1211,7 @@ def shell_write_targets(command: str) -> List[str]:
         if c in " \t\r":
             i += 1
         elif c == "\n":
-            flush()
+            flush("\n")
             i += 1
             for delim, strip in heredocs:  # bodies start on the next line
                 while i < n:
@@ -1077,10 +1226,12 @@ def shell_write_targets(command: str) -> List[str]:
             end = command.find("\n", i)
             i = n if end < 0 else end
         elif c in ";|" or (c == "&" and nxt != ">"):
-            flush()
+            sep = c
             i += 1
             if i < n and command[i] in ";|&":
+                sep += command[i]
                 i += 1
+            flush(sep)
         elif c == ">" or c == "&":  # `&>` writes both streams to a file
             i += 2 if c == "&" else 1
             if i < n and command[i] in ">|":
@@ -1095,7 +1246,7 @@ def shell_write_targets(command: str) -> List[str]:
             word, i = _read_word(command, i)
             fd_only = dup and (word in ("", "-") or word.isdigit() or word.startswith("$"))
             if word and not fd_only:
-                targets.append(word)
+                targets.append(locate(word))
         elif c == "<":
             if command.startswith("<<<", i):
                 i += 3
@@ -1126,9 +1277,11 @@ def shell_write_targets(command: str) -> List[str]:
                 cmd_pos = False
             else:
                 flush()
+                sticky, leading = True, False
                 i += 1
         elif c == ")":
             flush()
+            sticky = True
             i += 1
         elif c.isdigit() and _fd_prefix(command, i):
             while command[i].isdigit():
@@ -1144,8 +1297,10 @@ def shell_write_targets(command: str) -> List[str]:
                 cmd_pos = False
             elif not cmd_pos:
                 args.append(word)
-            elif _ASSIGNMENT_RE.match(word) or word in _COMMAND_KEEP:
-                pass
+            elif _ASSIGNMENT_RE.match(word):
+                pending.append(word)
+            elif word in _COMMAND_KEEP:
+                sticky, leading = True, False
             elif wrapped and word.startswith("-"):
                 pass
             elif word in _COMMAND_WRAPPERS:
@@ -1153,6 +1308,9 @@ def shell_write_targets(command: str) -> List[str]:
             else:
                 name, args, cmd_pos, wrapped = word.rsplit("/", 1)[-1], [], False, False
     flush()
+    if python_ran:
+        base = next(iter(py_dirs)) if len(py_dirs) == 1 else None
+        targets.extend(_in_dir(m.group(2), base) if m.group(2) else UNKNOWN_TARGET for m in _PY_WRITE_RE.finditer(command))
     return targets
 
 
@@ -2064,8 +2222,7 @@ class _Guard:
                 return self.result("state", "declare", note=log_reason(reason))
         target = self.shell_write_target()
         if self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]:
-            self._shell_wrote(state_path, target)
-            return self.result("allow", "direct", file=target)
+            return self.result("allow", "direct", file=target)  # main's own declared work: not a STOP change
         if state["dispatched"]:
             self._shell_wrote(state_path, target)
             return self.result("allow", "dispatched", file=target)
@@ -2073,9 +2230,11 @@ class _Guard:
             return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "STRICT"))
         if self.r1 == "declare":
             if self._declared(state, guard):
-                self._shell_wrote(state_path, target)
-                return self.result("allow", "declared", file=target)
-            return self._shell_r1(state, state_path, target, _exit_text(self.env, self.host, "DECLARE"))
+                return self.result("allow", "declared", file=target)  # not a STOP change (write roles only)
+            command = self.event.get("command")
+            combined = isinstance(command, str) and _DECLARE_MENTION_RE.search(command)
+            reason = _text(self.env, "DECLARE_COMBINED") if combined else _exit_text(self.env, self.host, "DECLARE")
+            return self._shell_r1(state, state_path, target, reason)
         if self._classified(state, guard) is None:
             self._shell_wrote(state_path, target)
             return self.result("allow", "uncounted", file=target)
@@ -2183,7 +2342,8 @@ class _Guard:
                 file=raw_paths[0],
             )
         state["edited"] = edited
-        self.pending_change = state_path  # B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
+        if not (direct or declared):  # B2: main's own direct/declared edits are not a change; STOP is for write roles
+            self.pending_change = state_path
         notify = (
             advise_rule is not None
             and not state["advised"]
@@ -3002,7 +3162,7 @@ def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_di
     guarded = _GUARDED_COMMAND.fullmatch(command.strip())
     if guarded is not None:
         path, command_host = guarded.groups()
-        return command_host == host and os.path.realpath(_expand_home(path, home, data_dir)) == script
+        return command_host == host and _real(_expand_home(path, home, data_dir)) == script
     try:
         tokens = shlex.split(command)
     except ValueError:
@@ -3012,7 +3172,7 @@ def _runs_global_guard(command: Any, script: str, host: str, home: Path, data_di
             continue
         if tokens[index + 1:index + 3] != ["--host", host]:
             continue
-        if os.path.realpath(_expand_home(token, home, data_dir)) == script:
+        if _real(_expand_home(token, home, data_dir)) == script:
             return True
     return False
 
@@ -3028,7 +3188,7 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
         return False
     data_dir = _abs_env_dir(env, "XDG_DATA_HOME", home / ".local" / "share")
     script = data_dir / "shoal" / "guard" / "shoal_guard.py"
-    script = Path(os.path.realpath(str(script)))
+    script = Path(_real(str(script)))
     if not script.is_file():
         return False
     settings = _abs_env_dir(env, "CLAUDE_CONFIG_DIR", home / ".claude") / "settings.json"
@@ -3051,18 +3211,22 @@ def global_guard_covers(host: str, name: Any, tool: Any, env: Dict[str, str], ho
             continue
         handlers = group.get("hooks")
         for handler in handlers if isinstance(handlers, list) else []:
-            if _runs_global_guard(_dict(handler).get("command"), str(script), host, home, data_dir):
+            if _runs_global_guard(_dict(handler).get("command"), script.as_posix(), host, home, data_dir):
                 return True
     return False
 
 
 def _open_readable(path: Path) -> Optional[int]:
+    """fd of `path` when it is a regular file owned by the current user, else None.
+
+    O_NONBLOCK keeps a FIFO from blocking the open; it is then refused as not regular (#26)."""
     try:
-        fd = os.open(str(path), os.O_RDONLY)
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     except OSError:
         return None
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or (hasattr(os, "getuid") and info.st_uid != os.getuid()):
             os.close(fd)
             return None
     except OSError:
@@ -3073,7 +3237,7 @@ def _open_readable(path: Path) -> Optional[int]:
 
 def defer_to_global(host: str, raw: bytes, env: Dict[str, str]) -> bool:
     """True when the plugin copy must stay silent.  Any doubt returns False: never zero evaluations."""
-    if os.name == "nt" or host != "claude" or not raw or len(raw) > MAX_INPUT_BYTES:
+    if host != "claude" or not raw or len(raw) > MAX_INPUT_BYTES:
         return False
     try:
         payload = json.loads(raw)
@@ -3085,8 +3249,6 @@ def defer_to_global(host: str, raw: bytes, env: Dict[str, str]) -> bool:
 
 def run(host: str, raw: bytes, env: Dict[str, str]) -> Optional[str]:
     """Process one stdin payload; returns the stdout text, if any."""
-    if os.name == "nt":  # POSIX-only semantics (O_NOFOLLOW, uid ownership); fail-open no-op
-        return None
     home = Path(env.get("HOME") or os.path.expanduser("~"))
     try:
         if not raw:

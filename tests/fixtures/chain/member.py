@@ -30,7 +30,7 @@ elif mode == "deny_if":
     if sys.argv[2] in data:
         print(json.dumps({"decision": "deny", "reason": "saw " + sys.argv[2]}))
 elif mode == "record":
-    with open(sys.argv[2], "a", encoding="utf-8") as handle:
+    with open(sys.argv[2], "a", encoding="utf-8", newline="") as handle:
         handle.write(data + "\n")
 elif mode == "context":
     print(json.dumps({"decision": "allow", "context": sys.argv[2]}))

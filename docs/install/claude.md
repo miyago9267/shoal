@@ -4,11 +4,11 @@
 
 Claude Code 的第二條安裝路徑，給沒有 dotfile 的使用者。內容（10 個 role，含 `watcher`、`researcher`、
 `shoal-orchestration` skill、policy bootstrap；dispatch guard 在另一個可選 plugin）全部由
-`python3 tools/render.py --host claude-plugin --write` 從 `hosts/claude/dist`、
+`python3 tools/render.py --host claude-plugin --write` 從 claude host 的 render 結果、
 `hooks/shoal_guard.py` 與根目錄 `VERSION` 產生，輸出在 `plugins/claude/`（`shoal`）、
 `plugins/claude-guard/`（`shoal-dispatch-guard`）與
 `.claude-plugin/marketplace.json`（兩個 plugin 同一個 marketplace）；
-`--check` 與 golden 擋住手改。Codex 的
+`--check` 擋住手改。Codex 的
 `plugin/` 目錄與這條路徑無關。需要 Claude Code 2.1 以上與 `python3`。
 
 ```bash
@@ -90,7 +90,10 @@ claude --plugin-dir ./plugins/claude --plugin-dir ./plugins/claude-guard
 
 資料與保留（K6）：plugin 與全域安裝共用同一個 state 與 log 目錄
 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`（`state/`、`turns/` 與
-`guard.jsonl`）。`guard.jsonl` 超過 1 MiB 就停止寫入，不輪替。
+`guard.jsonl`、`chain.jsonl`）。兩個檔各自超過 1 MiB 就改名為 `.1` 後繼續寫（只留一代）。
+`chain.jsonl` 只放 guard chain 每個 member 的 `chain_*` 紀錄
+（`chain_allow`、`chain_report` 等，量大），
+`guard.jsonl` 留給 deny／allow／declare／state 等決策紀錄。
 `guard.jsonl` 每行的欄位：`ts`、`host`、`event`、`tool`、`rule`、`decision`、`file`
 （只有檔名）、`skip_reason`、`mode`、`reason`；另外有 `agent_type`（subagent 的類型，
 照 host 傳來的原樣，例如 `general-purpose`、`worker`、`shoal:applier`；main session

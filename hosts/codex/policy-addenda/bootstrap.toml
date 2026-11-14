@@ -1,8 +1,0 @@
-# Codex 專屬：常駐 bootstrap 只放指標；tier、sol-executor、escalation 與 Astra 模式留在 orchestration reference。
-
-[[addendum]]
-id = "codex-orchestration-pointer"
-at = "after:bootstrap-routing"
-sep = "newline"
-text = '''
-- Codex tiers, `sol-executor`, escalation and Astra mode: read the orchestration reference first.'''

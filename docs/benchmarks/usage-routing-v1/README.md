@@ -4,10 +4,11 @@
 pilot. It contains six `routine` cases routed to `mech-executor` and six
 `judgment` cases routed to `executor`; every case and fixture is hash-bound.
 
-The harness is offline by default:
+The harness lives in the private `miyago9267/shoal-bench` repository and reads
+this directory through `SHOAL_ROOT`. It is offline by default:
 
 ```sh
-python3 bench/benchmark_routing.py --dry-run
+SHOAL_ROOT=<this checkout> PYTHONPATH=<shoal-bench>/bench python3 -m benchmark_routing --dry-run
 ```
 
 Live execution requires both `--yes` and `--benchmark-yes`; it is refused in CI.

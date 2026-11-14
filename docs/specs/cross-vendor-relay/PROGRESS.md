@@ -87,3 +87,133 @@
 - 2026-10-21：fresh verifier 對 T1.1–T1.5 回 CONFIRMED（1866 tests OK；
   S0.1–S0.4、S1.1–S1.12、S1.14–S1.19 逐項有 evidence）；advisory A1 已以 S0.3
   範圍說明處理；未驗：grok host 帶有效 nonce 時沒有 relay log（行為不變）。
+
+## T1.6 bench 結果（2026-10-22）
+
+- 數字（`bench/ab/results/relay-v2.json`，8 任務 x 2 rep，shoal vs shoal-relay）：
+  shoal 14/16，median 89 s，$0.323/run；relay 13/16，median 173 s（1.94x），
+  $0.331/run Claude + avg 150,724 input（137,360 cached）/ 2,378 output Codex
+  tokens；relay runs with codex>0: 7，pass 6，median 207 s；on the four tasks
+  where relay used Codex (a,c,d,h): shoal 7/8 median 138 s $0.426，relay 7/8
+  median 193 s $0.344。
+- S1.13 未達標（通過數 13 < 14、時間 1.94 倍 > 1.5 倍），依 D11 停在 P1 檢討，
+  不進 T1.7。
+- 診斷 `codex.calls = 0` 的 9 個 run：直接讀原 run 留在 `~/.claude/projects/
+  *shoal-ab-v2-*-shoal-relay-*` 的 transcript（含 subagents/），對照 guard.jsonl
+  的 `relay_adopt`（Codex 端事件，每個 Codex session 一組 session hash）。
+  - b-bug-hunt x2、g-feature-across-layers x2：H1 成立。main 完全沒派工，用
+    `python3 - <<EOF` 的 Bash heredoc 自己改檔（bootstrap 要求 main 不編輯，除非
+    `#direct`）；guard 對這些 main session 只記到 prompt state，沒有 tool 事件。
+    relay 的 shell 根本沒被觸發。b rep2 的 736 s、$0.135：main 的收尾指令
+    `rm /tmp/t.json` 卡在互動確認，被丟背景，`claude -p` 等到該 shell 結束才收尾，
+    屬 wall 虛增，與 relay 無關。
+  - e-security-hardening x2：預期內，派 `security-reviewer` 路徑的
+    `security-executor`，不走 relay。
+  - h rep2：H1 + H2。main 先自己改完 `pool.py`，再派 applier 改測試但沒帶
+    `isolation: worktree`，runner 回 `blocked: cwd is not a linked worktree`，main
+    沒重派
+    就停下來問使用者；Codex 未執行（無 `relay_adopt`）。
+  - f-refactor-split x2：計數器漏算（H3 的窄版）。Codex 其實跑了（hand-back 的
+    usage 為 393,636 / 363,852 input，`relay_adopt` 兩個 session 對得上）。runner
+    回 `status: blocked, files_mismatch: true`；`blocked` 是 Codex 自己回報的（rep1
+    環境沒有 pytest，rep2 想 git commit 被 sandbox 擋），不是 runner 的 files_mismatch
+    造成（更正：見 fix/relay-mismatch）。runner 以 exit 1 結束，Bash tool_result 變成
+    `Exit code 1\n{...}`，`relay_handbacks()` 的 `json.loads` 失敗而略過。
+    以去掉前綴的方式重跑計數器可得 1 筆/run。
+  - H3 的寬版（stream-json 不暴露 subagent 的 Bash 結果）不成立：a、c、d、h rep1
+    共 8 筆乾淨 JSON hand-back 全被計到，和 `relay_adopt` 的 10 個 bench session
+    扣掉 f 的 2 個後剛好一致。
+- 修正後的 codex>0 run 是 9 個，不是 7 個（a x2、c x2、d x2、f x2、h rep1）。
+- 附帶觀察：第一次派 executor/applier 沒帶 `isolation: worktree` 而被擋，發生在
+  c rep2、d x2、f x2、h x2（共 7 run），多數會重派，每次多繳一輪（d rep1 812 s）。
+  f 的 score 用 `git diff` 計 files_changed：rep1 改動留在 worktree 故 0 且 fail；
+  rep2 main 已 commit 合併，故也是 0 但 pass，bench 低估 commit 後的改動量。
+- 建議修正（皆未實作，本任務不動 relay/runtime）：(1) `relay_handbacks()` 先剝
+  `Exit code N\n` 前綴，並只計有 `session_id` 或 `usage` 的 hand-back（避免把
+  worktree 拒絕算成呼叫）；(2) 已修：runner 比對前剝 `(deleted)` 類註記
+  （7522f1d），brief 開頭寫明不碰 git、check 跑不了回 `done` 加 `unverified`；
+  (3) bootstrap/agent 描述把 `isolation: worktree` 寫成必填，或 guard 在派工時直接
+  deny 缺少 isolation 的 relay role；(4) bench 的 relay arm 對 main 直接改檔的
+  run 標記 `no_dispatch`，並在 prompt 或 guard 補上 Bash 寫檔偵測，否則小任務
+  永遠繞過 relay；(5) 重跑 relay arm 前先決定 S1.13 是否改成只比有派工的任務。
+
+## T1.6 bench 公平性修正（2026-10-22，`fix/relay-bench-fair`）
+
+- 隔離：render 對 write role（executor、applier）的 relay 外殼 frontmatter 輸出
+  `isolation: worktree`，caller 不必再記得帶。已用 plugin-dir 實測（relay overlay render 後
+  `claude -p --plugin-dir`，main 派 `shoal:applier` 不帶 isolation）：外殼在
+  `<repo>/.claude/worktrees/agent-*` 的 linked worktree 內執行，runner 沒有回
+  「not a linked worktree」，Codex 實際執行（有 `session_id`、`usage`），`hello.txt` 出現在該
+  worktree，主 checkout `git status` 乾淨。plugin agent 會遵守此欄位，故不需要外殼自檢 fallback。
+- bench 計數（`bench/ab/run_ab.py`）：`relay_handbacks()` 先剝 `Exit code N\n`；只有帶
+  `session_id` 或 `usage` 的 hand-back 算 relay call，其餘記入 `relay_blocked`（含原因）；每個
+  run 記 `dispatches`（main 的 Agent/Task 依 `subagent_type`）、`main_edits`，並在 main 改了檔
+  卻沒派 write role 時標 `no_dispatch: true`（所有 arm）；所有 arm 改用 stream-json 以取得這些事件；
+  `--summarize` 另印兩個 shoal arm 都派了 write role 的 (task, rep) 子集、relay
+  call/blocked 數與
+  `no_dispatch` 計數。
+- `bench/ab/results/relay-v2.json` 沒存事件流，沒有 `dispatches` 與 blocked 原因，無法離線重算；
+  需重跑 relay arm 才有新欄位。
+
+## 2026-10-22 relay 改動落地到 primary checkout（`fix/relay-landing`）
+
+- 診斷（`bench/ab/results/relay-v2b.json`）：relay 外殼 frontmatter 帶
+  `isolation: worktree`，Codex 在
+  `.claude/worktrees/` 下的 linked worktree 改檔，回 `done` 後改動只留在該 worktree，要 main 自己合併。
+  7 個失敗的 relay run 中有 5 個是 Codex 回 `done`（或已派 executor），primary checkout 的
+  `files_changed` 卻是 0、hidden tests 失敗；`shoal` arm 的 executor 直接改 primary
+  checkout，兩個 arm
+  不可比。
+- 修正：`tools/shoal_relay.py` 在 status 為 `done` 且 `changed_files` 非空時，用暫存 index
+  （`GIT_INDEX_FILE` 在 runner 的 0700 private dir）`read-tree HEAD`、
+  `add -A`、`write-tree` 取得
+  worktree 快照，`git diff-tree -r --no-renames --binary --full-index` 產生 patch，再於
+  primary worktree
+  （`git worktree list --porcelain` 第一筆，須為同一 repo 的非 bare main worktree）跑 `git apply`。
+  兩邊都不 commit，worktree 與 primary 的 index 都不動。路徑任一元件是 `.git`、`.codex`、`.claude`
+  （不分大小寫）、絕對路徑或 `..`，或含 symlink、submodule 時整份拒絕。不用 `--3way`：它隱含
+  `--index`，primary 有未提交改動時直接失敗，衝突時還會留下 conflict marker；一般 `git apply`
+  全有或全無。結果寫在 hand-back 新欄位 `landing`（`landed`、`reason`、`worktree`），只屬 runner
+  輸出，不在交給 Codex 的 strict schema；落地失敗不改 status，reason 只帶 git 的第一行 `error:`
+  （路徑，不含檔案內容），並經 redaction。
+- 外殼與 relay-only addendum：`landed` 為 true 時告訴 main 改動已在 primary checkout，不要再合併；
+  false 時給 `landing.worktree` 與合併指令（`refused` 時先檢查 worktree）。repo binding 沒開 relay，
+  relay-off dist 位元組不變（S0.3）。
+- bench：`codex.handbacks` 逐次記 status、reason（≤200 字）、`landed`、`landing_reason`；新增
+  `--keep-failed`，只保留沒通過的 run 的工作目錄。
+- 測試：`tests/test_relay_runner.py` 的 `RelayLanding`（tracked edit、新檔含 binary、刪檔、拒絕路徑、
+  apply 衝突維持 done 且 landed false、非 done 不落地）、`test_relay_contract.py` 的 `LandingPaths`、
+  render 與 bench 的對應測試。relay arm 需重跑才能看到效果。
+
+## 2026-10-22 landing 安全強化（`fix/relay-landing-hardening`）
+
+- 2026-10-22：依 security review 補 landing 拒絕條件（H1 指令檔／自動執行設定／exec bit、M2 primary
+  HEAD 與 clean 檢查、M3 git-dir 重驗與 `GIT_ATTR_SOURCE`、L1 mismatch、L2 5 MiB 上限、L3
+  `worktree list -z`），`landing` 加 `head`、`tree` 與 revert 指令；fallback 合併只限
+  `patch does not apply` 且移除 `--3way`。
+
+## 2026-10-22 S1.13 判定
+
+- 來源：`bench/ab/results/relay-v2c.json`，commit 04b48a6，v2 任務，2 reps，model claude-sonnet-5-5。
+- 整體：shoal 14/16、wall 中位數 93.0 s；shoal-relay 13/16、182.1 s（1.96x）。兩邊都有派工的 11
+  對：shoal 10/11、120.9 s；relay 9/11、227.7 s（1.88x）。
+- 成本：Claude 端 relay 平均低約 15%（0.275 vs 0.326 USD）；Codex 端每 run 平均 353k input（324k
+  cached）、4.4k output tokens，另計。
+- 失敗：5 個失敗中 4 個是 security 題，兩個 arm 都是 0/2，原因是改到受保護的 `deskapi/router.py`，與 relay
+  無關。唯一的 relay 專屬失敗是 v2-c rep2：Codex 回 `done`，但 landing 時
+  `patch does not apply`，因為 Codex 執行期間 main 改了同一個檔案；第二次 relay 又被 guard
+  的併行編輯鎖擋下。v2-d rep2 也有同樣的 landing 衝突，該題最後仍通過。
+- 公平性：worktree 改動已由 runner 自動落地，失敗原因都有紀錄，判定這次比較已公平。剩下的差距主要是時間：每次 relay 都要冷啟動
+  Codex，並重新讀約 35 萬 token 的 context，外層還多一層 haiku 外殼。
+- 判定：S1.13 未達標。通過數 13 < 14（差 1，在 2 reps 的雜訊範圍內）；時間 1.96x，超過 1.5x 的上限。依
+  TASKS，T1.7 不開始，P2 不開始。
+- 後續可能方向（未核准）：main 在 relay 執行期間不要動同一批檔案；縮小給 Codex 的 context；只對長任務 relay。
+- 2026-10-22 Miyago 決定放寬 S1.13（通過數 ≥ shoal 減 1、時間中位數 ≤ 2.0x，原為 ≥ shoal 且 ≤
+  1.5x），理由是 Claude 端成本約低 15%，並准許開始 T1.7。relay-v2c 符合放寬後的 S1.13：通過數 13 ≥ 14 - 1，
+  時間 1.96x ≤ 2.0x。T1.7 的實作先停在 prompt lock 的 renewal（見 TASKS T1.7）。
+
+## 2026-10-22 T1.7 決定
+
+- 2026-10-22 Miyago 決定 relay 維持 opt-in：預設 `hosts/claude/binding.toml` 不啟用，prompt
+  LOCK 不變。原因：啟用後 `executor.md`、`applier.md` 與 `orchestration-policy.md` 會超過
+  `prompt-document-lock` 的行數、位元組與變更預算，需要 lock renewal。

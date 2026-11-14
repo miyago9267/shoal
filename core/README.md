@@ -15,7 +15,7 @@ host 中立的來源，供 `tools/render.py` 產生各 host 的輸出。
   確定的。
 - `hosts/<host>/binding.toml` 的 `[models]` 宣告該 host 可用的模型與
   host 內名稱，resolver 只在這個集合內選；grok 不指定模型，用
-  `selection = "inherit"`。effort 與 description 也在 binding。
+  `selection = "inherit"`。effort 也在 binding；description 在 `prompts/hosts/<host>/descriptions.md`。
 - 手動覆寫優先於規則：`[roles.<name>].model` > `[tiers].<tier>` > 規則。
   `[tiers]` 與 role 的 `model` 只在要手動指定時才寫。手動指定不能繞過
   security 排除；`security = true` 的 role 被指定到帶旗標的模型時，
@@ -70,13 +70,54 @@ role 只在 `roles.toml` 宣告 `access` 與 `capabilities`；各 host 的權限
 - `--explain` 對每個 role 印出 `access`、`capabilities`、套用的對應表、
   覆寫與推導出的欄位。
 
-orchestration policy 的條款在 `core/policy/`（見下一節）；目前只有 Claude 輸出
+orchestration policy 的條款在 `prompts/policy/`（見下一節）；目前只有 Claude 輸出
 core 條款，其他 host 仍輸出 `hosts/<h>/src/` 內的 legacy 原文。規則共用是既定方向，
 其他 host 逐 host 改為 core 的計畫見
 [docs/specs/shared-rules/SPEC.md](../docs/specs/shared-rules/SPEC.md)；切換是逐 host
 的 migration。
 
-## role 條款（core/contracts）
+## prompts/：送進 model 的文字
+
+所有會被送進 model context 的文字（role 條款、policy 條款、外框、addenda、role
+description、relay 外殼、plugin 說明）只存在 `prompts/` 底下的 `.md`；TOML 只留
+metadata（`core/roles.toml`、`models.toml`、`tiers.toml`、`vendors.toml`、
+`core/policy/placeholders.toml`、各 host 的 `binding.toml`）。`prompts/` 不受
+markdownlint 檢查（正文有超過 80 欄的行，換行位置就是輸出位元組）。
+
+```text
+prompts/
+  roles/<role>.md                   # role 條款
+  policy/<doc>.md                   # policy 條款
+  hosts/<host>/
+    addenda/<role>.md, policy-addenda/<doc>.md
+    frames/<role>.md, default.md, policy-frames/<doc>.md
+    descriptions.md                 # role description（claude、codex、agy、grok）
+    relay/shell.md, relay/policy-addenda/<doc>.md   # 只有 claude
+    text.md                         # render 需要的固定句子（只有 claude）
+```
+
+條款檔用 HTML comment 當 marker，一個 marker 之後到下一個 marker 之間、去掉頭尾空行
+的內容就是 `text`（中間的空行與縮排逐字保留）：
+
+```text
+<!-- clause: <id> kind=<kind> [sep=paragraph|space|newline] [required] -->
+<!-- addendum: <id> at=<anchor> [sep=<sep>] [join=<sep>] -->
+<!-- description: <role> -->
+<!-- text: <key> -->
+```
+
+- 第一個 marker 之前只允許空行；檔案不可含 CR；正文內任何一行以 `<!-- clause:`、
+  `<!-- addendum:`、`<!-- description:`、`<!-- text:` 開頭都會被當成 marker，
+  種類與檔案不符或格式不合就是錯誤。
+- `sep` 預設 `paragraph`；`required` 只有 policy 條款可用。`id`、`kind`、`at` 的驗證與下面
+  各節相同，loader 是 `tools/contracts.py` 的 `parse_markdown_*`。
+- `text.md` 的值可含 `{{key}}` placeholder，由 render 代入（relay 的執行步驟用
+  `{{timeout}}`（runner 的秒數）與 `{{bash_timeout_ms}}`（Bash 工具的毫秒數，render 計算））；
+  `descriptions.md` 與 binding 內的 `description` 不可對同一個 role 並存。
+- 改一句 prompt：編輯對應的 `.md`，執行 `python3 tools/render.py --host <host> --write`
+  （claude 的 plugin 用 `--host claude-plugin`），diff 只會出現在 `prompts/` 與它的輸出。
+
+## role 條款（prompts/roles）
 
 role 的 prompt 文字正在從各 host 手寫的 `src/agents`（或 `src/roles`）統一到
 core（規格見
@@ -85,33 +126,39 @@ core（規格見
 `"core"` 輸出 core 條款加該 host 的外框與補充。`[roles.<name>].role_text`
 可以逐 role 覆寫；host 專屬 role（`extra_roles`）一律 legacy，不可設定。
 
-- `core/contracts/<role>.toml`：host 中立的條款，順序即輸出順序。每個
-  `[[clause]]` 有 `id`（小寫英數加連字號）、`kind`、`text`，選用 `sep`。
+- `prompts/roles/<role>.md`：host 中立的條款，順序即輸出順序。每個
+  `<!-- clause: ... -->` 有 `id`（小寫英數加連字號）、`kind`，選用 `sep`，正文是 `text`。
   `text` 是逐字文字（可含換行），頭尾不可有空白；`sep` 是這個條款之後接
   什麼：`paragraph`（空行，預設）、`space`（同一行接續）、`newline`（換行，
   用於條列）。一個條款一條義務。`kind` 只能是 `identity`、`scope`、
   `boundary`、`procedure`、`escalation`、`verdict`、`severity`、`security`、
   `foreground`、`final-message`、`leaf`。條款文字不寫 host 專屬的工具、
   模型或機制名稱，`tests/test_role_contracts.py` 有檢查。
-- `hosts/<h>/frames/<role>.md`（找不到則 `default.md`）：外框，例如
+- `prompts/hosts/<h>/frames/<role>.md`（找不到則 `default.md`）：外框，例如
   frontmatter 之後的標題與前言；必須恰好有一個 `{{role_body}}`，條款與
   addenda 排好後放在那裡。沒有外框就只輸出條款。
-- `hosts/<h>/addenda/<role>.toml`：只在該 host 有意義的補充。每個
-  `[[addendum]]` 有 `id`、`at`、`text`，選用 `sep`。`at` 是 `start`、`end`、
+- `prompts/hosts/<h>/addenda/<role>.md`：只在該 host 有意義的補充。每個
+  `<!-- addendum: ... -->` 有 `id`、`at`，選用 `sep`，正文是 `text`。`at` 是 `start`、`end`、
   `after:<條款 id>`、`before:<條款 id>` 或 `replace:<條款 id>`（用 host 專屬
   措辭取代那個條款；沒寫 `sep` 時沿用被取代條款的）。同一個位置有多個
   addendum 時依檔案順序。選用 `join` 指定「前一段與這個 addendum 之間」的
   分隔（預設沿用前一段原本的 `sep`），用於把 host 的句子接在 core 段落結尾的
   同一行，core 本身在那裡是換段。
-- `frames/` 與 `addenda/` 刻意放在 `src/` 之外，不會被 passthrough 帶進 dist。
+- `frames/` 與 `addenda/` 刻意放在 `hosts/` 之外（`prompts/hosts/<h>/`），
+  不會被 passthrough 帶進 dist。
+- core 會產生的輸出，`src/` 內不可有同路徑的檔案（`role_text = "core"` 的
+  role 的 `src/agents/<role>.md` 或 `src/roles/<role>.md`，與
+  `policy_text = "core"` 的 `[policy.documents]` 路徑）：這種檔案不會進 dist，
+  改了也沒效果，render 會直接失敗並指名該路徑。
 - 切到 `core` 的 host，每個 role 必須逐字包含每個未被 `replace` 的條款，
   每個 host 的 replace 清單由測試鎖定（新增 replace 要同時改測試）。
 - 五個 host 都已經是 `core`：條款由 Codex 1.8.1 的原文切出，所以 Codex 的
-  輸出與切換前逐位元組相同。各 host 專屬的句子放在各自的 `addenda/`；
-  host 專屬 role（`Explore`、`sol-executor`）維持 `src/agents` 的原文。
+  輸出與切換前逐位元組相同。各 host 專屬的句子放在各自的 `prompts/hosts/<h>/addenda/`；
+  host 專屬 role（`Explore`、`sol-executor`）維持 `src/agents` 的原文；
+  core role 的 legacy 原文已刪除，`role_text = "legacy"` 只剩 host 專屬 role 使用。
   對照表在 `docs/specs/role-contracts/MAPPING-*.md`。
 
-## policy 條款（core/policy）
+## policy 條款（prompts/policy）
 
 orchestration policy（bootstrap、skill、主 policy、擴充規則）以 Claude 的文字為
 canonical，切成 host 中立的條款（規格見
@@ -119,9 +166,9 @@ canonical，切成 host 中立的條款（規格見
 role 條款的機制（`tools/contracts.py` 的 `compose`、`load_frame`、
 `load_addenda`），不另有一套組裝器。
 
-- `core/policy/<doc>.toml`：一份輸出文件一個檔案（`bootstrap`、`skill`、
-  `orchestration`、`extensions`），格式同 `core/contracts`（`id`、`kind`、`text`、
-  選用 `sep`），另有選用的 `required = true`。條款 id 跨文件唯一。`kind` 只能是
+- `prompts/policy/<doc>.md`：一份輸出文件一個檔案（`bootstrap`、`skill`、
+  `orchestration`、`extensions`），格式同 `prompts/roles`（`id`、`kind`、正文、
+  選用 `sep`），另有選用的 `required` 旗標。條款 id 跨文件唯一。`kind` 只能是
   `heading`、`invariant`、`routing`、`gate`、`dispatch`、`verification`、
   `recovery`、`authority`、`mechanics`、`extension`（`contracts.POLICY_KINDS`）；
   role 條款不接受 `required`。
@@ -143,10 +190,9 @@ role 條款的機制（`tools/contracts.py` 的 `compose`、`load_frame`、
     輸出。整份文件的條款都被省略（且沒有 addendum）時，該文件不輸出。
   - `[policy.placeholders]`：詞彙內每個 key 的值。
   - `[policy.documents]`：core 文件對應的輸出路徑（相對 dist）。
-- `hosts/<h>/policy-frames/<doc>.md`（找不到則 `default.md`）：外框，必須恰好有一個
-  `{{role_body}}`；`hosts/<h>/policy-addenda/<doc>.toml`：host 專屬補充，`at` 語法與
-  role addenda 相同，不可掛在被 omit 的條款上。兩者在 `src/` 之外，不會被帶進 dist，
-  `lint:md` 也排除 `policy-frames`。每個 host 的 omit 與 replace 清單鎖在
+- `prompts/hosts/<h>/policy-frames/<doc>.md`（找不到則 `default.md`）：外框，必須恰好有一個
+  `{{role_body}}`；`prompts/hosts/<h>/policy-addenda/<doc>.md`：host 專屬補充，`at` 語法與
+  role addenda 相同，不可掛在被 omit 的條款上。兩者不會被帶進 dist。每個 host 的 omit 與 replace 清單鎖在
   `EXPECTED_POLICY_OMITS`、`EXPECTED_POLICY_REPLACES`。
 - 預覽（不論 `policy_text`、不碰 dist）：`python3 tools/render.py --host claude
   --policy-preview DIR` 把 core 組出來的文件寫到 DIR，用來和 legacy 對照；
@@ -171,8 +217,7 @@ renderer（規格見
 - 不支援 `[extra_roles]`；既有五個 host 維持各自的 renderer，輸出不變。
 - `python3 tools/new_host.py <name>` 產生骨架；
   `tests/test_generic_hosts.py` 自動檢查每個 generic-md host 的 `--check`
-  與條款逐字出現。這類 host 不建 golden，committed dist 加 `--check` 即為
-  回歸基準。
+  與條款逐字出現。這類 host 的回歸基準是 committed dist 加 `--check`。
 
 ## 各 host 的 role 子集與 effort
 
@@ -186,6 +231,6 @@ renderer（規格見
 
 ## 產出物不做 Markdown lint
 
-`hosts/*/src`、`hosts/*/dist`、`tests/golden` 裡的 Markdown 是從各 host
+`hosts/*/src`、`hosts/*/dist` 裡的 Markdown 是從各 host
 原始 repo 逐位元組搬來的文字與其 render 產出，必須和來源一致，
 因此排除在 `lint:md` 之外；Codex 的 dist（`templates/`）維持原本的 lint。

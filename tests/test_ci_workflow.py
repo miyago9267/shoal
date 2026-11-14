@@ -36,6 +36,16 @@ class WorkflowStaticTests(unittest.TestCase):
         for trigger in ("pull_request", "push"):
             self.assertIn('- "hosts/claude/**"', trigger_block(trigger), trigger)
 
+    def test_paths_cover_every_render_input_for_pr_and_push(self) -> None:  # text-first T1.7
+        for trigger in ("pull_request", "push"):
+            for path in ("hosts/agy/**", "hosts/grok/**", "hosts/opencode/**", "prompts/**"):
+                self.assertIn(f'- "{path}"', trigger_block(trigger), (trigger, path))
+
+    def test_render_check_runs_for_every_host(self) -> None:  # text-first T1.7
+        self.assertRegex(WORKFLOW, r"(?m)^      - name: Render check for all hosts$")
+        self.assertIn("for host in claude codex agy grok opencode claude-plugin; do", WORKFLOW)
+        self.assertIn('python tools/render.py --host "${host}" --check', WORKFLOW)
+
     def test_pull_request_reacts_to_label_changes(self) -> None:  # AC-CE-007
         block = trigger_block("pull_request")
         self.assertRegex(block, r"types:\s*\[[^\]]*\blabeled\b[^\]]*\]")

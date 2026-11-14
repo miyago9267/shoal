@@ -1,9 +1,0 @@
-{
-  "version": "role-fitness-content-probe-v1-risk-v7",
-  "generated": "2026-08-05",
-  "formal_claim": false,
-  "prompt_experiment": "Added a generic completeness instruction for explicitly stated material omissions; retained only as diagnostic evidence.",
-  "cohort": {"risk_cases": 8, "accepted_arms": 16, "inconclusive": 0},
-  "switch_score": {"score": 5, "additional_findings": 1, "quality_delta": -3.750000000000003, "quality_ci": [-17.812500000000004, 11.041666666666666], "weighted_token_premium": 0.17359658404729283, "p95_wall_premium": -0.11724257985899567, "false_escalations": 0, "inconclusive": 0},
-  "interpretation": "The completeness instruction lowered cost and latency premiums but did not produce statistically supported positive quality; it is not promoted as the formal runner contract."
-}

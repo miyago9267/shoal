@@ -119,7 +119,6 @@ class HookConfigTests(unittest.TestCase):
             self.assertLessEqual(names, set(sys.stdlib_module_names), script.name)
 
 
-@unittest.skipIf(os.name == "nt", "shoal guard is POSIX-only; it is a no-op on Windows")
 class DispatchGuardRunsFromDistTests(unittest.TestCase):
     """dist 內的 shoal_guard.py 以 grok 的方式執行：路徑直接 exec，host 由 hook 的 env 提供。"""
 
@@ -338,7 +337,9 @@ class PlanModeGuardTests(unittest.TestCase):
         roles = Path(fake_home.name) / ".grok" / "roles"
         roles.mkdir(parents=True)
         (roles / "executor.toml").write_text('default_capability_mode = "read-only"\n', encoding="utf-8", newline="\n")
-        self.assertEqual(run(GUARD, spawn(None, "executor"), env={"HOME": fake_home.name}), (0, ""))
+        # Path.home() reads USERPROFILE on Windows
+        env = {"HOME": fake_home.name, "USERPROFILE": fake_home.name}
+        self.assertEqual(run(GUARD, spawn(None, "executor"), env=env), (0, ""))
 
 
 if __name__ == "__main__":

@@ -28,9 +28,13 @@
   S1.8–S1.10）
 - [x] T1.4 guard 支援 `SHOAL_RELAY_ROLE` 備援（S1.11）；由 `security-executor` 實作
 - [x] T1.5 `shoal doctor`：binary、登入、版本、API key 環境變數警告（S1.12）
-- [ ] T1.6 bench/ab 新增 `shoal-relay` arm：用 bench 專用 relay binding overlay
+- [x] T1.6 bench/ab 新增 `shoal-relay` arm：用 bench 專用 relay binding overlay
   render 到該 arm 的 plugin-dir，`shoal` arm 維持 relay 關閉；跑 v2 任務，結果
-  寫入 PROGRESS.md（S1.13）
-- [ ] T1.7 S1.13 達標後才做：`hosts/claude/binding.toml` 啟用
-  `executor = "codex"`、`applier = "codex"`，重新 render dist 與 `.sha256`
+  寫入 PROGRESS.md（S1.13）（S1.13 未達標，見 PROGRESS 2026-10-22）
+- [x] T1.7 relay 維持 opt-in：`hosts/claude/binding.toml` 預設不啟用 relay（不寫
+  `[relay.roles]`），dist 位元組與 prompt LOCK 不變。原因：預設啟用會讓
+  `hosts/claude/dist` 的 `agents/executor.md`、`agents/applier.md` 與
+  `orchestration-policy.md` 超過 `docs/specs/prompt-document-lock/LOCK.json` 的行數、
+  位元組與變更預算，需要 lock renewal。使用者改用 binding overlay 自行啟用。
+  （2026-10-22 Miyago 決定。）
 - [ ] T1.8 共同驗收（S0.x）與 fresh `verifier`

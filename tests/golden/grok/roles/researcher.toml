@@ -1,3 +1,0 @@
-description = "Read-only external research with a source for every claim"
-default_capability_mode = "read-only"
-reasoning_effort = "high"

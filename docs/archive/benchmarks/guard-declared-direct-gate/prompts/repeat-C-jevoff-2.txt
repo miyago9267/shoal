@@ -1,4 +1,0 @@
-需求：做一個「取首字母縮寫」小功能。
-src/text_utils.py 新增 acronym(text)，取每個以空白分隔單字的第一個字母並轉大寫後串起來；src/cli.py 新增 acronym 子命令；測試放在 tests/test_text_utils.py。
-不得改變 shout、whisper 的行為，不加依賴。
-驗收：python3 -m unittest discover -s tests 全過，python3 src/cli.py acronym "portable network graphics" 印出 PNG。

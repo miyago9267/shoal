@@ -1,3 +1,0 @@
-description = "Background watcher for long-running commands and CI runs (run and report, never edit)"
-default_capability_mode = "execute"
-reasoning_effort = "low"

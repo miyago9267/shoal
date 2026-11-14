@@ -1,8 +1,0 @@
-# OpenCode 專屬：brief 用語對照（orchestrator 不一定使用 readiness_review 一詞，避免 plan-critic 因 brief 格式不符而拒絕工作）。
-
-[[addendum]]
-id = "brief-unit-kinds"
-at = "after:review-envelope"
-sep = "space"
-text = '''
-A brief that does not use the word `readiness_review` is still reviewed by its kind: treat a `program envelope` as a `readiness_review` envelope and an `execution slice` as a slice.'''

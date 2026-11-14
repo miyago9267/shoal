@@ -20,9 +20,8 @@
  * latency to the tool call (no member configured: one failed file open).
  */
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { appendLog, commitChange, guardDir, resolveMode, shortHash, type Env, type GuardEvent, type GuardResult } from "./core.js";
+import { appendLog, commitChange, guardDir, readOwnedRegular, resolveMode, shortHash, type Env, type GuardEvent, type GuardResult } from "./core.js";
 
 export const CHAIN_TIMEOUT_MS = 5000;
 // The hosts' hook timeout is 10 s; the chain ends before it (margin 2 s).  Mirror of the Python constants.
@@ -75,10 +74,11 @@ export function chainEventName(event: GuardEvent): string | null {
 export function chainMembers(host: string, env: Env, home: string): ChainMember[] | null {
   let doc: unknown;
   try {
-    const text = readFileSync(chainManifestPath(env, home));
-    doc = JSON.parse(text.subarray(0, MAX_MANIFEST_BYTES).toString("utf8"));
-  } catch (error) {
-    return (error as NodeJS.ErrnoException)?.code === "ENOENT" ? [] : null;
+    const text = readOwnedRegular(chainManifestPath(env, home), MAX_MANIFEST_BYTES);
+    if (text === null) return [];
+    doc = JSON.parse(text.toString("utf8"));
+  } catch {
+    return null;
   }
   const entries = typeof doc === "object" && doc !== null ? (doc as Record<string, unknown>).chain : undefined;
   const members: ChainMember[] = [];

@@ -31,7 +31,7 @@ binding。規則細節見 [core/README.md](../core/README.md)。
 
 ## 注意
 
-- 只有 `--explain` 列出的 role 會改變；dist 與 golden 的 diff 要逐一
+- 只有 `--explain` 列出的 role 會改變；dist 的 diff 要逐一
   review，這是 catalog 數值的 review 關卡。
 - 想固定某個 role 或 tier，才寫 `[roles.<name>].model` 或 `[tiers]`；
   手動指定優先於規則，`--explain` 會標示。但不能繞過 security 排除：

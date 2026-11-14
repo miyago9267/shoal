@@ -175,7 +175,9 @@ E0 需要少量 live 呼叫（每個 host 一個小 prompt），執行前取得�
 
 ## 已知限制
 
-- guard 在 Windows 為 no-op（依賴 POSIX 語意），不支援 Windows。
+- Windows（v3.11.2 起）：guard 照常執行。沒有 `O_NOFOLLOW` 與 POSIX 權限位元，改為開檔前檢查
+  symlink、以 `msvcrt` 鎖檔，state 目錄的私有性依賴使用者 profile 的 ACL；Git Bash 的 `/tmp`
+  對應 Windows 暫存目錄並視為 exempt。
 - guard 不防同 uid 的 model 經 shell 竄改 state、設定或環境變數。
 - main 與 subagent 經 shell 寫檔都不擋。
 - Codex verifier 的 `apply_patch` deny 只擋編輯工具，不擋 shell 寫檔。
@@ -247,6 +249,13 @@ Miyago 2026-10-10 指出強制力不夠：hook 提醒後 main 仍自己做，背
     `#direct`）。
   - 限制：用 interpreter 寫檔（python、node、perl）、`cp`、`mv`、`git apply`、
     `patch`、`dd of=`、`$(...)` 內的導向擋不到，刻意不偵測。
+  - python 補充（issue #32，claude 3.13.2-beta）：指令位置出現 `python[0-9.]*`
+    （含絕對路徑）時，整段指令（含 heredoc 本文與 `-c`）再比對一次：字面 mode
+    的 `open(..., 'w'/'a'/'x')`、`.write_text(`／`.write_bytes(`、`shutil.copy*(`／
+    `shutil.move(`、`os.remove|unlink|rename|replace(`。`open('字面路徑', ...)`
+    回報該路徑（豁免照舊），其他回報 `$?`。這是 guardrail 不是 sandbox：
+    exec／getattr／subprocess、`python 腳本檔`、`node -e`、`cp`／`mv` 仍不偵測。
+    E1 的 verify role shell 寫檔判斷共用 `shell_write_targets`，一併繼承這個偵測與界線。
   - 被 deny 的指令不記成 edit；放行的 shell 寫檔不計入 R2。沒有寫檔的前景
     `Bash` 照舊不判斷、不改狀態、不寫 log。事件新增 `tool_kind: shell` 與
     `command` 欄位；背景 `Bash` 仍是 `background_shell`，所以「背景加寫檔」只會

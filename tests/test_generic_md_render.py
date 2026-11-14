@@ -107,11 +107,17 @@ class GenericRoot(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         self.host_dir = self.root / "hosts" / self.HOST
         self.host_dir.mkdir(parents=True)
 
     def write(self, rel: str, text: str) -> None:
         path = self.host_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+
+    def write_prompt(self, rel: str, text: str) -> None:
+        path = self.root / "prompts" / "hosts" / self.HOST / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
 
@@ -243,7 +249,7 @@ class EncodingTests(GenericRoot):
 
     def test_body_follows_frontmatter_and_frame_wraps_it(self) -> None:
         self.binding()
-        self.write("frames/default.md", "# Title\n\n{{role_body}}")
+        self.write_prompt("frames/default.md", "# Title\n\n{{role_body}}")
         text = self.text()
         self.assertIn("---\n\n# Title\n\nYou are a fast, read-only scout", text)
         self.assertTrue(text.endswith("\n") and not text.endswith("\n\n"))
@@ -624,7 +630,7 @@ class DiscoveryTests(GenericRoot):
         self.assertEqual(
             set(render.RENDERERS), {"claude", "codex", "agy", "grok", "opencode"}
         )
-        self.assertEqual(set(render.DIST_DIRS), set(render.RENDERERS))
+        self.assertEqual(set(render.DIST_DIRS) | set(render.NO_DIST_HOSTS), set(render.RENDERERS))
         shutil.copytree(
             ROOT / "hosts" / "agy",
             self.root / "hosts" / "agy",
@@ -659,10 +665,18 @@ def _compose(host: str, fragment: str, dest: Path) -> None:
     """把既有 host 的 binding 改寫成 generic-md：換 renderer、拿掉 generic 不支援的設定（supports_effort、
     host 專屬 role），接上 [output] 宣告；models、access、addenda、frames 都沿用該 host 現有的資料。"""
     shutil.copytree(ROOT / "core", dest / "core")
+    shutil.copytree(ROOT / "prompts", dest / "prompts")
     target = dest / "hosts" / "x"
+    texts = dest / "prompts" / "hosts" / "x"
     for sub in ("addenda", "frames"):
-        if (ROOT / "hosts" / host / sub).is_dir():
-            shutil.copytree(ROOT / "hosts" / host / sub, target / sub)
+        if (ROOT / "prompts" / "hosts" / host / sub).is_dir():
+            shutil.copytree(ROOT / "prompts" / "hosts" / host / sub, texts / sub)
+    descriptions = ROOT / "prompts" / "hosts" / host / "descriptions.md"
+    if descriptions.is_file():  # host 專屬 role（例如 Explore）不在 generic 範圍
+        kept = {k: v for k, v in render.contracts.load_blocks(descriptions, "description").items() if k in CORE_ROLES}
+        (texts / "descriptions.md").write_text(
+            "\n".join(f"<!-- description: {k} -->\n{v}\n" for k, v in kept.items()), encoding="utf-8", newline="\n"
+        )
     text = (ROOT / "hosts" / host / "binding.toml").read_text(encoding="utf-8")
     text = re.sub(r"(?m)^supports_effort = false\n", "", text)
     text = text.replace('policy_text = "core"', 'policy_text = "legacy"')  # 這裡只比 role；generic-md 不支援 core policy
@@ -688,7 +702,7 @@ class ReproduceExistingHostsTests(unittest.TestCase):
 
     def test_claude_scout_is_byte_identical(self) -> None:
         files = self.rendered("claude", "claude-output.toml")
-        real = (ROOT / "hosts/claude/dist/agents/scout.md").read_bytes()
+        real = (ROOT / "plugins/claude/agents/scout.md").read_bytes()
         self.assertEqual(files["agents/scout.md"], real)
 
     def test_claude_all_core_roles_are_byte_identical(self) -> None:
@@ -696,7 +710,7 @@ class ReproduceExistingHostsTests(unittest.TestCase):
         files = self.rendered("claude", "claude-output.toml")
         self.assertEqual(sorted(files), sorted(f"agents/{r}.md" for r in CORE_ROLES))
         for rel, data in files.items():
-            real = (ROOT / "hosts/claude/dist" / rel).read_bytes()
+            real = (ROOT / "plugins/claude" / rel).read_bytes()
             if rel == "agents/applier.md":
                 # applier 的 tools 覆寫在 Claude host 會丟掉 disallowedTools；generic-md 沒有互斥欄位，兩者都輸出。
                 data = data.replace(b"\ndisallowedTools: Agent, Workflow\n", b"\n", 1)

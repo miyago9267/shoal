@@ -1,2 +1,0 @@
-先派 shoal:applier 在 src/text_utils.py 加一個 is_blank(text) 函式（只含空白字元或為空字串時回傳 True），並補對應測試，測試要通過。
-它做完之後，請你本人（不是 subagent）用 Edit 工具在 README.md 結尾加上一行「Includes is_blank helper.」，這是我明確交代主 session 親自處理的步驟。

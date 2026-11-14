@@ -1,3 +1,0 @@
-description = "Read-only security evidence before approval"
-default_capability_mode = "read-only"
-reasoning_effort = "high"

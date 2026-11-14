@@ -37,6 +37,7 @@ class TempRoot(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(
             ROOT / "hosts",
             self.root / "hosts",

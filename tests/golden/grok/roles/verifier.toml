@@ -1,3 +1,0 @@
-description = "Fresh-context outcome verification (read and run, never edit)"
-default_capability_mode = "execute"
-reasoning_effort = "medium"

@@ -25,7 +25,7 @@ import tarfile
 import tempfile
 import tomllib
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import shoal_version
@@ -105,7 +105,7 @@ class PolicyTargetIdentity:
 
 MIN_COMPATIBLE_CODEX_VERSION = (0, 147, 0)
 SHOAL_PLUGIN_NAME = "shoal-codex"
-SHOAL_PLUGIN_VERSION = "3.13.0-beta"
+SHOAL_PLUGIN_VERSION = (Path(__file__).resolve().parents[1] / "hosts" / "codex" / "VERSION").read_text(encoding="utf-8").strip()
 RUNTIME_STATUSES = frozenset({"integrated", "integrated-plugin-unavailable"})
 RECONCILIATION_STATE_VERSION = 4
 GUARD_SCRIPT_RELATIVE = "hooks/shoal_guard.py"
@@ -507,15 +507,25 @@ def _plugin_source_digest(source_root: Path) -> str:
 
 def _codex_cli() -> str:
     for candidate in ("codex", "codex.exe", "codex.cmd"):
-        if shutil.which(candidate):
+        found = shutil.which(candidate)
+        if found:
+            # which() applies PATHEXT but CreateProcess only appends .exe: an npm
+            # codex.cmd shim (or bare "codex" resolving to one) is reachable only by full path.
+            if os.name == "nt" and (candidate == "codex" or found.lower().endswith((".cmd", ".bat"))):
+                return found
             return candidate
     return "codex"
 
 
 def _same_path(left: Path, right: Path) -> bool:
-    return os.path.normcase(os.path.realpath(os.path.abspath(str(left)))) == os.path.normcase(
-        os.path.realpath(os.path.abspath(str(right)))
-    )
+    return _path_key(left) == _path_key(right)
+
+
+def _path_key(path: Path) -> str:
+    text = str(path)
+    if os.name == "nt" and text.startswith("\\\\?\\"):  # Codex reports extended-length paths
+        text = text[4:]
+    return os.path.normcase(os.path.realpath(os.path.abspath(text)))
 
 
 CODEX_PLUGIN_DIRS = ("plugins/codex", "plugins/jev-router")
@@ -779,10 +789,20 @@ def _load_state(home: Path) -> dict | None:
     return state
 
 
+def _is_anchored(value: str) -> bool:
+    """True for any absolute, rooted, drive or UNC form, whatever the host OS.
+
+    Windows treats ``/x`` and ``C:x`` as non-absolute yet resolves them outside
+    the base directory, so manifest paths are refused when either flavour sees
+    an anchor.
+    """
+    return Path(value).is_absolute() or bool(PureWindowsPath(value).anchor)
+
+
 def _home_relative_path(home: Path, relative: str, *, label: str) -> Path:
     """Resolve a manifest path while proving it remains inside Codex home."""
     candidate = home / relative
-    if Path(relative).is_absolute() or ".." in Path(relative).parts:
+    if _is_anchored(relative) or ".." in Path(relative).parts:
         raise InstallAbort(f"{label} escapes Codex home")
     try:
         candidate.resolve(strict=False).relative_to(home.resolve(strict=False))
@@ -919,7 +939,7 @@ def _check_plugin_and_backups(state: dict) -> None:
             and isinstance(value["path"], str)
             and isinstance(value["sha256"], str)
             and isinstance(value["target_sha256"], str)
-            and not Path(value["path"]).is_absolute()
+            and not _is_anchored(value["path"])
             and ".shoal-codex-" in value["path"]
             for key, value in rollback_backups.items()
         ):
@@ -940,7 +960,7 @@ def _check_plugin_and_backups(state: dict) -> None:
         if not isinstance(rollback_backups, dict) or not all(
             isinstance(key, str)
             and isinstance(value, str)
-            and not Path(key).is_absolute()
+            and not _is_anchored(key)
             and Path(value).name == value
             and ".shoal-codex-" in value
             for key, value in rollback_backups.items()
@@ -1223,7 +1243,7 @@ def _check_previous_state_backup(
         backup_sha256 = previous_state_backup["sha256"]
         if (
             not isinstance(backup_path, str)
-            or Path(backup_path).is_absolute()
+            or _is_anchored(backup_path)
             or ".shoal-codex-" not in backup_path
             or not isinstance(backup_sha256, str)
             or not sha_re.fullmatch(backup_sha256)
@@ -1541,6 +1561,16 @@ def _copy_backup_no_follow(
     source_fd: int | None = None
     backup_fd: int | None = None
     try:
+        # Windows has no O_NOFOLLOW and cannot open a directory: lstat first, then
+        # prove the opened handle is that same non-symlink file.
+        try:
+            linked = source.lstat()
+        except OSError as exc:
+            raise InstallAbort(f"rollback source changed: {source}") from exc
+        if stat.S_ISLNK(linked.st_mode):
+            raise InstallAbort(f"rollback source changed: {source}")
+        if not stat.S_ISREG(linked.st_mode):
+            raise InstallAbort(f"rollback source is not a regular file: {source}")
         try:
             source_fd = os.open(source, os.O_RDONLY | nofollow | binary)
             source_stat = os.fstat(source_fd)
@@ -1548,6 +1578,8 @@ def _copy_backup_no_follow(
             raise InstallAbort(f"rollback source changed: {source}") from exc
         if not stat.S_ISREG(source_stat.st_mode):
             raise InstallAbort(f"rollback source is not a regular file: {source}")
+        if (source_stat.st_dev, source_stat.st_ino) != (linked.st_dev, linked.st_ino):
+            raise InstallAbort(f"rollback source changed: {source}")
         chunks: list[bytes] = []
         while True:
             chunk = os.read(source_fd, 1024 * 1024)

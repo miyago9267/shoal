@@ -1,1 +1,0 @@
-I just pulled some changes. Please make sure the whole test suite is green; the entry point is scripts/run_tests.sh. Tell me pass or fail with the counts.

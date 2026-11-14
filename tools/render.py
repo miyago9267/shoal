@@ -4,7 +4,7 @@
 用法：python3 tools/render.py --host <host> (--check|--write|--explain|--explain-policy|--policy-preview DIR) [--root DIR]
 <host> 是 claude、codex、agy、grok、opencode，或 hosts/<name>/binding.toml 宣告
 renderer = "generic-md" 的 host（輸出格式由 binding 的 [output] 宣告，不需寫程式碼）。
-另有 claude-plugin：由 claude 的 render 結果、hooks/shoal_guard.py 與根目錄 VERSION 產生
+另有 claude-plugin：由 claude 的 render 結果、hooks/shoal_guard.py 與 hosts/claude/VERSION 產生
 兩個 Claude plugin（plugins/claude/ = shoal、plugins/claude-guard/ = shoal-dispatch-guard）與
 .claude-plugin/marketplace.json，不屬於五個 host。
 
@@ -46,9 +46,9 @@ LIST_KEYS = {"tools", "disallowedTools", "required_capabilities"}
 # 同一組 key 互斥（Claude 的 allowlist 與 denylist）；覆寫其中一個時，推導出的其他個會被丟掉。
 EXCLUSIVE_KEYS = {"claude": ("tools", "disallowedTools")}
 TIERS = ("fast", "standard", "strong", "frontier")
-# role 文字來源：core = core/contracts 的條款加 host 的 frames/addenda；legacy = host src 內的原文。
+# role 文字來源：core = prompts/roles 的條款加 host 的 frames/addenda；legacy = host src 內的原文。
 ROLE_TEXT_MODES = ("core", "legacy")
-# policy 文字來源：core = core/policy 的條款加 host 的 policy-frames/policy-addenda；legacy = host src 內的原文。
+# policy 文字來源：core = prompts/policy 的條款加 host 的 policy-frames/policy-addenda；legacy = host src 內的原文。
 POLICY_TEXT_MODES = ("core", "legacy")
 POLICY_KEYS = {"policy_text", "omit", "placeholders", "documents", "mirrors"}
 READ_ONLY_FORBIDDEN_TOOLS = {"Write", "Edit", "Bash", "NotebookEdit"}
@@ -78,6 +78,68 @@ def load_toml(path: Path) -> dict:
             return tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise RenderError(f"無法讀取 {path}: {exc}") from exc
+
+
+def load_binding(path: Path, overlay: Path | None = None) -> dict:
+    """binding.toml；給 overlay 時在記憶體中合併，不寫回檔案。"""
+    binding = load_toml(path)
+    return binding if overlay is None else merge_overlay(binding, load_toml(overlay), "")
+
+
+def merge_overlay(base: dict, extra: dict, where: str) -> dict:
+    """overlay 的 key 不可與 base 重複；兩邊都是 table 時遞迴合併。沒有重複時等同把 overlay 接在檔尾。"""
+    merged = dict(base)
+    for key, value in extra.items():
+        path = f"{where}.{key}" if where else key
+        if key not in merged:
+            merged[key] = value
+        elif isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = merge_overlay(merged[key], value, path)
+        else:
+            raise RenderError(f"overlay 重複定義 {path}（binding 已有此 key）")
+    return merged
+
+
+def host_prompts(host_dir: Path) -> Path:
+    """hosts/<host> 對應的 prompts/hosts/<host>：frames、addenda、descriptions、relay 外殼與 text.md 都在那裡。"""
+    return host_dir.parent.parent / "prompts" / "hosts" / host_dir.name
+
+
+def load_host_binding(root: Path, host: str, overlay: Path | None = None) -> dict:
+    """binding.toml 加上 prompts/hosts/<host>/descriptions.md 的 role description（role 或 extra_roles）。
+
+    binding.toml 內已有 description 的 role 不可再出現在 descriptions.md（generic-md host 仍可在 binding 內寫 description）。
+    """
+    host_dir = root / "hosts" / host
+    binding = load_binding(host_dir / "binding.toml", overlay)
+    path = host_prompts(host_dir) / "descriptions.md"
+    try:
+        descriptions = contracts.load_blocks(path, "description")
+    except contracts.ContractError as exc:
+        raise RenderError(f"{path.relative_to(root).as_posix()}: {exc}") from exc
+    for name, text in descriptions.items():
+        spec = binding.get("roles", {}).get(name, binding.get("extra_roles", {}).get(name))
+        if spec is None:
+            raise RenderError(f"{path.relative_to(root).as_posix()}: binding 沒有 role {name}")
+        if "description" in spec:
+            raise RenderError(f"{path.relative_to(root).as_posix()}: {name} 的 description 同時出現在 binding.toml")
+        spec["description"] = text
+    return binding
+
+
+def load_texts(host_dir: Path) -> dict[str, str]:
+    """prompts/hosts/<host>/text.md 的 {key: text}：render 需要的固定句子（relay 外殼、plugin 說明等）。"""
+    try:
+        return contracts.load_blocks(host_prompts(host_dir) / "text.md", "text")
+    except contracts.ContractError as exc:
+        raise RenderError(f"prompts/hosts/{host_dir.name}/text.md: {exc}") from exc
+
+
+def text_for(texts: dict[str, str], key: str, values: dict[str, str] | None = None) -> str:
+    """text.md 的一段文字；values 代入其 {{placeholder}}。"""
+    if key not in texts:
+        raise RenderError(f"text.md 缺少 {key}")
+    return contracts.substitute(texts[key], values or {}, f"text.md {key}")
 
 
 @dataclass
@@ -224,29 +286,27 @@ def load_vendors(root: Path) -> dict:
 
 
 def load_contracts(root: Path, roles: dict) -> dict[str, list[contracts.Clause]]:
-    """core/contracts/<role>.toml；檔名必須是 roles.toml 的 role。沒有檔案的 role 不在結果內。"""
+    """prompts/roles/<role>.md；檔名必須是 roles.toml 的 role。沒有檔案的 role 不在結果內。"""
     out: dict[str, list[contracts.Clause]] = {}
-    for path in sorted((root / "core" / "contracts").glob("*.toml")):
+    for path in sorted((root / "prompts" / "roles").glob("*.md")):
         if path.stem not in roles:
-            raise RenderError(f"core/contracts/{path.name}: roles.toml 沒有 role {path.stem}")
+            raise RenderError(f"prompts/roles/{path.name}: roles.toml 沒有 role {path.stem}")
         try:
             out[path.stem] = contracts.load_contract(path)
         except contracts.ContractError as exc:
-            raise RenderError(f"core/contracts/{path.name}: {exc}") from exc
+            raise RenderError(f"prompts/roles/{path.name}: {exc}") from exc
     return out
 
 
 def load_policy(root: Path) -> dict:
-    """core/policy：placeholders.toml 是 placeholder 詞彙，其餘 <doc>.toml 是文件的條款（kind 用 POLICY_KINDS）。
+    """core/policy/placeholders.toml 是 placeholder 詞彙；prompts/policy/<doc>.md 是文件的條款（kind 用 POLICY_KINDS）。
 
     條款 id 跨文件唯一（binding 的 omit 與 addenda 直接用 id）；條款只能用詞彙內的 placeholder。
-    回傳 {"docs": {doc: [Clause]}, "placeholders": {key: 說明}}；沒有 core/policy 目錄時兩者皆空。
+    回傳 {"docs": {doc: [Clause]}, "placeholders": {key: 說明}}；沒有 prompts/policy 目錄時 docs 為空。
     """
-    folder = root / "core" / "policy"
+    folder = root / "prompts" / "policy"
     out: dict = {"docs": {}, "placeholders": {}}
-    if not folder.is_dir():
-        return out
-    vocab = folder / "placeholders.toml"
+    vocab = root / "core" / "policy" / "placeholders.toml"
     if vocab.is_file():
         table = load_toml(vocab)
         unknown = sorted(set(table) - {"placeholders"})
@@ -258,21 +318,19 @@ def load_policy(root: Path) -> dict:
                 raise RenderError(f"core/policy/placeholders.toml: {key} 必須是小寫英數加底線，且只有非空的 description")
             out["placeholders"][key] = spec["description"]
     seen: dict[str, str] = {}
-    for path in sorted(folder.glob("*.toml")):
-        if path == vocab:
-            continue
+    for path in sorted(folder.glob("*.md")):
         try:
             clauses = contracts.load_policy_contract(path)
         except contracts.ContractError as exc:
-            raise RenderError(f"core/policy/{path.name}: {exc}") from exc
+            raise RenderError(f"prompts/policy/{path.name}: {exc}") from exc
         for clause in clauses:
             if clause.id in seen:
-                raise RenderError(f"core/policy/{path.name}: 條款 {clause.id} 與 {seen[clause.id]} 重複（id 跨文件唯一）")
+                raise RenderError(f"prompts/policy/{path.name}: 條款 {clause.id} 與 {seen[clause.id]} 重複（id 跨文件唯一）")
             seen[clause.id] = path.name
             unknown_keys = sorted(contracts.placeholder_keys(clause.text) - set(out["placeholders"]))
             if unknown_keys:
                 raise RenderError(
-                    f"core/policy/{path.name} clause {clause.id}: placeholder {', '.join(unknown_keys)} "
+                    f"prompts/policy/{path.name} clause {clause.id}: placeholder {', '.join(unknown_keys)} "
                     "不在 core/policy/placeholders.toml")
         out["docs"][path.stem] = clauses
     return out
@@ -323,7 +381,7 @@ def validate_policy(core: dict, binding: dict) -> None:
         if not isinstance(item["reason"], str) or not item["reason"].strip():
             raise RenderError(f"{where}: reason 必須是非空字串（每個省略都要有理由）")
         if item["id"] not in ids:
-            raise RenderError(f"{where}: core/policy 沒有條款 {item['id']}")
+            raise RenderError(f"{where}: prompts/policy 沒有條款 {item['id']}")
         if item["id"] in seen:
             raise RenderError(f"{where}: 條款 {item['id']} 重複")
         if ids[item["id"]].required:
@@ -341,7 +399,7 @@ def validate_policy(core: dict, binding: dict) -> None:
         raise RenderError("[policy.documents] 必須是 table")
     for doc, path in documents.items():
         if doc not in docs:
-            raise RenderError(f"[policy.documents]: core/policy 沒有文件 {doc}")
+            raise RenderError(f"[policy.documents]: prompts/policy 沒有文件 {doc}")
         if not _safe_relative(path):
             raise RenderError(f"[policy.documents].{doc}: 必須是不含 .. 的相對路徑")
     if len(set(documents.values())) != len(documents):
@@ -363,7 +421,7 @@ def require_policy_complete(core: dict, binding: dict) -> None:
     policy = binding.get("policy", {})
     docs, vocab = core["policy"]["docs"], core["policy"]["placeholders"]
     if not docs:
-        raise RenderError("core/policy 沒有任何條款文件")
+        raise RenderError("prompts/policy 沒有任何條款文件")
     missing = sorted(set(docs) - set(policy.get("documents", {})))
     if missing:
         raise RenderError(f"[policy.documents] 缺少文件 {', '.join(missing)}")
@@ -381,23 +439,24 @@ def policy_files(core: dict, binding: dict, host_dir: Path) -> dict[str, bytes]:
     policy = binding["policy"]
     omitted = set(policy_omits(binding))
     values = policy["placeholders"]
-    addenda_dir = host_dir / "policy-addenda"
+    prompts = host_prompts(host_dir)
+    addenda_dir = prompts / "policy-addenda"
     stray = (sorted(p.name for p in addenda_dir.glob("*") if p.stem not in core["policy"]["docs"])
              if addenda_dir.is_dir() else [])
     if stray:
-        raise RenderError(f"policy-addenda/{', '.join(stray)}: core/policy 沒有對應的文件")
+        raise RenderError(f"policy-addenda/{', '.join(stray)}: prompts/policy 沒有對應的文件")
     out: dict[str, bytes] = {}
-    relay_dir = host_dir / "relay" / "policy-addenda"
+    relay_dir = prompts / "relay" / "policy-addenda"
     relayed = relay_config(core, binding) is not None
     for doc, clauses in core["policy"]["docs"].items():
         try:
-            addenda = contracts.load_addenda(addenda_dir / f"{doc}.toml")
+            addenda = contracts.load_addenda(addenda_dir / f"{doc}.md")
             if relayed:  # D3a：relay-only addendum 只在 [relay.roles] 非空時併入
-                addenda += contracts.load_addenda(relay_dir / f"{doc}.toml")
+                addenda += contracts.load_addenda(relay_dir / f"{doc}.md")
             body = contracts.compose_policy(doc, clauses, addenda, omitted, values)
             if body is None:
                 continue
-            frame = contracts.load_frame(host_dir / "policy-frames", doc)
+            frame = contracts.load_frame(prompts / "policy-frames", doc)
             out[policy["documents"][doc]] = contracts.apply_frame(frame, body).encode("utf-8")
         except contracts.ContractError as exc:
             raise RenderError(f"policy {doc}: {exc}") from exc
@@ -409,6 +468,7 @@ def merge_core_policy(out: dict[str, bytes], core: dict, binding: dict, host_dir
     if policy_text_mode(binding) != "core":
         return
     for path in binding["policy"]["documents"].values():
+        _reject_dead_src(host_dir / "src", path)
         out.pop(path, None)
     out.update(policy_files(core, binding, host_dir))
 
@@ -422,9 +482,9 @@ def explain_policy(root: Path, host: str) -> str:
     omitted = policy_omits(binding)
     out = [f"host: {host}", f"policy_text: {policy_text_mode(binding)}", ""]
     for doc, clauses in core["policy"]["docs"].items():
-        addenda = contracts.load_addenda(host_dir / "policy-addenda" / f"{doc}.toml")
+        addenda = contracts.load_addenda(host_prompts(host_dir) / "policy-addenda" / f"{doc}.md")
         replaced = {a.at.split(":", 1)[1]: a.id for a in addenda if a.at.startswith("replace:")}
-        frames = host_dir / "policy-frames"
+        frames = host_prompts(host_dir) / "policy-frames"
         has_frame = (frames / f"{doc}.md").is_file() or (frames / "default.md").is_file()
         out.append(f"{doc} -> {binding['policy']['documents'][doc]}（外框：{'有' if has_frame else '無'}）")
         for clause in clauses:
@@ -442,26 +502,35 @@ def explain_policy(root: Path, host: str) -> str:
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+def _reject_dead_src(src: Path, rel: str) -> None:
+    """core 會產生的輸出，src/ 內不能有同路徑的檔案：它不會進 dist，只會讓人改了卻沒效果。"""
+    if (src / rel).exists():
+        raise RenderError(f"hosts/{src.parent.name}/src/{rel}: core 已產生此輸出，src 內的同名檔案是死檔，請刪除")
+
+
 def role_text_mode(name: str, binding: dict) -> str:
     """[roles.<name>].role_text 覆寫 binding 頂層的 role_text。"""
     return binding["roles"][name].get("role_text", binding["role_text"])
 
 
 def role_body(name: str, core: dict, binding: dict, src: Path,
-              legacy: Callable[[], bytes]) -> bytes:
+              legacy: Callable[[], bytes], folder: str | None = "agents") -> bytes:
     """role 的正文 bytes：legacy 時是 src 原文，core 時是 frame + 依序排列的條款與 addenda。
 
-    frames/ 與 addenda/ 在 hosts/<host>/ 底下、src/ 之外，不會被 passthrough 帶進 dist。
+    frames/ 與 addenda/ 在 prompts/hosts/<host>/ 底下，不會被 passthrough 帶進 dist。
+    folder 是 legacy 原文所在的 src 子目錄；core 時該路徑存在即為死檔（None 表示此 host 沒有 legacy 原文）。
     """
     if role_text_mode(name, binding) == "legacy":
         return legacy()
+    if folder:
+        _reject_dead_src(src, f"{folder}/{name}.md")
     clauses = core["contracts"].get(name)
     if clauses is None:
-        raise RenderError(f'{name}: role_text = "core"，但 core/contracts/{name}.toml 不存在')
-    host_dir = src.parent
+        raise RenderError(f'{name}: role_text = "core"，但 prompts/roles/{name}.md 不存在')
+    prompts = host_prompts(src.parent)
     try:
-        addenda = contracts.load_addenda(host_dir / "addenda" / f"{name}.toml")
-        frame = contracts.load_frame(host_dir / "frames", name)
+        addenda = contracts.load_addenda(prompts / "addenda" / f"{name}.md")
+        frame = contracts.load_frame(prompts / "frames", name)
         text = contracts.apply_frame(frame, contracts.compose(clauses, addenda))
     except contracts.ContractError as exc:
         raise RenderError(f"{name}: {exc}") from exc
@@ -568,13 +637,6 @@ RELAY_SHELL_EFFORT = "low"
 RELAY_PACKAGED = ("tools/shoal_relay.py", "core/vendors.toml", "core/contracts/handback.schema.json")
 # runner 建 nonce 用的 guard：plugin 的 hooks/shoal_guard.py 是 compat shim，所以另打包 hooks/shoal_guard.py 的副本。
 RELAY_GUARD_COPY = "tools/shoal_guard.py"
-RELAY_WRITE_RULES = (
-    "This relay writes files. The caller must dispatch you with worktree isolation, so your working directory is a "
-    "linked worktree. The runner returns `blocked` anywhere else; do not work around that (no `cd` elsewhere, no "
-    "`git worktree add`). The caller must follow every write relay with a fresh verifier before trusting the "
-    "hand-back.\n\n"
-)
-
 
 @dataclass(frozen=True)
 class Relay:
@@ -633,32 +695,36 @@ def relay_config(core: dict, binding: dict) -> Relay | None:
     return Relay(dict(roles), shell_model, {n: overrides.get(n, RELAY_DEFAULT_TIMEOUT[n]) for n in roles})
 
 
-def _relay_run_step(timeout: int) -> str:
-    """外殼一律前景執行；relay_config 已保證 timeout 加 margin 不超過 Bash 單次上限。"""
-    return (f"Call Bash with `timeout: {(timeout + BASH_MARGIN_SECONDS) * 1000}` so it outlives the runner's "
-            f"{timeout}s limit.")
+def _relay_timing(timeout: int) -> dict[str, str]:
+    """外殼一律前景執行；relay_config 已保證 timeout 加 margin 不超過 Bash 單次上限。
+
+    timeout 是 runner 的秒數，bash_timeout_ms 是 Bash 工具的毫秒數（要比 runner 活得久）。
+    """
+    return {"timeout": str(timeout), "bash_timeout_ms": str((timeout + BASH_MARGIN_SECONDS) * 1000)}
 
 
 def relay_shell(name: str, vendor: str, relay: Relay, core: dict, spec: dict, host_dir: Path) -> bytes:
-    """被 relay 的 role 的 agent 檔：frontmatter 釘 shell_model 與 tools: Bash，body 取自 hosts/<host>/relay/shell.md。"""
-    path = host_dir / "relay" / "shell.md"
+    """被 relay 的 role 的 agent 檔：frontmatter 釘 shell_model 與 tools: Bash，body 取自 prompts/hosts/<host>/relay/shell.md。"""
+    path = host_prompts(host_dir) / "relay" / "shell.md"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise RenderError(f"無法讀取 {path}: {exc}") from exc
     writes = core["roles"][name]["access"] != "read-only"
-    timeout = relay.timeouts[name]
-    values = {"role": name, "vendor": vendor, "timeout": str(timeout),
-              "write_rules": RELAY_WRITE_RULES if writes else "", "run_step": _relay_run_step(timeout)}
+    texts = load_texts(host_dir)
+    values = {"role": name, "vendor": vendor, **_relay_timing(relay.timeouts[name])}
+    values["write_rules"] = text_for(texts, "relay-write-rules") + "\n\n" if writes else ""
+    values["run_step"] = text_for(texts, "relay-run-step", values)
     for key, value in values.items():
         text = text.replace("{{" + key + "}}", value)
     if "{{" in text:
         raise RenderError(f"{path}: 有未替換的 placeholder")
-    description = f"{spec['description']} Runs on {vendor} through the shoal relay."
+    description = f"{spec['description']} {text_for(texts, 'relay-description-suffix', values)}"
     if writes:
-        description += " Dispatch it with worktree isolation and follow it with a fresh verifier."
+        description += f" {text_for(texts, 'relay-write-description-suffix')}"
     fields = {"name": name, "description": description, "model": relay.shell_model, "effort": RELAY_SHELL_EFFORT}
-    head = "---\n" + "\n".join(f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS) + "\ntools: Bash\n---\n\n"
+    isolation = "\nisolation: worktree" if writes else ""  # write role 的外殼一律在自己的 linked worktree 跑，不靠 caller 記得帶
+    head = "---\n" + "\n".join(f"{k}: {fields[k]}" for k in FRONTMATTER_KEYS) + f"\ntools: Bash{isolation}\n---\n\n"
     return (head + text).encode("utf-8")
 
 
@@ -832,7 +898,6 @@ def _versioned_rules(src: Path, rel: str, tag: str) -> bytes:
 
 # ---- agy（Gemini / Antigravity）----
 AGY_MODELS = {"flash", "pro", "inherit"}
-AGY_RULES_PATH = "rules/shoal-agy.md"
 AGY_READ_ONLY_FORBIDDEN_TOOLS = {"run_command"}
 
 
@@ -874,7 +939,6 @@ def render_agy(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
         model = resolve_model(name, core, binding)
         out[f"agents/{name}/agent.md"] = _agy_frontmatter(name, binding["roles"][name], perms[name], model).encode("utf-8") + body
     _passthrough(src, out, {"agents", "rules"})
-    out[AGY_RULES_PATH] = _versioned_rules(src, AGY_RULES_PATH, "shoal-agy")
     merge_core_policy(out, core, binding, src.parent)
     return out
 
@@ -983,7 +1047,7 @@ def render_opencode(core: dict, binding: dict, src: Path) -> dict[str, bytes]:
     if stray:
         raise RenderError(f"src/roles 有 binding 沒有的 role: {', '.join(stray)}")
     out = {f"roles/{name}.md": role_body(name, core, binding, src,
-                                         lambda n=name: _legacy_body(src, "roles", n))
+                                         lambda n=name: _legacy_body(src, "roles", n), "roles")
            for name in names}
 
     agents, routes = {}, {}
@@ -1235,7 +1299,7 @@ def render_generic(host: str, core: dict, binding: dict, host_dir: Path) -> dict
     pattern = binding["output"]["path"]
     out: dict[str, bytes] = {}
     for name in _bound_roles(core, binding):
-        body = role_body(name, core, binding, host_dir / "src", _no_legacy)
+        body = role_body(name, core, binding, host_dir / "src", _no_legacy, None)
         head = _generic_frontmatter(host, name, core, binding, perms[name])
         out[pattern.replace("{role}", name)] = head.encode("utf-8") + body
     return out
@@ -1256,20 +1320,20 @@ def discover_generic_hosts(root: Path) -> list[str]:
 
 
 # 多 host 擴充點：每個 host 一個 renderer，簽名 (root) -> {相對路徑: bytes}。
-def _claude(root: Path) -> dict[str, bytes]:
+def _claude(root: Path, overlay: Path | None = None) -> dict[str, bytes]:
     host = root / "hosts" / "claude"
-    return render_claude(load_core(root), load_toml(host / "binding.toml"), host / "src")
+    return render_claude(load_core(root), load_host_binding(root, "claude", overlay), host / "src")
 
 
 def _codex(root: Path) -> dict[str, bytes]:
     host = root / "hosts" / "codex"
-    return render_codex(load_core(root), load_toml(host / "binding.toml"), host / "src")
+    return render_codex(load_core(root), load_host_binding(root, "codex"), host / "src")
 
 
 def _host_renderer(host: str, render: Callable[[dict, dict, Path], dict[str, bytes]]) -> Callable[[Path], dict[str, bytes]]:
     def run(root: Path) -> dict[str, bytes]:
         dirpath = root / "hosts" / host
-        return render(load_core(root), load_toml(dirpath / "binding.toml"), dirpath / "src")
+        return render(load_core(root), load_host_binding(root, host), dirpath / "src")
     return run
 
 
@@ -1282,8 +1346,10 @@ RENDERERS: dict[str, Callable[[Path], dict[str, bytes]]] = {
 }
 # dist 目錄（相對 repo 根）。codex 的 dist 沿用既有的 templates/，因為 installer、
 # 測試與遠端 --ref raw URL 都寫死這個路徑。
-DIST_DIRS = {"claude": "hosts/claude/dist", "codex": "templates", "agy": "hosts/agy/dist",
+DIST_DIRS = {"codex": "templates", "agy": "hosts/agy/dist",
              "grok": "hosts/grok/dist", "opencode": "hosts/opencode/dist"}
+# 沒有 committed dist 的 host：committed 形態是 --host claude-plugin 的輸出（plugins/claude）。
+NO_DIST_HOSTS = ("claude",)
 
 
 def render_host(root: Path, host: str) -> dict[str, bytes]:
@@ -1293,7 +1359,7 @@ def render_host(root: Path, host: str) -> dict[str, bytes]:
     if host in RENDERERS:
         return RENDERERS[host](root)
     host_dir = root / "hosts" / host
-    return render_generic(host, load_core(root), load_toml(host_dir / "binding.toml"), host_dir)
+    return render_generic(host, load_core(root), load_host_binding(root, host), host_dir)
 
 
 def dist_dir(host: str) -> str:
@@ -1361,7 +1427,7 @@ def diff_mirrors(root: Path, host: str, files: dict[str, bytes]) -> list[str]:
 
 
 # ---- claude-plugin：Claude Code plugin 與 marketplace（generic-shoal K1、K2、K5）----
-# 不是第六個 host：沒有自己的 binding，內容全部取自 claude 的 render 結果、guard 與根目錄 VERSION。
+# 不是第六個 host：沒有自己的 binding，內容全部取自 claude 的 render 結果、guard 與 hosts/claude/VERSION。
 CLAUDE_PLUGIN = "plugins/claude"
 CLAUDE_PLUGIN_HOST = "claude-plugin"  # --host 的名稱
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
@@ -1382,9 +1448,10 @@ CLAUDE_PLUGIN_TIMEOUT = 10
 PRODUCT_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-beta)?$")
 
 
-def product_version(root: Path) -> str:
-    """根目錄 VERSION（產品版本）；plugin 與 marketplace 的版本都等於它。"""
-    path = root / "VERSION"
+def plugin_version(root: Path) -> str:
+    """hosts/claude/VERSION；plugin 與 marketplace 的版本都等於它。
+    Claude 依版本號快取 plugin，內容變了版本沒動，已安裝的 cache 不會刷新。"""
+    path = root / "hosts" / "claude" / "VERSION"
     try:
         version = path.read_text(encoding="utf-8").strip()
     except OSError as exc:
@@ -1394,10 +1461,10 @@ def product_version(root: Path) -> str:
     return version
 
 
-def _plugin_hooks() -> dict:
+def _plugin_hooks(texts: dict[str, str]) -> dict:
     """base plugin（shoal）：只有 SessionStart 的 policy 注入；沒有任何 guard hook。"""
     return {
-        "description": "shoal policy bootstrap for Claude Code.",
+        "description": text_for(texts, "plugin-hooks-description"),
         "hooks": {
             "SessionStart": [{
                 "matcher": "startup|resume|clear|compact",
@@ -1407,10 +1474,10 @@ def _plugin_hooks() -> dict:
     }
 
 
-def _guard_plugin_hooks() -> dict:
+def _guard_plugin_hooks(texts: dict[str, str]) -> dict:
     guard = {"type": "command", "command": CLAUDE_PLUGIN_GUARD, "timeout": CLAUDE_PLUGIN_TIMEOUT}
     return {
-        "description": "shoal dispatch guard for Claude Code.",
+        "description": text_for(texts, "guard-hooks-description"),
         "hooks": {
             "UserPromptSubmit": [{"hooks": [dict(guard)]}],
             # M11: the guard unlocks a write dispatch only when the role has started (no matcher: the guard
@@ -1433,16 +1500,17 @@ def _guard_plugin_hooks() -> dict:
     }
 
 
-def render_claude_plugin(root: Path) -> dict[str, bytes]:
+def render_claude_plugin(root: Path, overlay: Path | None = None) -> dict[str, bytes]:
     """{相對 repo 根的路徑: bytes}。agents 與 skills 取自 claude 的 render 結果，guard 是 hooks/shoal_guard.py 的逐位元組副本。"""
-    version = product_version(root)
-    claude = RENDERERS["claude"](root)
+    version = plugin_version(root)
+    texts = load_texts(root / "hosts" / RELAY_HOST)
+    claude = _claude(root, overlay)
     out: dict[str, bytes] = {}
     for rel, data in claude.items():
         if rel.startswith("agents/") or rel.startswith("skills/"):
             out[f"{CLAUDE_PLUGIN}/{rel}"] = data
     out[f"{CLAUDE_PLUGIN}/policy/claude-md.bootstrap.md"] = claude["claude-md.bootstrap.md"]
-    if relay_roles(load_toml(root / "hosts" / RELAY_HOST / "binding.toml")):  # D3：只有開 relay 才打包 runner
+    if relay_roles(load_binding(root / "hosts" / RELAY_HOST / "binding.toml", overlay)):  # D3：只有開 relay 才打包 runner
         for rel in RELAY_PACKAGED:
             try:
                 out[f"{CLAUDE_PLUGIN}/{rel}"] = (root / rel).read_bytes()
@@ -1454,7 +1522,7 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
         out[f"{CLAUDE_PLUGIN}/hooks/emit-sessionstart.sh"] = src.read_bytes()
     except OSError as exc:
         raise RenderError(f"無法讀取 {src}: {exc}") from exc
-    out[f"{CLAUDE_PLUGIN}/hooks/hooks.json"] = _json_bytes(_plugin_hooks())
+    out[f"{CLAUDE_PLUGIN}/hooks/hooks.json"] = _json_bytes(_plugin_hooks(texts))
     # 3.8.1: compatibility shim for sessions that were running before the 3.8.0 split; never in hooks.json.
     shim = root / CLAUDE_PLUGIN_SRC / "shoal_guard_compat.py"
     try:
@@ -1467,11 +1535,11 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
         out[f"{CLAUDE_GUARD_PLUGIN}/hooks/run.sh"] = launcher.read_bytes()
     except OSError as exc:
         raise RenderError(f"無法讀取 {launcher}: {exc}") from exc
-    out[f"{CLAUDE_GUARD_PLUGIN}/hooks/hooks.json"] = _json_bytes(_guard_plugin_hooks())
+    out[f"{CLAUDE_GUARD_PLUGIN}/hooks/hooks.json"] = _json_bytes(_guard_plugin_hooks(texts))
     out[f"{CLAUDE_GUARD_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
         "name": "shoal-dispatch-guard",
         "version": version,
-        "description": "Optional dispatch guard for the shoal Claude Code plugin (hooks only).",
+        "description": text_for(texts, "guard-plugin-description"),
         "author": CLAUDE_PLUGIN_AUTHOR,
         "repository": CLAUDE_PLUGIN_REPO,
         "license": "MIT",
@@ -1480,7 +1548,7 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
     out[f"{CLAUDE_PLUGIN}/.claude-plugin/plugin.json"] = _json_bytes({
         "name": "shoal",
         "version": version,
-        "description": "Shoal orchestration roles, skill and policy bootstrap for Claude Code.",
+        "description": text_for(texts, "plugin-description"),
         "author": CLAUDE_PLUGIN_AUTHOR,
         "repository": CLAUDE_PLUGIN_REPO,
         "license": "MIT",
@@ -1489,19 +1557,19 @@ def render_claude_plugin(root: Path) -> dict[str, bytes]:
     out[CLAUDE_MARKETPLACE] = _json_bytes({
         "name": "shoal",
         "owner": CLAUDE_PLUGIN_AUTHOR,
-        "description": "Marketplace for the shoal Claude Code plugins.",
+        "description": text_for(texts, "marketplace-description"),
         "plugins": [{
             "name": "shoal",
             "source": f"./{CLAUDE_PLUGIN}",
             "version": version,
-            "description": "Shoal orchestration roles, skill and policy bootstrap.",
+            "description": text_for(texts, "marketplace-plugin-description"),
             "category": "productivity",
             "tags": ["orchestration", "subagents", "delegation"],
         }, {
             "name": "shoal-dispatch-guard",
             "source": f"./{CLAUDE_GUARD_PLUGIN}",
             "version": version,
-            "description": "Optional dispatch guard hooks for the shoal plugin.",
+            "description": text_for(texts, "marketplace-guard-description"),
             "category": "productivity",
             "tags": ["dispatch-guard", "hooks"],
         }],
@@ -1573,7 +1641,7 @@ def _explain_permission(name: str, perm: Permission, section: str) -> list[str]:
 
 def explain(root: Path, host: str) -> str:
     """印出每個 role 的 tier、候選模型（含被排除的原因）、結果（resolver 選的或手動 pin 的）與權限推導。"""
-    core, binding = load_core(root), load_toml(root / "hosts" / host / "binding.toml")
+    core, binding = load_core(root), load_host_binding(root, host)
     if host in RENDERERS:
         validate_catalog(core, binding)
         perms = derive_permissions(host, core, binding)
@@ -1604,7 +1672,7 @@ def plugin_main(args: argparse.Namespace) -> int:
         print("render 失敗: claude-plugin 沒有選模過程可 --explain（用 --host claude --explain）", file=sys.stderr)
         return 2
     try:
-        files = render_claude_plugin(args.root)
+        files = render_claude_plugin(args.root, args.overlay)
     except (RenderError, OSError, KeyError) as exc:
         print(f"render 失敗: host {args.host}: {exc}", file=sys.stderr)
         return 2
@@ -1637,7 +1705,7 @@ def policy_main(args: argparse.Namespace) -> int:
         files = policy_files(core, binding, host_dir)
         target = args.policy_preview.resolve()
         protected = (args.root / dist_dir(args.host)).resolve()
-        if target == protected or protected in target.parents:
+        if args.host not in NO_DIST_HOSTS and (target == protected or protected in target.parents):
             raise RenderError(f"預覽目錄不可在 {dist_dir(args.host)} 之內")
         for rel, data in files.items():  # 只寫預覽檔，不清理 DIR 內其他檔案
             (target / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -1671,8 +1739,13 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--policy-preview", type=Path, metavar="DIR",
                       help="把 core 組出來的 policy 文件寫到 DIR（不碰 dist）")
     parser.add_argument("--root", type=Path, default=REPO, help="repo 根目錄（測試用）")
+    parser.add_argument("--overlay", type=Path, metavar="FILE",
+                        help="在記憶體中把 TOML 合併進 claude binding 再 render（只給 claude-plugin；不寫回 hosts/*/binding.toml）")
     args = parser.parse_args(argv)
 
+    if args.overlay is not None and args.host != CLAUDE_PLUGIN_HOST:
+        print(f"render 失敗: --overlay 只支援 --host {CLAUDE_PLUGIN_HOST}", file=sys.stderr)
+        return 2
     if args.host == CLAUDE_PLUGIN_HOST:
         return plugin_main(args)
 
@@ -1692,6 +1765,18 @@ def main(argv: list[str] | None = None) -> int:
     except (RenderError, OSError, KeyError) as exc:
         print(f"render 失敗: host {args.host}: {exc}", file=sys.stderr)
         return 2
+
+    if args.host in NO_DIST_HOSTS:
+        if args.write:
+            print(f"host {args.host} 沒有 committed dist，沒有東西可寫；committed 形態用 --host {CLAUDE_PLUGIN_HOST} --write")
+            return 0
+        problems = diff_mirrors(args.root, args.host, files) + diff_relay_packaging(args.root, args.host)
+        if problems:
+            for line in problems:
+                print(f"  {line}", file=sys.stderr)
+            return 1
+        print(f"OK: {len(files)} 個檔案 render 成功（不比對 committed dist；committed 形態由 --host {CLAUDE_PLUGIN_HOST} --check 驗證）")
+        return 0
 
     dist = args.root / dist_dir(args.host)
     if args.write:

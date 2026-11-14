@@ -50,7 +50,7 @@
     },
     "claude-explore": {
       "kind": "optional", "hosts": ["claude"], "depends_on": ["host-claude"], "default_new": true,
-      "paths": ["hosts/claude/dist/agents/Explore.md"],
+      "paths": ["plugins/claude/agents/Explore.md"],
       "summary": "Explore agent，裝到 ~/.claude/agents/"
     },
     "external": {

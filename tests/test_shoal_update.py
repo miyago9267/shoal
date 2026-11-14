@@ -136,6 +136,11 @@ class UpdateBase(unittest.TestCase):
         assert real_git, "git is required"
         if sys.platform == "win32":
             self.env["PATH"] = os.pathsep.join([str(self.bin), str(Path(real_git).parent)])
+            # shutil.which on Python 3.11 finds the .cmd shims only with PATHEXT set; the
+            # installer swaps os.environ for this dict, so an empty one hides every shim.
+            for key in ("PATHEXT", "SYSTEMROOT", "COMSPEC"):
+                if key in os.environ:
+                    self.env[key] = os.environ[key]
         script = self.tmp / "fake_cli.py"
         script.write_text(FAKE_CLI)
         if sys.platform != "win32":
@@ -221,7 +226,7 @@ class UpdateFlowTests(UpdateBase):
                     "-C",
                     str(ROOT),
                     "show",
-                    "HEAD:hosts/claude/dist/agents/Explore.md",
+                    "HEAD:plugins/claude/agents/Explore.md",
                 ]
             ),
         )

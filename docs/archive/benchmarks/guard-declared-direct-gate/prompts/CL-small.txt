@@ -1,1 +1,0 @@
-請修正 src/text_utils.py 模組裡 shout 的 docstring 中的那個拼字錯誤，其他都不要動。

@@ -68,6 +68,14 @@ def overlay_path(env: Mapping[str, str]) -> Path:
     return Path(base) / "shoal" / "claude.local.toml"
 
 
+def model_lines(root: Path) -> dict[str, str]:
+    out = {}
+    for path in sorted((root / "plugins" / "claude" / "agents").glob("*.md")):
+        match = FRONTMATTER_MODEL.search(path.read_text(encoding="utf-8").partition("\n---\n")[0])
+        out[path.stem] = match.group(0) if match else ""
+    return out
+
+
 def apply_overlay(stage: Path, overlay: Mapping[str, str]) -> None:
     """把 overlay {role: model} 寫進 stage 內 core plugin 的 agents/<role>.md frontmatter（local-role-model-overlay D2）。"""
     agents = stage / "plugins" / "claude" / "agents"
@@ -153,6 +161,7 @@ class Updater:
         self._binding: dict = {}
         self._probed: dict[str, str] = {}
         self._uninstalled: list[str] = []
+        self._model_flip = False
 
     # ---- output ----
     def emit(self, step: str, status: str, detail: str = "") -> None:
@@ -484,8 +493,8 @@ class Updater:
             ):
                 # beta -> stable：plugin manager 用純 SemVer，會把 stable 當成較舊，先移除再裝。
                 verb = "reinstall"
-            elif changed and row.get("version") == source:
-                # 版本相同時 claude plugin update 不會重新複製 cache（本機 overlay 改變時就是這樣），改成先移除再裝。
+            elif changed and self._model_flip and row.get("version") == source:
+                # 只有本機 role model（overlay、探測）翻轉時沒有版本可升；plugin update 不刷新 cache，改成先移除再裝（D7）。
                 verb = "reinstall"
             elif changed or (
                 row.get("version")
@@ -493,6 +502,10 @@ class Updater:
                 and row["version"] != plugins[name]["version"]
             ):
                 verb = "update"
+                if row.get("version") == plugins[name]["version"]:
+                    # Claude 依版本號快取 plugin；版本沒升，plugin update 不會刷新 cache。
+                    out.append((step, "skipped", "marketplace 內容有變但版本沒升，cache 不會刷新；請升 hosts/claude/VERSION 並 render"))
+                    continue
             else:
                 out.append((step, "up-to-date", ""))
                 continue
@@ -563,6 +576,7 @@ class Updater:
             else:
                 stage = Path(scratch.name) / "stage"  # type: ignore[union-attr]
             self.export_marketplace(paths, stage)
+            self._model_flip = self.mp.is_dir() and model_lines(stage) != model_lines(self.mp)
             if self.role_models():
                 self.emit("overlay", "applied", ", ".join(f"{r}={m}" for r, m in sorted(self.role_models().items())))
             changed = not self.mp.is_dir() or si.tree_digest(stage) != si.tree_digest(

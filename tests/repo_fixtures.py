@@ -46,6 +46,7 @@ def worktree_repo(dst: Path) -> Path:
         "plugins/jev-router",
         ".agents",
         "core",
+        "prompts",
         "hosts/grok/dist",
         "hosts/agy/dist",
         "hosts/opencode",

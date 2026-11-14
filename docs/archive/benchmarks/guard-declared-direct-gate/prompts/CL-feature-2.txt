@@ -1,4 +1,0 @@
-需求：count_words 要能只算不重複的單字。
-做法：src/text_utils.py 的 count_words 加一個選用參數 unique=False，為 True 時回傳不重複單字（區分大小寫）的數量；src/cli.py 的 count 命令加 --unique 旗標並傳入；tests/test_text_utils.py 補一個測試。
-限制：預設行為不變，不新增依賴。
-驗收：python3 -m unittest discover -s tests 通過，python3 src/cli.py count --unique "a b a" 印出 2。

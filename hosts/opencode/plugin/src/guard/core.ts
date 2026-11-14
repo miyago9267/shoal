@@ -18,9 +18,9 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
   readSync,
   readlinkSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeSync,
@@ -339,6 +339,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "write-capable role (executor or applier), or declare direct work first by running " +
       'exactly : shoal-direct "<reason>" as its own shell command, or ask the user to add ' +
       "#direct to the prompt.",
+    DECLARE_COMBINED:
+      "Shoal dispatch guard: the : shoal-direct declaration was combined with other commands, so it " +
+      "was not recorded. Send exactly : shoal-direct \"<reason>\" as its own shell call (no ;, &&, |, " +
+      "newline or other command in it), then run the edit in a separate call.",
   },
   "zh-TW": {
     ADVISE:
@@ -386,6 +390,10 @@ const MESSAGES: Record<string, Record<string, string>> = {
       "Shoal dispatch guard：main session 預設把改檔交給別的 role。" +
       "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 " +
       ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。',
+    DECLARE_COMBINED:
+      "Shoal dispatch guard：: shoal-direct 宣告和其他指令寫在同一個 shell 指令裡，所以沒有生效。" +
+      '請把 : shoal-direct "<理由>" 單獨當成一次 shell 呼叫送出（不要接 ;、&&、|、換行或其他指令），' +
+      "改檔留到下一次呼叫。",
   },
 };
 
@@ -525,6 +533,29 @@ function withStateLock(path: string, body: () => GuardResult, skip: (reason: str
   }
 }
 
+/**
+ * Up to `max` bytes of `path` when it is a regular file owned by the current user; null when it is absent,
+ * not a regular file (a FIFO is opened non-blocking and refused) or owned by another uid.  A read error throws.
+ * Mirror of _open_readable in hooks/shoal_guard.py.
+ */
+export function readOwnedRegular(path: string, max: number): Buffer | null {
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  } catch {
+    return null;
+  }
+  try {
+    const info = fstatSync(fd);
+    const uid = process.getuid?.();
+    if (!info.isFile() || (uid !== undefined && info.uid !== uid)) return null;
+    const buffer = Buffer.alloc(max);
+    return buffer.subarray(0, readSync(fd, buffer, 0, max, null));
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function readJson(path: string): Record<string, unknown> {
   const fd = openPrivate(path, constants.O_RDONLY);
   if (fd === null) return {};
@@ -578,7 +609,7 @@ export function shortHash(value: unknown): string | undefined {
   return createHash("sha256").update(value, "utf8").digest("hex").slice(0, 8);
 }
 
-/** Append one whitelisted record to guard.jsonl (1 MiB cap).  Never throws. */
+/** Append one whitelisted record to guard.jsonl (per-member chain_* records go to chain.jsonl); past 1 MiB a file becomes <name>.1 (one generation).  Never throws. */
 export function appendLog(dir: string | null, record: LogRecord): void {
   if (dir === null) return;
   const line: Record<string, string | boolean> = { ts: new Date().toISOString() };
@@ -592,10 +623,12 @@ export function appendLog(dir: string | null, record: LogRecord): void {
     const text = safeText(value);
     if (text !== null) line[key] = text;
   }
-  const path = join(dir, "guard.jsonl");
+  // Per-member chain bookkeeping (chain_allow, chain_report, ...) is high volume: keep it out of the decision log.
+  const chatter = line.rule === "chain" && String(line.decision ?? "").startsWith("chain_");
+  const path = join(dir, chatter ? "chain.jsonl" : "guard.jsonl");
   try {
     try {
-      if (statSync(path).size > MAX_LOG_BYTES) return;
+      if (statSync(path).size > MAX_LOG_BYTES) renameSync(path, `${path}.1`);
     } catch {
       // not created yet
     }
@@ -632,7 +665,9 @@ export function dispatchGuardSelected(host: string, env: Env, home: string): boo
     const xdg = env.XDG_DATA_HOME ?? "";
     const data = xdg && isAbsolute(xdg) ? xdg : join(home, ".local", "share");
     const path = override && isAbsolute(override) ? override : join(data, "shoal", "modules.json");
-    const doc: unknown = JSON.parse(readFileSync(path).subarray(0, 1024 * 1024).toString("utf8"));
+    const text = readOwnedRegular(path, 1024 * 1024);
+    if (text === null) return true;
+    const doc: unknown = JSON.parse(text.toString("utf8"));
     const entry = typeof doc === "object" && doc !== null ? (doc as Record<string, unknown>)[host] : undefined;
     const modules = typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>).modules : undefined;
     return !(Array.isArray(modules) && !modules.includes("dispatch-guard"));
@@ -1747,7 +1782,6 @@ class Guard {
     }
     const file = this.shellWriteTarget() ?? undefined;
     if (this.env.SHOAL_GUARD_DIRECT === "1" || state.direct) {
-      this.shellWrote(statePath, file);
       return this.result("allow", { rule: "direct", file });
     }
     if (state.dispatched) {
@@ -1757,10 +1791,11 @@ class Guard {
     if (this.r1 === "strict") return this.shellR1(state, statePath, file, exitText(this.env, this.host, "STRICT"));
     if (this.r1 === "declare") {
       if (this.declared(state, dir)) {
-        this.shellWrote(statePath, file);
         return this.result("allow", { rule: "declared", file });
       }
-      return this.shellR1(state, statePath, file, exitText(this.env, this.host, "DECLARE"));
+      const command = this.event.command;
+      const combined = typeof command === "string" && /:[ \t]+shoal-direct\b/.test(command);
+      return this.shellR1(state, statePath, file, combined ? text(this.env, "DECLARE_COMBINED") : exitText(this.env, this.host, "DECLARE"));
     }
     if (this.classified(state, dir) === null) {
       this.shellWrote(statePath, file);
@@ -1850,7 +1885,7 @@ class Guard {
       return this.result("deny", { rule: "R1", reason: strict || declare ? exitText(this.env, this.host, strict ? "STRICT" : "DECLARE") : text(this.env, "R1"), file: rawPaths[0] });
     }
     state.edited = edited;
-    this.pendingChange = statePath; // B2: an allowed, non-exempt edit (shadow's would_deny included) is a change
+    if (!(direct || declared)) this.pendingChange = statePath; // B2: main's own direct/declared edits are not a change; STOP is for write roles
     const notify =
       adviseRule !== null && !state.advised && this.mode === "enforce" && ADVISE_OUTPUT_HOSTS.has(this.host);
     if (notify) state.advised = true; // the one reminder of this turn is spent

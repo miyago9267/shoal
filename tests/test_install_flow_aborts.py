@@ -413,8 +413,11 @@ class PolicyIdentity(Base):
         # same path, new inode (identity comparison before the digest)
         link.unlink()
         link.symlink_to(target)
-        target.unlink()
-        target.write_bytes(b"# p\n")
+        # Replace atomically so the new file is allocated while the old inode
+        # is still live; unlink + rewrite lets ext4 hand the same inode back.
+        fresh = self.root / "fresh.md"
+        fresh.write_bytes(b"# p\n")
+        os.replace(fresh, target)
         self.assertAborts(message, installer._assert_policy_identity, identity)
         # same inode, different content (digest comparison)
         identity = installer._capture_policy_identity(link, follow_policy_symlink=True, policy_root=self.root)
@@ -455,6 +458,16 @@ class CopyBackup(Base):
         self.src.unlink()
         self.src.symlink_to(real)
         self.assertAborts(f"rollback source changed: {self.src}", self.copy)
+
+    def test_source_swapped_after_lstat_is_refused(self) -> None:
+        # Windows 沒有 O_NOFOLLOW：open 到的 handle 必須與 lstat 看到的是同一個檔
+        other = self.root / "other"
+        other.write_bytes(b"orig")
+        real_lstat = Path.lstat
+        swapped = lambda path: real_lstat(other if path == self.src else path)  # noqa: E731
+        with mock.patch.object(Path, "lstat", swapped):
+            self.assertAborts(f"rollback source changed: {self.src}", self.copy)
+        self.assertFalse(self.bak.exists())
 
     def test_backup_open_gates(self) -> None:
         self.bak.write_bytes(b"squatter")

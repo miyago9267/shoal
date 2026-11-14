@@ -18,7 +18,6 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
-sys.path.insert(0, str(ROOT / "bench"))
 import install as installer  # noqa: E402
 import hook_registration  # noqa: E402
 import stage_smoke_home  # noqa: E402
@@ -291,7 +290,8 @@ class NativeInstallTests(unittest.TestCase):
         with mock.patch.object(
             installer.shutil, "which", side_effect=[None, None, r"C:\codex.cmd"]
         ):
-            self.assertEqual(installer._codex_cli(), "codex.cmd")
+            # CreateProcess cannot start a .cmd shim by bare name; POSIX keeps the bare candidate
+            self.assertEqual(installer._codex_cli(), r"C:\codex.cmd" if os.name == "nt" else "codex.cmd")
 
     def run_install(self, home: Path, **kwargs: object) -> int:
         return install(source_root=ROOT, codex_home=home, dry_run=False, check_codex=False, **kwargs)
@@ -1129,7 +1129,7 @@ class NativeInstallTests(unittest.TestCase):
                         {
                             "name": "shoal-codex",
                             "marketplaceName": "shoal-codex",
-                            "version": "3.13.1-beta",
+                            "version": "99.0.0-beta",
                             "enabled": True,
                         }
                     ]

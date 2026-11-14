@@ -309,11 +309,15 @@ class CliOverrideTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "hosts" / "claude", self.root / "hosts" / "claude")
         self.binding = self.root / "hosts" / "claude" / "binding.toml"
 
     def check(self):
         return run_render("claude", self.root, "--check")
+
+    def claude_files(self) -> dict[str, bytes]:
+        return render.RENDERERS["claude"](self.root)
 
     def edit(self, path: Path, old: str, new: str) -> None:
         text = path.read_text(encoding="utf-8")
@@ -366,7 +370,7 @@ class CliOverrideTests(unittest.TestCase):
             "[roles.security-reviewer]\n",
             '[roles.security-reviewer]\nmodel = "sonnet"\n',
         )
-        self.assertEqual(self.check().returncode, 1)  # dist 的 model 變了
+        self.assertNotEqual(self.claude_files(), render.RENDERERS["claude"](ROOT))  # 輸出的 model 變了
         out = run_render("claude", self.root, "--explain").stdout
         block = out.split("security-reviewer  tier=strong")[1].split("\n\n")[0]
         self.assertIn("結果：sonnet（手動指定 [roles.security-reviewer].model）", block)
@@ -377,10 +381,9 @@ class CliOverrideTests(unittest.TestCase):
             "[roles.scout]\n",
             '[tiers]\nstandard = "haiku"\n\n[roles.scout]\n',
         )
-        self.assertEqual(self.check().returncode, 1)
         self.assertIn(
             b"\nmodel: haiku\n",
-            render.RENDERERS["claude"](self.root)["agents/executor.md"],
+            self.claude_files()["agents/executor.md"],
         )
         self.assertIn(
             "手動指定 [tiers].standard", run_render("claude", self.root, "--explain").stdout
@@ -449,10 +452,10 @@ class ExplainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             shutil.copytree(ROOT / "core", root / "core")
-            shutil.copytree(ROOT / "hosts" / "claude", root / "hosts" / "claude")
-            shutil.rmtree(root / "hosts" / "claude" / "dist")
-            self.assertEqual(run_render("claude", root, "--explain").returncode, 0)
-            self.assertFalse((root / "hosts" / "claude" / "dist").exists())
+            shutil.copytree(ROOT / "prompts", root / "prompts")
+            shutil.copytree(ROOT / "hosts" / "codex", root / "hosts" / "codex")
+            self.assertEqual(run_render("codex", root, "--explain").returncode, 0)
+            self.assertFalse((root / "templates").exists())
 
 
 class SwapModelMutationTests(unittest.TestCase):
@@ -463,6 +466,7 @@ class SwapModelMutationTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(
             ROOT / "hosts",
             self.root / "hosts",

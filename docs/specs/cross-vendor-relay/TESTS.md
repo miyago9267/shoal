@@ -70,8 +70,8 @@
 - S1.16 THE SYSTEM SHALL NOT 讓 fixture 裡的 secret 值出現在 runner stdout，含
   部分輸出與 stderr 尾段（F7）。
 - S1.17 WHEN 回傳 hand-back，THE SYSTEM SHALL 以 `git status --porcelain -z`
-  計算 `changed_files`，與 vendor 自報不一致時標出；schema 拒絕額外欄位與超長
-  字串（F8）。
+  計算 `changed_files`；vendor 自報路徑剝掉 `(deleted)` 類註記與 `./`、`a -> b`
+  兩邊都算後仍不一致時標出、不改 status；schema 拒絕額外欄位與超長字串（F8）。
 - S1.18 WHEN runner 逾時或收到 SIGTERM/HUP/INT，THE SYSTEM SHALL 結束所有後代
   程序，包括 setsid 且忽略 SIGTERM 的孫程序；事後沒有殘留（F9）。
 - S1.19 IF vendor 回報 sandbox 套用失敗，THEN runner SHALL 回 `failed`，且
@@ -89,5 +89,6 @@
 - S1.13a WHEN 執行 `run_ab.py --arms shoal,shoal-relay --dry-run`，THE SYSTEM
   SHALL 顯示兩個不同的 plugin-dir，且 `shoal` arm 的 relay 為關閉。
 - S1.13 WHEN bench/ab 以 v2 任務比較 `shoal-relay` 與 `shoal`，THE SYSTEM SHALL
-  使 relay 的通過數 ≥ shoal、時間中位數 ≤ shoal 的 1.5 倍；兩家的 token / 成本
-  分開記錄。未達標時 P2 不開始。
+  使 relay 的通過數 ≥ shoal 的通過數減 1、時間中位數 ≤ shoal 的 2.0 倍；兩家的
+  token / 成本分開記錄。未達標時 P2 不開始。
+  （2026-10-22 Miyago 決定放寬，原為通過數 ≥ shoal 且 ≤ 1.5x）

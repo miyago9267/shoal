@@ -39,9 +39,11 @@ class TempRepo(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         shutil.copytree(ROOT / "core", self.root / "core")
+        shutil.copytree(ROOT / "prompts", self.root / "prompts")
         shutil.copytree(ROOT / "tools", self.root / "tools", ignore=shutil.ignore_patterns("__pycache__"))
         (self.root / "hosts").mkdir()
         self.host = self.root / "hosts" / "demo"
+        self.prompts = self.root / "prompts" / "hosts" / "demo"
 
     def new_host(self, *args: str) -> subprocess.CompletedProcess[str]:
         return run(self.root / "tools" / "new_host.py", *(args or ("demo",)))
@@ -64,10 +66,10 @@ class ScaffoldTests(TempRepo):
     def test_creates_the_skeleton(self) -> None:
         result = self.new_host()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((self.host / "frames" / "default.md").is_file())
-        self.assertTrue((self.host / "addenda").is_dir())
-        self.assertEqual((self.host / "frames" / "default.md").read_text(encoding="utf-8"), "{{role_body}}")
-        binding = render.load_toml(self.host / "binding.toml")
+        self.assertTrue((self.prompts / "frames" / "default.md").is_file())
+        self.assertTrue((self.prompts / "addenda").is_dir())
+        self.assertEqual((self.prompts / "frames" / "default.md").read_text(encoding="utf-8"), "{{role_body}}")
+        binding = render.load_host_binding(self.root, "demo")
         self.assertEqual(binding["renderer"], "generic-md")
         self.assertEqual(binding["role_text"], "core")
         self.assertNotIn("models", binding)

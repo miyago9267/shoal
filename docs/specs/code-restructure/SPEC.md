@@ -41,7 +41,8 @@
 shoal_update、install_hooks、install.py）不動。只做 in-file 整理：
 
 - **host 表**。host 集合（109-195，約 20 個 `frozenset`）改成一張表：
-  `HOSTS = {"claude": HostInfo(default_mode="enforce", role_aware=True, stop=True, ...), ...}`，
+  `HOSTS = {"claude": HostInfo(default_mode="enforce", role_aware=True,
+  stop=True, ...), ...}`，
   原本的 `ROLE_AWARE_HOSTS`、`STOP_HOSTS` 等名稱由表衍生並保留為模組屬性，
   讓 `guard.STOP_HOSTS` 這類測試引用不必改（O8）。
 - **adapter 表**。`_adapt_claude` / `_adapt_codex` / `adapt_grok`（2626-2690、2713-2771、2772-2826）
@@ -49,36 +50,50 @@ shoal_update、install_hooks、install.py）不動。只做 in-file 整理：
   差異（tool 名稱表、payload key 路徑、Codex 的 `apply_patch` 與 lane 文字）放進每 host
   一張 `AdapterSpec`，共用一個 `adapt(spec, payload)`。`adapt_agy` 因為 payload 沒有事件名、
   多 conversation，維持獨立函式。已有 test 釘住 adapter 輸出（`tests/fixtures/*_shapes.json` 與 vectors），
-  先在現有 code 產生 `tests/fixtures/adapter_golden.json`（全 host、全 payload 的 `adapt_*` 完整回傳）再重寫，P1 不得編輯該 golden（T0.3、T1.2）。
+  先在現有 code 產生 `tests/fixtures/adapter_golden.json`（全 host、全 payload 的 `adapt_*`
+  完整回傳）再重寫，P1 不得編輯該 golden（T0.3、T1.2）。
 - **`_new_state`**。`_Guard._locked`（1817-1915）中 3 份 9-key state literal 收成 `_new_state(**overrides)`；
   key 順序必須與現在寫出的 JSON 相同（`test_state_file_*` 與 vectors 驗證）。
-- **open helper 不合併**。`_open_private`（457）與 `_open_readable`（3087）維持分開（見 Security review F1）。
+- **open helper 不合併**。`_open_private`（457）與 `_open_readable`（3087）維持分開（見
+  Security review F1）。
 - **docstring**。檔頭 78 行 docstring 改成約 10 行：用途、入口、指向 `docs/specs/dispatch-enforcement`、
   `guard-declared-direct`、`guard-every-gate`。
 - `_Guard` 類別維持原樣（不用 mixin、不搬方法）；只有上述三處與 docstring 會動。
 - 延遲：單檔沒有新增 import，預期不變；仍以 P0 的 bench 在 P1 前後各量一次，p50 差 +1ms、p95 差 +3ms 內
   （O7）。
-- Python 3.9：不使用 `match`、括號式 context manager、`X | Y` 的 runtime 求值；`test_py39_compat` 照舊涵蓋。
+- Python 3.9：不使用 `match`、括號式 context manager、`X | Y` 的 runtime
+  求值；`test_py39_compat` 照舊涵蓋。
 
 #### Rejected alternatives
 
-- **P5 `render.py` 資料化（D4 查表化，2026-10-19 Miyago 決定丟掉）**。實作後查表化反而 +38 行，且沒有可讀性收益；`validate_*` / `render_*` 維持原狀。
+- **P5 `render.py` 資料化（D4 查表化，2026-10-19 Miyago 決定丟掉）**。實作後查表化反而 +38 行，
+  且沒有可讀性收益；`validate_*` / `render_*` 維持原狀。
 
-- **D2 hook 登記收斂到 `install/hook_registration.py`（原 P3，2026-10-19 拿掉）**。原計畫讓 `apply_codex` 改呼叫 `merge_registration`，使 Codex `hooks.json` 只剩一條寫入路徑。否決原因：`apply_codex` 的 regex handler-level stripping 在 mixed group 內（`tools/install_hooks.py:181-210`、`255-277`）無法套用 `merge_registration` 的整 group 精確投影比對（`install/hook_registration.py:403-425`、`562-574`、`654-662`），要改就會改變行為（`tests/test_install_hooks.py:744-756`）；收益只約 50-80 行，不值得。因此 Codex 的兩條寫入路徑（`install.py` 與 `install_hooks.py`）維持現狀，不在本案範圍。
+- **D2 hook 登記收斂到 `install/hook_registration.py`（原 P3，2026-10-19 拿掉）**。原計畫讓
+  `apply_codex` 改呼叫 `merge_registration`，使 Codex `hooks.json` 只剩一條寫入路徑。
+  否決原因：`apply_codex` 的 regex handler-level stripping 在 mixed group 內
+  （`tools/install_hooks.py:181-210`、`255-277`）無法套用 `merge_registration` 的整 group
+  精確投影比對（`install/hook_registration.py:403-425`、`562-574`、`654-662`），要改就會改變行為
+  （`tests/test_install_hooks.py:744-756`）；收益只約 50-80 行，不值得。因此 Codex 的兩條寫入路徑
+  （`install.py` 與 `install_hooks.py`）維持現狀，不在本案範圍。
 
-- **guard 拆成 `hooks/shoal_guard/` package**（約 14 個模組、薄入口、`guard_bundle.py`、bundle manifest golden、
+- **guard 拆成 `hooks/shoal_guard/` package**（約 14 個模組、薄入口、
+  `guard_bundle.py`、bundle manifest golden、
   staging 加 rename 安裝、消費者表）。否決原因：消費者機制要多約 +150 行（render、install_grok、shoal_update、
   install_hooks、install.py、golden、測試輔助全部改成處理多檔），並引入舊 state fingerprint 升級與半套安裝的風險，
-  換到的行數減少很有限（約再 -50）。同名 `shoal_guard.py` 與 `shoal_guard/` 的 import 解析、lazy import 的延遲取捨
+  換到的行數減少很有限（約再 -50）。同名 `shoal_guard.py` 與 `shoal_guard/` 的 import 解析、lazy
+  import 的延遲取捨
   也隨之不需要。2026-10-19 由 Miyago 決定不採用。
 - **由 package 產生單一檔再提交**：repo 內仍有 3000 行產物且需要 `render --check` 擋手改，沒有解決可讀性，同樣不採用。
 
 ### D3 `install/install.py`：拆函式，不拆檔
 
-為什麼不拆檔：`tests/test_install.py` 大量 patch `installer.subprocess`、`installer.shutil` 等 module 屬性，
+為什麼不拆檔：`tests/test_install.py` 大量 patch
+`installer.subprocess`、`installer.shutil` 等 module 屬性，
 並以 `installer.install(...)` 驅動；拆檔會讓這些 patch 全部失效，重寫成本高於收益。拆成同檔內的具名函式即可達成可讀性。
 
-- `install()`（2073-2773）拆成依序執行的步驟，共用一個 `@dataclass _Plan`（writes、removals、notes、state 欄位）取代現在的區域變數：
+- `install()`（2073-2773）拆成依序執行的步驟，共用一個 `@dataclass _Plan`（writes、removals、
+  notes、state 欄位）取代現在的區域變數：
   `_resolve_context` → `_plan_config` → `_plan_roles` → `_plan_policy` → `_plan_hooks`
   → `_plan_plugin` → `_commit_plan`（呼叫既有 `_commit`）→ `_record_state` → `_post_commit_removals`。
   每步不超過約 120 行；`install()` 本體只剩串接與 dry-run 判斷（約 60 行）。
@@ -90,9 +105,12 @@ shoal_update、install_hooks、install.py）不動。只做 in-file 整理：
 
 ### D4 `tools/render.py`：host 差異資料化
 
-- 抽出 `HostSpec`（dataclass）：`validate`（共同 `validate_catalog` + `derive_permissions` + read-only tool 檢查）、
-  `frontmatter(name, spec, perm, model)`、`forbidden_tools`、`models` 白名單、`extra_files(core, binding, src)`、`rules_path`。
-  共同流程 `render_roles(spec, core, binding, src)` 取代五份「迴圈 role → role_body → 組 frontmatter → passthrough → merge_core_policy」。
+- 抽出 `HostSpec`（dataclass）：`validate`（共同 `validate_catalog` +
+  `derive_permissions` + read-only tool 檢查）、
+  `frontmatter(name, spec, perm, model)`、`forbidden_tools`、`models`
+  白名單、`extra_files(core, binding, src)`、`rules_path`。
+  共同流程 `render_roles(spec, core, binding, src)` 取代五份「迴圈 role → role_body → 組
+  frontmatter → passthrough → merge_core_policy」。
 - 完全適用：claude、agy。部分適用：grok（多 `roles/*.toml`）、codex（root 與 `[agents]` toml）；
   opencode 的 plugin 輸出維持自己的函式，只共用 validate。誠實預期：不是五個都能變 table，約 -150 到 -250 行。
 - 常數（`AGY_MODELS`、`READ_ONLY_FORBIDDEN_TOOLS` 等）先放 `HostSpec`，**不**搬進 `binding.toml`：
@@ -115,20 +133,25 @@ P4、P5 彼此獨立，可以平行或依序。
 
 **行數合計**：P1 -240、P4 0 到 -50、P5 -150 到 -200，約 **-390 到 -490**（不含 P0 新增的約 200 行測試）。
 
-**實際結果（2026-10-19）**：P1 guard 3181 -> 3080 行（-101）。P4 `install.py` 2773 -> 3067 行（+294），`install()` 692 -> 70 行、`_validate_committed_state` 404 -> 44 行，以行數換可讀性。P5 不做（+38 行，無可讀性收益，見 Rejected alternatives）。
+**實際結果（2026-10-19）**：P1 guard 3181 -> 3080 行（-101）。P4 `install.py` 2773 -> 3067
+行（+294），`install()` 692 -> 70 行、`_validate_committed_state` 404 -> 44 行，
+以行數換可讀性。P5 不做（+38 行，無可讀性收益，見 Rejected alternatives）。
 
 **共同驗收**：
 
 1. `python3 -m unittest discover -s tests` 全綠（Windows-only 的 skip 照舊）。
-2. `python3 tools/render.py --check --host <claude|codex|agy|grok|opencode>` 五個全綠；claude-plugin 同。
+2. `python3 tools/render.py --check --host <claude|codex|agy|grok|opencode>`
+   五個全綠；claude-plugin 同。
 3. `tests/fixtures/guard_vectors.json` 全部 vectors 通過（`tests/test_shoal_guard.py::VectorTests`）。
-4. hook 延遲（P1）：`tests/bench_hook_latency.py` 重構後的 p50 / p95 與 P0 baseline 比較，在 D1 容許範圍內。
+4. hook 延遲（P1）：`tests/bench_hook_latency.py` 重構後的 p50 / p95 與 P0 baseline 比較，在
+   D1 容許範圍內。
 5. `tests/test_py39_compat.py` 綠。
 6. 沒有 golden 內容變動（P1 的 guard dist 副本與 `.sha256` 除外）。
 
 ## Security review（P1）
 
-P1 由 `security-executor` 實作，完成後 fresh `verifier`。F2、F3、F6 的測試必須先在現有 code 寫好且全綠（P0），才可改 P1 code。證據行號為 `hooks/shoal_guard.py` 現況。
+P1 由 `security-executor` 實作，完成後 fresh `verifier`。F2、F3、F6 的測試必須先在現有 code 寫好且全綠
+（P0），才可改 P1 code。證據行號為 `hooks/shoal_guard.py` 現況。
 
 | # | 嚴重度 | 證據 | 處置 | 測試 |
 | --- | --- | --- | --- | --- |
@@ -153,7 +176,8 @@ P1 由 `security-executor` 實作，完成後 fresh `verifier`。F2、F3、F6 �
 ## Rollout
 
 - 每個 phase 一個 PR，各自過共同驗收。P1、P4、P5 純內部、不改已安裝檔案配置，可併入 patch 或累積成批再發。
-- 只修改 `hooks/shoal_guard.py`、`install/`、`tools/`、`tests/` 與 render 產物（guard 副本）；`docs/specs/code-restructure/` 的 TASKS.md 每步更新，
+- 只修改 `hooks/shoal_guard.py`、`install/`、`tools/`、`tests/` 與 render 產物（guard
+  副本）；`docs/specs/code-restructure/` 的 TASKS.md 每步更新，
   PROGRESS.md 每 phase 記延遲數字。
 
 ## 會被牽動的測試（重寫，不是刪除）
@@ -177,6 +201,7 @@ P1 由 `security-executor` 實作，完成後 fresh `verifier`。F2、F3、F6 �
 
 待決：
 
-- O4 `AGY_MODELS`、forbidden tools 等常數是否搬進 `binding.toml`（需確認 `render_generic` 與 OpenCode TS plugin 是否讀取）。本案預設不搬。
+- O4 `AGY_MODELS`、forbidden tools 等常數是否搬進 `binding.toml`（需確認 `render_generic` 與
+  OpenCode TS plugin 是否讀取）。本案預設不搬。
 - O7 hook 延遲容許值（p50 +1ms、p95 +3ms）是我的估計，沒有歷史資料；P0 量完後可能要調整。
 - O8 `guard.STOP_HOSTS` 等舊名稱由表衍生並保留，是否值得（保留省測試改動，但留下兩種寫法）；建議保留一個 release 後再清。

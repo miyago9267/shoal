@@ -56,9 +56,9 @@ async function call(guard: ReturnType<typeof makeGuard>, tool: string, sessionID
   await guard["tool.execute.before"]!({ tool, sessionID, callID: "call_1" } as never, { args } as never);
 }
 const edit = (name: string) => ({ filePath: join(work, name) });
-const logLines = () => {
+const logLines = (name = "guard.jsonl") => {
   try {
-    return readFileSync(join(root, "home", "xdg-state", "shoal", "guard", "guard.jsonl"), "utf8")
+    return readFileSync(join(root, "home", "xdg-state", "shoal", "guard", name), "utf8")
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line) as Record<string, string>);
@@ -459,7 +459,7 @@ describe("OpenCode guard: chain", () => {
     await prompt(guard, MAIN, "msg_001", "#direct");
     await call(guard, "bash", MAIN, { command: "ls" });
     await expect(call(guard, "bash", MAIN, { command: "echo needle-in-args" })).rejects.toThrow("m0: saw needle-in-args");
-    expect(logLines().filter((l) => l.rule === "chain").map((l) => l.decision)).toEqual(["chain_allow", "chain_deny"]);
+    expect(logLines("chain.jsonl").map((l) => l.decision)).toEqual(["chain_allow", "chain_deny"]);
   });
 
   test("a manifest record without dispatch-guard runs the chain only; with no member for the host everything is off", async () => {
@@ -486,7 +486,7 @@ describe("OpenCode guard: chain", () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN, "msg_001", "#direct");
     await call(guard, "bash", MAIN, { command: "ls" });
-    expect(logLines().filter((l) => l.decision === "chain_report").map((l) => l.reason)).toEqual(["id=fx-num version=1"]);
+    expect(logLines("chain.jsonl").filter((l) => l.decision === "chain_report").map((l) => l.reason)).toEqual(["id=fx-num version=1"]);
   });
 
   test("a failing member never blocks", async () => {
@@ -494,7 +494,7 @@ describe("OpenCode guard: chain", () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN, "msg_001", "#direct");
     await call(guard, "bash", MAIN, { command: "ls" });
-    expect(logLines().filter((l) => l.rule === "chain").map((l) => l.decision)).toEqual(["chain_error", "chain_error"]);
+    expect(logLines("chain.jsonl").map((l) => l.decision)).toEqual(["chain_error", "chain_error"]);
   });
 });
 

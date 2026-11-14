@@ -1,4 +1,0 @@
-目標：加入「重複字串」功能。
-範圍：src/text_utils.py 新增 repeat_text(text, n)，回傳 text 重複 n 次（n 小於等於 0 回傳空字串）；src/cli.py 新增 repeat 子命令（用法 cli.py repeat TEXT N）；兩個檔案都要改。tests/test_text_utils.py 補測試。
-限制：不改既有函式行為，不新增依賴。
-完成條件：python3 -m unittest discover -s tests 全部通過，且 python3 src/cli.py repeat ab 3 印出 ababab。

@@ -7,7 +7,6 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "install"))
-sys.path.insert(0, str(ROOT / "bench"))
 import probe_hybrid_runtime as probe  # noqa: E402
 
 

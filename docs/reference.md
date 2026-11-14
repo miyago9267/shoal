@@ -11,7 +11,7 @@ Claude Code、Codex CLI、Gemini/agy、Grok Build、OpenCode。
 
 shoal 只維護一份 role 定義（`scout`、`executor`、`verifier` 等）。每個 host
 用自己的 binding 決定 model、effort，並把 role 的存取等級對應成該 host 的權限欄位，再由 renderer 產生該 host
-要安裝的檔案。產物有 golden 測試，改動一律看得到 diff。
+要安裝的檔案。產物由 `render --check` 與 CI 擋住手改，改動一律看得到 diff。
 
 ![render 流程：core 與 host binding 經 render.py 產生五個 host 的 dist](./assets/shoal-render-pipeline.svg)
 
@@ -49,7 +49,7 @@ main session 先判斷互動形態與風險。已有穩定契約的實作、互�
 有風險或大型工作才走五道關卡，依階段派唯讀、審查或寫入的 role。每次派工都帶 effort，可寫 role 的 description 以 `fix:`、
 `feat:` 這類類型開頭（目前只有 Claude 的 policy 渲染這些條款）。完整規則在各 host 的 orchestration
 policy（例如
-`hosts/claude/dist/skills/shoal-orchestration/references/orchestration-policy.md`）
+`plugins/claude/skills/shoal-orchestration/references/orchestration-policy.md`）
 。
 
 ![呼叫鏈：互動形態、風險判斷、五道關卡與各 host 的執行時機制](./assets/shoal-call-chain.svg)
@@ -70,9 +70,7 @@ tools/render.py            renderer 與 --check
 tools/install_grok.py      由 committed HEAD 安裝 grok host（預設 dry-run）
 tools/check_links.py       文件相對連結檢查
 install/                   安裝器與其依賴（install.sh、install.py、AGENT-INSTALL.md 等）
-bench/                     benchmark 與評測腳本（不參與安裝）
 tests/fixtures/install-history/previous/  舊版 role 位元組，供升級測試當 fixture
-tests/golden/<host>/       各 host 的逐位元組基準
 upstream.lock              各 host 對應的上游與版本
 ```
 
@@ -94,7 +92,7 @@ python3 tools/render.py --host claude --write
 （`plugins/claude/`、`plugins/claude-guard/`、
 `.claude-plugin/marketplace.json`），不是第六個 host。
 修改 core 或 binding 後先 `--write`，再跑
-`python3 -m unittest discover -s tests` 確認 golden 差異是預期的。
+`python3 -m unittest discover -s tests` 確認輸出差異是預期的。
 
 ### 新增 host
 
@@ -107,7 +105,7 @@ python3 tools/render.py --host claude --write
 | Host | 目前的安裝方式 |
 | --- | --- |
 | Codex CLI | 本檔前半的 Codex 章節，腳本在 `install/install.sh` |
-| Claude Code | 取用 `hosts/claude/dist`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
+| Claude Code | 取用 `plugins/claude`，由 dotfile auto-update 安裝；dispatch guard：`python3 tools/install_hooks.py --host claude`（預設 dry-run，`--apply` 才寫入），見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Claude Code plugin | `claude plugin marketplace add miyago9267/shoal#v<版本>` 再 `claude plugin install shoal@shoal`（釘 tag；與全域 guard 同時存在時只判斷一次；state 與 log 在 `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`，uninstall 不刪），見 [本檔](./install/claude.md#claude-code-plugin) |
 | Gemini/agy | `hosts/agy/dist`，由 dotfile `setup_gemini.sh` 連結；dispatch guard：`python3 tools/install_hooks.py --host agy`，見 [本檔](./guard.md#claude-code-與-geminiagy-的-dispatch-guard) |
 | Grok Build | `python3 tools/install_grok.py`（預設 dry-run，`--apply` 才寫入），見 [本檔](./install/grok.md#grok-build) |
@@ -156,8 +154,8 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 | 項目 | 版本 |
 | --- | --- |
 | shoal（產品） | 3.13.0-beta |
-| codex host | 3.13.0-beta（`hosts/codex/VERSION`） |
-| claude host | 3.13.0-beta（`hosts/claude/VERSION`） |
+| codex host | 3.13.1-beta（`hosts/codex/VERSION`） |
+| claude host | 3.13.6-beta（`hosts/claude/VERSION`） |
 | agy host | 3.13.0-beta（`hosts/agy/VERSION`） |
 | grok host | 3.13.0-beta（`hosts/grok/VERSION`） |
 | opencode host | 3.13.0-beta（`hosts/opencode/plugin/package.json`） |

@@ -49,7 +49,7 @@ Phase 1 只做 Claude host 把 `executor`、`applier` 交給 Codex。
 | D3 | runner | `tools/shoal_relay.py`，一支 Python 腳本（與 repo 其他工具一致）。輸入 vendor、role、cwd、brief 檔；負責組指令、關 stdin、逾時、收輸出、驗 schema，stdout 只印正規化後的 hand-back JSON。`[relay.roles]` 非空時（與 D3a 同一個條件），render 才把它打包進 plugin（`plugins/claude/tools/shoal_relay.py`），外殼以 `${CLAUDE_PLUGIN_ROOT}/tools/shoal_relay.py` 呼叫；安裝後的 host 不依賴 repo checkout |
 | D3a | relay 條款放哪 | relay 專用的 policy 條款放在 relay-only addendum，只有 `[relay.roles]` 非空時才併入 dist；沒開 relay 的 host，dist 與變更前位元組相同 |
 | D4 | hand-back 格式 | `core/contracts/handback.schema.json`：`status`（done / blocked / failed）、`summary`、`changed_files`、`checks`（cmd、exit、decisive_line）、`unverified`、`vendor`、`session_id`、`usage`。Codex 用 `--output-schema` 加 `-o` 取得；exit 0 但檔案空或不合 schema 視為 failed |
-| D5 | 寫入隔離 | write role 一律在 worktree 執行：Claude 端用 Agent 的 `isolation: "worktree"`，外殼與外部 CLI 都在該 worktree 裡跑；main 照現行方式整合。read-only role 不開 worktree |
+| D5 | 寫入隔離 | write role 一律在 worktree 執行：Claude 端用 Agent 的 `isolation: "worktree"`，外殼與外部 CLI 都在該 worktree 裡跑；main 照現行方式整合。read-only role 不開 worktree。2026-10-22 起 runner 在 vendor 回 `done` 且有改動時，自行把 worktree 對 HEAD 的改動（含未追蹤檔、binary）以 `git apply` 落到 primary checkout（不 commit、不動 index；落地條件以 F1 為準），結果記在 hand-back 的 `landing`，落地失敗不改 status，改動留在 `landing.worktree` 由 main 合併 |
 | D6 | 權限對應 | `read-only` -> Codex `--sandbox read-only`；`write`、`verify` -> `--sandbox workspace-write`（限 worktree）。每次呼叫都明確帶上 `-c approval_policy="never"`、`-c sandbox_workspace_write.writable_roots=[]`、`-c sandbox_workspace_write.network_access=false` 並關閉 MCP，不讓使用者的 `~/.codex/config.toml` 放寬邊界（實際 key 名以 T1.0 實測為準）。永不使用 `danger-full-access` 或 bypass 類旗標。security role 在 phase 1 不得 relay（render 時拒絕） |
 | D7 | 防止外部 agent 再派工 | Codex 也裝了 shoal，外部 session 會讀到 `~/.codex/AGENTS.md` 的 bootstrap 而開始派工。主要做法：runner 在 brief 開頭注入 role 標記（「你是 shoal named role `<role>`，只做被指派的事，不派 subagent」），named role 本來就會忽略 orchestration 段落。備援：runner 設 `SHOAL_RELAY_ROLE=<role>`，guard 讀到時把整個 session 當成該 named role。`--ignore-user-config` 會丟掉什麼（AGENTS.md、hooks、`spawn_agent`）由 T1.0 實測後再決定要不要用 |
 | D8 | 認證與計費 | runner 不動 credential。`shoal doctor` 檢查 vendor binary 存在、已登入，並在環境裡有 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 時警告「會改用 API 計費」 |
@@ -65,7 +65,7 @@ Decisions 衝突時，以此節為準。
 
 | # | 區域 / 嚴重度 | finding | 處置 |
 | --- | --- | --- | --- |
-| F1 | D5 / High | 任何 Bash 都能直接呼叫 runner，`-C` 填錯會寫進 main checkout | runner 在 `realpath(cwd)` 不是 linked worktree（`git rev-parse --git-dir` 等於 `--git-common-dir`）時回 `blocked`、不 spawn；只接受 `executor`、`applier` |
+| F1 | D5 / High | 任何 Bash 都能直接呼叫 runner，`-C` 填錯會寫進 main checkout | runner 只在 linked worktree spawn，只接受 executor、applier。vendor 回 done 後，runner 是唯一會寫 primary 的元件，只用 `git apply`（不 commit、不動 index）。落地前提：primary HEAD 等於 worktree base；受影響路徑在 primary 是 clean；`files_mismatch` 為 false；不含 `.git`、`.codex`、`.claude`、agent 指令檔或自動執行設定檔、symlink、submodule、exec-bit 變更；大小在上限內。任一條不成立就整份不落地，留給 main 檢查。`landing` 回報 head 和 tree 供 revert。verifier 通過前，落地內容一律視為未信任。 |
 | F2 | D6 / High | 只 pin sandbox 不夠：`multi_agent` 預設開、apps 流量繞過 proxy、`web_search` 預設 cached、`/tmp` 與 `$TMPDIR` 可寫、MCP 沒有全域開關 | 加 pin `features.multi_agent=false`、`features.apps=false`、`web_search="disabled"`、`sandbox_workspace_write.exclude_slash_tmp=true`；`TMPDIR` 設成每次新建的 mkdtemp；MCP 關法以實測生效的 key 為準。T1.0 跑 canary（寫 worktree 外、寫 `/tmp`、`curl`、`spawn_agent`、列 MCP tools）全部要失敗 |
 | F3 | D6 / Medium | trusted project 會載入 repo 的 `.codex/config.toml`、hooks、rules，未 pin 的 key 由 repo 決定 | 實測 worktree 的 trust 判定；能做到就強制 relay 為 untrusted，並確認 user 層 shoal guard hook 仍載入；repo 內的 `.codex/hooks.json` 不得觸發 |
 | F4 | D7 / Medium | brief 標記只是 prompt；codex host 預設 enforce，沒有 `SHOAL_RELAY_ROLE` 時 relay session 被當成 main，R1 會擋它改檔 | 主要控制改為 `multi_agent=false`；`SHOAL_RELAY_ROLE` 從備援改為必要條件（S1.11） |
@@ -138,3 +138,17 @@ Decisions 衝突時，以此節為準。
 - 輸出脆弱：stdin 一律關閉、`-o` 與 schema 同時檢查、逾時強制結束，都要有
   測試覆蓋（TESTS.md S1.3–S1.6）。
 - CLI 版本漂移：`core/vendors.toml` 記錄驗證過的最低版本，doctor 比對。
+
+## 啟用 relay（opt-in）
+
+relay 預設關閉，committed binding 不會開啟它。用 `--overlay` 在記憶體中把 overlay 合併進 claude
+binding 後再 render，不寫回 `hosts/*/binding.toml`。`--root` 請指向完整 repo 副本，否則會覆寫
+committed `plugins/claude`：
+
+```sh
+python3 tools/render.py --host claude-plugin --write --root <repo 副本> --overlay bench/ab/relay.binding.toml
+```
+
+- overlay 重複定義既有 key，或指定 security role，render 都會失敗（S1.9）。
+- 讓已安裝的 plugin 指向這個輸出：沒有既有路徑。`tools/shoal_install.py` 不接受 plugin 目錄（`--update`
+  只匯出 committed HEAD）。

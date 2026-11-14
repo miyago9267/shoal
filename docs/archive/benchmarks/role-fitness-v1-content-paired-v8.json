@@ -1,9 +1,0 @@
-{
-  "version": "role-fitness-content-probe-v1-paired-v8",
-  "generated": "2026-08-05",
-  "formal_claim": false,
-  "prompt_change": "Added a P0/P1-only blocker contract with explicit evidence; general best practices and P2 advice are not findings.",
-  "cohort": {"cases": 8, "clean_controls": 4, "risk_cases": 4, "accepted_arms": 16, "inconclusive": 0},
-  "switch_score": {"score": 5, "additional_findings": -2, "quality_delta": -7.135416666666667, "quality_ci": [-15.0, 0.0], "weighted_token_premium": 0.16757457378196428, "p95_wall_premium": -0.11863115493860188, "false_escalations": 0, "inconclusive": 0},
-  "interpretation": "The stricter blocker contract preserved clean-control safety and reduced p95 wall time, but Sol/high lost supported findings and quality. It is a hygiene improvement, not an 8/10 switching result."
-}

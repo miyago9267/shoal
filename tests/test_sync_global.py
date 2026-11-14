@@ -359,6 +359,13 @@ class AgyTests(Base):
             "symlink drift: agents/scout 不是 symlink", self.sync("--host", "agy")[1][0]
         )
 
+    def test_no_role_links_is_not_drift(self) -> None:
+        (self.home / ".gemini" / "config").mkdir(parents=True)
+        code, lines = self.sync("--host", "agy")
+        self.assertEqual(code, 0)
+        self.assertIn("roles not installed", lines[0])
+        self.assertNotIn("drift", lines[0])
+
     def test_manifest_without_dispatch_guard_skips_guard_hooks(self) -> None:
         self.links()
         self.assertIn("guard hooks", self.sync("--host", "agy")[1][0])
