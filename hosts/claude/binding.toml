@@ -102,3 +102,10 @@ effort = "high"
 model = "haiku"
 access = "read-only"
 effort = "low"
+
+# 安裝時探測（shoal_install.py --update）：清單中第一個可用的模型取代 dist 的 model；都不可用就沿用 dist。
+# 直接從 marketplace 安裝、沒跑 --update 的人不會探測，用的就是 dist（security 是 opus、plan-critic 是 fable）。
+# Mythos 需要 CVP 等驗證計畫；security role 掉回 opus 而不是 fable（fable 會擋多數資安請求）。
+[probe.roles]
+security-reviewer = ["claude-mythos-5-2"]
+plan-critic = ["claude-mythos-5-2"]

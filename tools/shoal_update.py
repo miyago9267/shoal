@@ -23,11 +23,13 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Mapping, Optional
@@ -46,10 +48,60 @@ GUARD_SOURCE_FILE = (
     "hooks/shoal_guard.py"  # repo 內的 guard 正本；guard plugin 內的副本必須相同
 )
 CLI_TIMEOUT = 120
+PROBE_TIMEOUT = 60
+# Claude Code 對不存在或沒有權限的模型回的訊息（2026-11-14，2.1.325 實測）
+MODEL_UNAVAILABLE = "issue with the selected model"
+# 會解析成其他模型的 alias；security role 不接受，避免間接落到 fable 或 main 的模型
+INDIRECT_ALIASES = {"best", "inherit", "opusplan", "default"}
+# YAML 1.1 會解析成 bool 或 null 的字
+YAML_RESERVED = {"true", "false", "yes", "no", "on", "off", "null", "y", "n"}
 
 
 class UpdateError(Exception):
     pass
+
+
+OVERLAY_MODEL = re.compile(r"[a-z][a-z0-9.-]*(\[[a-z0-9]+\])?")
+FRONTMATTER_MODEL = re.compile(r"^model: .*$", re.MULTILINE)
+
+
+def overlay_path(env: Mapping[str, str]) -> Path:
+    base = env.get("XDG_CONFIG_HOME") or str(Path(env.get("HOME", str(Path.home()))) / ".config")
+    return Path(base) / "shoal" / "claude.local.toml"
+
+
+def model_lines(root: Path) -> dict[str, str]:
+    out = {}
+    for path in sorted((root / "plugins" / "claude" / "agents").glob("*.md")):
+        match = FRONTMATTER_MODEL.search(path.read_text(encoding="utf-8").partition("\n---\n")[0])
+        out[path.stem] = match.group(0) if match else ""
+    return out
+
+
+def content_digest(root: Path) -> str:
+    """marketplace 內容的 sha256，忽略 agent frontmatter 的 model 行（本機 overlay 與探測會改它）。"""
+    h = hashlib.sha256()
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        data = path.read_bytes()
+        if path.suffix == ".md" and path.parent.name == "agents":
+            data = FRONTMATTER_MODEL.sub("model:", data.decode("utf-8", "replace"), count=1).encode()
+        h.update(path.relative_to(root).as_posix().encode() + b"\0" + data + b"\0")
+    return h.hexdigest()
+
+
+def apply_overlay(stage: Path, overlay: Mapping[str, str]) -> None:
+    """把 overlay {role: model} 寫進 stage 內 core plugin 的 agents/<role>.md frontmatter（local-role-model-overlay D2）。"""
+    agents = stage / "plugins" / "claude" / "agents"
+    for role, model in overlay.items():
+        path = agents / f"{role}.md"
+        if not path.is_file():
+            raise UpdateError(f"overlay 指定的 role 不存在：{role}")
+        text = path.read_bytes().decode("utf-8")
+        head, sep, body = text.partition("\n---\n")
+        new, count = FRONTMATTER_MODEL.subn(f"model: {model}", head, count=1)
+        if count != 1 or not sep:
+            raise UpdateError(f"{role}.md 的 frontmatter 沒有 model 行")
+        path.write_bytes((new + sep + body).encode("utf-8"))  # 保留 LF；write_text 在 Windows 會轉成 CRLF
 
 
 @contextmanager
@@ -116,6 +168,14 @@ class Updater:
             env
         ).parent  # ${XDG_DATA_HOME:-~/.local/share}/shoal
         self.mp = self.data / "claude-marketplace"
+        self._overlay: Optional[dict[str, str]] = None
+        self._role_models: Optional[dict[str, str]] = None
+        self._catalog: Optional[tuple[dict, set[str], set[str]]] = None
+        self._binding: dict = {}
+        self._probed: dict[str, str] = {}
+        self._uninstalled: list[str] = []
+        self._model_flip = False
+        self._content_changed = True
 
     # ---- output ----
     def emit(self, step: str, status: str, detail: str = "") -> None:
@@ -179,6 +239,146 @@ class Updater:
             *dict.fromkeys(p["source"] for p in plugins.values()),
         ]
         return paths, plugins
+
+    # ---- role model：probe 與 local overlay ----
+    def role_models(self) -> dict[str, str]:
+        """安裝時要寫進 agents/<role>.md 的 model（local-role-model-overlay D10）：overlay > probe > dist。"""
+        if self._role_models is None:
+            self._role_models = {**self.probe_picks(), **self.overlay()}
+        return self._role_models
+
+    def catalog(self) -> tuple[dict, set[str], set[str]]:
+        """HEAD 的 (core roles, 已知 role 名稱, security role 不可用的 flagged alias)。"""
+        if self._catalog is None:
+            try:
+                roles = tomllib.loads(self.blob("core/roles.toml").decode())["roles"]
+                models = tomllib.loads(self.blob("core/models.toml").decode())["models"]
+                binding = tomllib.loads(self.blob("hosts/claude/binding.toml").decode())
+                aliases = binding["models"]
+            except (tomllib.TOMLDecodeError, KeyError, UnicodeDecodeError) as exc:
+                raise UpdateError(f"core 或 claude binding 無法解析: {exc}") from exc
+            flagged = {
+                aliases[key]
+                for key, spec in models.items()
+                if key in aliases and "refuses_defensive_security" in spec.get("flags", [])
+            }
+            self._binding = binding
+            # extra_roles（Explore）由 update_explore() 另外安裝使用者層級的檔案，plugin 內的覆寫不會生效
+            self._catalog = (roles, set(roles), flagged)
+        return self._catalog
+
+    def check_role_model(self, source: str, role: str, model: object) -> str:
+        roles, known, flagged = self.catalog()
+        if role not in known:
+            raise UpdateError(f"{source} 指定了未知的 role（只接受 core/roles.toml 的名稱）")
+        if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model) or model in YAML_RESERVED:
+            raise UpdateError(f"{source} 的 {role} model 格式不合法")
+        if roles.get(role, {}).get("security") and model in INDIRECT_ALIASES:
+            raise UpdateError(f"security role {role} 不可指定間接 alias {model}")
+        if roles.get(role, {}).get("security") and flagged & set(re.split(r"[-.\[\]]", model)):
+            raise UpdateError(f"security role {role} 不可指定帶 refuses_defensive_security 的 {model}")
+        return model
+
+    def overlay(self) -> dict[str, str]:
+        """讀取並驗證本機覆寫檔（D1、D3）；不存在時回傳空 dict。"""
+        if self._overlay is None:
+            self._overlay = self.read_overlay()
+        return self._overlay
+
+    def read_overlay(self) -> dict[str, str]:
+        path = overlay_path(self.env)
+        if not path.is_file():
+            return {}
+        try:
+            doc = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+            raise UpdateError(f"{path} 無法解析: {exc}") from exc
+        if set(doc) != {"roles"} or not isinstance(doc["roles"], dict):
+            raise UpdateError(f"{path} 只能有 [roles.<name>]")
+        out = {}
+        for role, spec in doc["roles"].items():
+            if not isinstance(spec, dict) or set(spec) != {"model"}:
+                raise UpdateError(f"{path} 的每個 [roles.<name>] 只能有 model")
+            out[role] = self.check_role_model(str(path), role, spec["model"])
+        return out
+
+    def probe_picks(self) -> dict[str, str]:
+        """binding `[probe.roles]` 每個 role 取清單中第一個可用的模型（D8、D9）。
+        明確不可用就試下一個，都不可用沿用 dist；無法判定時沿用目前已安裝的 model，不翻轉（D12）。"""
+        table = self.probe_table()
+        if not isinstance(table, dict) or not all(isinstance(v, list) for v in table.values()):
+            raise UpdateError("claude binding 的 [probe.roles] 必須是 role -> 模型清單")
+        for role, candidates in table.items():
+            for model in candidates:
+                self.check_role_model("claude binding [probe.roles]", role, model)
+        exe = si.which("claude", self.env)
+        picks = {}
+        for role, candidates in table.items():
+            for model in candidates:
+                state = self.probe(exe, model) if exe else "no"
+                if state == "yes":
+                    picks[role] = model
+                    break
+                if state == "unknown":
+                    installed = self.installed_model(role)
+                    if installed:
+                        picks[role] = self.check_role_model("已安裝的 marketplace", role, installed)
+                    break
+        return picks
+
+    def probe_table(self) -> dict:
+        self.catalog()
+        return self._binding.get("probe", {}).get("roles", {})
+
+    def installed_model(self, role: str) -> Optional[str]:
+        try:
+            head = (self.mp / "plugins" / "claude" / "agents" / f"{role}.md").read_text(encoding="utf-8").partition("\n---\n")[0]
+        except OSError:
+            return None
+        match = FRONTMATTER_MODEL.search(head)
+        return match.group(0)[len("model: "):] if match else None
+
+    def allowed_by_settings(self, model: str) -> bool:
+        """使用者 settings 有 availableModels 時，不在清單內的模型 Claude Code 不會用（D13）。"""
+        base = self.env.get("CLAUDE_CONFIG_DIR") or str(Path(self.env.get("HOME", str(Path.home()))) / ".claude")
+        try:
+            allowed = json.loads((Path(base) / "settings.json").read_text(encoding="utf-8")).get("availableModels")
+        except (OSError, ValueError, AttributeError):
+            return True
+        return not isinstance(allowed, list) or model in allowed
+
+    def probe(self, exe: str, model: str) -> str:
+        """回傳 yes（可用）、no（明確不可用）、unknown（timeout、overload、輸出無法解析）。"""
+        if model not in self._probed:
+            state = "no" if not self.allowed_by_settings(model) else self.run_probe(exe, model)
+            self._probed[model] = state
+            label = {"yes": "available", "no": "unavailable", "unknown": "inconclusive"}[state]
+            self.emit("probe", "up-to-date" if state == "yes" else "skipped", f"{model} {label}")
+        return self._probed[model]
+
+    def run_probe(self, exe: str, model: str) -> str:
+        with tempfile.TemporaryDirectory(prefix="shoal-probe-") as cwd:
+            try:
+                proc = subprocess.run(
+                    [exe, "-p", "--model", model, "--tools", "", "--setting-sources", "",
+                     "--strict-mcp-config", "--no-session-persistence", "--max-turns", "1",
+                     "--output-format", "json", "Reply OK"],
+                    env=dict(self.env), cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
+                    text=True, encoding="utf-8", errors="replace", timeout=PROBE_TIMEOUT,
+                )
+                text = proc.stdout
+                doc = json.loads(text[text.find("{"):]) if proc.returncode == 0 and "{" in text else None
+            except (OSError, subprocess.TimeoutExpired, ValueError):
+                doc = None
+        if not isinstance(doc, dict):
+            return "unknown"
+        if doc.get("is_error") is False and model in (doc.get("modelUsage") or {}):
+            return "yes"
+        return "no" if MODEL_UNAVAILABLE in str(doc.get("result", "")) else "unknown"
+
+    def export_marketplace(self, paths: list[str], dest: Path) -> None:
+        self.export(paths, dest)
+        apply_overlay(dest, self.role_models())
 
     # ---- cleanup ----
     def cleanup(self) -> None:
@@ -299,6 +499,8 @@ class Updater:
                 continue
             row = installed.get(pid)
             source = plugins[name]["version"]
+            # 只有 agent 的 model 行翻轉時，其他 plugin 的內容沒變，不算 changed
+            changed_here = changed and (self._content_changed or name == CORE_PLUGIN)
             if row is None:
                 verb = "install"
             elif (
@@ -308,7 +510,10 @@ class Updater:
             ):
                 # beta -> stable：plugin manager 用純 SemVer，會把 stable 當成較舊，先移除再裝。
                 verb = "reinstall"
-            elif changed or (
+            elif changed_here and self._model_flip and name == CORE_PLUGIN and row.get("version") == source:
+                # 只有本機 role model（overlay、探測）翻轉時沒有版本可升；plugin update 不刷新 cache，改成先移除再裝（D7）。
+                verb = "reinstall"
+            elif changed_here or (
                 row.get("version")
                 and plugins[name]["version"]
                 and row["version"] != plugins[name]["version"]
@@ -326,6 +531,10 @@ class Updater:
                     code, text = self.claude(exe, "plugin", sub, pid)
                     if code != 0:
                         return out, f"claude plugin {sub} {pid} exit {code}: {_last(text)}"
+                    if sub == "uninstall":
+                        self._uninstalled.append(pid)
+                    elif pid in self._uninstalled:
+                        self._uninstalled.remove(pid)
             out.append((step, "updated", verb))
         return out, None
 
@@ -383,7 +592,11 @@ class Updater:
                 )
             else:
                 stage = Path(scratch.name) / "stage"  # type: ignore[union-attr]
-            self.export(paths, stage)
+            self.export_marketplace(paths, stage)
+            self._model_flip = self.mp.is_dir() and model_lines(stage) != model_lines(self.mp)
+            self._content_changed = not self.mp.is_dir() or content_digest(stage) != content_digest(self.mp)
+            if self.role_models():
+                self.emit("overlay", "applied", ", ".join(f"{r}={m}" for r, m in sorted(self.role_models().items())))
             changed = not self.mp.is_dir() or si.tree_digest(stage) != si.tree_digest(
                 self.mp
             )
@@ -391,6 +604,8 @@ class Updater:
                 shutil.rmtree(stage, ignore_errors=True)
                 self.emit("marketplace", "up-to-date")
                 results, error = self.claude_steps(exe, False, plugins)
+                if error is not None:
+                    self.restore_uninstalled(exe)
             elif not self.apply:
                 self.emit("marketplace", "updated", "內容與 HEAD 不同")
                 results, error = self.claude_steps(exe, True, plugins)
@@ -407,6 +622,7 @@ class Updater:
                     self.emit("marketplace", "updated", "swapped")
                 else:
                     self.emit("marketplace", "failed", f"{error}; 已還原")
+                    self.restore_uninstalled(exe)
                     results = []
             if not (self.apply and changed):
                 if error is not None:
@@ -420,6 +636,20 @@ class Updater:
                 for leftover in self.data.glob(".claude-marketplace.*"):
                     shutil.rmtree(leftover, ignore_errors=True)
         self.update_explore()
+
+    def restore_uninstalled(self, exe: str) -> None:
+        """reinstall 途中失敗時，swap 只還原目錄；已 uninstall 的 plugin 用還原後的 marketplace 裝回去（T3.5）。"""
+        if not self._uninstalled or not self.mp.is_dir():
+            return
+        code, text = self.claude(exe, "plugin", "marketplace", "update", MARKETPLACE_NAME)
+        for pid in list(self._uninstalled):
+            if code == 0:
+                code, text = self.claude(exe, "plugin", "install", pid)
+            ok = code == 0
+            self.emit(f"claude plugin {pid}", "failed",
+                      "restored previous install" if ok else f"restore failed: {_last(text)}")
+            if ok:
+                self._uninstalled.remove(pid)
 
     def update_explore(self) -> None:
         mods = si.manifest_modules(self.env, "claude")
@@ -551,7 +781,7 @@ class Updater:
         paths, plugins = self.marketplace_info()
         with tempfile.TemporaryDirectory(prefix="shoal-verify-") as tmp:
             fresh = Path(tmp) / "fresh"
-            self.export(paths, fresh)
+            self.export_marketplace(paths, fresh)
             expected, actual = si.tree_digest(fresh), si.tree_digest(self.mp)
         if expected != actual:
             self.emit(

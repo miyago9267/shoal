@@ -39,3 +39,21 @@ binding。規則細節見 [core/README.md](../core/README.md)。
 - `[root].model`（Codex）、`[extra_roles.*].model` 是 host 專屬的手動
   指定，不經規則。
 - 沒有模型滿足某個 role 時，render 以 exit 2 失敗並指出 host 與 role。
+
+## 本機覆寫（只有 Claude host）
+
+只有自己帳號能用的模型（例如 CVP 提供的 Mythos）不寫進 repo，改寫在
+`${XDG_CONFIG_HOME:-~/.config}/shoal/claude.local.toml`：
+
+```toml
+[roles.security-reviewer]
+model = "claude-mythos-5-2"
+```
+
+- `shoal_install.py --update --apply` 匯出 HEAD 後，改寫安裝內容中該 role 的
+  `model:` 行，輸出一行 `overlay: applied (...)`；repo 的 dist 與 golden 不變。
+- 只接受 `[roles.<name>].model`。role 不存在、出現其他 key、model 格式不合法，
+  或把帶 `refuses_defensive_security` 的模型指定給 security role，update 都會失敗，
+  不會安裝。
+- 模型無法使用時，Claude Code 會依 `fallbackModel` 改用其他模型，只在回覆前加一行
+  提示，不會報錯。看到這行提示時，該次 review 結果不可採用。
