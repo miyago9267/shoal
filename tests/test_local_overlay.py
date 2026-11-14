@@ -280,6 +280,38 @@ class OverlayTests(UpdateBase):
         self.assertNotIn("plugin uninstall shoal@shoal", self.calls()[before:])
         self.assertIn("版本沒升", out)
 
+    def test_explore_is_not_overridable(self) -> None:
+        # update_explore() 裝的是使用者層級的 Explore.md，plugin 內的覆寫不會生效
+        self.assert_rejected('[roles.Explore]\nmodel = "sonnet"\n')
+
+    def test_overlay_preserves_lf_bytes(self) -> None:
+        self.write_overlay('[roles.security-reviewer]\nmodel = "claude-mythos-5-2"\n')
+        self.update("--apply")
+        data = (self.mp / f"{AGENTS}/security-reviewer.md").read_bytes()
+        self.assertNotIn(b"\r\n", data)
+        self.assertEqual(data, self.head(f"{AGENTS}/security-reviewer.md").replace(b"\nmodel: opus\n", b"\nmodel: claude-mythos-5-2\n", 1))
+
+    def test_channel_switch_reinstall_failure_restores_plugin(self) -> None:
+        self.update("--apply")
+        (self.state / "claude.version").write_text("3.11.1")
+        marketplace_info = shoal_update.Updater.marketplace_info
+
+        def stable_marketplace(updater):
+            paths, plugins = marketplace_info(updater)
+            for info in plugins.values():
+                info["version"] = "1.0.0"
+            return paths, plugins
+
+        (self.state / "claude.fail_match").write_text("plugin install shoal@shoal")
+        with (
+            mock.patch.object(shoal_update.Updater, "source_stable", return_value=True),
+            mock.patch.object(shoal_update.Updater, "marketplace_info", stable_marketplace),
+        ):
+            code, out, err = self.update("--apply")
+        self.assertNotEqual(code, 0, out + err)
+        db = json.loads((self.state / "claude.json").read_text())
+        self.assertIn("shoal@shoal", db["plugins"])
+
     def test_flagged_model_on_non_security_role_is_allowed(self) -> None:
         self.write_overlay('[roles.verifier]\nmodel = "fable"\n')
         code, out, err = self.update("--apply")

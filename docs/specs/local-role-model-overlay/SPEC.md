@@ -57,8 +57,9 @@ Claude host，用來把 `security-reviewer` 換成 `claude-mythos-5-2`。
   之後、計算 `tree_digest` 之前，改寫 stage 內 `agents/<name>.md` frontmatter 的
   `model:` 行。`verify()` 對 fresh export 做同一個轉換再比 sha256，兩邊用同一個
   函式。repo 的 dist、golden 與 `render.py --check` 完全不變。
-- D3 驗證：role 必須是 `core/roles.toml` 或 claude binding `[extra_roles]` 的名稱
-  （同時擋掉路徑型 key，例如 `../x`、`./security-reviewer`、絕對路徑）；model 值只允許
+- D3 驗證：role 必須是 `core/roles.toml` 的名稱（`Explore` 由 `update_explore()` 另裝
+  使用者層級的檔案，覆寫不會生效，所以不接受；同時擋掉路徑型 key，例如 `../x`、
+  `./security-reviewer`、絕對路徑）；model 值只允許
   `[a-z][a-z0-9.-]*(\[[a-z0-9]+\])?`，避免寫出會改變 YAML 型別的值；security role 的
   model 以 `-`、`.`、`[`、`]` 切開後，任何一段等於帶 `refuses_defensive_security` 的
   alias（例如 `fable`、`fable[1m]`、`claude-fable-5-2`）都拒絕。違反時 update 以非零 exit

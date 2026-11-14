@@ -43,3 +43,11 @@
 - T3.5 完成：reinstall 途中 install 失敗時，swap 還原目錄後用還原的 marketplace 補裝已 uninstall
   的 plugin，輸出 `restored previous install`。測試用 fake CLI 的 `fail_match` 先紅後綠。
 - T3.6 阻塞：policy 文件都在 lock 上限，需要 lock renewal 與升版（release），等 Miyago 決定。
+- PR #50：rebase 到 origin/main（落後 71 commit），以 merge 方式推送避免 force push。
+  與 #42 的同版本 skip 整合：只有 agent model 行翻轉才 reinstall core plugin，guard
+  與其他內容變動維持 #42 的升版提示。
+- fresh verifier（opus）CONFIRMED；advisory（guard 跟著 reinstall、YAML 保留字）已修。
+- Copilot review 5 則：已修 Windows CRLF（改 `write_bytes`）、不接受 `[roles.Explore]`、
+  channel switch reinstall 失敗也補裝。記錄不修：core reinstall 成功而 guard 失敗時
+  core cache 暫時領先，下一次 update 自癒；marketplace 指向 GitHub 的安裝不跑
+  `--update`，用的就是 dist。

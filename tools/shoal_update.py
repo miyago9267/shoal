@@ -96,12 +96,12 @@ def apply_overlay(stage: Path, overlay: Mapping[str, str]) -> None:
         path = agents / f"{role}.md"
         if not path.is_file():
             raise UpdateError(f"overlay 指定的 role 不存在：{role}")
-        text = path.read_text(encoding="utf-8")
+        text = path.read_bytes().decode("utf-8")
         head, sep, body = text.partition("\n---\n")
         new, count = FRONTMATTER_MODEL.subn(f"model: {model}", head, count=1)
         if count != 1 or not sep:
             raise UpdateError(f"{role}.md 的 frontmatter 沒有 model 行")
-        path.write_text(new + sep + body, encoding="utf-8")
+        path.write_bytes((new + sep + body).encode("utf-8"))  # 保留 LF；write_text 在 Windows 會轉成 CRLF
 
 
 @contextmanager
@@ -263,13 +263,14 @@ class Updater:
                 if key in aliases and "refuses_defensive_security" in spec.get("flags", [])
             }
             self._binding = binding
-            self._catalog = (roles, set(roles) | set(binding.get("extra_roles", {})), flagged)
+            # extra_roles（Explore）由 update_explore() 另外安裝使用者層級的檔案，plugin 內的覆寫不會生效
+            self._catalog = (roles, set(roles), flagged)
         return self._catalog
 
     def check_role_model(self, source: str, role: str, model: object) -> str:
         roles, known, flagged = self.catalog()
         if role not in known:
-            raise UpdateError(f"{source} 指定了未知的 role（只接受 core/roles.toml 與 extra_roles 的名稱）")
+            raise UpdateError(f"{source} 指定了未知的 role（只接受 core/roles.toml 的名稱）")
         if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model) or model in YAML_RESERVED:
             raise UpdateError(f"{source} 的 {role} model 格式不合法")
         if roles.get(role, {}).get("security") and model in INDIRECT_ALIASES:
@@ -603,6 +604,8 @@ class Updater:
                 shutil.rmtree(stage, ignore_errors=True)
                 self.emit("marketplace", "up-to-date")
                 results, error = self.claude_steps(exe, False, plugins)
+                if error is not None:
+                    self.restore_uninstalled(exe)
             elif not self.apply:
                 self.emit("marketplace", "updated", "內容與 HEAD 不同")
                 results, error = self.claude_steps(exe, True, plugins)
