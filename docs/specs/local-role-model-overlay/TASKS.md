@@ -37,7 +37,10 @@
   （Mythos，$1.85）審 P3 diff。
 - [x] T3.4 處理 T3.3 審查：F3 三態探測（D12）、F2 `availableModels`（D13）、F4 間接 alias、
   F5 先驗整張表、F6 隱私說明與 `--no-session-persistence`。
-- [ ] T3.5 reinstall 時 uninstall 成功但 install 失敗，swap 只還原目錄、不會補裝 plugin
+- [x] T3.5 reinstall 時 uninstall 成功但 install 失敗，swap 只還原目錄、不會補裝 plugin
   （F3 後半；channel switch 既有同樣風險）。
 - [ ] T3.6 D6 進 policy（F1，即 T1.4a）：探測成功後到下次 update 之間失去資格，會落到全域
-  `fallbackModel`；`plan-critic` 也要涵蓋。
+  `fallbackModel`；`plan-critic` 也要涵蓋。阻塞：`claude-workflow-extensions` 已達 9600 bytes
+  上限（精簡改寫後仍需 9655），`claude-orchestration-policy` 只剩 2 bytes、codex bootstrap
+  只剩 5 bytes；必須 lock renewal（`lock-renewal` label 或 `Lock-Renewal: approved`）加上
+  host VERSION 升版，屬於 release，等 Miyago 決定。

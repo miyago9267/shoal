@@ -37,3 +37,6 @@
   `[probe.roles]` 探測；實機在沒有 overlay 下由探測升級兩個 role。
 - T3.3 審查（Mythos，$1.85）6 個 finding：F2–F6 已修（D11–D13）；F3 後半（reinstall 補裝）與
   F1（D6 進 policy）列為 T3.5、T3.6。
+- T3.5 完成：reinstall 途中 install 失敗時，swap 還原目錄後用還原的 marketplace 補裝已 uninstall
+  的 plugin，輸出 `restored previous install`。測試用 fake CLI 的 `fail_match` 先紅後綠。
+- T3.6 阻塞：policy 文件都在 lock 上限，需要 lock renewal 與升版（release），等 Miyago 決定。
