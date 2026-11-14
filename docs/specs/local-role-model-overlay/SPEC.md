@@ -1,0 +1,96 @@
+# local-role-model-overlay：本機為個別 role 換模型（Mythos 用於 security-reviewer）
+
+狀態：草稿，待 Miyago 核准。
+
+## Background
+
+Miyago 2026-11-14 以個人方案取得 CVP（Cyber Verification Program）Defense
+Access。查證結果（[Help Center](https://support.claude.com/zh-TW/articles/14604842)、
+[Fable/Mythos 5.2 發布頁](https://www.anthropic.com/claude-fable-and-mythos-5-2)）：
+
+1. 個人只能申請 Defense Access：SOC、事件回應、惡意軟體分析、偵測工程、
+   漏洞分類與驗證。Red Team（攻擊工具、exploit 開發）限 Team、Enterprise、
+   API 組織。
+2. CVP 各層級包含 Mythos 5.2、Mythos 5.1、Opus 5.5、Sonnet 5.5。
+3. Mythos 與 Fable 是同一個底層模型，差在 safeguards。Fable 5.2 "will block
+   most cybersecurity-related tasks"，被擋的 cyber 請求改由 Opus 4.8 回答。
+4. Mythos 5.2 對 Opus 5.5：CVE Rediscovery 89.6% 對 81.3%，CyScenarioBench
+   76.3% 對 67.6%（Anthropic 自報）。價格與 Fable 相同（$8 / $40 per M tokens）。
+5. 本機 Claude Code 2.1.325，model catalog 有 `claude-mythos-5-2`
+   （`early_access`，最低 2.1.290）。
+
+現況（main `76454d0` 查證）：
+
+- `security-reviewer`、`security-executor` 是 strong tier，resolver 選 opus。
+  fable 帶 `refuses_defensive_security`，security role 選不到它。
+- shoal 是公開 repo，dist 進版控；`tools/shoal_update.py` 用 `git archive HEAD`
+  匯出 marketplace，再以 sha256 比對安裝結果。repo 內沒有任何本機覆寫機制，
+  gitignored 檔案也不會進入安裝內容。
+
+## Goal
+
+讓單一使用者在本機替指定 role 換模型，不改 repo 的預設 dist。Phase 1 只做
+Claude host，用來把 `security-reviewer` 換成 `claude-mythos-5-2`。
+
+## Non-goals
+
+- 不把 Mythos 寫進 `core/models.toml` 或任何 host 的 `binding.toml`：CVP 綁
+  帳號，別人 render 出來會指定到用不了的模型。
+- 不改 `security-executor`：它照已核准的 contract 實作，嚴謹度在 review 關卡。
+- 不改 `plan-critic`：Fable 與 Mythos 一般能力相同，換了沒有收益。
+- 不新增紅隊 role：Defense Access 不涵蓋攻擊性工作。
+- PMS 的資安補強不在本 spec；它是 P2 的第一個實際使用案例，在 PMS repo 另開工作。
+
+## Decisions
+
+- D1 覆寫檔放在 repo 外：`${XDG_CONFIG_HOME:-~/.config}/shoal/claude.local.toml`。
+  不放 repo 內，避免換 checkout 時遺失，也避免誤 commit。格式：
+
+  ```toml
+  [roles.security-reviewer]
+  model = "claude-mythos-5-2"
+  ```
+
+  phase 1 只接受 `[roles.<name>].model`，其他 key 一律報錯。
+- D2 在安裝時套用，不在 render 時套用。`ShoalUpdate.export()` 匯出 marketplace
+  之後、計算 `tree_digest` 之前，改寫 stage 內 `agents/<name>.md` frontmatter 的
+  `model:` 行。`verify()` 對 fresh export 做同一個轉換再比 sha256，兩邊用同一個
+  函式。repo 的 dist、golden 與 `render.py --check` 完全不變。
+- D3 驗證：role 必須是 `core/roles.toml` 或 claude binding `[extra_roles]` 的名稱
+  （同時擋掉路徑型 key，例如 `../x`、`./security-reviewer`、絕對路徑）；model 值只允許
+  `[a-z][a-z0-9.-]*(\[[a-z0-9]+\])?`，避免寫出會改變 YAML 型別的值；security role 的
+  model 以 `-`、`.`、`[`、`]` 切開後，任何一段等於帶 `refuses_defensive_security` 的
+  alias（例如 `fable`、`fable[1m]`、`claude-fable-5-2`）都拒絕。違反時 update 以非零 exit
+  失敗，不安裝。
+- D4 覆寫檔不存在時，行為與變更前位元組相同。
+- D7 marketplace 內容改變但 plugin 版本相同時，改成 `claude plugin uninstall` 再
+  `install`。2026-11-14 實測：版本相同時 `claude plugin update` 回報 already at the
+  latest version，不刷新 cache，overlay 的新增與移除都到不了 Claude Code。
+- D5 `--update` 的輸出在套用覆寫時加一行 `overlay: applied (security-reviewer=claude-mythos-5-2)`，
+  讓覆寫在 log 中可見。
+
+## Open questions
+
+- O1 個人方案用 Mythos 的計費方式（訂閱額度或 usage credits）查不到官方說明。
+  `security-reviewer` 是 effort high，若消耗過快，改成 effort medium 或只在
+  明確的資安任務才手動指定。T0.2 實測後決定。
+- O2（T0.1 已確認）完整 model ID 可用：`claude-mythos-5-2` 的 subagent 實際以
+  該 ID 執行。不可用的 ID 不會報錯，會依 `fallbackModel` 改用 Sonnet 5.5，只在
+  agent 回覆前加一行 "This agent switched to Sonnet 5.5 because its earlier model
+  could not be used."。
+
+## Fallback 降級
+
+CVP 資格失效或 Mythos 下架時，`security-reviewer` 會降到 Sonnet 5.5，低於
+strong tier，比預設的 opus 更差。D6：main 收到 `security-reviewer` 回覆時，
+若含上述 fallback 提示，視為 INCONCLUSIVE，改用未覆寫的 opus 重派。phase 1
+寫進 orchestration policy 的 security 條款；是否由 guard 自動偵測，P1 後再評估。
+
+## Risks
+
+- 覆寫讓本機安裝內容與 HEAD 不同；D2 讓 verify 一起轉換，避免誤判為損壞。
+- CVP 要求資料保留：派給 Mythos 的內容會被 Anthropic 保留以監控濫用。PMS
+  的 secret 與客戶資料不得放進 brief（沿用 shared contract 的 secret 規則）。
+- 本機的 `SHOAL_ROOT` 未設定，`agent-stack-auto-update.sh` 預設的
+  `~/Project/Active/shoal` 不存在，自動更新目前會失敗；P1 驗收前需先修正，
+  否則覆寫不會被套用。

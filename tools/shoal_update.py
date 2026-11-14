@@ -23,11 +23,13 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Mapping, Optional
@@ -50,6 +52,30 @@ CLI_TIMEOUT = 120
 
 class UpdateError(Exception):
     pass
+
+
+OVERLAY_MODEL = re.compile(r"[a-z][a-z0-9.-]*(\[[a-z0-9]+\])?")
+FRONTMATTER_MODEL = re.compile(r"^model: .*$", re.MULTILINE)
+
+
+def overlay_path(env: Mapping[str, str]) -> Path:
+    base = env.get("XDG_CONFIG_HOME") or str(Path(env.get("HOME", str(Path.home()))) / ".config")
+    return Path(base) / "shoal" / "claude.local.toml"
+
+
+def apply_overlay(stage: Path, overlay: Mapping[str, str]) -> None:
+    """把 overlay {role: model} 寫進 stage 內 core plugin 的 agents/<role>.md frontmatter（local-role-model-overlay D2）。"""
+    agents = stage / "plugins" / "claude" / "agents"
+    for role, model in overlay.items():
+        path = agents / f"{role}.md"
+        if not path.is_file():
+            raise UpdateError(f"overlay 指定的 role 不存在：{role}")
+        text = path.read_text(encoding="utf-8")
+        head, sep, body = text.partition("\n---\n")
+        new, count = FRONTMATTER_MODEL.subn(f"model: {model}", head, count=1)
+        if count != 1 or not sep:
+            raise UpdateError(f"{role}.md 的 frontmatter 沒有 model 行")
+        path.write_text(new + sep + body, encoding="utf-8")
 
 
 @contextmanager
@@ -116,6 +142,7 @@ class Updater:
             env
         ).parent  # ${XDG_DATA_HOME:-~/.local/share}/shoal
         self.mp = self.data / "claude-marketplace"
+        self._overlay: Optional[dict[str, str]] = None
 
     # ---- output ----
     def emit(self, step: str, status: str, detail: str = "") -> None:
@@ -179,6 +206,51 @@ class Updater:
             *dict.fromkeys(p["source"] for p in plugins.values()),
         ]
         return paths, plugins
+
+    # ---- local overlay ----
+    def overlay(self) -> dict[str, str]:
+        """讀取並驗證本機覆寫檔（local-role-model-overlay D1、D3）；不存在時回傳空 dict。"""
+        if self._overlay is None:
+            self._overlay = self.read_overlay()
+        return self._overlay
+
+    def read_overlay(self) -> dict[str, str]:
+        path = overlay_path(self.env)
+        if not path.is_file():
+            return {}
+        try:
+            doc = tomllib.loads(path.read_text(encoding="utf-8"))
+            roles = tomllib.loads(self.blob("core/roles.toml").decode())["roles"]
+            models = tomllib.loads(self.blob("core/models.toml").decode())["models"]
+            binding = tomllib.loads(self.blob("hosts/claude/binding.toml").decode())
+            aliases = binding["models"]
+        except (tomllib.TOMLDecodeError, KeyError, UnicodeDecodeError) as exc:
+            raise UpdateError(f"{path} 無法解析: {exc}") from exc
+        if set(doc) != {"roles"} or not isinstance(doc["roles"], dict):
+            raise UpdateError(f"{path} 只能有 [roles.<name>]")
+        flagged = {
+            aliases[key]
+            for key, spec in models.items()
+            if key in aliases and "refuses_defensive_security" in spec.get("flags", [])
+        }
+        known = set(roles) | set(binding.get("extra_roles", {}))
+        out = {}
+        for role, spec in doc["roles"].items():
+            if role not in known:
+                raise UpdateError(f"{path} 指定了未知的 role（只接受 core/roles.toml 與 extra_roles 的名稱）")
+            if not isinstance(spec, dict) or set(spec) != {"model"}:
+                raise UpdateError(f"{path} 的 [roles.{role}] 只能有 model")
+            model = spec["model"]
+            if not isinstance(model, str) or not OVERLAY_MODEL.fullmatch(model):
+                raise UpdateError(f"{path} 的 [roles.{role}].model 格式不合法")
+            if roles.get(role, {}).get("security") and flagged & set(re.split(r"[-.\[\]]", model)):
+                raise UpdateError(f"security role {role} 不可指定帶 refuses_defensive_security 的 {model}")
+            out[role] = model
+        return out
+
+    def export_marketplace(self, paths: list[str], dest: Path) -> None:
+        self.export(paths, dest)
+        apply_overlay(dest, self.overlay())
 
     # ---- cleanup ----
     def cleanup(self) -> None:
@@ -308,6 +380,9 @@ class Updater:
             ):
                 # beta -> stable：plugin manager 用純 SemVer，會把 stable 當成較舊，先移除再裝。
                 verb = "reinstall"
+            elif changed and row.get("version") == source:
+                # 版本相同時 claude plugin update 不會重新複製 cache（本機 overlay 改變時就是這樣），改成先移除再裝。
+                verb = "reinstall"
             elif changed or (
                 row.get("version")
                 and plugins[name]["version"]
@@ -379,7 +454,9 @@ class Updater:
                 )
             else:
                 stage = Path(scratch.name) / "stage"  # type: ignore[union-attr]
-            self.export(paths, stage)
+            self.export_marketplace(paths, stage)
+            if self.overlay():
+                self.emit("overlay", "applied", ", ".join(f"{r}={m}" for r, m in self.overlay().items()))
             changed = not self.mp.is_dir() or si.tree_digest(stage) != si.tree_digest(
                 self.mp
             )
@@ -547,7 +624,7 @@ class Updater:
         paths, plugins = self.marketplace_info()
         with tempfile.TemporaryDirectory(prefix="shoal-verify-") as tmp:
             fresh = Path(tmp) / "fresh"
-            self.export(paths, fresh)
+            self.export_marketplace(paths, fresh)
             expected, actual = si.tree_digest(fresh), si.tree_digest(self.mp)
         if expected != actual:
             self.emit(
