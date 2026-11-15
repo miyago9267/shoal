@@ -191,7 +191,7 @@ class OverlayTests(UpdateBase):
         code, out, err = self.probe_update("--apply")
         self.assertEqual(code, 0, out + err)
         self.assertEqual(self.model_of("security-reviewer"), "opus")
-        self.assertEqual(self.model_of("plan-critic"), "fable")
+        self.assertEqual(self.model_of("plan-critic"), "claude-fable-5-2")
         self.assertIn("plugin uninstall shoal@shoal", self.calls()[before:])
         self.assertNotIn("plugin uninstall shoal-dispatch-guard@shoal", self.calls()[before:])
         self.assertIn("claude plugin shoal-dispatch-guard@shoal: up-to-date", out)
