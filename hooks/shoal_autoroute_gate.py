@@ -19,6 +19,8 @@ SCHEMA = 2
 REQUIRED_TASK = "automatic_plan_review"
 ROUTE_SCHEMA = 4
 ROUTE_REQUIRED_TASK = "automatic_model_route"
+# The Codex guard requires write-role dispatches to carry a lane-shaped task_name; read-only scout needs none.
+ROUTE_LANE_PREFIX = {"applier": "fast_s_", "sol-executor": "complex_m_", "executor": "complex_m_"}
 SOL_EXECUTOR_ROLE = "sol-executor"
 ASTRA_EXECUTOR_ROLE = "executor"
 AUTOMATIC_ROUTE_ROLES = frozenset(
@@ -62,6 +64,10 @@ BLOCK_REASON = (
     "or ask the user solely because this review is pending."
 )
 BLOCK_OUTPUT = {"decision": "block", "reason": BLOCK_REASON}
+def route_task_name(role: str) -> str:
+    return ROUTE_LANE_PREFIX.get(role, "") + ROUTE_REQUIRED_TASK
+
+
 def _model_route_output(required_role: str) -> dict[str, str]:
     """Return one bounded continuation directive for a typed route role."""
     return {
@@ -72,7 +78,7 @@ def _model_route_output(required_role: str) -> dict[str, str]:
             "continuation. On this continuation, immediately call exactly one "
             "native typed `spawn_agent` with "
             f"`agent_type={required_role}`, "
-            "`task_name=automatic_model_route`, and `fork_turns=none`; use a "
+            f"`task_name={route_task_name(required_role)}`, and `fork_turns=none`; use a "
             "bounded message that preserves the existing goal, target, acceptance, "
             "and stop condition. Do not use a full-history fork, pass model or "
             "reasoning overrides, ask the user to request a role, or choose the "
@@ -337,7 +343,7 @@ def _route_signal(
             "agent_type": required_role,
             "fork_turns": "none",
             "mode": "typed_role",
-            "task_name": ROUTE_REQUIRED_TASK,
+            "task_name": route_task_name(required_role),
         }
         escalate_on = list(ROUTE_ESCALATION_EVENTS)
     else:
@@ -349,7 +355,7 @@ def _route_signal(
             "agent_type": ASTRA_EXECUTOR_ROLE,
             "fork_turns": "none",
             "mode": "typed_role",
-            "task_name": ROUTE_REQUIRED_TASK,
+            "task_name": route_task_name(ASTRA_EXECUTOR_ROLE),
         }
         escalate_on = []
     return {
@@ -1585,7 +1591,7 @@ def _handle_stop(payload: dict[str, Any], codex_home: Path) -> dict[str, str] | 
             session_id=session_id,
             turn_id=turn_id,
             required_role=route_marker["required_role"],
-            required_task=ROUTE_REQUIRED_TASK,
+            required_task=route_task_name(route_marker["required_role"]),
         )
         if direct_chain_valid and allowed_child_id is not None:
             _remove_route_marker(codex_home, session_id)

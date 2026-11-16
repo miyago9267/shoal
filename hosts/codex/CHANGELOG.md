@@ -10,6 +10,7 @@ written.
 ## Unreleased
 
 - Codex write-role dispatches carry the lane in `task_name` (`<lane>_<size>_<slug>`); the guard reads it when the message is encrypted.
+- The autoroute Stop hook now asks for a lane-shaped `task_name` per role, so its required dispatch is no longer blocked by the guard.
 
 ## v3.9.0
 

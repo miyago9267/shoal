@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1980,6 +1981,18 @@ class LaneAdapterTests(CliCase):
         self.assertIn("conflicts", dispatch("security-executor", "rigorous_s_guard_fix", "[fast:s] edit"))
         self.assertIn("conflicts", dispatch("security-executor", "rigorous_s_guard_fix", "[rigorous:m] edit"))
         self.assertEqual(dispatch("security-executor", "rigorous_s_guard_fix", "[rigorous:s] edit"), "")
+
+    def test_autoroute_directive_dispatch_is_allowed_by_the_lane_rule(self) -> None:
+        sys.path.insert(0, str(GUARD.parent))
+        import shoal_autoroute_gate as gate
+
+        for role in sorted(gate.AUTOMATIC_ROUTE_ROLES):
+            task = re.search(r"task_name=(\w+)", gate._model_route_output(role)["reason"]).group(1)
+            out = self.lane("codex", CodexAdapterTests.tool(
+                "spawn_agent",
+                {"agent_type": role, "task_name": task, "message": "gAAAAencrypted", "fork_turns": "none"},
+                cwd=self.work))
+            self.assertEqual(out, "", (role, task))
 
 
 class ToolCapTests(CliCase):

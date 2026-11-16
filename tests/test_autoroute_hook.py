@@ -354,7 +354,7 @@ class AutorouteHookTests(unittest.TestCase):
                 self.assertIn('"purpose":"bounded_judgment_execution"', context)
                 self.assertIn(
                     '"dispatch":{"agent_type":"sol-executor","fork_turns":"none",'
-                    '"mode":"typed_role","task_name":"automatic_model_route"}',
+                    '"mode":"typed_role","task_name":"complex_m_automatic_model_route"}',
                     context,
                 )
                 marker = gate._route_marker_path(home, SESSION, create=False)
@@ -422,7 +422,7 @@ class AutorouteHookTests(unittest.TestCase):
             self.assertIn('"purpose":"bounded_deep_judgment_execution"', context)
             self.assertIn(
                 '"dispatch":{"agent_type":"executor","fork_turns":"none",'
-                '"mode":"typed_role","task_name":"automatic_model_route"}',
+                '"mode":"typed_role","task_name":"complex_m_automatic_model_route"}',
                 context,
             )
             self.assertIn('"escalate_on":[]', context)
@@ -448,7 +448,7 @@ class AutorouteHookTests(unittest.TestCase):
                 gate.MODEL_ROUTE_OUTPUT,
             )
             self.assertIn("`fork_turns=none`", gate.MODEL_ROUTE_OUTPUT["reason"])
-            self.assertIn("`task_name=automatic_model_route`", gate.MODEL_ROUTE_OUTPUT["reason"])
+            self.assertIn("`task_name=complex_m_automatic_model_route`", gate.MODEL_ROUTE_OUTPUT["reason"])
             marker = gate._route_marker_path(home, SESSION, create=False)
             self.assertTrue(json.loads(marker.read_text())["attempted"])
             self.assertIsNone(gate.handle(stop_input(transcript), codex_home=home))
@@ -480,7 +480,7 @@ class AutorouteHookTests(unittest.TestCase):
             )
             self.assertIsInstance(continuation, dict)
             self.assertIn(
-                '"task_name":"automatic_model_route"',
+                '"task_name":"complex_m_automatic_model_route"',
                 continuation["hookSpecificOutput"]["additionalContext"],
             )
             write_events(
@@ -525,7 +525,7 @@ class AutorouteHookTests(unittest.TestCase):
                                 {
                                     "message": "Own the bounded implementation.",
                                     "agent_type": "executor",
-                                    "task_name": "automatic_model_route",
+                                    "task_name": "complex_m_automatic_model_route",
                                     "fork_turns": "none",
                                 }
                             ),
@@ -572,7 +572,7 @@ class AutorouteHookTests(unittest.TestCase):
                                 {
                                     "message": "Own the bounded implementation.",
                                     "agent_type": "sol-executor",
-                                    "task_name": "automatic_model_route",
+                                    "task_name": "complex_m_automatic_model_route",
                                     "fork_turns": "none",
                                 }
                             ),
