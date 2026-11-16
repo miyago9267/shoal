@@ -5,6 +5,8 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+- Role hand-backs use the brief's language; with `SHOAL_GUARD_LANG=zh-TW` the Codex autoroute messages are in Traditional Chinese.
+
 ### Guard
 
 - G5 看得到 python 寫檔（#32）。指令位置有 `python[0-9.]*` 時，整段指令

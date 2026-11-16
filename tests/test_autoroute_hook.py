@@ -138,6 +138,12 @@ def child_events(
 
 
 class AutorouteHookTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("SHOAL_GUARD_LANG", None)
+
     def test_installed_plugin_config_drives_canonical_route_without_live_network(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "codex-home"
@@ -619,6 +625,21 @@ class AutorouteHookTests(unittest.TestCase):
         self.assertIn("do not create, rotate, or revoke credentials", gate.BLOCK_REASON)
         self.assertIn("Do not emit PAUSED_NEEDS_USER", gate.BLOCK_REASON)
 
+    def test_zh_tw_route_and_block_output_keep_literals(self) -> None:
+        with mock.patch.dict(os.environ, {"SHOAL_GUARD_LANG": "zh-TW"}):
+            for role in sorted(gate.AUTOMATIC_ROUTE_ROLES):
+                zh = gate._model_route_output(role)["reason"]
+                self.assertIn("請", zh)
+                self.assertIn(f"`agent_type={role}`", zh)
+                self.assertIn(f"`task_name={gate.route_task_name(role)}`", zh)
+            block = gate._block_output()
+            self.assertEqual(block["decision"], "block")
+            self.assertIn("請", block["reason"])
+            for literal in ("WAITING_FOR_REVIEW", "plan-critic", "PAUSED_NEEDS_USER"):
+                self.assertIn(literal, block["reason"])
+        with mock.patch.dict(os.environ, {"SHOAL_GUARD_LANG": ""}):
+            self.assertEqual(gate._block_output(), gate.BLOCK_OUTPUT)
+
     def test_explicit_review_intent_is_redacted_and_turn_scoped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "codex-home"
@@ -1099,6 +1120,12 @@ class AutorouteHookTests(unittest.TestCase):
 
 
 class ScanBoundaryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("SHOAL_GUARD_LANG", None)
+
     """Environment noise must not decide whether a review is proven."""
 
     def _turn_home(self, directory: str) -> Path:

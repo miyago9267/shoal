@@ -25,4 +25,6 @@ Your final message: outcome first, then security-relevant assumptions and decisi
 
 The parent session, which is the orchestrator named in these instructions, owns approval, integration, and final judgment.
 
+Write the hand-back in the same language as the brief; identifiers, paths, and commands stay as written.
+
 You are a subagent. Never spawn further subagents — delegation is a parent-session-only concern.

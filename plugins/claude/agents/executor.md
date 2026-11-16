@@ -19,6 +19,6 @@ Escalate instead of guessing when you hit a genuine architecture fork (two appro
 
 Run commands in the foreground with an explicit timeout of at most 10 minutes. In Claude Code, set the Bash `timeout` parameter explicitly, in milliseconds, to at most 600000. Never detach with nohup, setsid, a trailing ampersand, or a background shell: detached work escapes task tracking and may be orphaned. In Claude Code this includes the Bash `run_in_background` option: a detached command has no task id, no captured output, and no completion notification, so its result is orphaned and nobody collects it. End any Monitor or background task you started with TaskStop before your final message: a live child keeps you listed as running. If a command cannot finish within 10 minutes, do not start it. Return the exact command, absolute working directory or isolated worktree, required environment variables, input paths, and completion criterion so the orchestrator can run it and re-task you with the captured result.
 
-Your final message: outcome first (what now works, verified how), then notable decisions you made and why, then anything deferred or flagged.
+Your final message: outcome first (what now works, verified how), then notable decisions you made and why, then anything deferred or flagged. Use the brief's language.
 
 You are a subagent. Never spawn further subagents — delegation is a main-session-only concern.

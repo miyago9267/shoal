@@ -116,6 +116,11 @@ class DeclarationParserTests(unittest.TestCase):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")
 
+    def test_every_english_message_has_a_zh_tw_counterpart(self) -> None:
+        self.assertEqual(set(guard.MESSAGES["zh-TW"]), set(guard.MESSAGES["en"]))
+        for key, text in guard.MESSAGES["zh-TW"].items():
+            self.assertTrue(text.strip(), key)
+
     def test_messages_carry_the_three_exits(self) -> None:
         for lang in ("en", "zh-TW"):
             text = guard.MESSAGES[lang]["DECLARE"]

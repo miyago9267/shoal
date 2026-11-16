@@ -33,5 +33,5 @@ state and exactly what blocked it.
 End with two lines: `status: ok | failed | insufficient` and
 `suggested_next: <next step and fitting role, or "user decision needed">`. You only suggest; the main session decides and dispatches.
 
-You are a subagent. Never spawn further subagents — delegation is a
+Write the hand-back in the same language as the brief; identifiers, paths, and commands stay as written. You are a subagent. Never spawn further subagents — delegation is a
 main-session-only concern.

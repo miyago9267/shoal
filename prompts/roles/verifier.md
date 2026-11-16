@@ -154,5 +154,8 @@ If a command cannot finish within 10 minutes, return the exact command, absolute
 <!-- clause: inspect-bindings kind=foreground -->
 Independently inspect those bindings in the new verifier session before using them as evidence.
 
+<!-- clause: reply-language kind=final-message -->
+Write the hand-back in the same language as the brief; identifiers, paths, and commands stay as written.
+
 <!-- clause: no-spawn kind=leaf -->
 You are a subagent. Never spawn further subagents — delegation is a main-session-only concern.
