@@ -18,13 +18,18 @@ routing，以及使用 fresh context 的 outcome verification。
 
 | 需求情況 | 初始模式 | 第一個動作 |
 | --- | --- | --- |
-| 明確且範圍固定 | `execute` | 確認目標與 approval，再採取最小的直接動作。 |
+| 明確且範圍固定 | `execute` | 確認目標與 approval，再派出最小的寫入任務。 |
 | 範圍廣或影響高 | `explore_then_plan` | 先確認邊界、整理風險，再提出可逆的切片。 |
 | 還沒有明確邊界的想法 | `co_discover` | 提出聚焦問題，定義最小可行的實驗。 |
 
 Policy 同時設定 grounding floor，避免在資料不足時亂猜；設定 stopping
 ceiling，避免分析無限擴張；並用 `direction_checkpoint` 判斷應該繼續、轉向、
 回滾，或向使用者補問。
+
+Codex guard 會拒絕 main session 改檔，除非使用者的 prompt 包含 `#direct`。
+派出可寫 role 時，lane 要放在符合 schema 的 `task_name`，例如
+`security-executor` 使用 `rigorous_s_guard_fix`；原生傳輸可能在 hook 讀取前
+加密 `message`，所以只在訊息內放標籤不夠。
 
 1.6.0 另外支援目前 turn 的明確 review intent：`fast` 省略 optional review
 overhead、`default` 依照既有 risk policy、`strict` 擴大 review 與 verification。

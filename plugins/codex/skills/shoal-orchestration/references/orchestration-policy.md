@@ -1,5 +1,5 @@
 <!-- shoal-codex:begin -->
-<!-- shoal-codex v3.13.1-beta -->
+<!-- shoal-codex v3.13.2-beta -->
 <!-- markdownlint-disable-next-line MD041 -->
 ### Orchestration
 
@@ -301,6 +301,14 @@ Every named-role request must contain a non-empty `message`, a known `agent_type
 and a lowercase schema-safe `task_name` matching `[a-z0-9_]+`. Use
 `fork_turns = "none"` by default. A recent-turn fork is only the positive integer
 string `"1"` through `"3"`. Do not use a full-history named-role fork.
+
+For write roles, encode the dispatch lane in `task_name` as
+`<lane>_<size>_<slug>`: `fast_s_...` for `applier`, `complex_s_...` for
+`executor` or `sol-executor`, and `rigorous_s_...` for `security-executor`.
+Size is `s`, `m`, or `l`; keep the slug generic and free of secrets. The native
+Codex transport may encrypt `message` before the hook reads it, so a bracketed
+label in `message` alone cannot satisfy the lane check. The hook rejects a
+visible `message` label that conflicts with `task_name`.
 
 Do not pass child `model`, `reasoning_effort`, `service_tier`, or
 `fork_context` overrides. The installed role TOML owns model and effort;

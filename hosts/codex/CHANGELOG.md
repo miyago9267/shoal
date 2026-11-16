@@ -9,6 +9,8 @@ written.
 
 ## Unreleased
 
+- Codex write-role dispatches carry the lane in `task_name` (`<lane>_<size>_<slug>`); the guard reads it when the message is encrypted.
+
 ## v3.9.0
 
 - `applier` is now the fast executor for small, bounded changes. Claude

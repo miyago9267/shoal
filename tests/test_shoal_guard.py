@@ -118,8 +118,9 @@ class DeclarationParserTests(unittest.TestCase):
     def test_messages_carry_the_three_exits(self) -> None:
         for lang in ("en", "zh-TW"):
             text = guard.MESSAGES[lang]["DECLARE"]
-            for needle in ("executor", "applier", ': shoal-direct "<', "#direct"):
+            for needle in ("executor", "applier", ': shoal-direct "<'):
                 self.assertIn(needle, text, (lang, needle))
+        self.assertIn("#direct", guard.MESSAGES["en"]["DECLARE"])
         self.assertEqual(
             guard.MESSAGES["en"]["DECLARE"],
             "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role "
@@ -1931,6 +1932,10 @@ class LaneAdapterTests(CliCase):
         self.assertEqual(codex["dispatch_desc"], "[fast] t")
         codex = guard.adapt_codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "applier", "task_name": "t", "message": "m"}))
         self.assertEqual(codex["dispatch_desc"], "t")
+        codex = guard.adapt_codex(CodexAdapterTests.tool(
+            "collaborationspawn_agent",
+            {"agent_type": "security-executor", "task_name": "rigorous_s_guard_fix", "message": "gAAAAencrypted"}))
+        self.assertEqual(codex["dispatch_desc"], "[rigorous:s] rigorous_s_guard_fix")
         grok = guard.adapt_grok(GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x", "prompt": "p"}))
         self.assertEqual(grok["dispatch_desc"], "[fast] x")
         agy = guard.adapt_agy({"conversationId": "c1", "toolCall": {"name": "invoke_subagent", "args": {"Subagents": [
@@ -1959,6 +1964,22 @@ class LaneAdapterTests(CliCase):
         out = self.lane("codex", CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor", "task_name": "t", "message": "[complex] m"}, cwd=self.work))
         self.assertEqual(out, "")
         self.assertEqual(self.lane("grok", GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x"}, cwd=self.work)), "")
+
+    def test_codex_task_name_lane_with_encrypted_message(self) -> None:
+        def dispatch(role, task_name, message="gAAAAencrypted"):
+            return self.lane("codex", CodexAdapterTests.tool(
+                "collaborationspawn_agent", {"agent_type": role, "task_name": task_name, "message": message},
+                cwd=self.work))
+
+        self.assertEqual(dispatch("security-executor", "rigorous_s_guard_fix"), "")
+        self.assertEqual(dispatch("sol-executor", "complex_m_guard_fix"), "")
+        self.assertIn("does not match", dispatch("applier", "rigorous_s_guard_fix"))
+        self.assertIn("invalid", dispatch("security-executor", "rigorous_x_guard_fix"))
+        self.assertIn("invalid", dispatch("security-executor", "rigorous_x_guard_fix", "[rigorous:s] edit"))
+        self.assertIn("lane label", dispatch("security-executor", "guard_fix"))
+        self.assertIn("conflicts", dispatch("security-executor", "rigorous_s_guard_fix", "[fast:s] edit"))
+        self.assertIn("conflicts", dispatch("security-executor", "rigorous_s_guard_fix", "[rigorous:m] edit"))
+        self.assertEqual(dispatch("security-executor", "rigorous_s_guard_fix", "[rigorous:s] edit"), "")
 
 
 class ToolCapTests(CliCase):

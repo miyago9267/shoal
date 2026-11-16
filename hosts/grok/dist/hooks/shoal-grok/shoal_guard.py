@@ -196,6 +196,9 @@ LANE_ROLES = {
     "rigorous": ("security-executor",),
 }
 LANE_RE = re.compile(r"^\s*\[(fast|complex|rigorous)(?::([sml]))?\]")
+CODEX_TASK_LANE_RE = re.compile(r"^(fast|complex|rigorous)_([sml])_[a-z0-9_]+$")
+CODEX_LANE_INVALID = "__codex_lane_invalid__"
+CODEX_LANE_CONFLICT = "__codex_lane_conflict__"
 
 # Tool-call budget (SHOAL_GUARD_TOOL_CAP, default on; claude): the lane label's size (`[complex:s]`, none = m) caps how
 # many tool calls the dispatched write role may make; the call after the cap is denied so the role's next message is
@@ -291,6 +294,19 @@ MESSAGES = {
             "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor, optionally sized "
             "`:s` / `:m` / `:l` (e.g. `[complex:s] fix: ...`). Add the label, or set SHOAL_GUARD_LANES=off."
         ),
+        "LANE_MISSING_CODEX": (
+            "Shoal dispatch guard: Codex write-role dispatch ({role}) needs a lane label in task_name, "
+            "for example rigorous_s_guard_fix for security-executor. Use fast, complex, or rigorous "
+            "with size s, m, or l and a lowercase slug."
+        ),
+        "LANE_INVALID": (
+            "Shoal dispatch guard: Codex task_name lane is invalid for role {role}. "
+            "Use <lane>_<size>_<slug>, for example rigorous_s_guard_fix."
+        ),
+        "LANE_CONFLICT": (
+            "Shoal dispatch guard: Codex task_name lane conflicts with the visible message lane for role {role}. "
+            "Make the lane and any explicit size agree."
+        ),
         "LANE_MISMATCH": (
             "Shoal dispatch guard: lane label [{label}] does not match role {role}. "
             "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor. "
@@ -374,6 +390,18 @@ MESSAGES = {
             "Shoal dispatch guard：派 write role（{role}）時，description 開頭必須有 lane 標籤："
             "[fast] -> applier、[complex] -> executor、[rigorous] -> security-executor，"
             "可加大小 `:s` / `:m` / `:l`（例如 `[complex:s] fix: ...`）。請補上標籤，或設定 SHOAL_GUARD_LANES=off。"
+        ),
+        "LANE_MISSING_CODEX": (
+            "Shoal dispatch guard：Codex 派 write role（{role}）時，task_name 需要 lane label，"
+            "例如 security-executor 使用 rigorous_s_guard_fix。格式為 lane_size_slug。"
+        ),
+        "LANE_INVALID": (
+            "Shoal dispatch guard：Codex 的 task_name lane 格式錯誤（role {role}）。"
+            "請使用 lane_size_slug，例如 rigorous_s_guard_fix。"
+        ),
+        "LANE_CONFLICT": (
+            "Shoal dispatch guard：Codex 的 task_name lane 與可讀取的 message lane 衝突（role {role}）。"
+            "請對齊 lane 與明確指定的 size。"
         ),
         "CAP": (
             "Shoal tool 預算用完：這個 {role} agent 已用掉 {size} 規模的 {cap} 次 tool call 上限。"
@@ -748,6 +776,10 @@ def lane_violation(role: Any, desc: Any) -> Optional[Tuple[str, Dict[str, str]]]
     bare = normalize_role(role)
     if role_access(role) != "write" or bare is None:
         return None
+    if desc == CODEX_LANE_INVALID:
+        return "LANE_INVALID", {"role": bare}
+    if desc == CODEX_LANE_CONFLICT:
+        return "LANE_CONFLICT", {"role": bare}
     label = lane_label(desc)
     if label is None:
         return "LANE_MISSING", {"role": bare}
@@ -1592,6 +1624,8 @@ class _Guard:
             violation = lane_violation(role, desc)
             if violation is not None:
                 key, fmt = violation
+                if self.host == "codex" and key == "LANE_MISSING":
+                    key = "LANE_MISSING_CODEX"
                 decision = "deny" if self.mode == "enforce" else "would_deny"
                 return self.result(decision, "LANE", reason=_text(self.env, key, **fmt))
         return None
@@ -2921,9 +2955,21 @@ def patch_paths(command: Any) -> List[str]:
 
 
 def _codex_lane_text(tin: Dict[str, Any]) -> Optional[str]:
-    """Codex spawn_agent's input has no description (tests/fixtures/codex_subagent_tool_shapes.json: agent_type, message,
-    task_name): the lane label is read from the start of `task_name`, else of `message`."""
-    texts = [t for t in (tin.get("task_name"), tin.get("message")) if isinstance(t, str)]
+    """Read Codex's schema-safe task_name; current native dispatch encrypts message before hooks see it."""
+    task_name, message = tin.get("task_name"), tin.get("message")
+    if isinstance(task_name, str):
+        match = CODEX_TASK_LANE_RE.fullmatch(task_name)
+        if match:
+            label, size = match.group(1, 2)
+            visible_label = lane_label(message)
+            visible_size = lane_size(message)
+            if visible_label and (visible_label != label or
+                                  (visible_size is not None and visible_size != size)):
+                return CODEX_LANE_CONFLICT
+            return f"[{label}:{size}] {task_name}"
+        if task_name.startswith(("fast_", "complex_", "rigorous_")):
+            return CODEX_LANE_INVALID
+    texts = [t for t in (task_name, message) if isinstance(t, str)]
     return next((t for t in texts if lane_label(t)), texts[0] if texts else None)
 
 
