@@ -3,7 +3,7 @@ title: guard 改用「宣告直接做」，分類來源變為可選
 status: approved
 approved_by: Miyago (2026-10-12)
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-11-19
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -75,6 +75,22 @@ Miyago 2026-10-12 決定拿掉 main 自己給自己的出口。
   一律由可寫的 role 執行，除非使用者以 `#direct` 授權 main 直接改；互不相干的偵察
   與長指令預設派工。讀檔、診斷、整合與判斷由 main 直接做。」第 3 條的「未派工、
   未宣告就改檔（宣告或 `#direct` 可放行）」改為「未派工就改檔（`#direct` 可放行）」。
+
+### 修訂（2026-11-19，guard log 之後）
+
+2026-10-30 至 11-19 的 guard log 有 165 個回合被 R1 擋下 main 改檔；其中 160 次
+main 補一行 `: shoal-direct` 後照樣自己改，只有 1 次改成派工。deny 沒有改變決定，
+只多出一次來回。Miyago 2026-11-19 核准改成提醒加記錄。（本條沿用 M 的流水號，
+編為 M13；M8 已是 bootstrap 條款。）
+
+- **M13（advise 模式）**：`SHOAL_GUARD_R1` 新增 `advise`，並成為 claude 的預設
+  （codex 等其他 host 預設不變；`declare`、`strict` 仍可手動選）。While 模式是
+  `advise`，when main session 在未宣告、未 `#direct`、未派工的回合呼叫改檔工具，
+  the guard shall 放行，log 記 decision `advise`、rule `undeclared`，並在每回合
+  最多提醒一次（沿用 `advised` 旗標與 `advise_output`；訊息提到可派 `applier` /
+  `executor`，或用 `: shoal-direct` 宣告）。已宣告、`#direct`、已派工的行為不變；
+  宣告指令在 `advise` 下照常記錄。shell 寫檔不判斷。main 未宣告的改檔不算 B2 的
+  STOP change（與已宣告相同），不新增驗證關卡。
 
 ## Decisions
 

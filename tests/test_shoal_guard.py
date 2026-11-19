@@ -104,15 +104,15 @@ class DeclarationParserTests(unittest.TestCase):
 
     def test_resolve_r1(self) -> None:
         for host in ("claude", "codex", "opencode", "grok", "agy"):
-            default = "declare" if host == "claude" else "strict"  # claude alone defaults to declare (main-small-edits D1)
+            default = "advise" if host == "claude" else "strict"  # claude alone defaults to advise (guard-declared-direct M8)
             for env, want in (({}, default), ({"SHOAL_GUARD_R1": ""}, default), ({"SHOAL_GUARD_R1": "bogus"}, default),
                               ({"SHOAL_GUARD_R1": "STRICT"}, default), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
-                              ({"SHOAL_GUARD_R1": "declare"}, "declare"),
+                              ({"SHOAL_GUARD_R1": "declare"}, "declare"), ({"SHOAL_GUARD_R1": "advise"}, "advise"),
                               ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
                 self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
         # a host that cannot gate keeps v3.1.0, whatever is asked
         for host in ("",):
-            for value in ("", "declare", "strict", "bogus", "classified"):
+            for value in ("", "declare", "strict", "advise", "bogus", "classified"):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")
 
@@ -659,6 +659,60 @@ class ClaudeAdapterTests(CliCase):
         self.assertNotIn("SECRET-TOOL-BODY", blob)
         self.assertNotIn("transcript", blob)
         self.assertIn('"file":"name.py"', blob)
+
+
+class AdviseCliTests(CliCase):
+    """`advise` (the claude default, guard-declared-direct M8): an undeclared main edit goes through with one reminder per turn."""
+
+    def run_advise(self, payload, **env) -> str:
+        return self.run_guard("claude", payload, **{"SHOAL_GUARD_R1": "advise", **env})
+
+    def edit(self, name="a.py", **env) -> str:
+        return self.run_advise(claude_tool("Edit", {"file_path": name}, cwd=self.work), **env)
+
+    def test_claude_unset_defaults_to_advise_and_lets_the_edit_through(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_R1="")
+        out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work), SHOAL_GUARD_R1="")
+        self.assertNotIn("deny", out)
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("advise", "undeclared"))
+
+    def test_undeclared_edit_is_advised_once_per_turn(self) -> None:
+        self.run_advise(claude_prompt(cwd=self.work))
+        first = json.loads(self.edit("a.py"))["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("shoal-direct", first)
+        self.assertEqual(self.edit("b.py"), "")
+        self.assertEqual([(r["decision"], r["rule"]) for r in self.log_records() if r.get("tool") == "Edit"],
+                         [("advise", "undeclared")] * 2)
+
+    def test_zh_tw_reminder(self) -> None:
+        self.run_advise(claude_prompt(cwd=self.work))
+        out = self.edit("a.py", SHOAL_GUARD_LANG="zh-TW")
+        self.assertIn("未宣告", json.loads(out)["hookSpecificOutput"]["additionalContext"])
+
+    def test_declared_direct_and_dispatched_keep_their_rules(self) -> None:
+        self.run_advise(claude_prompt(cwd=self.work))
+        self.run_advise(claude_tool("Bash", {"command": ': shoal-direct "typo"'}, cwd=self.work))
+        self.assertEqual(self.edit("a.py"), "")
+        self.assertEqual(self.log_records()[-1]["rule"], "declared")
+        self.run_advise(claude_prompt(cwd=self.work, prompt_id="p-2", prompt="x #direct"))
+        self.assertEqual(self.run_advise(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2")), "")
+        self.assertEqual(self.log_records()[-1]["rule"], "direct")
+        self.run_advise(claude_prompt(cwd=self.work, prompt_id="p-3"))
+        self.run_advise(claude_tool("Agent", {"subagent_type": "executor"}, cwd=self.work, prompt_id="p-3"))
+        self.run_advise(claude_start("shoal:executor", cwd=self.work, prompt_id="p-3"))
+        self.assertEqual(self.run_advise(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-3")), "")
+        self.assertEqual(self.log_records()[-1]["rule"], "dispatched")
+
+    def test_undeclared_edit_is_not_a_stop_change(self) -> None:
+        self.run_advise(claude_prompt(cwd=self.work))
+        self.edit("a.py")
+        stop = {"session_id": "sess-1", "prompt_id": "p-1", "cwd": self.work, "hook_event_name": "Stop",
+                "stop_hook_active": False, "permission_mode": "default"}
+        self.assertEqual(self.run_advise(stop), "")
+
+    def test_shell_write_is_not_judged(self) -> None:
+        self.run_advise(claude_prompt(cwd=self.work))
+        self.assertEqual(self.run_advise(claude_tool("Bash", {"command": "echo x > a.py"}, cwd=self.work)), "")
 
 
 class DeclareCliTests(CliCase):

@@ -9,6 +9,8 @@ when the user settings already register the tools/install_hooks.py guard.  Alway
 nudge, not a security boundary.  Modes, rules and switches (SHOAL_GUARD, SHOAL_GUARD_R1, SHOAL_GUARD_SUBAGENT_WRITE,
 SHOAL_GUARD_STOP, `#direct`, `#fast`) are specified in docs/specs/dispatch-enforcement, docs/specs/guard-declared-direct,
 docs/specs/guard-every-gate and docs/specs/shared-rules (B2-B4 completion check).
+R1 on claude defaults to `advise` (guard-declared-direct M13): an undeclared main edit goes through, is logged as
+`undeclared` and reminded once per turn; `declare` / `strict` still deny.
 """
 
 from __future__ import annotations
@@ -62,7 +64,7 @@ LOCK_WAIT_SECONDS = 2.0
 #   advise_output     PreToolUse accepts a non-blocking `additionalContext` (the R2 reminder); elsewhere log only.
 #   prompt_keep       the prompt event may lack a turn id: it clears `dispatched`, keeps turn and edits (M1).
 #   deny_main         R1 denies (G1), main's background shell is denied (G4), a shell file write is judged by R1 (G5).
-#   declare           SHOAL_GUARD_R1 `declare` / `strict` are selectable (the adapter delivers main's shell calls;
+#   declare           SHOAL_GUARD_R1 `declare` / `strict` / `advise` are selectable (the adapter delivers main's shell calls;
 #                     opencode is the TypeScript port, listed so both replay the same vectors); others: `classified`.
 #   start_unlock      a write dispatch unlocks only once the role started (M11): the dispatch call records a pending
 #                     dispatch, the start event releases it (claude SubagentStart, tests/fixtures/
@@ -253,6 +255,11 @@ MESSAGES = {
             "with a stable contract, consider handing it to `applier` / `executor` with "
             "{tool}; otherwise continuing directly is fine."
         ),
+        "UNDECLARED": (
+            "Shoal dispatch brake (a reminder, nothing was blocked): main is editing files without a declaration. "
+            "Consider handing the work to `applier` / `executor` with {tool}, or declare direct work with "
+            ": shoal-direct \"<reason>\"."
+        ),
         "LEAF": (
             "Shoal dispatch guard: subagents are leaf workers and must not dispatch other "
             "agents. Finish the task yourself and report back to the parent."
@@ -348,6 +355,10 @@ MESSAGES = {
             "Shoal dispatch brake（提醒，沒有擋任何操作）：本輪 main session 已直接改了 {n} 個檔案。"
             "若這是穩定的同形重複，或契約穩定、範圍有界的判斷工作，可考慮用 {tool} 交給 "
             "`applier` / `executor`；否則直接做下去也可以。"
+        ),
+        "UNDECLARED": (
+            "Shoal dispatch brake（提醒，沒有擋任何操作）：main session 未宣告就直接改檔。"
+            "可考慮用 {tool} 交給 `applier` / `executor`，或執行 : shoal-direct \"<原因>\" 宣告直接做。"
         ),
         "LEAF": "Shoal dispatch guard：subagent 是 leaf worker，不可再派其他 agent。請自己完成並回報給上層。",
         "RELAY": (
@@ -835,18 +846,18 @@ def _agy_record(raw: Any) -> Dict[str, List[Dict[str, Any]]]:
 
 
 def resolve_r1(host: str, env: Dict[str, str]) -> str:
-    """SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
+    """SHOAL_GUARD_R1: `classified` and `off` as given; `strict`, `declare` and `advise` where the host can gate.
 
-    Unset, unrecognized, or `strict` / `declare` on a host that cannot gate -> the host default
-    (`declare` on claude, `strict` on codex, grok, agy and opencode, `classified` elsewhere)."""
+    Unset, unrecognized, or `strict` / `declare` / `advise` on a host that cannot gate -> the host default
+    (`advise` on claude, `strict` on codex, grok, agy and opencode, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw
     if host not in DECLARE_HOSTS:
         return "classified"
-    if raw in ("strict", "declare"):
+    if raw in ("strict", "declare", "advise"):
         return raw
-    return "declare" if host == "claude" else "strict"
+    return "advise" if host == "claude" else "strict"
 
 
 # ---------------------------------------------------------------------------
@@ -2105,6 +2116,9 @@ class _Guard:
             if self.r1 == "declare":
                 if not declaration and write_target is None:
                     tool_kind = None
+            elif self.r1 == "advise":
+                if not declaration:  # advise never judges a shell write; only a declaration is read
+                    tool_kind = None
             elif self.r1 == "strict":
                 if write_target is None:
                     tool_kind = None
@@ -2379,7 +2393,7 @@ class _Guard:
         """A main-session foreground shell call: a declaration (`declare` mode) or G5, R1 for a
         command that writes a file.  A shell write is never recorded as an edit, so R2's count is
         unaffected; only a declaration changes state."""
-        if self.r1 == "declare":
+        if self.r1 in ("declare", "advise"):
             reason = parse_declaration(self.event.get("command"))
             if reason is not None:
                 state["declared"] = True
@@ -2461,11 +2475,12 @@ class _Guard:
         direct = self.env.get("SHOAL_GUARD_DIRECT") == "1" or state["direct"]
         limit = _max_files(self.env)
         declare = self.r1 == "declare"
+        advise = self.r1 == "advise"
         strict = self.r1 == "strict"
         classified: Optional[str] = None
         declared = False
         if not direct and not state["dispatched"]:
-            if declare:
+            if declare or advise:
                 declared = self._declared(state, guard)
             elif self.r1 == "classified":
                 classified = self._classified(state, guard)
@@ -2481,9 +2496,12 @@ class _Guard:
             elif state["dispatched"]:
                 rule = "dispatched"
             else:
-                rule = "declared" if declared else "count"
-                if classified or strict or (declare and not declared):
-                    fired: Optional[str] = "R1"
+                rule = "declared" if declared else "undeclared" if advise else "count"
+                fired: Optional[str]
+                if advise and not declared:
+                    fired = "undeclared"  # M8: a reminder, never a deny
+                elif classified or strict or (declare and not declared):
+                    fired = "R1"
                 elif path not in edited and (limit is None or len(edited) >= limit):
                     if limit is None:
                         return self.result("skip", skip="invalid_config")
@@ -2508,7 +2526,7 @@ class _Guard:
                 file=raw_paths[0],
             )
         state["edited"] = edited
-        if not (direct or declared):  # B2: main's own direct/declared edits are not a change; STOP is for write roles
+        if not (direct or declared or (advise and not state["dispatched"])):  # B2: main's own direct/declared edits are not a change; STOP is for write roles
             self.pending_change = state_path
         notify = (
             advise_rule is not None
@@ -2527,7 +2545,7 @@ class _Guard:
         if notify:
             reason = _text(
                 self.env,
-                "ADVISE",
+                "UNDECLARED" if advise_rule == "undeclared" else "ADVISE",
                 n=len(edited),
                 tool=DISPATCH_NAME.get(self.host, "the dispatch tool"),
             )
