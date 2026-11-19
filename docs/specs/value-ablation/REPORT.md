@@ -69,8 +69,14 @@ hidden test：`blog/routes.py` 的 `RESERVED = {"new", "edit", "feed"}` 不得�
 的前提不成立。照原計畫用 Opus 量 32 run 估計要 $125–130；Miyago 判斷「越量越貴」本身就是派工性價比
 不好的證據，第三輪正式量測不跑。value-ablation 總花費約 $28.9。
 
-## 方向（待 Miyago 確認）
+## 方向（Miyago 2026-11-19 修正）
 
-1. 派工改成選用：預設 main 自己做，只在 bootstrap 列的情境（大量偵察、可平行、長指令）建議派工。
-2. shoal 主打一份定義通用多個 host、guard 的規則執行（假完成、越界寫入）與可觀測性。
-3. 上下文清潔改推 session 衛生：任務之間開新 session，比派工便宜。
+main session 有 1M 上下文，模型記憶不是瓶頸。派工要保護的是人：main 只負責討論，執行的工具輸出、
+diff 與重試不進人看的對話，人才不會失焦。這個效益不在 headless benchmark 的量測範圍內。
+
+1. 派工維持預設，但理由從「保護模型上下文」改成「保護人的注意力」；成本代價約 +25%（本報告第二輪）。
+2. 已量到的問題是派工根本沒發生：R1 deny 時 main 補宣告照改（160/165），advise 時 24 run 只派 1 次。
+   下一步要解決的是「main 為什麼不派」，不是「派工值不值得」。
+3. 改用免費的量法：從真實 session 的 transcript 與 guard log 算「每個使用者回合，main 自己跑了多少
+   工具呼叫、吐了多少輸出到對話」，當作人的雜訊指標。
+4. shoal 對外主打：一份定義通用多個 host、guard 的規則執行，以及讓 main 保持在討論層。
