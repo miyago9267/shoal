@@ -75,7 +75,7 @@ protected 違規由 bench 從 diff 判定，每個 arm 都量。M5 沿用現有 
 2. P1：在 `miyago9267/shoal-bench` 寫 8 題與陷阱，跑 baseline 校準；runner 加 pilotfish arm。
 3. P2：在 runner 加 M1–M4 的開關（環境變數或設定檔），每個開關附一個單元測試。
 4. P3：smoke，然後正式量測。
-5. P4：報告與砍除清單，交 Miyago 決定。
+5. P4：報告與砍除清單，交 Miyago 決定（`REPORT.md`，2026-11-19）。
 
 ## Out of scope
 
