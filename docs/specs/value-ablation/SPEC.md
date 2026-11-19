@@ -95,6 +95,7 @@ protected 違規由 bench 從 diff 判定，每個 arm 都量。M5 沿用現有 
 - Arms：baseline-opus、baseline-sonnet、shoal（main Opus，bootstrap 為縮短後版本）、pilotfish（main Opus）。
 - 規模：4 題 × 4 arm × 2 rep = 32 run，`--max-cost-usd 50`。
 - 先 smoke：長鏈題 × shoal 1 run，確認真的有派工；沒有派工就停下，問題在 bootstrap 與政策而非題目。
+- 結果：探測後停止，見 `REPORT.md` 第三輪一節。
 - 指標：通過率、總成本、wall、main 峰值上下文、compact 次數、派工次數、後段子任務通過率。
 - 結論規則：shoal 在任一題型以同等或更好通過率勝過 baseline-opus 的成本或 wall，派工保留為預設；
   四題都沒有，派工改為選用，shoal 主打多 host 定義與 guard。

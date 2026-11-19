@@ -56,3 +56,21 @@ hidden test：`blog/routes.py` 的 `RESERVED = {"new", "edit", "feed"}` 不得�
 3. runner 保存每個 run 的 stream-json，下次才能查 abl-5 這類差異。
 4. 要量 M2、M3 與派工本身的效益，需要會讓 main 派工的情境（長任務、多檔平行），或改量
    「便宜 main + role」的組合；單 session 的 Sonnet 題目量不到。
+
+## 第三輪：探測後停止（2026-11-19）
+
+長鏈題改成同一 session 連續 8 個 prompt（shoal-bench 7d3c89f），baseline-sonnet 探測一次：
+
+- 成本 $3.47，wall 163 秒；8 輪的峰值上下文從 49.6k 增加到 78.0k，0 次 compact。
+- 8 個 stage 過 7 個（Stage7 是 docs 措辭檢查過嚴，已放寬，未重跑）。
+- 模型自己用 `grep`／`tail` 壓縮輸出，27 個工具結果合計約 58k 字元，每個 prompt 只多 3–6k。
+
+結論：在 8 個任務的長 session 裡，便宜的 main 自己做就沒有被上下文拖垮，shoal「保護 main 上下文」
+的前提不成立。照原計畫用 Opus 量 32 run 估計要 $125–130；Miyago 判斷「越量越貴」本身就是派工性價比
+不好的證據，第三輪正式量測不跑。value-ablation 總花費約 $28.9。
+
+## 方向（待 Miyago 確認）
+
+1. 派工改成選用：預設 main 自己做，只在 bootstrap 列的情境（大量偵察、可平行、長指令）建議派工。
+2. shoal 主打一份定義通用多個 host、guard 的規則執行（假完成、越界寫入）與可觀測性。
+3. 上下文清潔改推 session 衛生：任務之間開新 session，比派工便宜。
