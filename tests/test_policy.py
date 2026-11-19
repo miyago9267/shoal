@@ -175,10 +175,10 @@ class BehaviourContractTests(unittest.TestCase):
         text = flat(CLAUDE_BOOTSTRAP)
         self.assertIn(
             'Simple work (one purpose, known scope, no risk trigger, expected within 10 minutes): '
-            'the main session runs `: shoal-direct "<reason>"` as its own shell command, then edits itself.',
+            'main runs `: shoal-direct "<reason>"` as its own shell command, then edits itself; '
+            '`#direct` also allows it. All other edits go to `applier` (small, bounded) or `executor` (multi-file).',
             text,
         )
-        self.assertIn("All other edits go to a write-capable role unless the user's prompt contains `#direct`", text)
         self.assertNotIn("The main session does not edit files itself", text)
 
     def test_codex_bootstrap_keeps_the_no_direct_edit_sentence(self) -> None:

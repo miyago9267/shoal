@@ -106,15 +106,26 @@ EXPECTED_POLICY_OMITS["agy"] = [
 ]
 # Claude 專屬的簡單工作條款取代 bootstrap-delegate-default（main-small-edits D2），Codex 條款不動。
 EXPECTED_POLICY_REPLACES["claude"] = {
-    "bootstrap": ["bootstrap-delegate-default", "bootstrap-kind-label"],
+    "bootstrap": [
+        "bootstrap-delegate-default", "bootstrap-effort", "bootstrap-dispatch-brake",
+        "bootstrap-kind-label", "bootstrap-load-skill",
+    ],
     "orchestration": ["direct-when-small"],
 }
 EXPECTED_POLICY_ADDENDA["claude"] = {
-    "bootstrap": ["claude-stop-reported-role", "claude-delegate-default", "claude-kind-label"],
+    "bootstrap": [
+        "claude-delegate-default", "claude-effort", "claude-dispatch-brake",
+        "claude-kind-label", "claude-stop-reported-role", "claude-load-skill",
+    ],
     "extensions": ["claude-fan-out-workflow"],
     "orchestration": ["claude-direct-when-small"],
     "skill": ["claude-size-cap"],
 }
+# 縮短 Claude 常駐 bootstrap（value-ablation）：只留派工條件，其餘條款由 skill 承載；Codex 與其他 host 不動。
+EXPECTED_POLICY_OMITS["claude"] = [
+    "bootstrap-collect", "bootstrap-outcome", "bootstrap-ownership",
+    "bootstrap-questions", "bootstrap-routing", "bootstrap-verify-report",
+]
 EXPECTED_POLICY_ADDENDA["agy"] = {
     "orchestration": [
         "agy-plan-mode", "pending-shared-auto-approved-permissions", "agy-readiness-brief",
@@ -411,6 +422,9 @@ class PolicyRenderCase(unittest.TestCase):
         self.binding = self.root / "hosts" / "claude" / "binding.toml"
         # repo 的 Claude 已是 core；這組測試以 legacy 為基準，副本改回 legacy。
         self.edit(self.binding, 'policy_text = "core"', 'policy_text = "legacy"')
+        # repo 的 Claude binding 已有 omit 清單；測試從空清單開始。
+        text = self.binding.read_text(encoding="utf-8")
+        self.binding.write_text(re.sub(r"omit = \[.*?\n\]", "omit = []", text, count=1, flags=re.S), encoding="utf-8", newline="\n")
 
     def edit(self, path: Path, old: str, new: str) -> None:
         text = path.read_text(encoding="utf-8")
