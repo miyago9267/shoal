@@ -17,7 +17,8 @@
 
 1. 題目太簡單，baseline 全過，shoal 宣稱能防的失敗沒有機會發生；目前只量到成本。
 2. 2026-11-16 Codex 實際卡住：`hooks/shoal_autoroute_gate.py` 的 Stop hook 規定
-   `task_name=automatic_model_route`，`hooks/shoal_guard.py` 要求 Codex write role 的
+   `task_name=automatic_model_route`，`hooks/shoal_guard.py` 要求 Codex write role
+   的
    task_name 符合 `<lane>_<size>_<slug>`，兩者無法同時滿足；且 Stop hook 在唯讀分析
    已完成後仍要求再派 agent。hook 之間的摩擦目前沒有任何量測。
 3. guard log（2026-10-30 至 11-19，Claude）：1637 個 prompt 中有 165 個回合被 R1 擋下
@@ -53,7 +54,8 @@ shoal 的每個機制要在「可能失敗的題目」上量出效益；量不�
 
 baseline、shoal-full（R1 預設 `advise`）、M1 arm（R1 改回 `declare`），以及從 shoal-full
 各關掉 M2–M4 其中一項的 3 個 ablation，再加 pilotfish（最新 release、預設設定），共 7 個。
-關 M2 是 `SHOAL_GUARD_STOP=off`，關 M3 是 `SHOAL_GUARD_SUBAGENT_WRITE=off`，關 M4 是 plugin 副本拿掉 SessionStart hook；
+關 M2 是 `SHOAL_GUARD_STOP=off`，關 M3 是 `SHOAL_GUARD_SUBAGENT_WRITE=off`，關 M4 是
+plugin 副本拿掉 SessionStart hook；
 protected 違規由 bench 從 diff 判定，每個 arm 都量。M5 沿用現有 `shoal-fast` 數據，不重跑。
 
 ## 預算與規模
@@ -92,7 +94,8 @@ protected 違規由 bench 從 diff 判定，每個 arm 都量。M5 沿用現有 
   - 讀很多、改很少：要掃大量檔案或 log 才能定位，改動只有幾行。
   - 平行：4 個彼此獨立的模組各自要修。
   - 中型混合：上述的縮小版，當對照。
-- Arms：baseline-opus、baseline-sonnet、shoal（main Opus，bootstrap 為縮短後版本）、pilotfish（main Opus）。
+- Arms：baseline-opus、baseline-sonnet、shoal（main Opus，bootstrap 為縮短後版本）、
+  pilotfish（main Opus）。
 - 規模：4 題 × 4 arm × 2 rep = 32 run，`--max-cost-usd 50`。
 - 先 smoke：長鏈題 × shoal 1 run，確認真的有派工；沒有派工就停下，問題在 bootstrap 與政策而非題目。
 - 結果：探測後停止，見 `REPORT.md` 第三輪一節。

@@ -45,7 +45,8 @@ shoal 為 `feat/r1-advise-ablation`（a34969a），pilotfish v1.5.0。總花費�
 ## abl-5 的差異
 
 abl-5（第二輪補需求）baseline 3/3 通過，shoal-full 0/3、pilotfish 1/3。失敗的 3 個 run 都卡在同一個
-hidden test：`blog/routes.py` 的 `RESERVED = {"new", "edit", "feed"}` 不得被當成 slug（應得 `new-2`）。
+hidden test：`blog/routes.py` 的 `RESERVED = {"new", "edit", "feed"}` 不得被當成
+slug（應得 `new-2`）。
 這條規則不在需求文字裡，要自己讀到 routes.py。超幾何檢定 p ≈ 0.048，只是邊緣顯著。推測是 plugin
 注入的上下文讓 main 少讀了檔案；runner 沒有保存完整 transcript，無法確認。
 

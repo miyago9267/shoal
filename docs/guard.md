@@ -26,7 +26,9 @@ records under `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`;
 `SHOAL_GUARD=off` disables it). The subagent rules (LEAF, VERIFY_EDIT) deny.
 Since 3.3.0 the main-session edit rule is the same `strict` rule as on Claude
 (`SHOAL_GUARD_R1=strict`, the default; 3.2.1 and 3.2.x defaulted to
-`declare`; Claude used `declare` from 2026-10-25 to 2026-11-18 and is `strict` again from 2026-11-19, guard-declared-direct M14): `apply_patch` and a `Bash` call that literally writes a file are
+`declare`; Claude used `declare` from 2026-10-25 to 2026-11-18 and is `strict`
+again from 2026-11-19, guard-declared-direct M14): `apply_patch` and a `Bash`
+call that literally writes a file are
 denied unless the turn has a dispatched write role or a standalone `#direct`
 in the prompt (or `SHOAL_GUARD_DIRECT=1`). A declaration is no exit in
 `strict`. The earlier `declare` rule (exit: a `Bash` call that is exactly `:
@@ -182,7 +184,8 @@ Claude Code 與 Gemini/agy 沒有自己的 shoal installer，dispatch guard 由
 （[`docs/specs/guard-declared-direct`](./specs/guard-declared-direct/SPEC.md)）。
 2026-10-25 起 Claude 的預設改回 `declare`（[`docs/specs/main-small-edits`](./specs/main-small-edits/SPEC.md)）；
 `SHOAL_GUARD_R1=strict` 還原成 3.3.0 的行為，其他 host 的預設不變。2026-11-19 起 Claude 的預設改回 `strict`
-（[`docs/specs/guard-declared-direct`](./specs/guard-declared-direct/SPEC.md) M14），`SHOAL_GUARD_R1=declare` 可手動選用。
+（[`docs/specs/guard-declared-direct`](./specs/guard-declared-direct/SPEC.md)
+M14），`SHOAL_GUARD_R1=declare` 可手動選用。
 
 ### main 改檔規則的模式：`SHOAL_GUARD_R1`
 
@@ -240,7 +243,8 @@ Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TM
 
 ### 宣告
 
-`declare` 模式（Claude 2026-10-25 至 11-18 的預設，2026-11-19 起要用 `SHOAL_GUARD_R1=declare` 手動選用）下，
+`declare` 模式（Claude 2026-10-25 至 11-18 的預設，2026-11-19 起要用
+`SHOAL_GUARD_R1=declare` 手動選用）下，
 要自己改檔時 main 先單獨執行一次 shell 指令
 （`strict` 下這個指令是普通的空指令，不放行）：
 
