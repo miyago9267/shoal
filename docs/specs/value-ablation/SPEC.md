@@ -23,7 +23,7 @@
 3. guard log（2026-10-30 至 11-19，Claude）：1637 個 prompt 中有 165 個回合被 R1 擋下
    main 改檔；其中 160 次 main 補一行 `: shoal-direct` 宣告後照樣自己改，只有 1 次改成派工。
    R1 的 deny 幾乎不改變路由，只增加來回。因此 Claude 的 R1 預設改為 `advise`
-   （放行、每回合提醒一次、log 記 `undeclared`），見 `guard-declared-direct` 的 M8。
+   （放行、每回合提醒一次、log 記 `undeclared`），見 `guard-declared-direct` 的 M13。
 
 ## Goal
 
@@ -37,7 +37,7 @@ shoal 的每個機制要在「可能失敗的題目」上量出效益；量不�
 | M1 | R1 擋 main 改檔（`SHOAL_GUARD_R1=declare`）對比預設 `advise` | 長任務中 main context 保持乾淨，後段決策品質較好 | 長任務通過率、main context token、派工次數 |
 | M2 | 改完沒驗證不能結束（verify gate） | 減少「宣稱完成但沒通過」 | 假完成次數、通過率 |
 | M3 | 擋非 shoal agent 與 protected 檔寫入 | 減少越界修改 | protected violation 次數 |
-| M4 | autoroute／Stop hook 強制續派 | 該派工時不會漏派 | 通過率 vs. hook 摩擦次數 |
+| M4 | SessionStart 注入的派工 bootstrap（Claude 上 autoroute Stop hook 不存在，2026-11-19 改量這項） | 該派工時不會漏派 | 通過率、派工次數 vs. 注入的 context token |
 | M5 | `#fast` lane | 簡單工作接近 baseline 成本 | 成本、wall |
 
 一份定義 render 到多個 host 的效益不適合 A/B，改用維護面量測：各 host 規則漂移與
@@ -53,7 +53,8 @@ shoal 的每個機制要在「可能失敗的題目」上量出效益；量不�
 
 baseline、shoal-full（R1 預設 `advise`）、M1 arm（R1 改回 `declare`），以及從 shoal-full
 各關掉 M2–M4 其中一項的 3 個 ablation，再加 pilotfish（最新 release、預設設定），共 7 個。
-M5 沿用現有 `shoal-fast` 數據，不重跑。
+關 M2 是 `SHOAL_GUARD_STOP=off`，關 M3 是 `SHOAL_GUARD_SUBAGENT_WRITE=off`，關 M4 是 plugin 副本拿掉 SessionStart hook；
+protected 違規由 bench 從 diff 判定，每個 arm 都量。M5 沿用現有 `shoal-fast` 數據，不重跑。
 
 ## 預算與規模
 
