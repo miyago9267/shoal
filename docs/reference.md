@@ -92,7 +92,7 @@ python3 tools/render.py --host claude --write
 （`plugins/claude/`、`plugins/claude-guard/`、
 `.claude-plugin/marketplace.json`），不是第六個 host。
 修改 core 或 binding 後先 `--write`，再跑
-`python3 -m unittest discover -s tests` 確認輸出差異是預期的。
+`python3 tools/run_tests.py` 確認輸出差異是預期的。
 
 ### 新增 host
 
@@ -182,7 +182,9 @@ shoal 目前是 beta。beta 的 minor 版本可能有破壞性變更；正式版
 ### 驗證
 
 ```bash
-python3 -m unittest discover -s tests
+python3 tools/run_tests.py                  # 全套，平行；提交前跑一次
+python3 tools/run_tests.py test_shoal_guard # 迭代時只跑相關 module
+python3 tools/run_tests.py -k relay         # 或依關鍵字
 python3 tools/check_links.py
 bun install --frozen-lockfile && bun run lint:md
 ```

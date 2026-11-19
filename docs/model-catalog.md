@@ -22,7 +22,7 @@ binding。規則細節見 [core/README.md](../core/README.md)。
 3. 預覽：`python3 tools/render.py --host <host> --explain`，確認哪些
    role 會改選它。
 4. 寫入：`python3 tools/render.py --host <host> --write`，再跑
-   `python3 -m unittest discover -s tests`。
+   `python3 tools/run_tests.py`。
 
 ## 換掉舊模型
 
