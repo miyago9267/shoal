@@ -9,9 +9,9 @@
    契約與停止條件。executor 在 brief 之外做的設計決定，視為未審查，main 逐項
    接受或退回。
 2. **派工不以數字門檻強制**。改檔由可寫的 role 執行，除非使用者以
-   `#direct` 授權 main 直接改。Claude 上 main 只負責討論，改檔交給 role；使用者 `#direct`
-   是唯一的直接改檔出口（2026-11-19 起，見 guard-declared-direct M14；不設檔數或行數門檻，
-   簡單工作也一樣），其餘 host 不變。互不相干的偵察與長指令預設派工。讀檔、診斷、整合與判斷由 main 直接做。
+   `#direct` 授權 main 直接改。Claude 上 main 只負責討論，改檔交給 role；使用者的 `#direct`
+   （或 `SHOAL_GUARD_DIRECT=1`）是 main 直接改檔的出口，豁免路徑不受限（2026-11-19 起，見
+   guard-declared-direct M14；不設檔數或行數門檻，簡單工作也一樣），其餘 host 不變。互不相干的偵察與長指令預設派工。讀檔、診斷、整合與判斷由 main 直接做。
 3. **hook 強制硬規則**：leaf 不再派 subagent、verifier 類 role 不改檔、main
    以背景方式開 shell、main 未派工就改檔（`#direct` 可放行；Claude 上宣告不是出口），以及非 shoal 可寫 role 的 subagent 改檔（`#direct`、
    `SHOAL_GUARD_WRITE_AGENTS` 可放行）。

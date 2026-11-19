@@ -263,8 +263,7 @@ Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TM
 - subagent 的宣告無效；宣告不解除 G4，也不影響硬規則。
 
 deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口：派出 write role（`executor`
-或 `applier`）、執行上述宣告，或請使用者在 prompt 加 `#direct`。Claude 的 bootstrap 另有一句
-要求只在符合「直接做的條件」時才宣告。
+或 `applier`）、執行上述宣告，或請使用者在 prompt 加 `#direct`。
 
 ### 分類檔（公開的選用介面）
 
