@@ -144,6 +144,13 @@ def worker(out_path, ids):
     return 0
 
 
+def harden_stdio():
+    """Windows 預設 cp1252：輸出非 ASCII 時改成不丟例外。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def run_unit(index, ids, base):
     unit_dir = base / f"u{index}"
     tmp, state = unit_dir / "t", unit_dir / "s"
@@ -156,11 +163,20 @@ def run_unit(index, ids, base):
         TMP=str(tmp),
         TEMP=str(tmp),
         XDG_STATE_HOME=str(state),
+        PYTHONIOENCODING="utf-8",
+        PYTHONUTF8="1",
     )
     cmd = [sys.executable, str(Path(__file__).resolve()), "--worker", str(out), *ids]
     try:
         proc = subprocess.run(
-            cmd, cwd=ROOT, env=env, capture_output=True, text=True, timeout=UNIT_TIMEOUT
+            cmd,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=UNIT_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
         return {
@@ -210,6 +226,7 @@ def parse_args(argv):
 
 
 def main(argv):
+    harden_stdio()
     if len(argv) > 1 and argv[0] == "--worker":
         return worker(argv[1], argv[2:])
     args = parse_args(argv)
