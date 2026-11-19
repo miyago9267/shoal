@@ -174,9 +174,9 @@ class BehaviourContractTests(unittest.TestCase):
     def test_claude_bootstrap_lets_main_edit_simple_work_after_declaring(self) -> None:
         text = flat(CLAUDE_BOOTSTRAP)
         self.assertIn(
-            'Simple work (one purpose, known scope, no risk trigger, expected within 10 minutes): '
-            'main runs `: shoal-direct "<reason>"` as its own shell command, then edits itself; '
-            '`#direct` also allows it. All other edits go to `applier` (small, bounded) or `executor` (multi-file).',
+            'Main edits itself when the target is known and the change is small; under '
+            '`SHOAL_GUARD_R1=declare` it first runs `: shoal-direct "<reason>"` as its own shell command '
+            '(`#direct` also allows it).',
             text,
         )
         self.assertNotIn("The main session does not edit files itself", text)

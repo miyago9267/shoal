@@ -245,7 +245,7 @@ class PolicyClauseTests(unittest.TestCase):
         # 兩份都是 Claude 輸出；開頭是簡單工作的宣告句（main-small-edits），Codex 的原句不在這裡。
         for text in (self.bootstrap, claude_bootstrap):
             lines = text.splitlines()
-            at = next(i for i, line in enumerate(lines) if line.startswith("- Simple work (one purpose, known scope, no risk trigger"))
+            at = next(i for i, line in enumerate(lines) if line.startswith("- Main edits itself when the target is known"))
             nested = []
             for line in lines[at + 1 :]:
                 if not line.startswith("  "):

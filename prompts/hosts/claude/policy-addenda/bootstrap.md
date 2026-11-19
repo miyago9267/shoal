@@ -1,15 +1,16 @@
 <!-- addendum: claude-delegate-default at=replace:bootstrap-delegate-default -->
-- Simple work (one purpose, known scope, no risk trigger, expected within 10
-  minutes): main runs `: shoal-direct "<reason>"` as its own shell
-  command, then edits itself; `#direct` also allows it. All other
-  edits go to `applier` (small, bounded) or `executor` (multi-file).
-  Delegate only when one of these fits:
+- Main edits itself when the target is known and the change is small; under
+  `SHOAL_GUARD_R1=declare` it first runs `: shoal-direct "<reason>"` as its own
+  shell command (`#direct` also allows it). Delegate only when one of these
+  fits, `applier` for small bounded edits and `executor` for multi-file work:
   - 10+ files to read or 1000+ lines of output for a small change -> one
     `scout` per independent surface, same message;
   - independent parts that can run in parallel -> one role each, same message;
   - a long task (10+ minutes of edits) -> `executor`;
   - a command that runs long or must be awaited (tests, build, CI) -> `watcher`
     {{background_option}}; never start a background shell yourself.
+- A clear request to fix or finish is one outcome: continue to acceptance and
+  report which check ran.
 
 <!-- addendum: claude-effort at=replace:bootstrap-effort -->
 - `#fast` with simple work: `[fast]` `applier`, effort `low`, brief = goal, files,
