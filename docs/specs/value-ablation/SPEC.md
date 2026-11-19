@@ -81,3 +81,20 @@ protected 違規由 bench 從 diff 判定，每個 arm 都量。M5 沿用現有 
 
 - pilotfish 以外的 orchestration 專案。
 - Codex、Grok、agy、OpenCode host 的 A/B（runner 目前以 Claude 為 main）；P4 後再決定。
+
+## 第三輪：會派工的情境（Miyago 2026-11-19 核准，預算 $50，main 用 Opus）
+
+第二輪的題目每 run 約 30 秒、3 萬 token，派工的三個宣稱效益（main 上下文乾淨、便宜 role 省錢、
+平行省時間）都沒有出現的條件，shoal-full 24 run 只派工 1 次（見 `REPORT.md`）。
+
+- 題目 4 題，各對應一個宣稱：
+  - 長鏈：同一 session 4–5 個相依子任務，main 全部自己做會超過 150k token 或觸發 compact。
+  - 讀很多、改很少：要掃大量檔案或 log 才能定位，改動只有幾行。
+  - 平行：4 個彼此獨立的模組各自要修。
+  - 中型混合：上述的縮小版，當對照。
+- Arms：baseline-opus、baseline-sonnet、shoal（main Opus，bootstrap 為縮短後版本）、pilotfish（main Opus）。
+- 規模：4 題 × 4 arm × 2 rep = 32 run，`--max-cost-usd 50`。
+- 先 smoke：長鏈題 × shoal 1 run，確認真的有派工；沒有派工就停下，問題在 bootstrap 與政策而非題目。
+- 指標：通過率、總成本、wall、main 峰值上下文、compact 次數、派工次數、後段子任務通過率。
+- 結論規則：shoal 在任一題型以同等或更好通過率勝過 baseline-opus 的成本或 wall，派工保留為預設；
+  四題都沒有，派工改為選用，shoal 主打多 host 定義與 guard。
