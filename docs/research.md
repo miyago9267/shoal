@@ -93,7 +93,7 @@ FrontierCode 29.3% (Opus 4.8: 13.4%) — both are Anthropic-self-reported figure
 | Two-layer limits | 5-hour rolling window + weekly cap; the pool is shared across Claude Code / Claude.ai / Cowork |
 | Two weekly buckets | A shared "all models" bucket + an **additional Sonnet-only bucket** (since Nov 2025) — Sonnet usage counts against the shared bucket too (current builds reportedly drain both), so it's not a fully separate pool, but it does materially extend what Sonnet work can draw |
 | Fable 5 multiplier | Official UI wording: "Uses your limits ~2x faster than Opus"; heavy agentic use burns much steeper in practice (one extreme report: a Max $200 user exhausting the 5-hour window in 13 minutes) |
-| Relative unit price (API proxy) | Fable 5 = 2× Opus; Sonnet 5 standard ≈ 0.6× ($3/$15; introductory $2/$10 through 2026-08-31, ≈ 0.4×); Haiku 4.5 ≈ 0.2× |
+| Relative unit price (API proxy, 2026-11) | Fable 5.2 ($8/$40) = 2× Opus 5.5 ($4/$20); Sonnet 5.5 ($2/$10) = 0.5×; Haiku 5.5 ($0.10/$0.50, prompts ≤100K) = 0.025×. Historical: Fable 5 / 5.1 were $10/$50 |
 | Official stance | Absolute token numbers per plan were never published; only the plan multipliers (Max 5x/20x) and the ~2× Fable rate are official |
 
 Fable 5's subscription timeline (as of 2026-07-09):

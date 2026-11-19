@@ -19,13 +19,18 @@ cost of being wrong:
 
 | Request shape | Initial mode | First move |
 | --- | --- | --- |
-| Clear and bounded | `execute` | Confirm the target and approval, then take the smallest direct step. |
+| Clear and bounded | `execute` | Confirm the target and approval, then dispatch the smallest write task. |
 | Broad or high-impact | `explore_then_plan` | Establish the boundary, surface risks, and propose a reversible slice. |
 | Open-ended idea | `co_discover` | Ask focused questions and define the smallest useful experiment. |
 
 The policy also applies a grounding floor to prevent unsupported guessing, a
 stopping ceiling to prevent runaway analysis, and a `direction_checkpoint` to
 decide whether to continue, pivot, roll back, or ask for more input.
+
+The Codex guard denies main-session file edits unless the user's prompt contains
+`#direct`. For write-role dispatch, put the lane in the schema-safe `task_name`
+(for example `rigorous_s_guard_fix` for `security-executor`); the native
+transport may encrypt `message` before the guard reads it.
 
 In v1.6.0, an explicit current-turn request can also choose review intent:
 `fast` skips optional review overhead, `default` follows the risk policy, and

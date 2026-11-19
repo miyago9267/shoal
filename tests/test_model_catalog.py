@@ -241,7 +241,7 @@ class CalibrationTests(unittest.TestCase):
             "scout": "haiku",  # [roles.scout].model 的 pin，不是 tier pin
             "applier": "haiku",
             "executor": "sonnet",
-            "plan-critic": "fable",
+            "plan-critic": "claude-fable-5-2",
             "verifier": "opus",
             "security-reviewer": "opus",
             "security-executor": "opus",
@@ -342,7 +342,7 @@ class CliOverrideTests(unittest.TestCase):
 
     def test_explain_fails_the_same_way(self) -> None:
         self.edit(self.binding, '"anthropic/opus" = "opus"\n', "")
-        self.edit(self.binding, '"anthropic/fable" = "fable"\n', "")
+        self.edit(self.binding, '"anthropic/fable" = "claude-fable-5-2"\n', "")
         self.edit(self.binding, '"anthropic/sonnet" = "sonnet"\n', "")
         result = run_render("claude", self.root, "--explain")
         self.assertEqual(result.returncode, 2, result.stderr)
@@ -359,9 +359,21 @@ class CliOverrideTests(unittest.TestCase):
         self.edit(
             self.binding,
             "[roles.security-reviewer]\n",
-            '[roles.security-reviewer]\nmodel = "fable"\n',
+            '[roles.security-reviewer]\nmodel = "claude-fable-5-2"\n',
         )
         self.assert_rejected(FLAG)
+
+    def test_pinned_security_role_to_flagged_family_alias_is_rejected(self) -> None:
+        # binding 指定完整 ID 時，用 family alias 或其他版本 ID pin 仍算同一個帶旗標的模型
+        for pinned in ("fable", "claude-fable-5-1", "fable[1m]"):
+            with self.subTest(pinned=pinned):
+                self.setUp()
+                self.edit(
+                    self.binding,
+                    "[roles.security-reviewer]\n",
+                    f'[roles.security-reviewer]\nmodel = "{pinned}"\n',
+                )
+                self.assert_rejected(FLAG)
 
     def test_pinned_security_role_to_unflagged_model_is_manual_override(self) -> None:
         # R5：pin 到沒有旗標的模型照常生效，--explain 標示手動指定
@@ -370,7 +382,9 @@ class CliOverrideTests(unittest.TestCase):
             "[roles.security-reviewer]\n",
             '[roles.security-reviewer]\nmodel = "sonnet"\n',
         )
-        self.assertNotEqual(self.claude_files(), render.RENDERERS["claude"](ROOT))  # 輸出的 model 變了
+        self.assertNotEqual(
+            self.claude_files(), render.RENDERERS["claude"](ROOT)
+        )  # 輸出的 model 變了
         out = run_render("claude", self.root, "--explain").stdout
         block = out.split("security-reviewer  tier=strong")[1].split("\n\n")[0]
         self.assertIn("結果：sonnet（手動指定 [roles.security-reviewer].model）", block)
@@ -386,7 +400,8 @@ class CliOverrideTests(unittest.TestCase):
             self.claude_files()["agents/executor.md"],
         )
         self.assertIn(
-            "手動指定 [tiers].standard", run_render("claude", self.root, "--explain").stdout
+            "手動指定 [tiers].standard",
+            run_render("claude", self.root, "--explain").stdout,
         )
 
 

@@ -802,13 +802,15 @@ export function stopBlocks(host: string, env: Env): boolean {
 /**
  * SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
  * Unset, unrecognized, or `strict` / `declare` on a host outside DECLARE_HOSTS -> `classified`.  Every host the
- * guard knows (claude, codex, opencode, grok, agy) is in DECLARE_HOSTS, so `strict` is the default there.
+ * guard knows (claude, codex, opencode, grok, agy) is in DECLARE_HOSTS; the default there is `declare` on claude and
+ * `strict` on the others.
  */
 export function resolveR1(host: string, env: Env): string {
   const raw = env.SHOAL_GUARD_R1 || "";
   if (raw === "classified" || raw === "off") return raw;
   if (!DECLARE_HOSTS.has(host)) return "classified";
-  return raw === "declare" ? "declare" : "strict";
+  if (raw === "strict" || raw === "declare") return raw;
+  return host === "claude" ? "declare" : "strict";
 }
 
 /** null when the configured value is not an integer (the guard then fails open). */
@@ -879,7 +881,7 @@ export function repoUnderTest(cwd: string): string {
   }
 }
 
-/** `path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, claude transcripts. */
+/** `path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, claude transcripts and plan files. */
 export function isExempt(path: string, host: string, env: Env, home: string): boolean {
   if (path.split("/").slice(0, -1).includes(".ai")) return true;
   const roots = ["/tmp", "/private/tmp", lenientRealpath("/tmp")];
@@ -888,9 +890,11 @@ export function isExempt(path: string, host: string, env: Env, home: string): bo
     roots.push(lenientRealpath(tmpdir));
   }
   if (host === "claude") {
-    roots.push(lenientRealpath(join(home, ".claude", "projects")));
+    for (const sub of ["projects", "plans"]) roots.push(lenientRealpath(join(home, ".claude", sub)));
     const config = env.CLAUDE_CONFIG_DIR ?? "";
-    if (config && isAbsolute(config)) roots.push(lenientRealpath(join(config, "projects")));
+    if (config && isAbsolute(config)) {
+      for (const sub of ["projects", "plans"]) roots.push(lenientRealpath(join(config, sub)));
+    }
   }
   return roots.some((root) => under(path, root));
 }

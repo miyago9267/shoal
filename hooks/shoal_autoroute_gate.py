@@ -19,6 +19,8 @@ SCHEMA = 2
 REQUIRED_TASK = "automatic_plan_review"
 ROUTE_SCHEMA = 4
 ROUTE_REQUIRED_TASK = "automatic_model_route"
+# The Codex guard requires write-role dispatches to carry a lane-shaped task_name; read-only scout needs none.
+ROUTE_LANE_PREFIX = {"applier": "fast_s_", "sol-executor": "complex_m_", "executor": "complex_m_"}
 SOL_EXECUTOR_ROLE = "sol-executor"
 ASTRA_EXECUTOR_ROLE = "executor"
 AUTOMATIC_ROUTE_ROLES = frozenset(
@@ -61,27 +63,57 @@ BLOCK_REASON = (
     "any other external or irreversible write. Do not emit PAUSED_NEEDS_USER "
     "or ask the user solely because this review is pending."
 )
+BLOCK_REASON_ZH = (
+    "Status: WAITING_FOR_REVIEW。缺少必要的獨立 Plan review。這是內部的 review 相依，"
+    "不是要使用者決定的事。請現在呼叫 typed plan-critic role，等它回報後再從 review gate 繼續。"
+    "在拿到有效結果之前，只能做唯讀的本機檢查或準備；不得建立、輪替或撤銷 credential，"
+    "不得修改 secret 或 variable，不得 push、deploy，也不得做任何其他對外或不可逆的寫入。"
+    "不要輸出 PAUSED_NEEDS_USER，也不要只因為 review 尚未完成就詢問使用者。"
+)
 BLOCK_OUTPUT = {"decision": "block", "reason": BLOCK_REASON}
-def _model_route_output(required_role: str) -> dict[str, str]:
-    """Return one bounded continuation directive for a typed route role."""
-    return {
-        "decision": "block",
-        "reason": (
+
+
+def _zh() -> bool:
+    return os.environ.get("SHOAL_GUARD_LANG") == "zh-TW"
+
+
+def _block_output() -> dict[str, str]:
+    return {"decision": "block", "reason": BLOCK_REASON_ZH if _zh() else BLOCK_REASON}
+
+
+def route_task_name(role: str) -> str:
+    return ROUTE_LANE_PREFIX.get(role, "") + ROUTE_REQUIRED_TASK
+
+
+def _model_route_output(required_role: str, zh: bool | None = None) -> dict[str, str]:
+    """Return one bounded continuation directive for a typed route role (zh-TW when SHOAL_GUARD_LANG says so)."""
+    if _zh() if zh is None else zh:
+        reason = (
+            "Status: ROUTE_ESCALATION_REQUIRED。這一輪需要設計、使用工具、判讀或多個步驟。"
+            "hook 已開啟一次有界的 continuation。在這次 continuation 中，請立刻呼叫恰好一次原生 typed "
+            "`spawn_agent`，帶 "
+            f"`agent_type={required_role}`、"
+            f"`task_name={route_task_name(required_role)}` 與 `fork_turns=none`；message 要有界，"
+            "並保留既有的 goal、target、acceptance 與 stop condition。不要使用 full-history fork，"
+            "不要傳 model 或 reasoning override，不要請使用者指定 role，也不要自行決定下一個 phase。"
+        )
+    else:
+        reason = (
             "Status: ROUTE_ESCALATION_REQUIRED. This turn needs design, tool use, "
             "interpretation, or multiple steps. The hook has opened one bounded "
             "continuation. On this continuation, immediately call exactly one "
             "native typed `spawn_agent` with "
             f"`agent_type={required_role}`, "
-            "`task_name=automatic_model_route`, and `fork_turns=none`; use a "
+            f"`task_name={route_task_name(required_role)}`, and `fork_turns=none`; use a "
             "bounded message that preserves the existing goal, target, acceptance, "
             "and stop condition. Do not use a full-history fork, pass model or "
             "reasoning overrides, ask the user to request a role, or choose the "
             "next phase."
-        ),
-    }
+        )
+    return {"decision": "block", "reason": reason}
 
 
-MODEL_ROUTE_OUTPUT = _model_route_output(ASTRA_EXECUTOR_ROLE)
+MODEL_ROUTE_OUTPUT = _model_route_output(ASTRA_EXECUTOR_ROLE, zh=False)
 
 _PLAN_RE = re.compile(
     r"(?:\b(?:plan|planning|pre-approval|approval|approve|readiness|proposal)\b|"
@@ -337,7 +369,7 @@ def _route_signal(
             "agent_type": required_role,
             "fork_turns": "none",
             "mode": "typed_role",
-            "task_name": ROUTE_REQUIRED_TASK,
+            "task_name": route_task_name(required_role),
         }
         escalate_on = list(ROUTE_ESCALATION_EVENTS)
     else:
@@ -349,7 +381,7 @@ def _route_signal(
             "agent_type": ASTRA_EXECUTOR_ROLE,
             "fork_turns": "none",
             "mode": "typed_role",
-            "task_name": ROUTE_REQUIRED_TASK,
+            "task_name": route_task_name(ASTRA_EXECUTOR_ROLE),
         }
         escalate_on = []
     return {
@@ -1585,7 +1617,7 @@ def _handle_stop(payload: dict[str, Any], codex_home: Path) -> dict[str, str] | 
             session_id=session_id,
             turn_id=turn_id,
             required_role=route_marker["required_role"],
-            required_task=ROUTE_REQUIRED_TASK,
+            required_task=route_task_name(route_marker["required_role"]),
         )
         if direct_chain_valid and allowed_child_id is not None:
             _remove_route_marker(codex_home, session_id)
@@ -1628,7 +1660,7 @@ def _handle_stop(payload: dict[str, Any], codex_home: Path) -> dict[str, str] | 
     if not _atomic_marker_write(codex_home, marker):
         _remove_marker(codex_home, session_id)
         return None
-    return dict(BLOCK_OUTPUT)
+    return _block_output()
 
 
 def handle(

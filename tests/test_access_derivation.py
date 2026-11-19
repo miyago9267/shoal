@@ -14,7 +14,7 @@ from render_helpers import ROOT, render, run_render
 HOSTS = ("claude", "codex", "agy", "grok", "opencode")
 # 目前 binding 裡保留的 role 層級權限覆寫；新增或移除都要在這裡明確改，並說明原因（見 SPEC）。
 EXPECTED_OVERRIDES = {
-    # applier 用 tools allowlist 取代 write 的 denylist，縮小啟動時載入的工具 schema。
+    # applier 的 tools allowlist 不含 web 與 Skill，比 write 等級再小一點。
     "claude": {"applier": ["tools"]},
     "codex": {},
     "agy": {},
@@ -258,7 +258,7 @@ class ShippedBindingTests(unittest.TestCase):
             perms["security-reviewer"],
             {"tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]},
         )
-        self.assertEqual(perms["executor"], {"disallowedTools": ["Agent", "Workflow"]})
+        self.assertEqual(perms["executor"], {"tools": ["Read", "Write", "Edit", "MultiEdit", "Bash", "Grep", "Glob", "WebSearch", "WebFetch", "Skill"]})
         self.assertEqual(perms["security-executor"], perms["executor"])
         self.assertEqual(
             perms["applier"],
@@ -266,8 +266,16 @@ class ShippedBindingTests(unittest.TestCase):
         )
         self.assertEqual(
             perms["verifier"],
-            {"disallowedTools": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]},
+            {"tools": ["Read", "Bash", "Grep", "Glob", "WebSearch", "WebFetch"]},
         )
+        self.assertEqual(perms["watcher"], perms["verifier"])
+        # 不變量：write / verify 不含 Agent、Workflow；verify 不含任何寫入工具
+        for name, perm in perms.items():
+            self.assertFalse({"Agent", "Workflow"} & set(perm.get("tools", [])), name)
+        for name in ("verifier", "watcher"):
+            self.assertFalse(
+                {"Write", "Edit", "MultiEdit", "NotebookEdit"} & set(perms[name]["tools"]), name
+            )
 
     def test_codex_derivation(self) -> None:
         perms = {n: p.fields for n, p in derive("codex").items()}
@@ -446,7 +454,7 @@ class ValidationOnDerivedResultTests(TempRoot):
         self.edit(
             self.path("claude"),
             "[access.write]\n",
-            '[access.write]\ntools = ["Read"]\n',
+            '[access.write]\ndisallowedTools = ["Agent"]\n',
         )
         self.assert_rejected("claude", "tools 或 disallowedTools")
 
@@ -466,7 +474,7 @@ class MutationTests(TempRoot):
 
     def test_capability_stacks_on_each_access_level(self) -> None:
         # verifier（verify 等級）加上 web：agy 的 allowlist 附加；codex 設 web_search；
-        # claude 的 verify 是 denylist，本來就允許 web 工具，輸出不變
+        # claude 的 verify allowlist 已含 web 工具，附加時略過重複，輸出不變
         self.edit(
             self.root / "core" / "roles.toml",
             '[roles.verifier]\naccess = "verify"\ntier = "strong"\nsecurity = false\n',
@@ -494,7 +502,7 @@ class MutationTests(TempRoot):
         )
         self.assertEqual(self.changed("claude"), {"agents/scout.md"})
         self.assertIn(
-            b"\ndisallowedTools: Agent, Workflow\n",
+            b"\ntools: Read, Write, Edit, MultiEdit, Bash, Grep, Glob, WebSearch, WebFetch, Skill\n",
             self.rendered("claude")["agents/scout.md"],
         )
         self.assertEqual(self.changed("grok"), {"roles/scout.toml"})
@@ -576,8 +584,8 @@ class MutationTests(TempRoot):
     def test_write_and_verify_table_changes_move_only_their_roles(self) -> None:
         self.edit(
             self.path("claude"),
-            '[access.write]\ndisallowedTools = ["Agent", "Workflow"]',
-            '[access.write]\ndisallowedTools = ["Workflow"]',
+            '[access.write]\ntools = ["Read", "Write", "Edit", "MultiEdit", "Bash", "Grep", "Glob", "WebSearch", "WebFetch", "Skill"]',
+            '[access.write]\ntools = ["Read", "Write", "Edit", "MultiEdit", "Bash", "Grep", "Glob", "WebSearch", "WebFetch"]',
         )
         self.assertEqual(
             self.changed("claude"),
@@ -658,7 +666,7 @@ class ExplainPermissionTests(TempRoot):
             "access=verify  capabilities=無  對應表=[access.verify]  覆寫=無", ver
         )
         self.assertIn(
-            'disallowedTools = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Workflow"]',
+            'tools = ["Read", "Bash", "Grep", "Glob", "WebSearch", "WebFetch"]',
             ver,
         )
 

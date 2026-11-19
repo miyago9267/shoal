@@ -36,10 +36,12 @@ describe("parseDeclaration", () => {
 });
 
 describe("resolveR1", () => {
-  test("claude, codex, opencode and grok are strict by default; declare, classified and off are selectable", () => {
+  test("claude is declare by default, codex, opencode and grok strict; declare, strict, classified and off are selectable", () => {
     for (const host of ["claude", "codex", "opencode", "grok"]) {
-      expect(resolveR1(host, {})).toBe("strict");
-      for (const value of ["", "bogus", "STRICT", "strict"]) expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe("strict");
+      const fallback = host === "claude" ? "declare" : "strict";
+      expect(resolveR1(host, {})).toBe(fallback);
+      for (const value of ["", "bogus", "STRICT"]) expect(resolveR1(host, { SHOAL_GUARD_R1: value })).toBe(fallback);
+      expect(resolveR1(host, { SHOAL_GUARD_R1: "strict" })).toBe("strict");
       expect(resolveR1(host, { SHOAL_GUARD_R1: "declare" })).toBe("declare");
       expect(resolveR1(host, { SHOAL_GUARD_R1: "classified" })).toBe("classified");
       expect(resolveR1(host, { SHOAL_GUARD_R1: "off" })).toBe("off");

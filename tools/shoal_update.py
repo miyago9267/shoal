@@ -257,10 +257,12 @@ class Updater:
                 aliases = binding["models"]
             except (tomllib.TOMLDecodeError, KeyError, UnicodeDecodeError) as exc:
                 raise UpdateError(f"core 或 claude binding 無法解析: {exc}") from exc
+            # host 名稱（可能是完整 ID）與 catalog family 名都算，和 resolve.py 的 pin 檢查一致
             flagged = {
-                aliases[key]
+                name
                 for key, spec in models.items()
                 if key in aliases and "refuses_defensive_security" in spec.get("flags", [])
+                for name in (aliases[key].lower(), key.split("/", 1)[-1].lower())
             }
             self._binding = binding
             # extra_roles（Explore）由 update_explore() 另外安裝使用者層級的檔案，plugin 內的覆寫不會生效
@@ -275,7 +277,8 @@ class Updater:
             raise UpdateError(f"{source} 的 {role} model 格式不合法")
         if roles.get(role, {}).get("security") and model in INDIRECT_ALIASES:
             raise UpdateError(f"security role {role} 不可指定間接 alias {model}")
-        if roles.get(role, {}).get("security") and flagged & set(re.split(r"[-.\[\]]", model)):
+        tokens = set(re.split(r"[^a-z0-9]+", model.lower())) | {model.lower()}
+        if roles.get(role, {}).get("security") and flagged & tokens:
             raise UpdateError(f"security role {role} 不可指定帶 refuses_defensive_security 的 {model}")
         return model
 

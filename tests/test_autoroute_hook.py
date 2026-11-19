@@ -138,6 +138,12 @@ def child_events(
 
 
 class AutorouteHookTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("SHOAL_GUARD_LANG", None)
+
     def test_installed_plugin_config_drives_canonical_route_without_live_network(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "codex-home"
@@ -354,7 +360,7 @@ class AutorouteHookTests(unittest.TestCase):
                 self.assertIn('"purpose":"bounded_judgment_execution"', context)
                 self.assertIn(
                     '"dispatch":{"agent_type":"sol-executor","fork_turns":"none",'
-                    '"mode":"typed_role","task_name":"automatic_model_route"}',
+                    '"mode":"typed_role","task_name":"complex_m_automatic_model_route"}',
                     context,
                 )
                 marker = gate._route_marker_path(home, SESSION, create=False)
@@ -422,7 +428,7 @@ class AutorouteHookTests(unittest.TestCase):
             self.assertIn('"purpose":"bounded_deep_judgment_execution"', context)
             self.assertIn(
                 '"dispatch":{"agent_type":"executor","fork_turns":"none",'
-                '"mode":"typed_role","task_name":"automatic_model_route"}',
+                '"mode":"typed_role","task_name":"complex_m_automatic_model_route"}',
                 context,
             )
             self.assertIn('"escalate_on":[]', context)
@@ -448,7 +454,7 @@ class AutorouteHookTests(unittest.TestCase):
                 gate.MODEL_ROUTE_OUTPUT,
             )
             self.assertIn("`fork_turns=none`", gate.MODEL_ROUTE_OUTPUT["reason"])
-            self.assertIn("`task_name=automatic_model_route`", gate.MODEL_ROUTE_OUTPUT["reason"])
+            self.assertIn("`task_name=complex_m_automatic_model_route`", gate.MODEL_ROUTE_OUTPUT["reason"])
             marker = gate._route_marker_path(home, SESSION, create=False)
             self.assertTrue(json.loads(marker.read_text())["attempted"])
             self.assertIsNone(gate.handle(stop_input(transcript), codex_home=home))
@@ -480,7 +486,7 @@ class AutorouteHookTests(unittest.TestCase):
             )
             self.assertIsInstance(continuation, dict)
             self.assertIn(
-                '"task_name":"automatic_model_route"',
+                '"task_name":"complex_m_automatic_model_route"',
                 continuation["hookSpecificOutput"]["additionalContext"],
             )
             write_events(
@@ -525,7 +531,7 @@ class AutorouteHookTests(unittest.TestCase):
                                 {
                                     "message": "Own the bounded implementation.",
                                     "agent_type": "executor",
-                                    "task_name": "automatic_model_route",
+                                    "task_name": "complex_m_automatic_model_route",
                                     "fork_turns": "none",
                                 }
                             ),
@@ -572,7 +578,7 @@ class AutorouteHookTests(unittest.TestCase):
                                 {
                                     "message": "Own the bounded implementation.",
                                     "agent_type": "sol-executor",
-                                    "task_name": "automatic_model_route",
+                                    "task_name": "complex_m_automatic_model_route",
                                     "fork_turns": "none",
                                 }
                             ),
@@ -618,6 +624,21 @@ class AutorouteHookTests(unittest.TestCase):
         self.assertIn("read-only local inspection or preparation", gate.BLOCK_REASON)
         self.assertIn("do not create, rotate, or revoke credentials", gate.BLOCK_REASON)
         self.assertIn("Do not emit PAUSED_NEEDS_USER", gate.BLOCK_REASON)
+
+    def test_zh_tw_route_and_block_output_keep_literals(self) -> None:
+        with mock.patch.dict(os.environ, {"SHOAL_GUARD_LANG": "zh-TW"}):
+            for role in sorted(gate.AUTOMATIC_ROUTE_ROLES):
+                zh = gate._model_route_output(role)["reason"]
+                self.assertIn("請", zh)
+                self.assertIn(f"`agent_type={role}`", zh)
+                self.assertIn(f"`task_name={gate.route_task_name(role)}`", zh)
+            block = gate._block_output()
+            self.assertEqual(block["decision"], "block")
+            self.assertIn("請", block["reason"])
+            for literal in ("WAITING_FOR_REVIEW", "plan-critic", "PAUSED_NEEDS_USER"):
+                self.assertIn(literal, block["reason"])
+        with mock.patch.dict(os.environ, {"SHOAL_GUARD_LANG": ""}):
+            self.assertEqual(gate._block_output(), gate.BLOCK_OUTPUT)
 
     def test_explicit_review_intent_is_redacted_and_turn_scoped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1099,6 +1120,12 @@ class AutorouteHookTests(unittest.TestCase):
 
 
 class ScanBoundaryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("SHOAL_GUARD_LANG", None)
+
     """Environment noise must not decide whether a review is proven."""
 
     def _turn_home(self, directory: str) -> Path:

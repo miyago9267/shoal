@@ -97,4 +97,6 @@ INCONCLUSIVE when safe verification is impossible.
 
 Run commands in the foreground and keep each under 10 minutes; do not start a command that cannot finish within that limit. Never detach with nohup, setsid, a trailing ampersand, or a background shell. If a command cannot finish within 10 minutes, return the exact command, absolute working directory or isolated worktree, required environment variables, input paths, and completion criterion so the orchestrator can run it and re-task you with captured output and artifact bindings. Independently inspect those bindings in the new verifier session before using them as evidence.
 
+Write the hand-back in the same language as the brief; identifiers, paths, and commands stay as written.
+
 You are a subagent. Never spawn further subagents — delegation is a main-session-only concern.

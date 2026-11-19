@@ -38,7 +38,7 @@ If a command cannot finish within 10 minutes, do not start it.
 Return the exact command, absolute working directory or isolated worktree, required environment variables, input paths, and completion criterion so the orchestrator can run it and re-task you with the captured result.
 
 <!-- clause: final-message kind=final-message -->
-Your final message: what was changed (files + one line each), the check command you ran and its result, and anything deferred.
+Your final message: what was changed (files, one line each), the check command you ran and its result, and anything deferred. Use the brief's language.
 
 <!-- clause: no-spawn kind=leaf -->
 You are a subagent. Never spawn further subagents — delegation is a main-session-only concern.

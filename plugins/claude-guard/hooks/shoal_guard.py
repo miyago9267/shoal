@@ -195,7 +195,20 @@ LANE_ROLES = {
     "complex": ("executor", "sol-executor"),
     "rigorous": ("security-executor",),
 }
-LANE_RE = re.compile(r"^\s*\[(fast|complex|rigorous)\]")
+LANE_RE = re.compile(r"^\s*\[(fast|complex|rigorous)(?::([sml]))?\]")
+CODEX_TASK_LANE_RE = re.compile(r"^(fast|complex|rigorous)_([sml])_[a-z0-9_]+$")
+CODEX_LANE_INVALID = "__codex_lane_invalid__"
+CODEX_LANE_CONFLICT = "__codex_lane_conflict__"
+
+# Tool-call budget (SHOAL_GUARD_TOOL_CAP, default on; claude): the lane label's size (`[complex:s]`, none = m) caps how
+# many tool calls the dispatched write role may make; the call after the cap is denied so the role's next message is
+# its hand-back.  Main's Agent PreToolUse queues {role, size}; SubagentStart pops the oldest entry of the same role.
+# Any bookkeeping problem leaves the agent on its role default (m; security-executor: uncapped) and never blocks.
+CAP_HOSTS = frozenset({"claude"})
+CAP_SIZES = {"s": 20, "m": 60, "l": 120}
+CAP_DEFAULT_SIZE = "m"
+CAP_EXPLICIT_ONLY = frozenset({"security-executor"})  # capped only when the dispatch carried a size
+CAP_QUEUE_TTL = 600.0  # seconds a queued dispatch waits for its SubagentStart
 
 CLASSIFIED_ROLE = {"judgment": "executor", "mechanical": "applier"}
 
@@ -278,13 +291,30 @@ MESSAGES = {
         ),
         "LANE_MISSING": (
             "Shoal dispatch guard: a write-role dispatch ({role}) must start its description with a lane label: "
-            "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor "
-            "(e.g. `[complex] fix: ...`). Add the label, or set SHOAL_GUARD_LANES=off."
+            "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor, optionally sized "
+            "`:s` / `:m` / `:l` (e.g. `[complex:s] fix: ...`). Add the label, or set SHOAL_GUARD_LANES=off."
+        ),
+        "LANE_MISSING_CODEX": (
+            "Shoal dispatch guard: Codex write-role dispatch ({role}) needs a lane label in task_name, "
+            "for example rigorous_s_guard_fix for security-executor. Use fast, complex, or rigorous "
+            "with size s, m, or l and a lowercase slug."
+        ),
+        "LANE_INVALID": (
+            "Shoal dispatch guard: Codex task_name lane is invalid for role {role}. "
+            "Use <lane>_<size>_<slug>, for example rigorous_s_guard_fix."
+        ),
+        "LANE_CONFLICT": (
+            "Shoal dispatch guard: Codex task_name lane conflicts with the visible message lane for role {role}. "
+            "Make the lane and any explicit size agree."
         ),
         "LANE_MISMATCH": (
             "Shoal dispatch guard: lane label [{label}] does not match role {role}. "
             "[fast] -> applier, [complex] -> executor, [rigorous] -> security-executor. "
             "Dispatch {expected} for [{label}], or change the label to match {role}."
+        ),
+        "CAP": (
+            "Shoal tool budget reached: this {role} agent has used its {size} budget of {cap} tool calls. "
+            "Stop now and send the final hand-back: what is done, what remains, and a suggested split."
         ),
         "E1": (
             "Shoal dispatch guard: a subagent that is not a shoal write-capable role does not edit files. "
@@ -358,8 +388,24 @@ MESSAGES = {
         ),
         "LANE_MISSING": (
             "Shoal dispatch guard：派 write role（{role}）時，description 開頭必須有 lane 標籤："
-            "[fast] -> applier、[complex] -> executor、[rigorous] -> security-executor"
-            "（例如 `[complex] fix: ...`）。請補上標籤，或設定 SHOAL_GUARD_LANES=off。"
+            "[fast] -> applier、[complex] -> executor、[rigorous] -> security-executor，"
+            "可加大小 `:s` / `:m` / `:l`（例如 `[complex:s] fix: ...`）。請補上標籤，或設定 SHOAL_GUARD_LANES=off。"
+        ),
+        "LANE_MISSING_CODEX": (
+            "Shoal dispatch guard：Codex 派 write role（{role}）時，task_name 需要 lane label，"
+            "例如 security-executor 使用 rigorous_s_guard_fix。格式為 lane_size_slug。"
+        ),
+        "LANE_INVALID": (
+            "Shoal dispatch guard：Codex 的 task_name lane 格式錯誤（role {role}）。"
+            "請使用 lane_size_slug，例如 rigorous_s_guard_fix。"
+        ),
+        "LANE_CONFLICT": (
+            "Shoal dispatch guard：Codex 的 task_name lane 與可讀取的 message lane 衝突（role {role}）。"
+            "請對齊 lane 與明確指定的 size。"
+        ),
+        "CAP": (
+            "Shoal tool 預算用完：這個 {role} agent 已用掉 {size} 規模的 {cap} 次 tool call 上限。"
+            "請立刻停手，送出最終 hand-back：已完成什麼、還剩什麼、建議怎麼拆。"
         ),
         "LANE_MISMATCH": (
             "Shoal dispatch guard：lane 標籤 [{label}] 與 role {role} 不符。"
@@ -371,14 +417,10 @@ MESSAGES = {
             "請現在做一次驗證（測試、verifier 或 watcher role），或在回報中明確寫出這次修改尚未驗證。"
         ),
         "DECLARE": (
-            "Shoal dispatch guard：main session 預設把改檔交給別的 role。"
-            "請派出可寫的 role（executor 或 applier），或先宣告直接做：把 "
-            ': shoal-direct "<理由>" 當成單獨一次 shell 指令執行，或請使用者在 prompt 加上 #direct。'
+            'Shoal：改檔請派 applier/executor，或先單獨送一次 : shoal-direct "<理由>"。'
         ),
         "DECLARE_COMBINED": (
-            "Shoal dispatch guard：: shoal-direct 宣告和其他指令寫在同一個 shell 指令裡，所以沒有生效。"
-            '請把 : shoal-direct "<理由>" 單獨當成一次 shell 呼叫送出（不要接 ;、&&、|、換行或其他指令），'
-            "改檔留到下一次呼叫。"
+            'Shoal：: shoal-direct 要單獨一次 shell 呼叫才生效，改檔放下一次。'
         ),
     },
 }
@@ -680,12 +722,64 @@ def lane_label(desc: Any) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def lane_size(desc: Any) -> Optional[str]:
+    """The size suffix of the lane label (`s`, `m` or `l` in `[complex:s]`), else None."""
+    match = LANE_RE.match(desc) if isinstance(desc, str) else None
+    return match.group(2) if match else None
+
+
+def cap_enabled(host: str, env: Dict[str, str]) -> bool:
+    """SHOAL_GUARD_TOOL_CAP: `off` disables the tool-call budget; any other value (or none) leaves it on (claude only)."""
+    return host in CAP_HOSTS and env.get("SHOAL_GUARD_TOOL_CAP") != "off"
+
+
+def cap_role(role: Any) -> Optional[str]:
+    """The bare role name when `role` is a write role (the only ones with a budget), else None."""
+    return normalize_role(role) if role_access(role) == "write" else None
+
+
+def _cap_queue(state: Dict[str, Any], now: float) -> List[List[Any]]:
+    """The queued [role, size, time] dispatches of a cap state that are well-formed and not older than CAP_QUEUE_TTL."""
+    raw = state.get("queue")
+    return [e for e in raw if isinstance(e, list) and len(e) == 3 and isinstance(e[0], str)
+            and (e[1] is None or e[1] in CAP_SIZES) and isinstance(e[2], (int, float)) and now - e[2] <= CAP_QUEUE_TTL
+            ] if isinstance(raw, list) else []
+
+
+def _cap_entry(state: Dict[str, Any], agent: str, role: str, now: float) -> Dict[str, Any]:
+    """The budget record {role, size, cap, n} of `agent`, linking it to the oldest queued dispatch of `role` on first
+    sight (none queued: the role default).  cap None = uncapped.  The agent map keeps the last AGENTS_MAX agents."""
+    agents = state.get("agents") if isinstance(state.get("agents"), dict) else {}
+    state["agents"] = agents
+    entry = agents.get(agent)
+    if isinstance(entry, dict) and isinstance(entry.get("n"), int) and entry.get("cap") in (None, *CAP_SIZES.values()):
+        return entry
+    queue = _cap_queue(state, now)
+    size = None
+    for i, queued in enumerate(queue):
+        if queued[0] == role:
+            size = queue.pop(i)[1]
+            break
+    state["queue"] = queue
+    if size is None and role not in CAP_EXPLICIT_ONLY:
+        size = CAP_DEFAULT_SIZE
+    entry = {"role": role, "size": size, "cap": CAP_SIZES.get(size), "n": 0}
+    agents[agent] = entry
+    while len(agents) > AGENTS_MAX:
+        del agents[next(iter(agents))]
+    return entry
+
+
 def lane_violation(role: Any, desc: Any) -> Optional[Tuple[str, Dict[str, str]]]:
     """(message key, format args) when dispatching `role` with `desc` breaks the lane rule; None otherwise.
     Only write roles are subject to it."""
     bare = normalize_role(role)
     if role_access(role) != "write" or bare is None:
         return None
+    if desc == CODEX_LANE_INVALID:
+        return "LANE_INVALID", {"role": bare}
+    if desc == CODEX_LANE_CONFLICT:
+        return "LANE_CONFLICT", {"role": bare}
     label = lane_label(desc)
     if label is None:
         return "LANE_MISSING", {"role": bare}
@@ -744,13 +838,15 @@ def resolve_r1(host: str, env: Dict[str, str]) -> str:
     """SHOAL_GUARD_R1: `classified` and `off` as given; `strict` and `declare` where the host can gate.
 
     Unset, unrecognized, or `strict` / `declare` on a host that cannot gate -> the host default
-    (`strict` on claude, codex, grok, agy and opencode, `classified` elsewhere)."""
+    (`declare` on claude, `strict` on codex, grok, agy and opencode, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw
     if host not in DECLARE_HOSTS:
         return "classified"
-    return "declare" if raw == "declare" else "strict"
+    if raw in ("strict", "declare"):
+        return raw
+    return "declare" if host == "claude" else "strict"
 
 
 # ---------------------------------------------------------------------------
@@ -890,7 +986,7 @@ def repo_under_test(cwd: str) -> str:
 
 
 def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
-    """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts."""
+    """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts, plan-mode plan files."""
     if ".ai" in path.split("/")[:-1]:
         return True
     roots = ["/tmp", "/private/tmp", _real("/tmp")]
@@ -903,10 +999,12 @@ def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
             if os.path.dirname(real) != real:  # never exempt a filesystem root
                 roots.append(real)
     if host == "claude":
-        roots.append(_real(str(home / ".claude" / "projects")))
+        for sub in ("projects", "plans"):
+            roots.append(_real(str(home / ".claude" / sub)))
         config = env.get("CLAUDE_CONFIG_DIR", "")
         if config and os.path.isabs(config):
-            roots.append(_real(os.path.join(config, "projects")))
+            for sub in ("projects", "plans"):
+                roots.append(_real(os.path.join(config, sub)))
     return any(_under(path, root) for root in roots)
 
 
@@ -1448,6 +1546,70 @@ class _Guard:
         key = "E1D" if rule == "E1" and self.host in SUBAGENT_DIRECT_HOSTS else rule
         return self.result(decision, rule, reason=_text(self.env, key), file=file)
 
+    # -- tool-call budget (CAP_*) -------------------------------------------
+    def _cap_update(self, fn: Callable[[Dict[str, Any]], Any]) -> Any:
+        """Run `fn(cap state)` under the session's cap lock and save the state; None when the state is unavailable
+        (best effort: the budget then simply does not apply)."""
+        sid, guard = self.event.get("session_id"), self.guard_dir
+        if not valid_id(sid) or guard is None:
+            return None
+        base = guard / "state" / (sid + ".cap")
+        with _state_lock(Path(str(base) + ".lock")) as lock_skip:
+            if lock_skip is not None:
+                return None
+            path = Path(str(base) + ".json")
+            state = _read_json(path)
+            out = fn(state)
+            _write_json(path, state)
+            return out
+
+    def cap_enqueue(self) -> None:
+        """Main dispatched a write role: queue {role, size} for the SubagentStart that follows (the last AGENTS_MAX)."""
+        try:
+            role = cap_role(self.event.get("dispatched_role"))
+            if role is None:
+                return
+            size, now = lane_size(self.event.get("dispatch_desc")), time.time()
+
+            def add(state: Dict[str, Any]) -> None:
+                state["queue"] = (_cap_queue(state, now) + [[role, size, now]])[-AGENTS_MAX:]
+
+            self._cap_update(add)
+        except Exception:
+            return
+
+    def cap_register(self) -> None:
+        """SubagentStart of a write role: link the new agent_id to its queued budget (or the role default)."""
+        try:
+            role, agent = cap_role(self.event.get("role")), self.event.get("agent_id")
+            if role is not None and valid_id(agent):
+                self._cap_update(lambda state: _cap_entry(state, agent, role, time.time()))
+        except Exception:
+            return
+
+    def cap_rule(self) -> Optional[Dict[str, Any]]:
+        """Count one tool call of a subagent; the call after its budget is a deny (would_deny in shadow).  Fails open."""
+        try:
+            role, agent = cap_role(self.event.get("role")), self.event.get("agent_id")
+            if role is None or not valid_id(agent):
+                return None
+
+            def bump(state: Dict[str, Any]) -> Dict[str, Any]:
+                entry = _cap_entry(state, agent, role, time.time())
+                if entry["cap"] is not None:
+                    entry["n"] += 1
+                return dict(entry)
+
+            entry = self._cap_update(bump)
+            if entry is None or entry["cap"] is None or entry["n"] <= entry["cap"]:
+                return None
+            decision = "deny" if self.mode == "enforce" else "would_deny"
+            reason = _text(self.env, "CAP", role=role, size=entry["size"], cap=entry["cap"])
+            note = "size=%s cap=%d count=%d" % (entry["size"], entry["cap"], entry["n"])
+            return self.result(decision, "CAP", reason=reason, note=note)
+        except Exception:
+            return None
+
     def lane_rule(self) -> Optional[Dict[str, Any]]:
         """Lane rule for a main session's dispatch: a result when it breaks the rule (deny, or would_deny in
         shadow), else None.  agy judges every Subagents[] entry (role = TypeName, label from its Role field)."""
@@ -1462,6 +1624,8 @@ class _Guard:
             violation = lane_violation(role, desc)
             if violation is not None:
                 key, fmt = violation
+                if self.host == "codex" and key == "LANE_MISSING":
+                    key = "LANE_MISSING_CODEX"
                 decision = "deny" if self.mode == "enforce" else "would_deny"
                 return self.result(decision, "LANE", reason=_text(self.env, key, **fmt))
         return None
@@ -2083,6 +2247,8 @@ class _Guard:
         write role counts once per agent_id (`started_agents`)."""
         event = self.event
         access = role_access(event.get("role"))
+        if cap_enabled(self.host, self.env):
+            self.cap_register()
         if self.host in MAPPED_HOSTS:
             self.register_agent()
         if self.host in AGENT_KEYED_HOSTS:
@@ -2388,15 +2554,21 @@ def _decide(guard: "_Guard", event: Dict[str, Any]) -> Dict[str, Any]:
             "reason": None,
             "mode": "off",
         }
-    if (
-        event.get("kind") == "tool"
-        and event.get("tool_kind") == "dispatch"
-        and not event.get("is_subagent")
-        and lanes_enabled(guard.env)
-    ):
-        lane = guard.lane_rule()
+    main_dispatch = (
+        event.get("kind") == "tool" and event.get("tool_kind") == "dispatch" and not event.get("is_subagent")
+    )
+    if main_dispatch:
+        lane = guard.lane_rule() if lanes_enabled(guard.env) else None
+        if lane is not None and lane["decision"] == "deny":
+            return lane
+        if cap_enabled(guard.host, guard.env):
+            guard.cap_enqueue()  # a dispatch that goes ahead queues its size for the SubagentStart
         if lane is not None:
             return lane
+    elif event.get("kind") == "tool" and event.get("is_subagent") and cap_enabled(guard.host, guard.env):
+        capped = guard.cap_rule()
+        if capped is not None:
+            return capped
     if guard.host in CONVERSATION_HOSTS:
         routed = guard.agy_route()
         if routed is not None:
@@ -2783,9 +2955,21 @@ def patch_paths(command: Any) -> List[str]:
 
 
 def _codex_lane_text(tin: Dict[str, Any]) -> Optional[str]:
-    """Codex spawn_agent's input has no description (tests/fixtures/codex_subagent_tool_shapes.json: agent_type, message,
-    task_name): the lane label is read from the start of `task_name`, else of `message`."""
-    texts = [t for t in (tin.get("task_name"), tin.get("message")) if isinstance(t, str)]
+    """Read Codex's schema-safe task_name; current native dispatch encrypts message before hooks see it."""
+    task_name, message = tin.get("task_name"), tin.get("message")
+    if isinstance(task_name, str):
+        match = CODEX_TASK_LANE_RE.fullmatch(task_name)
+        if match:
+            label, size = match.group(1, 2)
+            visible_label = lane_label(message)
+            visible_size = lane_size(message)
+            if visible_label and (visible_label != label or
+                                  (visible_size is not None and visible_size != size)):
+                return CODEX_LANE_CONFLICT
+            return f"[{label}:{size}] {task_name}"
+        if task_name.startswith(("fast_", "complex_", "rigorous_")):
+            return CODEX_LANE_INVALID
+    texts = [t for t in (task_name, message) if isinstance(t, str)]
     return next((t for t in texts if lane_label(t)), texts[0] if texts else None)
 
 

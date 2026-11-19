@@ -24,7 +24,7 @@ role 手寫權限欄位：
 
 | host | 手寫欄位 |
 |---|---|
-| Claude | `tools` 或 `disallowedTools` |
+| Claude | `tools`（`disallowedTools` 仍可用於覆寫） |
 | Codex | `sandbox_mode`、`web_search` |
 | agy | `tools` |
 | grok | `capability_mode` |
@@ -106,15 +106,22 @@ role 層級覆寫。權限欄位的集合是每個 host 固定的（`PERMISSION_
 
 | host | read-only | write | verify | `web` |
 |---|---|---|---|---|
-| Claude | `tools = [Read, Glob, Grep]` | `disallowedTools = [Agent, Workflow]` | `disallowedTools = [Write, Edit, NotebookEdit, Agent, Workflow]` | `tools += [WebSearch, WebFetch]` |
+| Claude | `tools = [Read, Glob, Grep]` | `tools = [Read, Write, Edit, MultiEdit, Bash, Grep, Glob, WebSearch, WebFetch, Skill]` | `tools = [Read, Bash, Grep, Glob, WebSearch, WebFetch]` | `tools += [WebSearch, WebFetch]`（已在清單內的略過） |
 | Codex | `sandbox_mode = "read-only"` | 空 | `sandbox_mode = "workspace-write"` | `web_search = "live"` |
 | agy | `tools = [view_file, grep_search, find_by_name, list_dir, send_message]` | 空（不限制） | read-only 的 tools + `run_command` | `tools += [read_url_content, search_web]` |
 | grok | `capability_mode = "read-only"` | `"all"` | `"execute"` | 空（無對應開關） |
 | OpenCode | `required_capabilities = [tools, streaming]` | `[tools, streaming, reasoning]` | 同 write | 空（無對應開關） |
 
-`web` 疊加在 write 或 verify 等級時：Claude 的這兩級是 denylist，本來
-就允許 web 工具，agy 的 write 沒有 allowlist，所以都不輸出；agy 的
-verify 是 allowlist，會附加。
+`web` 疊加在 write 或 verify 等級時：Claude 的這兩級 allowlist 已含
+web 工具，附加時略過重複，輸出不變；agy 的 write 沒有 allowlist，不輸出；
+agy 的 verify 是 allowlist，會附加。
+
+2026-11-03 備註：Claude 的 write / verify 原本是 `disallowedTools`
+denylist，subagent 因此繼承所有 MCP 工具（Figma、Notion、Gmail、Canva、
+browser 等）。實測 30 天，這兩級 role 首輪 context 約 43k tokens，
+allowlist 的 role 約 14k（write 等級的 applier 已用 allowlist，就是 14k），
+累計多花約 1.46B cache-read tokens。所以改成 `tools` allowlist；write 的清單
+不含 Agent / Workflow，verify 另外不含 Write / Edit / MultiEdit / NotebookEdit。
 
 ### 保留的 role 層級覆寫
 
@@ -145,9 +152,10 @@ capability；而且和 tier 重疊。不採用。
 
 ## Rabbit Holes
 
-- **capability 在 denylist 上的意義**：Claude write/verify 用 denylist，
-  capability 的 allowlist 擴充沒有東西可擴。規則是「access 表沒有該 list
-  就不輸出」，而不是報錯，否則每個 role 要依等級決定能不能宣告 web。
+- **capability 在 allowlist 上的意義**：Claude 三個等級都是 allowlist。
+  write / verify 的清單已含 WebSearch、WebFetch，capability 附加時略過重複。
+  host 的 access 表若沒有該 list（例如 agy write），規則仍是不輸出而不是
+  報錯，否則每個 role 要依等級決定能不能宣告 web。
 - **host 沒有對應開關**：grok、OpenCode 沒有獨立的 web 權限。選擇要求
   binding 明列空的 `[capabilities.web]`，而不是默默忽略，這樣新增
   capability 時不會有 host 靜默漏掉。

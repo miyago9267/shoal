@@ -47,4 +47,6 @@ has asked about, unstated assumptions, risks, and up to three materially
 different approaches, each with the evidence that would settle it. Do not write
 the Plan and do not address the user; list questions for the main session to ask.
 
+Write the hand-back in the same language as the brief; identifiers, paths, and commands stay as written.
+
 You are a subagent. Never spawn further subagents — delegation is a main-session-only concern.

@@ -5,6 +5,8 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+- Role hand-backs use the brief's language; with `SHOAL_GUARD_LANG=zh-TW` the Codex autoroute messages are in Traditional Chinese.
+
 ### Guard
 
 - G5 看得到 python 寫檔（#32）。指令位置有 `python[0-9.]*` 時，整段指令
@@ -35,9 +37,34 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
   hook 卡住；被拒的 manifest 等同讀不到，guard 維持開啟、不跑 chain，`defer_to_global` 回 False。
   OpenCode 的 `chainMembers` 讀檔失敗改與 Python 一致（被拒或不存在回 `[]`）。
 - `hosts/claude/VERSION` 升為 3.13.2-beta，讓 Claude 的 plugin cache 換新 guard。
+- 試用分支合入 main 的 guard 修正（#43），
+  `hosts/claude/VERSION` 升為 3.14.1-beta；declare 預設與 python 寫檔偵測並存。
 
 ### Claude
 
+- 派工依大小標籤設 tool call 硬上限。lane 標籤可加大小後綴 `[fast|complex|rigorous]:s|m|l`
+  （例如 `[complex:s] fix: ...`，沒後綴等於 m），上限 s=20、m=60、l=120 次 tool call。main 的 Agent
+  PreToolUse 把 `{role, size}` 排進 session 的 FIFO，SubagentStart 取出同 role 最舊的一筆，把 agent_id
+  對應到上限；之後該 agent 每次 PreToolUse 計一次，超過上限就 deny，child 仍能寫出最後的 hand-back
+  （已完成、剩餘、建議怎麼拆）。executor、applier 一律有上限；security-executor 只有明確給大小時才有；
+  verifier、watcher 與唯讀 role 不受限。佇列對不上就用 role 預設（m），任何記帳問題都不擋。
+  `SHOAL_GUARD_TOOL_CAP=off` 整個關掉；deny 寫進 guard log（rule=`CAP`，reason 欄帶 size、cap、count）。
+  為了計到 Read、Grep、Glob、WebSearch、WebFetch、Skill，Claude 的 PreToolUse matcher
+  （plugin 與 `install_hooks.py`）加上這六個工具；設了 PreToolUse chain member 的人，也會收到
+  這六個工具的事件。策略文字（bootstrap、skill、executor prompt）同步：挑 s/m/l、偏好同一則訊息
+  多個小派工、撞上限時把剩餘工作派給新的 role 並附上 hand-back，不續用同一個 agent。
+  `hosts/claude/VERSION` 升為 3.14.6-beta。
+- write / verify 等級的 role 改用 `tools` 工具白名單，不再用 `disallowedTools` 黑名單。黑名單讓
+  executor、security-executor、verifier、watcher 繼承所有 MCP 工具（Figma、Notion、Gmail、Canva、
+  browser 等），30 天實測首輪 context 約 43k tokens，白名單 role 約 14k，累計多花約 1.46B
+  cache-read tokens。write 為 Read、Write、Edit、MultiEdit、Bash、Grep、Glob、WebSearch、WebFetch、
+  Skill；verify 為 Read、Bash、Grep、Glob、WebSearch、WebFetch；都不含 Agent、Workflow。
+  applier 的 role 層級白名單不變。只動 Claude host，`hosts/claude/VERSION` 升為 3.14.5-beta。
+- main 可以自己改簡單工作（main-small-edits）。Claude host 的 `SHOAL_GUARD_R1` 預設改為 `declare`，
+  簡單工作（單一目的、範圍已知、不碰 risk trigger、預期 10 分鐘內）由 main 先執行
+  `: shoal-direct "<理由>"` 再自己改；多檔、需判斷或命中 risk trigger 仍派 `applier`／`executor`。
+  bootstrap 與 orchestration policy 的 Claude 條款同步改寫。其他 host 的預設與條款不變；
+  `SHOAL_GUARD_R1=strict` 可還原。`hosts/claude/VERSION` 升為 3.14.0-beta（只動 Claude host）。
 - 背景 role 回報後不再掛著。Claude 的 transcript 顯示 watcher、executor、security-executor 起了
   背景 Bash 或 Monitor 卻沒 TaskStop 就回報，agent 因為還有 live child 一直列為 running。
   watcher、executor、security-executor、verifier 的 Claude 區塊現在要求回報前先 TaskStop 自己起的

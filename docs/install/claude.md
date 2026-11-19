@@ -126,7 +126,8 @@ python3 tools/install_hooks.py --host claude --uninstall --apply
 
 - `--host claude` 改 `settings.json`（`--home`，其次 `CLAUDE_CONFIG_DIR`，預設
   `~/.claude`）：`UserPromptSubmit`，以及 matcher 為
-  `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash` 的 `PreToolUse`（`Bash`
+  `Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash|Read|Grep|Glob|WebSearch|WebFetch|Skill`
+  的 `PreToolUse`（Read 到 Skill 六個是 3.14.6 起為 tool call 上限加的；`Bash`
   是 3.0.0 起為 G4 加的，舊安裝重跑一次就會換成這個 matcher），以及沒有 matcher 的
   `SubagentStart`（3.3.1 起，M11），以及沒有 matcher 的 `Stop`（3.4.0 起，
   完成檢查），以及 matcher 為 `Bash` 的 `PostToolUse`（3.6.0 起，完成檢查只算

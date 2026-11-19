@@ -9,6 +9,10 @@ written.
 
 ## Unreleased
 
+- Role hand-backs use the brief's language; with `SHOAL_GUARD_LANG=zh-TW` the Codex autoroute messages are in Traditional Chinese.
+- Codex write-role dispatches carry the lane in `task_name` (`<lane>_<size>_<slug>`); the guard reads it when the message is encrypted.
+- The autoroute Stop hook now asks for a lane-shaped `task_name` per role, so its required dispatch is no longer blocked by the guard.
+
 ## v3.9.0
 
 - `applier` is now the fast executor for small, bounded changes. Claude

@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -103,8 +104,9 @@ class DeclarationParserTests(unittest.TestCase):
 
     def test_resolve_r1(self) -> None:
         for host in ("claude", "codex", "opencode", "grok", "agy"):
-            for env, want in (({}, "strict"), ({"SHOAL_GUARD_R1": ""}, "strict"), ({"SHOAL_GUARD_R1": "bogus"}, "strict"),
-                              ({"SHOAL_GUARD_R1": "STRICT"}, "strict"), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
+            default = "declare" if host == "claude" else "strict"  # claude alone defaults to declare (main-small-edits D1)
+            for env, want in (({}, default), ({"SHOAL_GUARD_R1": ""}, default), ({"SHOAL_GUARD_R1": "bogus"}, default),
+                              ({"SHOAL_GUARD_R1": "STRICT"}, default), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
                               ({"SHOAL_GUARD_R1": "declare"}, "declare"),
                               ({"SHOAL_GUARD_R1": "classified"}, "classified"), ({"SHOAL_GUARD_R1": "off"}, "off")):
                 self.assertEqual(guard.resolve_r1(host, env), want, (host, env))
@@ -114,11 +116,17 @@ class DeclarationParserTests(unittest.TestCase):
                 self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": value}), "classified", (host, value))
             self.assertEqual(guard.resolve_r1(host, {"SHOAL_GUARD_R1": "off"}), "off")
 
+    def test_every_english_message_has_a_zh_tw_counterpart(self) -> None:
+        self.assertEqual(set(guard.MESSAGES["zh-TW"]), set(guard.MESSAGES["en"]))
+        for key, text in guard.MESSAGES["zh-TW"].items():
+            self.assertTrue(text.strip(), key)
+
     def test_messages_carry_the_three_exits(self) -> None:
         for lang in ("en", "zh-TW"):
             text = guard.MESSAGES[lang]["DECLARE"]
-            for needle in ("executor", "applier", ': shoal-direct "<', "#direct"):
+            for needle in ("executor", "applier", ': shoal-direct "<'):
                 self.assertIn(needle, text, (lang, needle))
+        self.assertIn("#direct", guard.MESSAGES["en"]["DECLARE"])
         self.assertEqual(
             guard.MESSAGES["en"]["DECLARE"],
             "Shoal dispatch guard: the main session delegates edits by default. Dispatch a write-capable role "
@@ -800,12 +808,12 @@ class DeclareCliTests(CliCase):
 
 
 class StrictCliTests(CliCase):
-    """`strict` (the claude and codex default since 3.3.0) through the real script, claude and codex payloads."""
+    """`strict` (the codex default since 3.3.0; claude selects it with SHOAL_GUARD_R1=strict) through the real script."""
 
     PATCH = "*** Begin Patch\n*** Add File: a\n+x\n*** End Patch"
 
     def claude(self, payload) -> str:
-        return self.run_guard("claude", payload, SHOAL_GUARD_R1="")
+        return self.run_guard("claude", payload, SHOAL_GUARD_R1="strict")
 
     def codex(self, payload) -> str:
         return self.run_guard("codex", payload, SHOAL_GUARD_R1="")
@@ -846,7 +854,7 @@ class StrictCliTests(CliCase):
         self.claude(claude_prompt(cwd=self.work, prompt_id="p-2", prompt="fix it #direct"))
         self.assertEqual(self.claude(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2")), "")
         self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": "b.py"}, cwd=self.work, prompt_id="p-3"),
-                                        SHOAL_GUARD_R1="", SHOAL_GUARD_DIRECT="1"), "")
+                                        SHOAL_GUARD_R1="strict", SHOAL_GUARD_DIRECT="1"), "")
 
     def test_codex_exits_are_dispatch_and_hash_direct_only(self) -> None:
         self.codex(CodexAdapterTests.prompt(cwd=self.work))
@@ -1930,6 +1938,10 @@ class LaneAdapterTests(CliCase):
         self.assertEqual(codex["dispatch_desc"], "[fast] t")
         codex = guard.adapt_codex(CodexAdapterTests.tool("spawn_agent", {"agent_type": "applier", "task_name": "t", "message": "m"}))
         self.assertEqual(codex["dispatch_desc"], "t")
+        codex = guard.adapt_codex(CodexAdapterTests.tool(
+            "collaborationspawn_agent",
+            {"agent_type": "security-executor", "task_name": "rigorous_s_guard_fix", "message": "gAAAAencrypted"}))
+        self.assertEqual(codex["dispatch_desc"], "[rigorous:s] rigorous_s_guard_fix")
         grok = guard.adapt_grok(GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x", "prompt": "p"}))
         self.assertEqual(grok["dispatch_desc"], "[fast] x")
         agy = guard.adapt_agy({"conversationId": "c1", "toolCall": {"name": "invoke_subagent", "args": {"Subagents": [
@@ -1958,6 +1970,145 @@ class LaneAdapterTests(CliCase):
         out = self.lane("codex", CodexAdapterTests.tool("spawn_agent", {"agent_type": "executor", "task_name": "t", "message": "[complex] m"}, cwd=self.work))
         self.assertEqual(out, "")
         self.assertEqual(self.lane("grok", GrokAdapterTests.tool("spawn_subagent", {"subagent_type": "applier", "description": "[fast] x"}, cwd=self.work)), "")
+
+    def test_codex_task_name_lane_with_encrypted_message(self) -> None:
+        def dispatch(role, task_name, message="gAAAAencrypted"):
+            return self.lane("codex", CodexAdapterTests.tool(
+                "collaborationspawn_agent", {"agent_type": role, "task_name": task_name, "message": message},
+                cwd=self.work))
+
+        self.assertEqual(dispatch("security-executor", "rigorous_s_guard_fix"), "")
+        self.assertEqual(dispatch("sol-executor", "complex_m_guard_fix"), "")
+        self.assertIn("does not match", dispatch("applier", "rigorous_s_guard_fix"))
+        self.assertIn("invalid", dispatch("security-executor", "rigorous_x_guard_fix"))
+        self.assertIn("invalid", dispatch("security-executor", "rigorous_x_guard_fix", "[rigorous:s] edit"))
+        self.assertIn("lane label", dispatch("security-executor", "guard_fix"))
+        self.assertIn("conflicts", dispatch("security-executor", "rigorous_s_guard_fix", "[fast:s] edit"))
+        self.assertIn("conflicts", dispatch("security-executor", "rigorous_s_guard_fix", "[rigorous:m] edit"))
+        self.assertEqual(dispatch("security-executor", "rigorous_s_guard_fix", "[rigorous:s] edit"), "")
+
+    def test_autoroute_directive_dispatch_is_allowed_by_the_lane_rule(self) -> None:
+        sys.path.insert(0, str(GUARD.parent))
+        import shoal_autoroute_gate as gate
+
+        for role in sorted(gate.AUTOMATIC_ROUTE_ROLES):
+            task = re.search(r"task_name=(\w+)", gate._model_route_output(role)["reason"]).group(1)
+            out = self.lane("codex", CodexAdapterTests.tool(
+                "spawn_agent",
+                {"agent_type": role, "task_name": task, "message": "gAAAAencrypted", "fork_turns": "none"},
+                cwd=self.work))
+            self.assertEqual(out, "", (role, task))
+
+
+class ToolCapTests(CliCase):
+    """Size-labelled tool-call budget (claude): lane suffix, dispatch -> SubagentStart link, count, deny after the cap."""
+
+    def go(self, payload, **env) -> str:
+        """One guard evaluation in this process (the budget fires once per tool call, so a loop of subprocesses is slow)."""
+        return guard.run("claude", json.dumps(payload).encode(),
+                         self.env(SHOAL_GUARD="enforce", SHOAL_GUARD_R1="", **env)) or ""
+
+    def dispatch(self, role, desc, **env) -> str:
+        return self.go(claude_tool("Agent", {"subagent_type": role, "description": desc}, cwd=self.work), **env)
+
+    def start(self, role, agent, **env) -> None:
+        self.go(claude_start("shoal:" + role, agent_id=agent, cwd=self.work), **env)
+
+    def call(self, role, agent, **env) -> str:
+        return self.go(claude_tool("Read", {"file_path": self.path("f")}, agent_id=agent, agent_type="shoal:" + role,
+                                   cwd=self.work), **env)
+
+    def first_deny(self, role, agent, limit, **env) -> int:
+        """The 1-based index of the first denied call among `limit` calls, 0 when none was denied."""
+        for n in range(1, limit + 1):
+            if self.call(role, agent, **env):
+                return n
+        return 0
+
+    def test_lane_suffix_parsing(self) -> None:
+        for desc, label, size in (("[complex:s] fix: x", "complex", "s"), ("[fast:l] x", "fast", "l"),
+                                  ("  [rigorous:m] x", "rigorous", "m"), ("[complex] fix: x", "complex", None)):
+            self.assertEqual((guard.lane_label(desc), guard.lane_size(desc)), (label, size))
+        self.assertIsNone(guard.lane_violation("executor", "[complex:s] fix: x"))
+        self.assertIsNone(guard.lane_violation("shoal:applier", "[fast:l] x"))
+        for bad in ("[complex:x] x", "[complex:] x", "[complex:sm] x", "[complex: s] x", "[complex:S] x"):
+            self.assertEqual(guard.lane_violation("executor", bad)[0], "LANE_MISSING", bad)
+        self.assertEqual(guard.lane_violation("executor", "[fast:s] x")[0], "LANE_MISMATCH")
+
+    def test_claude_lane_check_takes_the_suffix_and_still_rejects_mismatches(self) -> None:
+        lane = {"SHOAL_GUARD_LANES": "on"}
+        self.assertEqual(self.dispatch("executor", "[complex:s] fix: x", **lane), "")
+        self.assertIn("lane label", self.dispatch("executor", "[complex:x] fix: x", **lane))
+        out = self.dispatch("executor", "[fast:s] fix: x", **lane)
+        self.assertIn("Dispatch applier for [fast]", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_denies_exactly_after_the_labelled_cap(self) -> None:
+        for suffix, cap in ((":s", 20), ("", 60)):
+            agent = "ag" + str(cap)
+            self.dispatch("executor", "[complex%s] fix: x" % suffix)
+            self.start("executor", agent)
+            self.assertEqual(self.first_deny("executor", agent, cap + 1), cap + 1)
+        entry = json.loads(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").read_text(encoding="utf-8"))
+        self.assertEqual({k: (v["size"], v["cap"], v["n"]) for k, v in entry["agents"].items()},
+                         {"ag20": ("s", 20, 21), "ag60": ("m", 60, 61)})
+        record = [r for r in self.log_records() if r.get("rule") == "CAP"][0]
+        self.assertEqual((record["decision"], record["reason"], record["agent_id"]), ("deny", "size=s cap=20 count=21", "ag20"))
+
+    def test_deny_reason_asks_for_the_hand_back(self) -> None:
+        self.dispatch("executor", "[complex:s] fix: x")
+        self.start("executor", "ag1")
+        for _ in range(20):
+            self.call("executor", "ag1")
+        reason = json.loads(self.call("executor", "ag1"))["hookSpecificOutput"]["permissionDecisionReason"]
+        for word in ("budget", "20", "hand-back", "remains", "split"):
+            self.assertIn(word, reason)
+        zh = json.loads(self.call("executor", "ag1", SHOAL_GUARD_LANG="zh-TW"))["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("hand-back", zh)
+
+    def test_fifo_links_each_start_to_the_oldest_dispatch_of_its_role(self) -> None:
+        self.dispatch("executor", "[complex:l] fix: a")
+        self.dispatch("applier", "[fast:s] fix: b")
+        self.dispatch("executor", "[complex:s] fix: c")
+        self.start("applier", "ap1")
+        self.start("executor", "ex1")
+        self.start("executor", "ex2")
+        agents = json.loads(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").read_text(encoding="utf-8"))["agents"]
+        self.assertEqual({k: v["cap"] for k, v in agents.items()}, {"ap1": 20, "ex1": 120, "ex2": 20})
+
+    def test_missing_queue_falls_back_to_the_role_default(self) -> None:
+        self.start("executor", "ex1")  # SubagentStart with nothing queued
+        self.assertEqual(self.first_deny("executor", "ex1", 61), 61)
+        self.assertEqual(self.first_deny("applier", "never-started", 61), 61)  # no SubagentStart at all
+
+    def test_verify_and_read_only_roles_are_never_capped(self) -> None:
+        for role in ("verifier", "watcher", "scout"):
+            self.start(role, "v-" + role)
+            self.assertEqual(self.first_deny(role, "v-" + role, 130), 0, role)
+        self.assertFalse(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").exists())
+
+    def test_security_executor_is_capped_only_with_a_size(self) -> None:
+        self.dispatch("security-executor", "[rigorous] fix: a")
+        self.start("security-executor", "se1")
+        self.assertEqual(self.first_deny("security-executor", "se1", 130), 0)
+        self.start("security-executor", "se2")  # nothing queued either
+        self.assertEqual(self.first_deny("security-executor", "se2", 130), 0)
+        self.dispatch("security-executor", "[rigorous:s] fix: b")
+        self.start("security-executor", "se3")
+        self.assertEqual(self.first_deny("security-executor", "se3", 30), 21)
+
+    def test_off_switch_disables_the_cap(self) -> None:
+        off = {"SHOAL_GUARD_TOOL_CAP": "off"}
+        self.dispatch("executor", "[complex:s] fix: x", **off)
+        self.start("executor", "ag1", **off)
+        self.assertEqual(self.first_deny("executor", "ag1", 70, **off), 0)
+        self.assertFalse(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").exists())
+
+    def test_agent_map_is_bounded(self) -> None:
+        for i in range(guard.AGENTS_MAX + 5):
+            self.start("executor", "ag%d" % i)
+        agents = json.loads(Path(self.state, "shoal", "guard", "state", "sess-1.cap.json").read_text(encoding="utf-8"))["agents"]
+        self.assertEqual(len(agents), guard.AGENTS_MAX)
+        self.assertNotIn("ag0", agents)
 
 
 class EnforcementEveryOsTests(CliCase):

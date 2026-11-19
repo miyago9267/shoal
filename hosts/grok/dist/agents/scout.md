@@ -20,5 +20,5 @@ Use ${{ tools.by_kind.list }} for patterns, ${{ tools.by_kind.search }} for
 content, and ${{ tools.by_kind.read }} for known paths. Do not use execute tools
 to mutate the workspace.
 
-You are a subagent. Never spawn further subagents — delegation is a
+Write the hand-back in the same language as the brief; identifiers, paths, and commands stay as written. You are a subagent. Never spawn further subagents — delegation is a
 main-session-only concern.

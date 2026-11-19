@@ -10,7 +10,7 @@
 來源是 repo committed HEAD 的 hooks/shoal_guard.py（git show，不是工作樹；HEAD 沒有就中止）。
 腳本裝到 ${XDG_DATA_HOME:-~/.local/share}/shoal/guard/shoal_guard.py（0755），entry 寫進：
   claude  <home>/settings.json（--home，其次 CLAUDE_CONFIG_DIR，預設 ~/.claude）：
-          UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash 的 PreToolUse，
+          UserPromptSubmit，以及 matcher 為 Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash|Read|Grep|Glob|WebSearch|WebFetch|Skill 的 PreToolUse，
           SubagentStart（3.3.1 起）、Stop（3.4.0 起，完成檢查），以及 matcher 為 Bash 的 PostToolUse（3.6.0 起，確認指令真的執行）；舊設定重跑 --apply 會原地補上，其他 entry 不動
   agy     <home>/config/hooks.json（--home 預設 ~/.gemini）：具名群組 "shoal-dispatch-guard"，
           PreToolUse（matcher "*"）、SessionStart、PreInvocation 與 Stop；每個 command 結尾帶
@@ -63,7 +63,7 @@ from hook_registration import (  # noqa: E402
     TRUSTED_PROJECTIONS,
 )
 GUARD_SOURCE = "hooks/shoal_guard.py"
-CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash"
+CLAUDE_MATCHER = "Edit|Write|NotebookEdit|MultiEdit|Agent|Workflow|Bash|Read|Grep|Glob|WebSearch|WebFetch|Skill"
 AGY_GROUP = "shoal-dispatch-guard"
 TIMEOUT = 10
 # 標記是 "shoal_guard.py --host"；路徑被引號包住時 "shoal_guard.py'" 後面才接空白與 --host。
