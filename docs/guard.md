@@ -26,7 +26,7 @@ records under `${XDG_STATE_HOME:-~/.local/state}/shoal/guard/`;
 `SHOAL_GUARD=off` disables it). The subagent rules (LEAF, VERIFY_EDIT) deny.
 Since 3.3.0 the main-session edit rule is the same `strict` rule as on Claude
 (`SHOAL_GUARD_R1=strict`, the default; 3.2.1 and 3.2.x defaulted to
-`declare`): `apply_patch` and a `Bash` call that literally writes a file are
+`declare`; Claude used `declare` from 2026-10-25 to 2026-11-18 and is `strict` again from 2026-11-19, guard-declared-direct M14): `apply_patch` and a `Bash` call that literally writes a file are
 denied unless the turn has a dispatched write role or a standalone `#direct`
 in the prompt (or `SHOAL_GUARD_DIRECT=1`). A declaration is no exit in
 `strict`. The earlier `declare` rule (exit: a `Bash` call that is exactly `:
@@ -181,7 +181,8 @@ Claude Code 與 Gemini/agy 沒有自己的 shoal installer，dispatch guard 由
 使用者也沒有 `#direct` 就不能改檔，宣告不再是出口
 （[`docs/specs/guard-declared-direct`](./specs/guard-declared-direct/SPEC.md)）。
 2026-10-25 起 Claude 的預設改回 `declare`（[`docs/specs/main-small-edits`](./specs/main-small-edits/SPEC.md)）；
-`SHOAL_GUARD_R1=strict` 還原成 3.3.0 的行為，其他 host 的預設不變。
+`SHOAL_GUARD_R1=strict` 還原成 3.3.0 的行為，其他 host 的預設不變。2026-11-19 起 Claude 的預設改回 `strict`
+（[`docs/specs/guard-declared-direct`](./specs/guard-declared-direct/SPEC.md) M14），`SHOAL_GUARD_R1=declare` 可手動選用。
 
 ### main 改檔規則的模式：`SHOAL_GUARD_R1`
 
@@ -193,7 +194,7 @@ Claude Code 與 Gemini/agy 沒有自己的 shoal installer，dispatch guard 由
 | `off` | 無 | 關掉 R1 與 G5。硬規則（LEAF、VERIFY_EDIT）、G4、R2 不受影響 |
 
 未設定、空字串、無法辨識的值，或在不能閘控的 host 上設 `strict`／`declare`，都用該 host 的預設
-（Claude 是 `declare`，其餘 host 是 `strict`；3.6.0 前 OpenCode 是 `classified`）。
+（五個 host 都是 `strict`，Claude 自 2026-11-19 起；3.6.0 前 OpenCode 是 `classified`）。
 `declare`、`classified`、`off` 的行為與 3.2.1 相同。
 被 deny 的改檔與 shell 寫檔不計入 R2 的檔案數，也不會在同一次呼叫送出 R2 提醒。
 
@@ -239,7 +240,7 @@ Claude 上 `watcher`、`verifier` 把輸出導到 `/tmp`、`/private/tmp`、`$TM
 
 ### 宣告
 
-`declare` 模式（Claude 的預設，其他 host 以 `SHOAL_GUARD_R1=declare` 選用）下，
+`declare` 模式（Claude 2026-10-25 至 11-18 的預設，2026-11-19 起要用 `SHOAL_GUARD_R1=declare` 手動選用）下，
 要自己改檔時 main 先單獨執行一次 shell 指令
 （`strict` 下這個指令是普通的空指令，不放行）：
 
@@ -293,12 +294,11 @@ deny 訊息（英文；`SHOAL_GUARD_LANG=zh-TW` 為繁中）自帶三個出口�
   `x#direct`、`#direct-ly` 不算）只放行那一輪，下一輪失效，同時關掉那一輪的 R1、R2 與 G4；
   `SHOAL_GUARD_DIRECT=1` 對整個 session 放行 R1、R2、G4。guard 只記「這輪有 `#direct`」的旗標，
   不記錄 prompt 內容。
-- 快速模式：prompt 內獨立的 `#fast`（偵測規則同 `#direct`）讓這個 session 之後的每一回合都當成帶 `#direct`，記在
-  state 的 `fast`，跨回合保留，直到獨立的 `#strict`（同一個 prompt 兩者都有時以 `#strict` 為準）；
-  `SHOAL_GUARD_FAST=1` 對每個 session 生效，給沒有 prompt 文字的 agy。放行的範圍與 `#direct`
-  完全相同（main 的 R1、R2、G4、G5，以及 E1 的 subagent 放行，Codex、Grok 把 `#fast` 當成 `#direct`
-  回合）；LEAF、VERIFY_EDIT 與完成檢查不變。log 在開啟時多一個 `fast: true`，R1、E1 的 deny 訊息在有
-  prompt 文字的 host 多提示 `#fast`。
+- 快速模式：prompt 內獨立的 `#fast`（偵測規則同 `#direct`）記在 state 的 `fast`，跨回合保留，直到獨立的
+  `#strict`（同一個 prompt 兩者都有時以 `#strict` 為準）；`SHOAL_GUARD_FAST=1` 對每個 session 設定這個旗標。
+  `#fast` 不放行任何 main 改檔：R1、R2、G4、G5 與 E1 的 subagent 放行都只看 `#direct`（或 `SHOAL_GUARD_DIRECT=1`、
+  派工、豁免路徑等既有出口），派工 lane 檢查也不受影響（`[fast]` 仍只對應 `applier`）。LEAF、VERIFY_EDIT 與完成檢查不變。
+  log 在開啟時多一個 `fast: true`。
 - subagent 不受 R1、G4、G5 影響（它們是 main session 規則）；既不是宣告也沒有寫檔的前景 `Bash`
   與其他工具不會被 guard 計入或寫 log；3.4.0 起，本回合已有改檔且尚未檢查時，前景 `Bash` 會把
   state 的 `checked` 設為真（見下面的完成檢查），其他情況不碰 state。
@@ -419,12 +419,12 @@ G5 補的是 R1 看不到的缺口：main 用 `cat > 檔案 <<EOF` 之類的 she
   相對路徑依事件的 cwd 解析；開頭的 `~`、`$HOME`、`$TMPDIR` 會展開）。
 - 目標看不出來時（`> "$f"`、`> $(mktemp)`）：只要它明確是導向非 `/dev/` 的目標就算寫檔；`sed -i`
   沒有檔案參數（檔名來自 `xargs` 或 `find -exec`）也算。這會有誤擋（例如變數其實指向 `/tmp`），
-  出口是宣告或 `#direct`。
+  出口是派工或 `#direct`（`declare` 模式下另有宣告）。
 - 擋不到：用 interpreter 寫檔（`python`、`node`、`perl` 腳本）、`cp`、`mv`、`git apply`、`patch`、
   `dd of=`、`install`、`awk` 程式內的 `print > file`，以及 `$(...)` 或 backtick 內的導向。這是刻意的取捨，
   不嘗試偵測。
-- 被 deny 的指令不會記成 edit；放行的 shell 寫檔（豁免路徑、`#direct`、已派 write role、已宣告，
-  或 `classified` 模式下沒有分類）也不計入 R2 的檔案數。放行且確實有寫檔的呼叫會留一筆 `allow` log
+- 被 deny 的指令不會記成 edit；放行的 shell 寫檔（豁免路徑、`#direct`、已派 write role；`declare` 模式下另有已宣告，
+  `classified` 模式下沒有分類）也不計入 R2 的檔案數。放行且確實有寫檔的呼叫會留一筆 `allow` log
   （規則 `direct`、`dispatched`、`declared` 或 `uncounted`）。
 
 ## Guard chain：外部 guard 以設定掛上
