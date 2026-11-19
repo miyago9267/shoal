@@ -5,6 +5,10 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
+- Claude 的 `SHOAL_GUARD_R1` 預設改為 `strict`（guard-declared-direct M14，取代 M13 的 `advise`）：main 改檔一律 deny，
+  只有使用者 prompt 的 `#direct`、`SHOAL_GUARD_DIRECT=1`、已派工、豁免路徑放行，main 自己的 `: shoal-direct` 不再生效。
+  實測 main 有 160/165 次自己宣告後照改，所以拿掉自我宣告的出口。Claude bootstrap 第一條同步改成 main 只負責討論、規劃、
+  整合與判斷。`advise`、`declare` 仍可用 `SHOAL_GUARD_R1` 選。`hosts/claude/VERSION` 升為 3.14.10-beta。
 - Role hand-backs use the brief's language; with `SHOAL_GUARD_LANG=zh-TW` the Codex autoroute messages are in Traditional Chinese.
 
 ### Guard

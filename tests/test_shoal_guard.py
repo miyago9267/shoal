@@ -104,7 +104,7 @@ class DeclarationParserTests(unittest.TestCase):
 
     def test_resolve_r1(self) -> None:
         for host in ("claude", "codex", "opencode", "grok", "agy"):
-            default = "advise" if host == "claude" else "strict"  # claude alone defaults to advise (guard-declared-direct M8)
+            default = "strict"  # claude too since 2026-11-19 (guard-declared-direct M14); M13's advise default is superseded
             for env, want in (({}, default), ({"SHOAL_GUARD_R1": ""}, default), ({"SHOAL_GUARD_R1": "bogus"}, default),
                               ({"SHOAL_GUARD_R1": "STRICT"}, default), ({"SHOAL_GUARD_R1": "strict"}, "strict"),
                               ({"SHOAL_GUARD_R1": "declare"}, "declare"), ({"SHOAL_GUARD_R1": "advise"}, "advise"),
@@ -670,11 +670,11 @@ class AdviseCliTests(CliCase):
     def edit(self, name="a.py", **env) -> str:
         return self.run_advise(claude_tool("Edit", {"file_path": name}, cwd=self.work), **env)
 
-    def test_claude_unset_defaults_to_advise_and_lets_the_edit_through(self) -> None:
+    def test_claude_unset_is_no_longer_advise(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_R1="")
         out = self.run_guard("claude", claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work), SHOAL_GUARD_R1="")
-        self.assertNotIn("deny", out)
-        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("advise", "undeclared"))
+        self.assertIn("deny", out)
+        self.assertNotEqual(self.log_records()[-1]["rule"], "undeclared")
 
     def test_undeclared_edit_is_advised_once_per_turn(self) -> None:
         self.run_advise(claude_prompt(cwd=self.work))
@@ -909,6 +909,42 @@ class StrictCliTests(CliCase):
         self.assertEqual(self.claude(claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2")), "")
         self.assertEqual(self.run_guard("claude", claude_tool("Edit", {"file_path": "b.py"}, cwd=self.work, prompt_id="p-3"),
                                         SHOAL_GUARD_R1="strict", SHOAL_GUARD_DIRECT="1"), "")
+
+    def test_claude_unset_defaults_to_strict_and_denies_main_edits(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_R1="")
+        edit = claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)
+        out = self.run_guard("claude", edit, SHOAL_GUARD_R1="")
+        self.assertEqual(self.deny_reason(out), guard.MESSAGES["en"]["STRICT"])
+        self.assertEqual((self.log_records()[-1]["decision"], self.log_records()[-1]["rule"]), ("deny", "R1"))
+        self.assertIn("deny", self.run_guard("claude", claude_tool("Bash", {"command": "echo x > a.py"}, cwd=self.work),
+                                             SHOAL_GUARD_R1=""))
+
+    def test_claude_default_ignores_main_shoal_direct_declaration(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_R1="")
+        decl = claude_tool("Bash", {"command": ': shoal-direct "tiny fix"'}, cwd=self.work)
+        self.assertEqual(self.run_guard("claude", decl, SHOAL_GUARD_R1=""), "")
+        self.assertFalse(any(r.get("rule") == "declare" for r in self.log_records()))
+        edit = claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)
+        self.assertIn("deny", self.run_guard("claude", edit, SHOAL_GUARD_R1=""))
+        self.assertIn("deny", self.run_guard("claude", claude_tool("Bash", {"command": "echo x > a.py"}, cwd=self.work),
+                                             SHOAL_GUARD_R1=""))
+        state = Path(self.guard_dir, "state", "sess-1.json").read_text(encoding="utf-8")
+        self.assertIn('"declared": false', state)
+
+    def test_claude_default_releases_user_hash_direct(self) -> None:
+        self.run_guard("claude", claude_prompt(cwd=self.work, prompt_id="p-2", prompt="fix it #direct"), SHOAL_GUARD_R1="")
+        edit = claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work, prompt_id="p-2")
+        self.assertEqual(self.run_guard("claude", edit, SHOAL_GUARD_R1=""), "")
+        self.assertEqual(self.log_records()[-1]["rule"], "direct")
+
+    def test_claude_default_deny_text_has_no_shoal_direct_in_either_language(self) -> None:
+        for lang in ("en", "zh-TW"):
+            self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD_R1="", SHOAL_GUARD_LANG=lang)
+            edit = claude_tool("Edit", {"file_path": "a.py"}, cwd=self.work)
+            reason = self.deny_reason(self.run_guard("claude", edit, SHOAL_GUARD_R1="", SHOAL_GUARD_LANG=lang))
+            self.assertNotIn("shoal-direct", reason, lang)
+            for needle in ("executor", "applier", "#direct"):
+                self.assertIn(needle, reason, (lang, needle))
 
     def test_codex_exits_are_dispatch_and_hash_direct_only(self) -> None:
         self.codex(CodexAdapterTests.prompt(cwd=self.work))

@@ -1,14 +1,14 @@
 <!-- addendum: claude-delegate-default at=replace:bootstrap-delegate-default -->
-- Main edits itself when the target is known and the change is small; under
-  `SHOAL_GUARD_R1=declare` it first runs `: shoal-direct "<reason>"` as its own
-  shell command (`#direct` also allows it). Delegate only when one of these
-  fits, `applier` for small bounded edits and `executor` for multi-file work:
-  - 10+ files to read or 1000+ lines of output for a small change -> one
-    `scout` per independent surface, same message;
-  - independent parts that can run in parallel -> one role each, same message;
-  - a long task (10+ minutes of edits) -> `executor`;
+- Main only discusses, plans, integrates and judges. File edits and multi-step
+  shell work go to `applier` (small, bounded) or `executor` (multi-file or needs
+  judgment); main edits itself only when the user's prompt has `#direct`.
+  Also delegate:
   - a command that runs long or must be awaited (tests, build, CI) -> `watcher`
-    {{background_option}}; never start a background shell yourself.
+    {{background_option}}; never start a background shell yourself;
+  - 10+ files to read or 1000+ lines of output -> one `scout` per independent
+    surface, same message;
+  - independent parts that can run in parallel -> one role each, same message;
+  - a long task (10+ minutes of edits) -> `executor`.
 - A clear request to fix or finish is one outcome: continue to acceptance and
   report which check ran.
 

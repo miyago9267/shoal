@@ -9,8 +9,10 @@ when the user settings already register the tools/install_hooks.py guard.  Alway
 nudge, not a security boundary.  Modes, rules and switches (SHOAL_GUARD, SHOAL_GUARD_R1, SHOAL_GUARD_SUBAGENT_WRITE,
 SHOAL_GUARD_STOP, `#direct`, `#fast`) are specified in docs/specs/dispatch-enforcement, docs/specs/guard-declared-direct,
 docs/specs/guard-every-gate and docs/specs/shared-rules (B2-B4 completion check).
-R1 on claude defaults to `advise` (guard-declared-direct M13): an undeclared main edit goes through, is logged as
-`undeclared` and reminded once per turn; `declare` / `strict` still deny.
+R1 defaults to `strict` on every host that can gate, claude included since 2026-11-19 (guard-declared-direct M14,
+which supersedes M13's `advise` default): main's file edits are denied unless the user's prompt carries `#direct`,
+SHOAL_GUARD_DIRECT=1, a write role was dispatched, or the path is exempt; main's own `: shoal-direct` declaration does
+not release anything.  `advise` and `declare` stay selectable with SHOAL_GUARD_R1.
 """
 
 from __future__ import annotations
@@ -849,7 +851,7 @@ def resolve_r1(host: str, env: Dict[str, str]) -> str:
     """SHOAL_GUARD_R1: `classified` and `off` as given; `strict`, `declare` and `advise` where the host can gate.
 
     Unset, unrecognized, or `strict` / `declare` / `advise` on a host that cannot gate -> the host default
-    (`advise` on claude, `strict` on codex, grok, agy and opencode, `classified` elsewhere)."""
+    (`strict` on claude, codex, grok, agy and opencode, `classified` elsewhere)."""
     raw = env.get("SHOAL_GUARD_R1") or ""
     if raw in ("classified", "off"):
         return raw
@@ -857,7 +859,7 @@ def resolve_r1(host: str, env: Dict[str, str]) -> str:
         return "classified"
     if raw in ("strict", "declare", "advise"):
         return raw
-    return "advise" if host == "claude" else "strict"
+    return "strict"
 
 
 # ---------------------------------------------------------------------------
