@@ -92,7 +92,7 @@ python3 tools/render.py --host claude --write
 （`plugins/claude/`、`plugins/claude-guard/`、
 `.claude-plugin/marketplace.json`），不是第六個 host。
 修改 core 或 binding 後先 `--write`，再跑
-`python3 -m unittest discover -s tests` 確認輸出差異是預期的。
+`python3 tools/run_tests.py` 確認輸出差異是預期的。
 
 ### 新增 host
 
@@ -118,15 +118,20 @@ guard（`hooks/shoal_guard.py`）在五個 host 的安裝方式：Codex 由 `ins
 `tools/install_hooks.py` 安裝，OpenCode 的 guard 在 plugin 內。Claude、Codex、Grok 與 agy
 預設 enforce（agy 以 conversation 的事件順序推斷 main 與 subagent，是推斷不是事實，細節見 INSTALL.md；
 agy 沒有 `#direct`），`SHOAL_GUARD=off` 關閉。R2（檔案數）在所有 host 都只提醒；subagent 的 LEAF、
-VERIFY_EDIT 會擋。五個 host 上（預設：Claude `declare`，其餘 `strict`；agy 沒有 `#direct`）
+VERIFY_EDIT 會擋。五個 host 上（預設都是 `strict`，Claude 自 2026-11-19 起，見
+guard-declared-direct M14；agy 沒有 `#direct`）
 main 沒派 write role、使用者也沒有 `#direct` 就改檔
 （R1，或用 shell 指令字面上寫檔的 G5：`>`、`>>`、`tee`、`sed -i`）會被擋，不需要任何分類來源；
 `strict` 的出口只有兩個：派 `executor`／`applier`，或請使用者在 prompt 加 `#direct`。main
 自己宣告的出口（`: shoal-direct "<理由>"`，3.2.x 的 `declare`）在 live gate 中被 Claude 每次拿來自己做，
-3.3.0 一度拿掉；2026-10-25 起 Claude 改回預設 `declare`（簡單工作宣告後自己改，
-見 `docs/specs/main-small-edits`），可用 `SHOAL_GUARD_R1=strict` 還原，其他 host 仍預設 `strict`。
+3.3.0 一度拿掉；2026-10-25 起 Claude 曾改回預設 `declare`（簡單工作宣告後自己改，
+見 `docs/specs/main-small-edits`）。2026-11-19 起 Claude 預設又是
+`strict`（guard-declared-direct M14），
+宣告不再是出口：main 只負責討論，改檔交給 `executor`／`applier`，或由使用者在 prompt 加 `#direct`；
+`SHOAL_GUARD_R1=declare` 可手動選用。
 main 自己開背景 shell（G4，只有 Claude）同樣被擋；R2
-仍只提醒。`SHOAL_GUARD_R1` 的值：`strict`、`declare`（Claude 預設）、`classified`（3.1.0 的行為：
+仍只提醒。`SHOAL_GUARD_R1` 的值：`strict`（預設）、`declare`（Claude 2026-10-25 至 11-18 的預設）、
+`classified`（3.1.0 的行為：
 只在外部分類來源標出實作工作時擋）、`off`。`SHOAL_GUARD_SUBAGENT_WRITE` 控制 E1：擋下不是 shoal 可寫 role 的
 subagent 改檔（五個 host 預設 `on`；Claude、Codex、Grok、OpenCode 上啟動該工作的 prompt 帶
 `#direct` 可放行，agy 沒有 `#direct`，其餘出口見 INSTALL.md）。
@@ -158,7 +163,7 @@ Codex、Grok、agy、OpenCode 的全域安裝由 `python3 tools/sync_global.py [
 | --- | --- |
 | shoal（產品） | 3.13.0-beta |
 | codex host | 3.13.3-beta（`hosts/codex/VERSION`） |
-| claude host | 3.14.9-beta（`hosts/claude/VERSION`） |
+| claude host | 3.14.10-beta（`hosts/claude/VERSION`） |
 | agy host | 3.13.0-beta（`hosts/agy/VERSION`） |
 | grok host | 3.13.0-beta（`hosts/grok/VERSION`） |
 | opencode host | 3.13.0-beta（`hosts/opencode/plugin/package.json`） |
@@ -182,7 +187,9 @@ shoal 目前是 beta。beta 的 minor 版本可能有破壞性變更；正式版
 ### 驗證
 
 ```bash
-python3 -m unittest discover -s tests
+python3 tools/run_tests.py                  # 全套，平行；提交前跑一次
+python3 tools/run_tests.py test_shoal_guard # 迭代時只跑相關 module
+python3 tools/run_tests.py -k relay         # 或依關鍵字
 python3 tools/check_links.py
 bun install --frozen-lockfile && bun run lint:md
 ```

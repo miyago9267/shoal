@@ -97,14 +97,12 @@ jobs:
       # tests/ci_cross_platform.txt）。push main、tag、nightly 三平台都跑完整套件。
       - name: Run unit tests (full)
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
-        run: python -m unittest discover -s tests -v
+        run: python tools/run_tests.py -v
 
       - name: Run unit tests (cross-platform subset)
         if: matrix.os != 'ubuntu-latest' && github.event_name == 'pull_request'
         shell: bash
-        env:
-          PYTHONPATH: tests
-        run: python -m unittest -v $(grep -v '^#' tests/ci_cross_platform.txt | tr -d '\r')
+        run: python tools/run_tests.py -v $(grep -v '^#' tests/ci_cross_platform.txt | tr -d '\r')
 
       - name: Entrypoint dry-run for all hosts (temp HOME)
         shell: python
