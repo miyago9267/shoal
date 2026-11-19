@@ -17,7 +17,7 @@ JSON 這類格式，仍要在 `tools/render.py` 寫專屬 renderer。
    `prompts/hosts/<name>/descriptions.md` 的 role description。
 4. 預覽：`python3 tools/render.py --host <name> --explain`。
 5. 寫入並檢查：`--write`，再 `--check`，最後跑
-   `python3 -m unittest discover -s tests`（探索式測試會自動涵蓋新 host，
+   `python3 tools/run_tests.py`（探索式測試會自動涵蓋新 host，
    不用新增測試檔）。dist 在 `hosts/<name>/dist/`，要 commit。
 
 ## `[output]` 宣告

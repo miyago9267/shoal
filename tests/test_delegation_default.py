@@ -242,10 +242,10 @@ class PolicyClauseTests(unittest.TestCase):
     def test_bootstrap_carries_the_delegation_routes_for_headless_sessions(self) -> None:
         # 第一輪 live gate：headless session 只拿到 bootstrap，所以派工路徑必須寫在常駐的 bootstrap 裡。
         claude_bootstrap = (ROOT / "plugins" / "claude" / "policy" / "claude-md.bootstrap.md").read_text(encoding="utf-8")
-        # 兩份都是 Claude 輸出；開頭是簡單工作的宣告句（main-small-edits），Codex 的原句不在這裡。
+        # 兩份都是 Claude 輸出；開頭是 main 只負責討論與整合的句子（2026-11-19），Codex 的原句不在這裡。
         for text in (self.bootstrap, claude_bootstrap):
             lines = text.splitlines()
-            at = next(i for i, line in enumerate(lines) if line.startswith("- Simple work (one purpose, known scope, no risk trigger"))
+            at = next(i for i, line in enumerate(lines) if line.startswith("- Main only discusses, plans, integrates and judges"))
             nested = []
             for line in lines[at + 1 :]:
                 if not line.startswith("  "):
@@ -253,7 +253,7 @@ class PolicyClauseTests(unittest.TestCase):
                 nested.append(line)
             routes = [line for line in nested if line.startswith("  - ")]
             self.assertEqual(len(routes), 4, nested)  # 縮排的巢狀條列，不是單一段落
-            starts = [line for line in lines if line.startswith("- Explicit instruction:")]
+            starts = [line for line in lines if line.startswith("- `#fast` with simple work:")]
             self.assertEqual(len(starts), 1)
 
     def test_new_bootstrap_clauses_are_not_required(self) -> None:
@@ -272,8 +272,8 @@ class PolicyClauseTests(unittest.TestCase):
 
     def test_bootstrap_dispatch_bullets_are_separate_and_ordered(self) -> None:
         lines = self.bootstrap.splitlines()
-        effort = [i for i, line in enumerate(lines) if line.startswith("- Explicit instruction:")]
-        brake = [i for i, line in enumerate(lines) if line.startswith("- Omit `model` for named roles.")]
+        effort = [i for i, line in enumerate(lines) if line.startswith("- `#fast` with simple work:")]
+        brake = [i for i, line in enumerate(lines) if line.startswith("- Omit `model` for named roles;")]
         label = [i for i, line in enumerate(lines) if line.startswith("- Start the `description` of every write-capable call")]
         self.assertEqual((len(effort), len(brake), len(label)), (1, 1, 1))
         self.assertTrue(effort[0] < brake[0] < label[0])
@@ -306,7 +306,7 @@ class PolicyClauseTests(unittest.TestCase):
                 self.assertRegex(text, r"(?i)TaskStop[^.;]*(Monitor|background)|(Monitor|background)[^.;]*TaskStop")
                 self.assertIn("a live child keeps you listed as running", text)
         bootstrap = " ".join(self.files["claude-md.bootstrap.md"].decode("utf-8").split())
-        self.assertIn("still listed running after its report", bootstrap)
+        self.assertIn("Stop a background role with `TaskStop` once it has reported", bootstrap)
         self.assertIn("`TaskStop`", bootstrap)
 
     def test_core_policy_and_contract_clauses_name_no_model_and_no_number_threshold(self) -> None:

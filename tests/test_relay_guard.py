@@ -98,7 +98,7 @@ class RelayAdoptionTests(unittest.TestCase):
         self.box = helper.Sandbox()
         self.addCleanup(self.box.close)
         self.home = Path(self.box.home)
-        self.base_env = self.box.env({})
+        self.base_env = self.box.env({"SHOAL_GUARD_R1": "declare"})  # advise (the claude default) spends the reminder on the first call
         self.gdir = guard._guard_dir(self.base_env, self.home)
         assert self.gdir is not None
         self.nonce_path = self.gdir / ("relay-" + NONCE)

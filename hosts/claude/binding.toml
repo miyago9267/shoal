@@ -9,7 +9,14 @@ role_text = "core"
 # omit 列出該 host 省略的條款（[{id, reason}]，required 條款不可省略）；目前所有 host 都是 legacy。
 [policy]
 policy_text = "core"
-omit = []
+omit = [
+  { id = "bootstrap-ownership", reason = "Claude bootstrap keeps only dispatch triggers; ownership is in the orchestration skill" },
+  { id = "bootstrap-routing", reason = "route shapes are in the orchestration skill" },
+  { id = "bootstrap-outcome", reason = "outcome continuation is in the workflow-extensions skill reference" },
+  { id = "bootstrap-collect", reason = "the guard and role hand-backs already drive collection" },
+  { id = "bootstrap-verify-report", reason = "verification reporting is in the orchestration skill" },
+  { id = "bootstrap-questions", reason = "question rules are in the orchestration skill" },
+]
 
 [policy.placeholders]
 dispatch_tool = "Agent"

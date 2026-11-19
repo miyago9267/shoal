@@ -153,7 +153,7 @@ class BehaviourContractTests(unittest.TestCase):
         "For low-risk, local, reversible work, use one targeted acceptance check in the main session and do not add an independent verifier",
     )
     CLAUDE = (
-        'Without a risk trigger, simple work (one purpose, known scope, ~10 min) is edited by main after `: shoal-direct "<reason>"`',
+        "Without a risk trigger, main still hands edits to a write-capable role; it edits itself only when the user's prompt has `#direct`.",
         "Direct main execution of mechanical work needs `#direct`",
         "Once root cause and remedy are known, the fix is Execution work and is delegated.",
     )
@@ -171,15 +171,17 @@ class BehaviourContractTests(unittest.TestCase):
                 self.assertIn(sentence, policy)
         self.assertNotIn("main still does not edit files itself", policy)
 
-    def test_claude_bootstrap_lets_main_edit_simple_work_after_declaring(self) -> None:
+    def test_claude_bootstrap_main_only_discusses_and_has_no_shoal_direct(self) -> None:
         text = flat(CLAUDE_BOOTSTRAP)
         self.assertIn(
-            'Simple work (one purpose, known scope, no risk trigger, expected within 10 minutes): '
-            'the main session runs `: shoal-direct "<reason>"` as its own shell command, then edits itself.',
+            "Main only discusses, plans, integrates and judges. File edits and multi-step shell work go to "
+            "`applier` (small, bounded) or `executor` (multi-file or needs judgment); main edits itself only "
+            "when the user's prompt has `#direct`.",
             text,
         )
-        self.assertIn("All other edits go to a write-capable role unless the user's prompt contains `#direct`", text)
-        self.assertNotIn("The main session does not edit files itself", text)
+        self.assertNotIn("shoal-direct", text)
+        self.assertNotIn("Main edits itself when the target is known", text)
+        self.assertLessEqual(len(CLAUDE_BOOTSTRAP.read_text(encoding="utf-8")), 2400)
 
     def test_codex_bootstrap_keeps_the_no_direct_edit_sentence(self) -> None:
         text = codex("agents-md.bootstrap.md")

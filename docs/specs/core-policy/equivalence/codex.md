@@ -709,7 +709,9 @@ classification, not a reliable pre-execution cancellation hook.
   `:261-270` 只認這一對；orchestration 檔的 frame 必須保留這一對，
   `tests/test_install.py:625-641` 才能模擬「舊整份 policy」。
 - `hooks/shoal_autoroute_gate.py:73-79` 的 `ROUTE_ESCALATION_REQUIRED` 訊息重述 T2、
-  T3 的規則（`task_name` 依 role 推導（write role 為 `<lane>_<size>_automatic_model_route`，scout 為 `automatic_model_route`）、`fork_turns=none`、不傳 model 或
+  T3 的規則（`task_name` 依 role 推導（write role 為
+  `<lane>_<size>_automatic_model_route`，scout 為 `automatic_model_route`）、
+  `fork_turns=none`、不傳 model 或
   reasoning 覆寫、不做 full-history fork）；這是行為依賴，不是文字依賴。
 
 ## 4. required_fragments 處置

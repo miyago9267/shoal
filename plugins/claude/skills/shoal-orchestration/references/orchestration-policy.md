@@ -44,9 +44,8 @@ fresh-context review.
 - Fast (default): dispatch or edit, one targeted check, no plan review,
   separate verifier or paid live run. Rigorous: risk trigger or user request.
   Name the lane at start.
-- Without a risk trigger, simple work (one purpose, known scope, ~10 min) is
-  edited by main after `: shoal-direct "<reason>"`; other edits go to a
-  write-capable role, or `#direct`. A `#fast`
+- Without a risk trigger, main still hands edits to a write-capable role;
+  it edits itself only when the user's prompt has `#direct`. A `#fast`
   session is the light lane: one-purpose work (~10 min) goes to `[fast]`
   `applier`, effort `low`; brief = goal, files, exact edits (old -> new or
   whole file) for files main read, done check. No plan-critic or verifier; a
