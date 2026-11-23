@@ -249,9 +249,12 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
 
     def _edit(self, root: Path, relative: str, old: str, new: str) -> None:
         path = root / relative
-        text = path.read_text(encoding="utf-8")
+        # newline="" 讓 Windows 不把 \n 轉成 \r\n；否則 byte 數會超過 max_bytes。
+        with path.open(encoding="utf-8", newline="") as handle:
+            text = handle.read()
         self.assertIn(old, text)
-        path.write_text(text.replace(old, new), encoding="utf-8")
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(text.replace(old, new))
 
     def _bump(self, root: Path, version_file: str) -> None:
         path = root / version_file
@@ -322,6 +325,14 @@ class ClaudeSurfaceLockTests(unittest.TestCase):
                 PromptLockError, "claude-explore-agent: required fragment"
             ):
                 validate_lock(root, base_ref="HEAD")
+
+    def test_edit_helper_keeps_lf_so_size_matches_across_platforms(self) -> None:
+        with self._git_repo_with_current_lock() as root:
+            relative = "plugins/claude/agents/executor.md"
+            before = (root / relative).read_bytes()
+            self.assertNotIn(b"\r", before)
+            self._edit(root, relative, "Work like a senior engineer", "Work like a senior engineer")
+            self.assertEqual((root / relative).read_bytes(), before)
 
     def test_claude_change_without_claude_version_bump_fails(self) -> None:
         with self._git_repo_with_current_lock() as root:
