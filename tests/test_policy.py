@@ -176,7 +176,7 @@ class BehaviourContractTests(unittest.TestCase):
         self.assertIn(
             "Main only discusses, plans, integrates and judges. File edits and multi-step shell work go to "
             "`applier` (small, bounded) or `executor` (multi-file or needs judgment); main edits itself only "
-            "when the user's prompt has `#direct`.",
+            "when the user's prompt has `#direct` or the file is Markdown/plain text.",
             text,
         )
         self.assertNotIn("shoal-direct", text)

@@ -878,6 +878,13 @@ export function repoUnderTest(cwd: string): string {
 }
 
 /** `path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, claude transcripts and plan files. */
+const TEXT_DOC_EXTS = [".md", ".mdx", ".markdown", ".txt", ".rst"];
+
+export function isTextDoc(path: string): boolean {
+  const lower = path.toLowerCase();
+  return TEXT_DOC_EXTS.some((e) => lower.endsWith(e));
+}
+
 export function isExempt(path: string, host: string, env: Env, home: string): boolean {
   if (path.split("/").slice(0, -1).includes(".ai")) return true;
   const roots = ["/tmp", "/private/tmp", lenientRealpath("/tmp")];
@@ -1860,8 +1867,10 @@ class Guard {
     let firstRule = "exempt";
     let adviseRule: string | null = null;
     let denyR1 = false;
+    let hasText = false;
     for (const [index, path] of resolved.entries()) {
       if (isExempt(path, this.host, this.env, this.home)) continue;
+      if (isTextDoc(path)) { hasText = true; continue; } // R1 does not apply to Markdown / plain-text documents
       let rule: string;
       if (direct) rule = "direct";
       else if (state.dispatched) rule = "dispatched";
@@ -1880,7 +1889,7 @@ class Guard {
       if (firstRule === "exempt") firstRule = rule;
       if (!edited.includes(path)) edited.push(path);
     }
-    if (firstRule === "exempt") return this.result("allow", { rule: firstRule, file: rawPaths[0] });
+    if (firstRule === "exempt") return this.result("allow", { rule: hasText ? "text" : firstRule, file: rawPaths[0] });
     if (denyR1 && this.mode === "enforce") {
       return this.result("deny", { rule: "R1", reason: strict || declare ? exitText(this.env, this.host, strict ? "STRICT" : "DECLARE") : text(this.env, "R1"), file: rawPaths[0] });
     }

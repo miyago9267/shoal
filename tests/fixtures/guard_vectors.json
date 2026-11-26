@@ -486,7 +486,7 @@
    "setup": {"dirs": ["$WORK/src"], "symlinks": {"$TMPDIR/lnk": "$WORK/src"}},
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/lnk/new/x.txt"]}, "expect": {"decision": "allow", "rule": "count"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$TMPDIR/lnk/new/x.dat"]}, "expect": {"decision": "allow", "rule": "count"}}
    ]
   },
   {
@@ -2191,6 +2191,10 @@
   {"name": "grok_r1_unset_is_strict", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": null}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}]},
   {"name": "grok_r1_declare_is_selectable", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "declare"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}]},
   {"name": "grok_r1_bogus_falls_back_to_strict", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "bogus"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/b"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/c"]}, "expect": {"decision": "deny", "rule": "R1"}}, {"event": {"kind": "tool", "tool_kind": "shell", "turn_id": "t1", "command": "echo x > src/a.py"}, "expect": {"decision": "deny", "rule": "R1"}}]},
+  {"name": "r1_text_md_allowed", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "strict"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/docs/a.md"]}, "expect": {"decision": "allow", "rule": "text"}}]},
+  {"name": "r1_text_upper_md_allowed", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "strict"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/docs/A.MD"]}, "expect": {"decision": "allow", "rule": "text"}}]},
+  {"name": "r1_text_py_denied", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "strict"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a.py"]}, "expect": {"decision": "deny", "rule": "R1"}}]},
+  {"name": "r1_text_mixed_md_py_denied", "host": "claude", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "strict"}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/docs/a.md", "$WORK/src/a.py"]}, "expect": {"decision": "deny", "rule": "R1"}}]},
   {"name": "grok_classified_judgment_still_advises", "host": "grok", "env": {"SHOAL_GUARD": "enforce", "SHOAL_GUARD_R1": "classified"}, "setup": {"turn": {"session": "s1", "turn_id": "t1", "role": "judgment"}}, "steps": [{"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}}, {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$WORK/src/a"]}, "expect": {"decision": "advise", "rule": "R1"}}]},
   {
    "name": "agy_r1_classified_keeps_v3_1_0_behaviour",
@@ -7258,7 +7262,7 @@
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
     {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/settings.json"]}, "expect": {"decision": "allow", "rule": "count"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/plans-lookalike/x.md"]}, "expect": {"decision": "allow", "rule": "count"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/plans-lookalike/x.json"]}, "expect": {"decision": "allow", "rule": "count"}}
    ]
   },
   {
@@ -7266,7 +7270,7 @@
    "host": "codex",
    "steps": [
     {"event": {"kind": "prompt", "turn_id": "t1"}, "expect": {"decision": "state"}},
-    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/plans/x.md"]}, "expect": {"decision": "allow", "rule": "count"}}
+    {"event": {"kind": "tool", "tool_kind": "edit", "turn_id": "t1", "paths": ["$HOME/.claude/plans/x.json"]}, "expect": {"decision": "allow", "rule": "count"}}
    ]
   },
   {
