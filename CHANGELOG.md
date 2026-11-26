@@ -5,10 +5,13 @@ shoal 的產品版本紀錄，從 v1.0.0 開始。Codex host 在 v1.8.1 之前�
 
 ## Unreleased
 
-- guard 的 R1 不再擋 Markdown 與純文字文件（`.md`、`.mdx`、`.markdown`、`.txt`、`.rst`，不分大小寫）：一次編輯的路徑全是豁免路徑或文字文件就放行，
-  記錄 rule 為 `text`，不算進 edited、不設 pending_change；混合 `.md` 與 `.py` 的呼叫仍被擋。`is_exempt` 不變（E1、B2、G5 照舊）。
-  OpenCode 的 core.ts 同步；bootstrap 補上文字文件例外。`hosts/claude/VERSION` 升為 3.14.11-beta，`hosts/codex/VERSION` 升為 3.13.4-beta
-  （共用 bootstrap 改動觸發 prompt lock 的版本門檻）。
+- guard 的 R1 不再擋 Markdown 與純文字文件（`.md`、`.mdx`、`.markdown`、
+  `.txt`、`.rst`，不分大小寫）：一次編輯的路徑全是豁免路徑或文字文件就放行，
+  記錄 rule 為 `text`，不算進 edited、不設 pending_change；
+  混合 `.md` 與 `.py` 的呼叫仍被擋。`is_exempt` 不變（E1、B2、G5 照舊）。
+  OpenCode 的 core.ts 同步；bootstrap 補上文字文件例外。
+  `hosts/claude/VERSION` 升為 3.14.11-beta，`hosts/codex/VERSION` 升為
+  3.13.4-beta（共用 bootstrap 改動觸發 prompt lock 的版本門檻）。
 - Claude 的 `SHOAL_GUARD_R1` 預設改為 `strict`（guard-declared-direct M14，取代 M13 的
   `advise`）：main 改檔一律 deny，
   只有使用者 prompt 的 `#direct`、`SHOAL_GUARD_DIRECT=1`、已派工、豁免路徑放行，main 自己的
