@@ -998,6 +998,13 @@ def repo_under_test(cwd: str) -> str:
         cursor = parent
 
 
+TEXT_DOC_EXTS = (".md", ".mdx", ".markdown", ".txt", ".rst")
+
+
+def is_text_doc(path: str) -> bool:
+    return path.lower().endswith(TEXT_DOC_EXTS)
+
+
 def is_exempt(path: str, host: str, env: Dict[str, str], home: Path) -> bool:
     """`path` is already resolved.  Exempt: /tmp, $TMPDIR, any `.ai` directory, transcripts, plan-mode plan files."""
     if ".ai" in path.split("/")[:-1]:
@@ -2490,8 +2497,12 @@ class _Guard:
         first_rule = "exempt"
         advise_rule: Optional[str] = None
         deny_r1 = False
+        has_text = False
         for index, path in enumerate(resolved):
             if is_exempt(path, self.host, self.env, self.home):
+                continue
+            if is_text_doc(path):  # R1 does not apply to Markdown / plain-text documents; they never count as edits
+                has_text = True
                 continue
             if direct:
                 rule = "direct"
@@ -2519,7 +2530,7 @@ class _Guard:
             if path not in edited:
                 edited.append(path)
         if first_rule == "exempt":
-            return self.result("allow", first_rule, file=raw_paths[0])
+            return self.result("allow", "text" if has_text else first_rule, file=raw_paths[0])
         if deny_r1 and self.mode == "enforce":
             return self.result(
                 "deny", "R1",

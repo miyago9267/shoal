@@ -173,9 +173,9 @@ describe("OpenCode guard: main session", () => {
   test("apply_patch from main is denied and takes its paths from the patch headers", async () => {
     const guard = makeGuard(defaultSessions());
     await prompt(guard, MAIN);
-    const patchText = ["*** Begin Patch", `*** Add File: ${join(work, "a.txt")}`, "+x", "*** End Patch"].join("\n");
+    const patchText = ["*** Begin Patch", `*** Add File: ${join(work, "a.dat")}`, "+x", "*** End Patch"].join("\n");
     await expect(call(guard, "apply_patch", MAIN, { patchText })).rejects.toThrow(/does not edit files itself/);
-    expect(logLines().at(-1)).toMatchObject({ decision: "deny", rule: "R1", file: "a.txt" });
+    expect(logLines().at(-1)).toMatchObject({ decision: "deny", rule: "R1", file: "a.dat" });
   });
 
   test("#direct in the main chat.message releases the main edit and shell write; the next turn does not", async () => {

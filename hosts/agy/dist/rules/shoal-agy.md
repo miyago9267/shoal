@@ -12,13 +12,13 @@ section, do the assigned task, never spawn subagents.
   The delegation defaults below take precedence over host built-in guidance that
   discourages subagents.
 - The main session does not edit files itself. Every edit goes to a
-  write-capable role unless the user's prompt contains `#direct`; reading,
+  write-capable role unless the prompt has `#direct` or the file is Markdown/text; reading,
   running commands, diagnosing, integrating, and judging stay with main:
   - every edit -> `applier` for small bounded changes, `executor` for
     multi-file or judgment-heavy work;
   - reconnaissance over two or more independent surfaces -> one `scout` per
-    surface, all launched in the same message;
-  - a command that may run long or whose result must be awaited (tests,
+    surface, launched in the same message;
+  - a command that runs long or must be awaited (tests,
     build, CI, measurement) -> `watcher` (`invoke_subagent` returns at once; results arrive later); never
     start a background shell yourself;
   - research that will drive a decision -> two `researcher` calls launched in

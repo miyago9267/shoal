@@ -1,4 +1,4 @@
-<!-- shoal-claude v3.14.10-beta -->
+<!-- shoal-claude v3.14.11-beta -->
 <!-- markdownlint-disable-next-line MD041 -->
 ## Orchestration
 
@@ -7,7 +7,7 @@ section, do the assigned task, never spawn subagents.
 
 - Main only discusses, plans, integrates and judges. File edits and multi-step
   shell work go to `applier` (small, bounded) or `executor` (multi-file or needs
-  judgment); main edits itself only when the user's prompt has `#direct`.
+  judgment); main edits itself only when the user's prompt has `#direct` or the file is Markdown/plain text.
   Also delegate:
   - a command that runs long or must be awaited (tests, build, CI) -> `watcher`
     with `run_in_background: true`; never start a background shell yourself;

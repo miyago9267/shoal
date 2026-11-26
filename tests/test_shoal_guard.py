@@ -2295,7 +2295,7 @@ class WindowsDecisionTests(CliCase):
     def test_every_spelling_is_denied_with_the_same_reason(self) -> None:
         self.run_guard("claude", claude_prompt(cwd=self.work), SHOAL_GUARD="enforce", SHOAL_GUARD_R1="declare")
         reasons = set()
-        for spelling in self.spellings("a.txt"):
+        for spelling in self.spellings("a.dat"):
             out = self.run_guard("claude", claude_tool("Edit", {"file_path": spelling}, cwd=self.work),
                                  SHOAL_GUARD="enforce", SHOAL_GUARD_R1="declare")
             body = json.loads(out)["hookSpecificOutput"]
@@ -2319,8 +2319,8 @@ class WindowsDecisionTests(CliCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             return proc.stdout.decode()
         fire(claude_prompt(cwd=self.work))
-        self.assertEqual(fire(claude_tool("Edit", {"file_path": os.path.join(tmp, "a.txt")}, cwd=self.work)), "")
-        self.assertIn("deny", fire(claude_tool("Edit", {"file_path": self.path("a.txt")}, cwd=self.work)))
+        self.assertEqual(fire(claude_tool("Edit", {"file_path": os.path.join(tmp, "a.dat")}, cwd=self.work)), "")
+        self.assertIn("deny", fire(claude_tool("Edit", {"file_path": self.path("a.dat")}, cwd=self.work)))
 
 
 if __name__ == "__main__":
